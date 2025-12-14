@@ -17,21 +17,11 @@ class Subject(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
 
-    # Active run pointer
-    current_run_id: Optional[int] = Field(default=None, foreign_key="subject_protocol_runs.id")
-
-
-class SubjectProtocolRun(SQLModel, table=True):
-    __tablename__ = "subject_protocol_runs"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    subject_id: int = Field(foreign_key="subjects.id")
-    protocol_id: int = Field(foreign_key="protocol_templates.id")
-
-    current_step: int = Field(default=0)
-    started_at: datetime = Field(default_factory=datetime.utcnow)
-    finished_at: Optional[datetime] = None
+    # Pointer to the currently active run for this subject (if any)
+    current_run_id: Optional[int] = Field(
+        default=None,
+        foreign_key="subject_protocol_runs.id",
+    )
 
 
 class ProtocolTemplate(SQLModel, table=True):
@@ -56,6 +46,44 @@ class ProtocolStepTemplate(SQLModel, table=True):
     protocol_id: int = Field(foreign_key="protocol_templates.id")
 
 
+class ProtocolSession(SQLModel, table=True):
+    """
+    One execution 'event' of a protocol.
+    Can include one or many subjects (each has a SubjectProtocolRun).
+    """
+    __tablename__ = "protocol_sessions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    protocol_id: int = Field(foreign_key="protocol_templates.id")
+    label: Optional[str] = None
+
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
+
+class SubjectProtocolRun(SQLModel, table=True):
+    """
+    A single subject's run inside a protocol (and optionally inside a ProtocolSession).
+    """
+    __tablename__ = "subject_protocol_runs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    subject_id: int = Field(foreign_key="subjects.id")
+    protocol_id: int = Field(foreign_key="protocol_templates.id")
+
+    # NEW: link this run to a protocol session (can be null for old runs)
+    session_id: Optional[int] = Field(
+        default=None,
+        foreign_key="protocol_sessions.id",
+    )
+
+    current_step: int = Field(default=0)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
+
 # ============================================================
 # DTO MODELS (For API input/output)
 # ============================================================
@@ -70,9 +98,17 @@ class SubjectRead(SQLModel):
     current_run_id: Optional[int] = None
 
 
-
 class AssignProtocolPayload(SQLModel):
     protocol_id: int
+
+
+class StartSessionPayload(SQLModel):
+    """
+    Used by /sessions/start and by the assign_protocol wrapper.
+    """
+    protocol_id: int
+    subject_names: List[str]
+    label: Optional[str] = None
 
 
 class ProtocolStepTemplateCreate(SQLModel):

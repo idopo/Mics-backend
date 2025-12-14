@@ -18,7 +18,9 @@ from models import (
     ProtocolRead,
     ProtocolStepTemplateCreate,
     AssignProtocolPayload,
+    StartSessionPayload,
     SubjectProtocolRun,
+    ProtocolSession,
 )
 
 
@@ -48,16 +50,16 @@ def health():
 @app.get("/subjects", response_model=List[SubjectRead])
 def list_subjects(
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
     return session.exec(select(Subject)).all()
 
 
-@app.post("/subjects", response_model=SubjectRead, status_code=201)
+@app.post("/subjects", response_model=SubjectRead, status_code=status.HTTP_201_CREATED)
 def create_subject(
     payload: SubjectCreate,
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
     existing = session.exec(
         select(Subject).where(Subject.name == payload.name)
@@ -72,11 +74,12 @@ def create_subject(
     session.refresh(subject)
     return subject
 
+
 @app.get("/subjects/{subject_name}/runs")
 def list_subject_runs(
     subject_name: str,
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
     # Find subject by name
     subject = session.exec(
@@ -86,7 +89,6 @@ def list_subject_runs(
     if not subject:
         raise HTTPException(404, "Subject not found")
 
-    # Fetch all runs
     runs = session.exec(
         select(SubjectProtocolRun).where(
             SubjectProtocolRun.subject_id == subject.id
@@ -96,53 +98,114 @@ def list_subject_runs(
     return runs
 
 
+# ----------------------------------------------------------
+# SESSIONS (NEW CORE CONCEPT)
+# ----------------------------------------------------------
 
+@app.post("/sessions/start")
+def start_protocol_session(
+    payload: StartSessionPayload,
+    session: Session = Depends(get_session),
+    jwt: dict = Depends(verify_token),
+):
+    """
+    Start a protocol session for one or more subjects.
+
+    This is the *core* logic. Even the per-subject assign_protocol endpoint
+    will call into this.
+    """
+    protocol = session.get(ProtocolTemplate, payload.protocol_id)
+    if not protocol:
+        raise HTTPException(404, "Protocol not found")
+
+    # Create session object first
+    protocol_session = ProtocolSession(
+        protocol_id=payload.protocol_id,
+        label=payload.label,
+    )
+    session.add(protocol_session)
+    session.flush()  # get protocol_session.id
+
+    created_runs = []
+
+    # Loop subjects; any failure will raise before commit (transaction aborts)
+    for subj_name in payload.subject_names:
+        subj = session.exec(
+            select(Subject).where(Subject.name == subj_name)
+        ).first()
+
+        if not subj:
+            # let the caller know exactly which subject is invalid
+            raise HTTPException(404, f"Subject not found: {subj_name}")
+
+        # Close old run if exists and is still open
+        if subj.current_run_id:
+            old_run = session.get(SubjectProtocolRun, subj.current_run_id)
+            if old_run and old_run.finished_at is None:
+                old_run.finished_at = datetime.utcnow()
+                session.add(old_run)
+
+        # Create new run linked to this session
+        new_run = SubjectProtocolRun(
+            subject_id=subj.id,
+            protocol_id=protocol.id,
+            session_id=protocol_session.id,
+            current_step=0,
+        )
+        session.add(new_run)
+        session.flush()  # populate new_run.id
+
+        # Update subject pointer
+        subj.current_run_id = new_run.id
+        session.add(subj)
+
+        created_runs.append(
+            {
+                "subject": subj.name,
+                "run_id": new_run.id,
+                "current_step": new_run.current_step,
+            }
+        )
+
+    # All good, commit everything
+    session.commit()
+
+    return {
+        "status": "ok",
+        "protocol": protocol.name,
+        "protocol_id": protocol.id,
+        "session_id": protocol_session.id,
+        "subjects": created_runs,
+        "label": protocol_session.label,
+        "started_at": protocol_session.started_at,
+    }
+
+
+# Thin wrapper – keeps old API but uses sessions under the hood
 @app.post("/subjects/{subject_name}/assign_protocol")
 def assign_protocol(
     subject_name: str,
     payload: AssignProtocolPayload,
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
-    subject = session.exec(
-        select(Subject).where(Subject.name == subject_name)
-    ).first()
+    """
+    Backwards-compatible endpoint used by the Terminal GUI.
 
-    if not subject:
-        raise HTTPException(404, "Subject not found")
-
-    protocol = session.get(ProtocolTemplate, payload.protocol_id)
-    if not protocol:
-        raise HTTPException(404, "Protocol not found")
-
-    # close old run
-    if subject.current_run_id:
-        old_run = session.get(SubjectProtocolRun, subject.current_run_id)
-        if old_run and old_run.finished_at is None:
-            old_run.finished_at = datetime.utcnow()
-            session.add(old_run)
-
-    # create new run
-    new_run = SubjectProtocolRun(
-        subject_id=subject.id,
-        protocol_id=protocol.id,
-        current_step=0,
+    Internally this just calls /sessions/start with a single subject.
+    """
+    start_payload = StartSessionPayload(
+        protocol_id=payload.protocol_id,
+        subject_names=[subject_name],
+        label=None,
     )
-    session.add(new_run)
-    session.commit()
-    session.refresh(new_run)
 
-    subject.current_run_id = new_run.id
-    session.add(subject)
-    session.commit()
-
-    return {
-        "status": "ok",
-        "subject": subject_name,
-        "protocol": protocol.name,
-        "run_id": new_run.id,
-        "current_step": new_run.current_step,
-    }
+    # Re-use the core session logic
+    return start_protocol_session(
+        payload=start_payload,
+        session=session,
+        jwt=jwt,
+    )
 
 
 # ----------------------------------------------------------
@@ -153,7 +216,7 @@ def assign_protocol(
 def create_protocol(
     payload: ProtocolCreate,
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
     existing = session.exec(
         select(ProtocolTemplate).where(ProtocolTemplate.name == payload.name)
@@ -201,11 +264,11 @@ def create_protocol(
 @app.get("/protocols", response_model=List[ProtocolRead])
 def list_protocols(
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
     protocols = session.exec(select(ProtocolTemplate)).all()
 
-    output = []
+    output: List[ProtocolRead] = []
     for p in protocols:
         steps = session.exec(
             select(ProtocolStepTemplate).where(
@@ -229,7 +292,7 @@ def list_protocols(
 def get_protocol(
     protocol_id: int,
     session: Session = Depends(get_session),
-    _: dict = Depends(verify_token),
+    jwt: dict = Depends(verify_token),
 ):
     p = session.get(ProtocolTemplate, protocol_id)
     if not p:

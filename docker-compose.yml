@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: mics_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mics_user
+      POSTGRES_PASSWORD: change_me
+      POSTGRES_DB: mics_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build: ./api
+    container_name: mics_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://mics_user:change_me@db:5432/mics_db
+      JWT_SECRET: pishoto
+      JWT_ALGORITHM: HS256
+      JWT_AUDIENCE: mics-clients
+      JWT_ISSUER: mics-api
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+
+volumes:
+  db_data:

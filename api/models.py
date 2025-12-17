@@ -1,14 +1,27 @@
 # api/models.py
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import Column, JSON
+import enum
+
+from sqlalchemy import Column, JSON as SAJSON
+from sqlalchemy import (
+    Integer,
+    String,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+)
+from sqlalchemy.orm import declarative_base, relationship
+
 from sqlmodel import SQLModel, Field
+from pydantic import BaseModel
 
 
 # ============================================================
-# DATABASE TABLES (SQLModel only)
+# SQLModel TABLES (new DB schema: subjects / protocols)
 # ============================================================
 
 class Subject(SQLModel, table=True):
@@ -17,11 +30,31 @@ class Subject(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
 
-    # Pointer to the currently active run for this subject (if any)
+    # Current run actually active during execution
     current_run_id: Optional[int] = Field(
-        default=None,
-        foreign_key="subject_protocol_runs.id",
+        default=None, foreign_key="subject_protocol_runs.id"
     )
+
+    # Next protocol to use when session begins
+    next_protocol_id: Optional[int] = Field(
+        default=None, foreign_key="protocol_templates.id"
+    )
+
+
+class SubjectProtocolRun(SQLModel, table=True):
+    __tablename__ = "subject_protocol_runs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    subject_id: int = Field(foreign_key="subjects.id")
+    protocol_id: int = Field(foreign_key="protocol_templates.id")
+
+    # belongs to a global session (blueprint/session)
+    session_id: int
+
+    current_step: int = Field(default=0)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
 
 
 class ProtocolTemplate(SQLModel, table=True):
@@ -41,51 +74,17 @@ class ProtocolStepTemplate(SQLModel, table=True):
     order_index: int
     step_name: str
     task_type: str
-    params: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
-    protocol_id: int = Field(foreign_key="protocol_templates.id")
-
-
-class ProtocolSession(SQLModel, table=True):
-    """
-    One execution 'event' of a protocol.
-    Can include one or many subjects (each has a SubjectProtocolRun).
-    """
-    __tablename__ = "protocol_sessions"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    protocol_id: int = Field(foreign_key="protocol_templates.id")
-    label: Optional[str] = None
-
-    started_at: datetime = Field(default_factory=datetime.utcnow)
-    finished_at: Optional[datetime] = None
-
-
-class SubjectProtocolRun(SQLModel, table=True):
-    """
-    A single subject's run inside a protocol (and optionally inside a ProtocolSession).
-    """
-    __tablename__ = "subject_protocol_runs"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    subject_id: int = Field(foreign_key="subjects.id")
-    protocol_id: int = Field(foreign_key="protocol_templates.id")
-
-    # NEW: link this run to a protocol session (can be null for old runs)
-    session_id: Optional[int] = Field(
-        default=None,
-        foreign_key="protocol_sessions.id",
+    # Arbitrary params we pass to Pilot
+    params: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(SAJSON)
     )
 
-    current_step: int = Field(default=0)
-    started_at: datetime = Field(default_factory=datetime.utcnow)
-    finished_at: Optional[datetime] = None
+    protocol_id: int = Field(foreign_key="protocol_templates.id")
 
 
 # ============================================================
-# DTO MODELS (For API input/output)
+# DTOs for API (Pydantic / SQLModel schemas)
 # ============================================================
 
 class SubjectCreate(SQLModel):
@@ -96,19 +95,11 @@ class SubjectRead(SQLModel):
     id: int
     name: str
     current_run_id: Optional[int] = None
+    next_protocol_id: Optional[int] = None
 
 
 class AssignProtocolPayload(SQLModel):
     protocol_id: int
-
-
-class StartSessionPayload(SQLModel):
-    """
-    Used by /sessions/start and by the assign_protocol wrapper.
-    """
-    protocol_id: int
-    subject_names: List[str]
-    label: Optional[str] = None
 
 
 class ProtocolStepTemplateCreate(SQLModel):
@@ -130,3 +121,120 @@ class ProtocolRead(SQLModel):
     description: Optional[str]
     created_at: datetime
     steps: List[ProtocolStepTemplate]
+
+
+# ============================================================
+# LEGACY SQLAlchemy TABLES (Pilots, Sessions, SessionRun)
+# ============================================================
+
+Base = declarative_base()
+
+
+class Pilot(Base):
+    __tablename__ = "pilots"
+
+    id = Integer().with_variant(Integer, "sqlite")  # dummy, overridden below
+    id = Column(Integer, primary_key=True)
+
+    name = Column(String, unique=True, index=True, nullable=False)
+    ip = Column(String, nullable=True)
+    prefs = Column(SAJSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+# ------------------ Pilot Pydantic Schemas ------------------------
+
+class PilotBase(BaseModel):
+    name: str
+    ip: Optional[str] = None
+    prefs: Optional[dict] = None
+
+
+class PilotCreate(PilotBase):
+    pass
+
+
+class PilotRead(PilotBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+# ------------------------------------------------------------
+# SESSION + SESSION RUN
+# ------------------------------------------------------------
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    label = Column(String, nullable=True)
+
+    runs = relationship("SessionRun", back_populates="session")
+
+
+class SessionRunStatus(str, enum.Enum):
+    RUNNING = "running"
+    STOPPED = "stopped"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+class SessionRun(Base):
+    __tablename__ = "session_runs"
+
+    id = Column(Integer, primary_key=True)
+
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    pilot_id = Column(Integer, ForeignKey("pilots.id"), nullable=False)
+
+    # Deterministic key used as "subject" string for the blueprint run
+    # e.g. "bp_s{session_id}_r{run_id}"
+    subject_key = Column(String, nullable=False)
+
+    status = Column(
+        SAEnum(SessionRunStatus, name="session_run_status"),
+        nullable=False,
+        default=SessionRunStatus.RUNNING,
+    )
+
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ended_at = Column(DateTime, nullable=True)
+
+    # relationships
+    session = relationship("Session", back_populates="runs")
+    pilot = relationship("Pilot")
+
+
+# ------------------ SessionRun Pydantic Schemas ------------------------
+
+class SessionRunCreate(BaseModel):
+    session_id: int
+    pilot_id: int
+    subject_key: Optional[str] = None  # optional for creation, server fills
+
+
+class SessionRunRead(BaseModel):
+    id: int
+    session_id: int
+    pilot_id: int
+    subject_key: str
+    status: SessionRunStatus
+    started_at: datetime
+    ended_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True

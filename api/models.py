@@ -133,9 +133,7 @@ Base = declarative_base()
 class Pilot(Base):
     __tablename__ = "pilots"
 
-    id = Integer().with_variant(Integer, "sqlite")  # dummy, overridden below
     id = Column(Integer, primary_key=True)
-
     name = Column(String, unique=True, index=True, nullable=False)
     ip = Column(String, nullable=True)
     prefs = Column(SAJSON, nullable=True)
@@ -148,8 +146,6 @@ class Pilot(Base):
         nullable=False,
     )
 
-
-# ------------------ Pilot Pydantic Schemas ------------------------
 
 class PilotBase(BaseModel):
     name: str
@@ -170,10 +166,6 @@ class PilotRead(PilotBase):
         orm_mode = True
 
 
-# ------------------------------------------------------------
-# SESSION + SESSION RUN
-# ------------------------------------------------------------
-
 class Session(Base):
     __tablename__ = "sessions"
 
@@ -191,6 +183,7 @@ class SessionRunStatus(str, enum.Enum):
     STOPPED = "stopped"
     COMPLETED = "completed"
     ERROR = "error"
+    PENDING = "pending"
 
 
 class SessionRun(Base):
@@ -201,31 +194,44 @@ class SessionRun(Base):
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     pilot_id = Column(Integer, ForeignKey("pilots.id"), nullable=False)
 
-    # Deterministic key used as "subject" string for the blueprint run
-    # e.g. "bp_s{session_id}_r{run_id}"
     subject_key = Column(String, nullable=False)
 
     status = Column(
         SAEnum(SessionRunStatus, name="session_run_status"),
         nullable=False,
-        default=SessionRunStatus.RUNNING,
+        default=SessionRunStatus.PENDING,
     )
 
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     ended_at = Column(DateTime, nullable=True)
 
-    # relationships
     session = relationship("Session", back_populates="runs")
     pilot = relationship("Pilot")
+    progress = relationship("RunProgress", uselist=False, backref="run")
 
+
+
+# Added cleanly & correctly:
+class RunProgress(Base):
+    __tablename__ = "run_progress"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("session_runs.id"), nullable=False)
+
+    current_step_idx = Column(Integer, nullable=False, default=0)
+    current_trial = Column(Integer, nullable=False, default=0)
+
+    graduation_type = Column(String, nullable=True)
+    graduation_params = Column(SAJSON, nullable=True)
+
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # ------------------ SessionRun Pydantic Schemas ------------------------
 
 class SessionRunCreate(BaseModel):
     session_id: int
     pilot_id: int
-    subject_key: Optional[str] = None  # optional for creation, server fills
-
+    subject_key: Optional[str] = None  # server sets this
 
 class SessionRunRead(BaseModel):
     id: int
@@ -237,4 +243,6 @@ class SessionRunRead(BaseModel):
     ended_at: Optional[datetime]
 
     class Config:
-        orm_mode = True
+        orm_mode = True   # for Pydantic v1
+        # from_attributes = True  # if using Pydantic v2
+

@@ -28,6 +28,16 @@ services:
       - db
     ports:
       - "8000:8000"
+    
+  orchestrator:
+    build: ./orchestrator
+    container_name: mics_orchestrator
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - api
+
+
 
 volumes:
   db_data:

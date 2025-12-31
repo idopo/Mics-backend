@@ -1,0 +1,17 @@
+{
+    "AGENT": "ORCHESTRATOR",
+  
+    "NAME": "T",
+    "MSGPORT": 5560,
+  
+    "LOGLEVEL": "INFO",
+    "LOGDIR": "/app/logs",
+    "LOGNUM": 5,
+    "LOGSIZE": 5242880,
+  
+    "PING_INTERVAL": 5,
+  
+    "MICS_API_URL": "http://127.0.0.1:8000",
+    "MICS_API_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtaWNzLXRlcm1pbmFsIiwiYXVkIjoibWljcy1jbGllbnRzIiwiaXNzIjoibWljcy1hcGkiLCJzY29wZSI6Im1pY3MiLCJpYXQiOjE3NjcwMDE2MjEsImV4cCI6MTc2NzE3NDQyMX0.PxvG1Xk8DZLKsd74uS4kJVhBr3ZVkyz3cleBbUljppI"
+  }
+  

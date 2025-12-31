@@ -28,6 +28,7 @@ from models import (  # also non-relative
     SessionRunCreate,
     SessionRunRead,
     SessionRunStatus,
+    RunProgress,
 )
 
 # IMPORTANT: we’ll use a classic SQLAlchemy Session for SA models
@@ -558,3 +559,147 @@ def stop_session_run(
         return run
     finally:
         db.close()
+
+@app.post("/runs/{run_id}/progress/increment")
+def increment_trial_counter(run_id: int, _: dict = Depends(verify_token)):
+    """
+    Increments the trial counter for a SessionRun.
+    Creates RunProgress if needed, loading step0 from ProtocolStepTemplate.
+    Graduation logic is handled here.
+    """
+    db = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+
+        # ------------- LOAD OR CREATE PROGRESS ROW -------------
+        prog = run.progress
+        if not prog:
+            # 1) find SubjectProtocolRun for this session
+            template_run = (
+                db.query(SubjectProtocolRun)
+                .filter(SubjectProtocolRun.session_id == run.session_id)
+                .first()
+            )
+            if not template_run:
+                raise HTTPException(500, "No template SubjectProtocolRun found")
+
+            # 2) load protocol steps manually (NO relationship)
+            steps = (
+                db.query(ProtocolStepTemplate)
+                .filter(ProtocolStepTemplate.protocol_id == template_run.protocol_id)
+                .order_by(ProtocolStepTemplate.order_index)
+                .all()
+            )
+            if not steps:
+                raise HTTPException(500, "Protocol has no steps")
+
+            step0 = steps[0]
+            grad = step0.params.get("graduation", {}) if step0.params else {}
+
+            prog = RunProgress(
+                run_id=run_id,
+                current_step_idx=0,
+                current_trial=0,
+                graduation_type=grad.get("type"),
+                graduation_params=grad.get("value"),
+            )
+            db.add(prog)
+            db.commit()
+            db.refresh(prog)
+
+        # ------------- INCREMENT TRIAL COUNTER -------------
+        prog.current_trial += 1
+        db.commit()
+        db.refresh(prog)
+
+        # ------------- CHECK GRADUATION -------------
+        should_graduate = False
+        if prog.graduation_type == "NTrials":
+            needed = int(prog.graduation_params.get("current_trial", 0))
+            if prog.current_trial >= needed:
+                should_graduate = True
+
+        return {
+            "should_graduate": should_graduate,
+            "current_trial": prog.current_trial,
+            "current_step": prog.current_step_idx,
+        }
+
+    finally:
+        db.close()
+
+
+@app.post("/runs/{run_id}/progress/advance_step")
+def advance_step(run_id: int, _: dict = Depends(verify_token)):
+    db = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+
+        prog = run.progress
+        if not prog:
+            raise HTTPException(400, "Progress not initialized")
+
+        # get protocol steps for this run
+        template_runs = db.query(SubjectProtocolRun).filter(
+            SubjectProtocolRun.session_id == run.session_id
+        ).all()
+        proto_id = template_runs[0].protocol_id
+        steps = db.query(ProtocolStepTemplate).filter(
+            ProtocolStepTemplate.protocol_id == proto_id
+        ).order_by(ProtocolStepTemplate.order_index).all()
+
+        if prog.current_step_idx >= len(steps) - 1:
+            return {"finished": True}
+
+        prog.current_step_idx += 1
+        prog.current_trial = 0
+
+        next_step = steps[prog.current_step_idx]
+        grad = next_step.params.get("graduation", {})
+
+        prog.graduation_type = grad.get("type")
+        prog.graduation_params = grad.get("value")
+
+        db.commit()
+        db.refresh(prog)
+
+        return {
+            "finished": False,
+            "current_step": prog.current_step_idx,
+            "graduation": prog.graduation_type,
+        }
+
+    finally:
+        db.close()
+
+@app.get("/session-runs/by-subject-key/{key}", response_model=SessionRunRead)
+def get_run_by_subject_key(key: str, _: dict = Depends(verify_token)):
+    db = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).filter(SessionRun.subject_key == key).one_or_none()
+        if not run:
+            raise HTTPException(404, "Run not found")
+        return run
+    finally:
+        db.close()
+
+@app.get("/session-runs/{run_id}", response_model=SessionRunRead)
+def get_session_run(
+    run_id: int,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return run
+    finally:
+        db.close()
+
+
+

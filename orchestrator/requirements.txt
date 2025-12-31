@@ -1,0 +1,21 @@
+# ---- Core ZeroMQ stack ----
+pyzmq==25.1.2
+tornado==6.4.2
+blosc==1.11.2
+
+# ---- HTTP / API ----
+requests==2.32.3
+
+# ---- Elasticsearch ----
+elasticsearch==8.14.0
+elastic-transport==8.13.1
+
+# ---- Time handling ----
+pytz==2024.1
+
+# ---- Typing / runtime safety ----
+typing-extensions>=4.10.0
+
+# Web API (control & observability)
+fastapi==0.110.0
+uvicorn[standard]==0.29.0

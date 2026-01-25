@@ -2,15 +2,16 @@
 from typing import List
 
 from datetime import datetime
+from typing import Dict, Any
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session as OrmSession
 from sqlalchemy.orm import sessionmaker
-
+from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from db import engine, get_session
-from models import (  # also non-relative
+from models import (
     Subject,
     SubjectCreate,
     SubjectRead,
@@ -20,6 +21,13 @@ from models import (  # also non-relative
     ProtocolStepTemplate,
     ProtocolCreate,
     ProtocolRead,
+
+    TaskDefinition,
+    TaskInheritance,
+    PilotTaskCapability,
+    TaskDescriptor,
+    PilotTaskHandshake,
+
     Pilot,
     PilotCreate,
     PilotRead,
@@ -30,6 +38,7 @@ from models import (  # also non-relative
     SessionRunStatus,
     RunProgress,
 )
+
 
 # IMPORTANT: we’ll use a classic SQLAlchemy Session for SA models
 SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -453,12 +462,122 @@ def get_pilot(
         db.close()
 
 
+@app.post("/pilots/{pilot_id}/tasks")
+def upsert_pilot_tasks(
+    pilot_id: int,
+    payload: PilotTaskHandshake,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        pilot = db.query(Pilot).get(pilot_id)
+        if not pilot:
+            raise HTTPException(404, "Pilot not found")
+
+        # --------------------------------------------------
+        # PHASE 1: ensure all TaskDefinitions exist
+        # --------------------------------------------------
+        task_defs_by_name: dict[str, TaskDefinition] = {}
+
+        for task in payload.tasks:
+            task_def = (
+                db.query(TaskDefinition)
+                .filter(TaskDefinition.file_hash == task.file_hash)
+                .one_or_none()
+            )
+
+            if not task_def:
+                task_def = TaskDefinition(
+                    task_name=task.task_name,
+                    base_class_name=task.base_class,
+                    module=task.module,
+                    params=task.params,
+                    hardware=task.hardware,
+                    file_hash=task.file_hash,
+                )
+                db.add(task_def)
+                db.flush()
+
+            task_defs_by_name[task.task_name] = task_def
+
+        # --------------------------------------------------
+        # PHASE 2: resolve inheritance (STRICT)
+        # --------------------------------------------------
+        for task in payload.tasks:
+            if not task.base_class:
+                continue
+
+            child_def = task_defs_by_name[task.task_name]
+            base_def = task_defs_by_name.get(task.base_class)
+
+            if not base_def:
+                raise HTTPException(
+                    400,
+                    f"Base class '{task.base_class}' not found for task '{task.task_name}'",
+                )
+
+            exists = (
+                db.query(TaskInheritance)
+                .filter(
+                    TaskInheritance.task_definition_id == child_def.id,
+                    TaskInheritance.base_definition_id == base_def.id,
+                )
+                .one_or_none()
+            )
+
+            if not exists:
+                db.add(
+                    TaskInheritance(
+                        task_definition_id=child_def.id,
+                        base_definition_id=base_def.id,
+                    )
+                )
+
+        # --------------------------------------------------
+        # PHASE 3: upsert pilot task capabilities (DEDUPED)
+        # --------------------------------------------------
+        now = datetime.utcnow()
+
+        unique_task_defs = {td.id: td for td in task_defs_by_name.values()}.values()
+
+        for task_def in unique_task_defs:
+            cap = (
+                db.query(PilotTaskCapability)
+                .filter(
+                    PilotTaskCapability.pilot_id == pilot.id,
+                    PilotTaskCapability.task_definition_id == task_def.id,
+                )
+                .one_or_none()
+            )
+
+            if cap:
+                cap.last_seen_at = now
+            else:
+                db.add(
+                    PilotTaskCapability(
+                        pilot_id=pilot.id,
+                        task_definition_id=task_def.id,
+                        last_seen_at=now,
+                    )
+                )
+
+        db.commit()
+
+        return {
+            "status": "ok",
+            "pilot_id": pilot.id,
+            "tasks_received": len(payload.tasks),
+        }
+
+    finally:
+        db.close()
+
+
 
 # ----------------------------------------------------------
 # SESSION RUNS (Pilot‑bound blueprint execution)
 # ----------------------------------------------------------
 
-@app.post("/session-runs", response_model=SessionRunRead, status_code=201)
 @app.post("/session-runs", response_model=SessionRunRead, status_code=201)
 def create_session_run(
     payload: SessionRunCreate,
@@ -466,25 +585,65 @@ def create_session_run(
 ):
     db: OrmSession = SA_SessionLocal()
     try:
-        # 1) Only one RUNNING run per blueprint session
+        # --------------------------------------------------
+        # 1️⃣ Recover STOPPED / ERROR run FIRST
+        # --------------------------------------------------
+        recoverable = (
+            db.query(SessionRun)
+            .filter(
+                SessionRun.session_id == payload.session_id,
+                SessionRun.pilot_id == payload.pilot_id,
+                SessionRun.status.in_([
+                    SessionRunStatus.STOPPED,
+                    SessionRunStatus.ERROR,
+                ]),
+            )
+            .order_by(SessionRun.id.desc())
+            .first()
+        )
+
+        if recoverable:
+            recoverable.status = SessionRunStatus.PENDING
+            recoverable.started_at = datetime.utcnow()
+            recoverable.ended_at = None
+            recoverable.error_type = None
+            recoverable.error_message = None
+
+            # ✅ DO NOT TOUCH progress
+            db.commit()
+            db.refresh(recoverable)
+            return recoverable
+
+
+            db.commit()
+            db.refresh(recoverable)
+            return recoverable
+
+
+        # --------------------------------------------------
+        # 2️⃣ Block ONLY if another run is truly RUNNING
+        # --------------------------------------------------
         active = (
             db.query(SessionRun)
             .filter(
                 SessionRun.session_id == payload.session_id,
                 SessionRun.status == SessionRunStatus.RUNNING,
             )
-            .one_or_none()
+            .first()
         )
+
         if active:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Session {payload.session_id} already has an active run "
-                    f"on pilot {active.pilot_id}"
+                    f"Session {payload.session_id} already has a RUNNING run "
+                    f"(run_id={active.id}, pilot_id={active.pilot_id})"
                 ),
             )
 
-        # 2) Get OR CREATE a Session row with this id
+        # --------------------------------------------------
+        # 3️⃣ Normal creation
+        # --------------------------------------------------
         session_obj = db.query(Session).get(payload.session_id)
         if not session_obj:
             session_obj = Session(
@@ -496,28 +655,26 @@ def create_session_run(
             db.commit()
             db.refresh(session_obj)
 
-        # 3) Pilot must already exist
         pilot_obj = db.query(Pilot).get(payload.pilot_id)
         if not pilot_obj:
-            raise HTTPException(status_code=404, detail="Pilot not found")
+            raise HTTPException(404, "Pilot not found")
 
-        # 4) Create SessionRun
         run = SessionRun(
             session_id=session_obj.id,
             pilot_id=pilot_obj.id,
-            status=SessionRunStatus.RUNNING,
-            subject_key="",  # set after flush
+            status=SessionRunStatus.PENDING,
+            subject_key="",
         )
-        db.add(run)
-        db.flush()  # assigns run.id
 
+        db.add(run)
+        db.flush()
         run.subject_key = f"bp_s{session_obj.id}_r{run.id}"
         db.commit()
         db.refresh(run)
         return run
+
     finally:
         db.close()
-
 
 
 
@@ -542,23 +699,35 @@ def get_active_run(
 
 
 @app.post("/session-runs/{run_id}/stop", response_model=SessionRunRead)
-def stop_session_run(
-    run_id: int,
-    _: dict = Depends(verify_token),
-):
+def stop_session_run(run_id: int, _: dict = Depends(verify_token)):
     db: OrmSession = SA_SessionLocal()
     try:
         run = db.query(SessionRun).get(run_id)
         if not run:
-            raise HTTPException(status_code=404, detail="Run not found")
+            raise HTTPException(404, "Run not found")
+
+        # idempotent
+        if run.status == SessionRunStatus.STOPPED:
+            return run
+
+        if run.status not in (
+            SessionRunStatus.RUNNING,
+            SessionRunStatus.PENDING,
+        ):
+            raise HTTPException(
+                400, f"Cannot stop run in status={run.status}"
+            )
 
         run.status = SessionRunStatus.STOPPED
         run.ended_at = datetime.utcnow()
+
+        # ⚠️ DO NOT reset RunProgress
         db.commit()
         db.refresh(run)
         return run
     finally:
         db.close()
+
 
 @app.post("/runs/{run_id}/progress/increment")
 def increment_trial_counter(run_id: int, _: dict = Depends(verify_token)):
@@ -617,9 +786,13 @@ def increment_trial_counter(run_id: int, _: dict = Depends(verify_token)):
         # ------------- CHECK GRADUATION -------------
         should_graduate = False
         if prog.graduation_type == "NTrials":
-            needed = int(prog.graduation_params.get("current_trial", 0))
-            if prog.current_trial >= needed:
+            # graduation_params.current_trial == N required trials
+            n_required = int(prog.graduation_params.get("current_trial", 0))
+
+            # Defensive: 0 means "never graduate"
+            if n_required > 0 and prog.current_trial >= n_required:
                 should_graduate = True
+
 
         return {
             "should_graduate": should_graduate,
@@ -687,6 +860,108 @@ def get_run_by_subject_key(key: str, _: dict = Depends(verify_token)):
     finally:
         db.close()
 
+
+
+@app.post("/session-runs/{run_id}/mark-running", response_model=SessionRunRead)
+def mark_run_running(
+    run_id: int,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        # ✅ idempotent: already running is OK
+        if run.status == SessionRunStatus.RUNNING:
+            return run
+
+        # ✅ allow resume from STOPPED
+        if run.status not in (
+            SessionRunStatus.PENDING,
+            SessionRunStatus.STOPPED,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Run {run_id} cannot start from status={run.status}",
+            )
+
+        run.status = SessionRunStatus.RUNNING
+        run.started_at = datetime.utcnow()
+        run.ended_at = None
+
+        db.commit()
+        db.refresh(run)
+        return run
+    finally:
+        db.close()
+
+@app.post("/session-runs/{run_id}/error", response_model=SessionRunRead)
+def mark_run_error(
+    run_id: int,
+    error_type: str = "UnknownError",
+    error_message: str = "",
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+
+        run.status = SessionRunStatus.ERROR
+        run.ended_at = datetime.utcnow()
+        run.error_type = str(error_type)
+        run.error_message = str(error_message)
+
+        db.commit()
+        db.refresh(run)
+        return run
+    finally:
+        db.close()
+
+
+
+@app.post("/session-runs/legacy-start", response_model=SessionRunRead, status_code=201)
+def legacy_create_and_start_session_run(
+    payload: SessionRunCreate,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        session_obj = db.query(Session).get(payload.session_id)
+        if not session_obj:
+            session_obj = Session(
+                id=payload.session_id,
+                name=f"Blueprint {payload.session_id}",
+                label=f"Blueprint {payload.session_id}",
+            )
+            db.add(session_obj)
+            db.commit()
+            db.refresh(session_obj)
+
+        pilot_obj = db.query(Pilot).get(payload.pilot_id)
+        if not pilot_obj:
+            raise HTTPException(status_code=404, detail="Pilot not found")
+
+        run = SessionRun(
+            session_id=session_obj.id,
+            pilot_id=pilot_obj.id,
+            status=SessionRunStatus.RUNNING,
+            subject_key="",
+        )
+        db.add(run)
+        db.flush()
+
+        run.subject_key = f"bp_s{session_obj.id}_r{run.id}"
+        db.commit()
+        db.refresh(run)
+        return run
+    finally:
+        db.close()
+
+
 @app.get("/session-runs/{run_id}", response_model=SessionRunRead)
 def get_session_run(
     run_id: int,
@@ -701,5 +976,206 @@ def get_session_run(
     finally:
         db.close()
 
+@app.post("/session-runs/{run_id}/complete", response_model=SessionRunRead)
+def complete_session_run(
+    run_id: int,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+
+        # 1️⃣ mark run completed
+        run.status = SessionRunStatus.COMPLETED
+        run.ended_at = datetime.utcnow()
+
+        # 2️⃣ re-arm subjects for next execution
+        template_runs = (
+            db.query(SubjectProtocolRun)
+            .filter(SubjectProtocolRun.session_id == run.session_id)
+            .all()
+        )
+
+        for tr in template_runs:
+            subj = db.query(Subject).get(tr.subject_id)
+            if subj:
+                subj.next_protocol_id = tr.protocol_id
+                db.add(subj)
+
+        db.commit()
+        db.refresh(run)
+        return run
+    finally:
+        db.close()
 
 
+
+
+# 🔑 ADD THIS RIGHT AFTER
+@app.get("/session-runs/{run_id}/with-progress")
+def get_run_with_progress(
+    run_id: int,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        run = db.query(SessionRun).get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+
+        prog = run.progress
+        return {
+            "run": {
+                "id": run.id,
+                "session_id": run.session_id,
+                "pilot_id": run.pilot_id,
+                "status": run.status,
+                "subject_key": run.subject_key,
+                "started_at": run.started_at,
+                "ended_at": run.ended_at,
+            },
+            "progress": {
+                "current_step": prog.current_step_idx if prog else None,
+                "current_trial": prog.current_trial if prog else None,
+            },
+        }
+    finally:
+        db.close()
+
+
+
+@app.get("/tasks")
+def list_tasks(_: dict = Depends(verify_token)):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        tasks = db.query(TaskDefinition).order_by(TaskDefinition.task_name).all()
+        return [
+            {
+                "id": t.id,
+                "task_name": t.task_name,
+                "base_class": t.base_class_name,
+                "module": t.module,
+                "default_params": t.params or {},
+            }
+            for t in tasks
+        ]
+    finally:
+        db.close()
+
+
+# @app.get("/tasks/leaf")
+# def list_leaf_tasks(_: dict = Depends(verify_token)):
+#     db: OrmSession = SA_SessionLocal()
+#     try:
+#         # ---------------------------------------------
+#         # 1) Find all base task IDs
+#         # ---------------------------------------------
+#         base_task_ids = {
+#             row.base_definition_id
+#             for row in db.query(TaskInheritance.base_definition_id).all()
+#         }
+
+#         # ---------------------------------------------
+#         # 2) Select tasks that are NOT base classes
+#         # ---------------------------------------------
+#         leaf_tasks = (
+#             db.query(TaskDefinition)
+#             .filter(~TaskDefinition.id.in_(base_task_ids))
+#             .order_by(TaskDefinition.task_name)
+#             .all()
+#         )
+
+#         # ---------------------------------------------
+#         # 3) Resolve merged hardware (task + bases)
+#         # ---------------------------------------------
+#         def resolve_hardware(task_def: TaskDefinition) -> Dict[str, Any]:
+#             merged: Dict[str, Any] = {}
+
+#             visited = set()
+#             stack = [task_def]
+
+#             while stack:
+#                 cur = stack.pop()
+#                 if cur.id in visited:
+#                     continue
+#                 visited.add(cur.id)
+
+#                 if cur.hardware:
+#                     merged.update(cur.hardware)
+
+#                 parents = (
+#                     db.query(TaskDefinition)
+#                     .join(
+#                         TaskInheritance,
+#                         TaskInheritance.base_definition_id == TaskDefinition.id,
+#                     )
+#                     .filter(TaskInheritance.task_definition_id == cur.id)
+#                     .all()
+#                 )
+
+#                 stack.extend(parents)
+
+#             return merged
+
+#         # ---------------------------------------------
+#         # 4) Serialize
+#         # ---------------------------------------------
+#         return [
+#             {
+#                 "id": t.id,
+#                 "task_name": t.task_name,
+#                 "base_class": t.base_class_name,
+#                 "module": t.module,
+#                 "default_params": t.params or {},
+#                 "merged_hardware": resolve_hardware(t),
+#             }
+#             for t in leaf_tasks
+#         ]
+
+#     finally:
+#         db.close()
+
+
+@app.get("/tasks/leaf")
+def list_leaf_tasks(_: dict = Depends(verify_token)):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        # If table is empty, return empty list (not 500)
+        all_tasks = db.query(TaskDefinition).all()
+        if not all_tasks:
+            return []
+
+        base_names = {
+            t.base_class_name
+            for t in all_tasks
+            if t.base_class_name
+        }
+
+        leaf_tasks = [
+            t for t in all_tasks
+            if t.task_name not in base_names
+        ]
+
+        return [
+            {
+                "id": t.id,
+                "task_name": t.task_name,
+                "base_class": t.base_class_name,
+                "module": t.module,
+                "default_params": t.params or {},
+                "hardware": t.hardware or {},
+                "file_hash": t.file_hash,
+            }
+            for t in leaf_tasks
+        ]
+
+    except Exception as e:
+        # 🔥 CRITICAL: surface real error
+        raise HTTPException(
+            status_code=500,
+            detail=f"/tasks/leaf failed: {type(e).__name__}: {e}",
+        )
+    finally:
+        db.close()

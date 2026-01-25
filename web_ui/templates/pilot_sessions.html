@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MICS – {{ pilot }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>MICS</h1>
+  <span class="subtitle">Pilot: {{ pilot }}</span>
+  <nav>
+    <a href="/">Pilots</a>
+    <a href="/subjects-ui">Subjects</a>
+    <a href="/protocols-ui">Protocols</a>
+  </nav>
+</header>
+
+<main class="container">
+  <section class="card">
+    <h2>Available Sessions</h2>
+    <ul id="sessions"></ul>
+    <div class="status-line" id="status"></div>
+  </section>
+</main>
+
+<script>
+  const PILOT_NAME = "{{ pilot }}";
+</script>
+<script src="/static/pilot_sessions.js"></script>
+
+</body>
+</html>

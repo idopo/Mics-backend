@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MICS – {{ subject }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+
+</head>
+<body>
+<header>
+  <h1>MICS</h1>
+  <span class="subtitle">Subject: {{ subject }}</span>
+  <nav>
+    <a href="/">Pilots</a>
+    <a href="/subjects-ui" class="active">Subjects</a>
+    <a href="/protocols-ui">Protocols</a>
+  </nav>
+</header>
+
+<main class="container">
+  <section class="card">
+    <h2>Available Sessions</h2>
+    <ul id="sessions"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Start Session</h2>
+    <select id="pilot-select"></select>
+    <button id="start-btn" type="button" class="button-primary">Start Selected Session</button>
+    <div class="status-line" id="status"></div>
+  </section>
+</main>
+
+<script>
+  const SUBJECT = "{{ subject }}";
+</script>
+<script src="/static/subject_sessions.js"></script>
+</body>
+</html>

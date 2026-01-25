@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MICS – Subjects</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+<body>
+  <header>
+    <h1>MICS</h1>
+    <span class="subtitle">Subjects</span>
+    <nav>
+        <a href="/">Pilots</a>
+        <a href="/subjects-ui" class="active">Subjects</a>
+        <a href="/protocols-ui">Protocols</a>
+    </nav>
+      
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Create Subject</h2>
+      <form id="create-form">
+        <input
+          type="text"
+          id="subject-name"
+          placeholder="Subject name"
+          required
+        />
+        <button type="submit" type="button" class="button-primary">Create</button>
+        <div id="error" class="error"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Existing Subjects</h2>
+      <ul id="subjects-list"></ul>
+    </section>
+  </main>
+
+  <script src="/static/subjects.js"></script>
+</body>
+</html>

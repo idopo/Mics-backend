@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MICS – Protocols</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+<body>
+
+<header>
+  <h1>MICS</h1>
+  <span class="subtitle">Protocols</span>
+  <nav>
+    <a href="/">Pilots</a>
+    <a href="/subjects-ui">Subjects</a>
+    <a href="/protocols-ui" class="active">Protocols</a>
+  </nav>
+</header>
+
+<main class="container split">
+
+  <!-- LEFT: Protocol list -->
+  <section class="card">
+    <h2>Protocols</h2>
+    <ul id="protocols-list">
+      <li class="muted"></li>
+    </ul>
+    
+
+    <hr />
+
+    <a href="/protocols-create" class="button-link button-secondary">
+      + Create New Protocol
+    </a>    
+  </section>
+
+  <!-- RIGHT: Assign protocol -->
+  <section class="card">
+    <h2>Assign Protocol</h2>
+    <p class="muted">
+      Assigning will immediately create a new session.
+    </p>
+
+    <ul id="subjects-list">
+      <li class="muted"></li>
+    </ul>
+    
+
+
+    <button id="assign-btn" type="button" class="button-primary">
+      Assign Selected
+    </button>
+
+    <div id="assign-status" class="status-line"></div>
+  </section>
+
+</main>
+
+<script src="/static/protocols.js"></script>
+
+</body>
+</html>

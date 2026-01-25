@@ -195,6 +195,15 @@ class MicsApiClient:
         """
         return self._get(f"/pilots/{pilot_id}")
 
+    def upsert_pilot_tasks(self, pilot_id: int, tasks: list[dict]):
+        """
+        POST /pilots/{pilot_id}/tasks
+
+        Sends task capability descriptors reported by the pilot.
+        """
+        payload = {"tasks": tasks}
+        return self._post(f"/pilots/{pilot_id}/tasks", payload)
+
 
 
         # -----------------------
@@ -263,6 +272,33 @@ class MicsApiClient:
         Fetch a single SessionRun row.
         """
         return self._get(f"/session-runs/{run_id}")
+    def mark_run_running(self, run_id: int) -> Dict[str, Any]:
+        """
+        Mark a SessionRun as RUNNING.
+        This is called by the orchestrator AFTER sending START to the Pi.
+        """
+        return self._post(f"/session-runs/{run_id}/mark-running", payload={})
+        
+    def complete_session_run(self, run_id: int):
+        return self._post(f"/session-runs/{run_id}/complete", {})
+
+    def mark_run_error(self, run_id: int, error_type: str, error_message: str):
+        url = f"{self.base_url}/session-runs/{run_id}/error"
+        resp = requests.post(url, headers=self.headers, params={
+            "error_type": error_type,
+            "error_message": error_message,
+        })
+        resp.raise_for_status()
+        return resp.json()
+
+
+
+
+
+
+
+
+
 
 
 

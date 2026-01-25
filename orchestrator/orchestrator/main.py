@@ -3,12 +3,16 @@ import time
 import logging
 import threading
 import uvicorn
+from elasticsearch import Elasticsearch
 
 from orchestrator.config import Config
 from orchestrator.RouterGateway import RouterGateway
 from orchestrator.orchestrator_station import OrchestratorStation
 from orchestrator.state import OrchestratorState
 from orchestrator.api import create_api
+import os
+import redis
+
 
 CONFIG_PATH = "/orchestrator/orchestrator/prefs.json"
 
@@ -26,6 +30,22 @@ logger.info(
     config.require("MSGPORT"),
 )
 
+# ---- Redis (runtime state store - not used yet) ----
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+
+try:
+    redis_client = redis.Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=2,
+    )
+    redis_client.ping()
+    logger.info("Connected to Redis at %s", REDIS_URL)
+except Exception as e:
+    logger.error("Failed to connect to Redis at %s: %s", REDIS_URL, e)
+    raise
+
+
 # ---- Shared state (single instance) ----
 state = OrchestratorState()
 
@@ -37,8 +57,15 @@ gateway = RouterGateway(
     log=logger,
 )
 
+es_client = Elasticsearch(
+    [{"host": "132.77.73.217", "port": 9200, "scheme": "http"}],
+    max_retries=1,
+    retry_on_timeout=False,
+)
+
+
 # ---- Logic ----
-station = OrchestratorStation(config, gateway, state)
+station = OrchestratorStation(config, gateway, state, es_client,redis_client=redis_client)
 
 # ---- Wire message keys ----
 gateway.listens.update({
@@ -49,6 +76,7 @@ gateway.listens.update({
     "CONTINUOUS": station.on_data,
     "STREAM": station.on_data,
     "INC_TRIAL_COUNTER": station.on_inc_trial,
+    "TASK_ERROR": station.on_task_error,
 })
 
 # ---- Start ZMQ ----
@@ -62,14 +90,14 @@ def run_api():
 
 threading.Thread(target=run_api, daemon=True).start()
 
-# ---- Liveness watchdog (logs only) ----
 def heartbeat():
     while True:
         snap = state.snapshot()
         for pilot, info in snap.items():
-            if not info["connected"] and info["last_seen_sec"] is not None and info["last_seen_sec"] > 10:
-                logger.warning("Pilot stale: %s age=%.1f", pilot, info["last_seen_sec"])
+            # TEMP: handshake-only mode, no staleness warnings
+            pass
         time.sleep(5)
+
 
 threading.Thread(target=heartbeat, daemon=True).start()
 

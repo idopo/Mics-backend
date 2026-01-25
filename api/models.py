@@ -197,13 +197,21 @@ class SessionRun(Base):
     subject_key = Column(String, nullable=False)
 
     status = Column(
-        SAEnum(SessionRunStatus, name="session_run_status"),
+        SAEnum(
+            SessionRunStatus,
+            name="session_run_status",
+            native_enum=True,
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
         nullable=False,
         default=SessionRunStatus.PENDING,
     )
 
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     ended_at = Column(DateTime, nullable=True)
+
+    error_type = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
 
     session = relationship("Session", back_populates="runs")
     pilot = relationship("Pilot")
@@ -245,4 +253,75 @@ class SessionRunRead(BaseModel):
     class Config:
         orm_mode = True   # for Pydantic v1
         # from_attributes = True  # if using Pydantic v2
+
+
+# ------------------ TASK DEFINITIONS ------------------------
+
+class TaskDefinition(Base):
+    __tablename__ = "task_definitions"
+
+    id = Column(Integer, primary_key=True)
+
+    task_name = Column(String, index=True, nullable=False)
+    base_class_name = Column(String, nullable=True)
+
+    module = Column(String, nullable=False)
+
+    params = Column(SAJSON, nullable=True)
+    hardware = Column(SAJSON, nullable=True)
+
+    file_hash = Column(String, unique=True, index=True, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class TaskInheritance(Base):
+    __tablename__ = "task_inheritance"
+
+    task_definition_id = Column(
+        Integer,
+        ForeignKey("task_definitions.id"),
+        primary_key=True,
+    )
+
+    base_definition_id = Column(
+        Integer,
+        ForeignKey("task_definitions.id"),
+        primary_key=True,
+    )
+
+
+class PilotTaskCapability(Base):
+    __tablename__ = "pilot_task_capabilities"
+
+    pilot_id = Column(
+        Integer,
+        ForeignKey("pilots.id"),
+        primary_key=True,
+    )
+
+    task_definition_id = Column(
+        Integer,
+        ForeignKey("task_definitions.id"),
+        primary_key=True,
+    )
+
+    last_seen_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class TaskDescriptor(BaseModel):
+    task_name: str
+    base_class: Optional[str] = None
+    module: str
+    params: Optional[Dict[str, Any]] = None
+    hardware: Optional[Dict[str, Any]] = None
+    file_hash: str
+
+
+class PilotTaskHandshake(BaseModel):
+    tasks: List[TaskDescriptor]
 

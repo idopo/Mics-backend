@@ -19,3 +19,6 @@ typing-extensions>=4.10.0
 # Web API (control & observability)
 fastapi==0.110.0
 uvicorn[standard]==0.29.0
+
+
+redis>=5.0

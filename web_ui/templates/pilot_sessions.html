@@ -7,7 +7,15 @@
 <body>
 
 <header>
-  <h1>MICS</h1>
+  <pre class="ascii-logo">
+    ███╗   ███╗ ██╗ ██████╗ ███████╗
+    ████╗ ████║ ██║██╔════╝ ██╔════╝
+    ██╔████╔██║ ██║██║      ███████╗
+    ██║╚██╔╝██║ ██║██║      ╚════██║
+    ██║ ╚═╝ ██║ ██║╚██████╗ ███████║
+    ╚═╝     ╚═╝ ╚═╝ ╚═════╝ ╚══════╝
+    </pre>
+    
   <span class="subtitle">Pilot: {{ pilot }}</span>
   <nav>
     <a href="/">Pilots</a>
@@ -19,7 +27,36 @@
 <main class="container">
   <section class="card">
     <h2>Available Sessions</h2>
-    <ul id="sessions"></ul>
+    <div class="filter-bar">
+      <!-- chips ABOVE input -->
+      <div class="chips" id="subject-chips"></div>
+    
+      <!-- input + inline clear -->
+      <div class="filter-input-wrap">
+        <input
+          id="subject-filter"
+          type="text"
+          placeholder="Filter by subject…"
+          autocomplete="off"
+        />
+    
+        <button
+          id="clear-filter"
+          class="input-clear"
+          type="button"
+          aria-label="Clear filter"
+        >
+          x
+        </button>
+    
+        <div class="typeahead" id="subject-typeahead"></div>
+      </div>
+    </div>
+    
+    
+    <ul id="sessions" class="sessions-scroll"></ul>
+    
+    
     <div class="status-line" id="status"></div>
   </section>
 </main>

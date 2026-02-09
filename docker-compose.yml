@@ -59,7 +59,56 @@ services:
     ports:
       - "6379:6379"
 
+  backup:
+    build: ./backup
+    container_name: mics_backup
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: Asia/Jerusalem
+      BACKUP_SCHEDULE: "59 23 * * *"
+      WORKDIR: /work
+
+      SMB_HOST: "isi.storwis.weizmann.ac.il"
+      SMB_SHARE: "labs"
+      SMB_DOMAIN: "wismain"
+      SMB_BASEDIR: "yizharlab/Mics/database_backup"
+
+      PGHOST: "db"
+      PGPORT: "5432"
+      PGDATABASE: "mics_db"
+      PGUSER: "mics_user"
+      PGPASSWORD_FILE: /run/secrets/pg_password
+
+      ES_URL: "http://host.docker.internal:9200"
+      ES_REPO: "org_repo"
+      ES_REPO_PATH: "/backups"
+
+      SMB_USER_FILE: /run/secrets/smb_user
+      SMB_PASS_FILE: /run/secrets/smb_pass
+
+    secrets:
+      - smb_user
+      - smb_pass
+      - pg_password
+    volumes:
+      - backup_work:/work
+      - /home/ido/Elastic_snapshots:/backups
+    depends_on:
+      - db
+
+    
+secrets:
+  smb_user:
+    file: ./secrets/smb_user.txt
+  smb_pass:
+    file: ./secrets/smb_pass.txt
+  pg_password:
+    file: ./secrets/pg_password.txt
+
 
 
 volumes:
   db_data:
+  backup_work:

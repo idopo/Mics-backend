@@ -575,7 +575,7 @@ def upsert_pilot_tasks(
 
 
 # ----------------------------------------------------------
-# SESSION RUNS (Pilot‑bound blueprint execution)
+# SESSION RUNS (Pilot-bound blueprint execution)
 # ----------------------------------------------------------
 
 @app.post("/session-runs", response_model=SessionRunRead, status_code=201)
@@ -585,96 +585,209 @@ def create_session_run(
 ):
     db: OrmSession = SA_SessionLocal()
     try:
-        # --------------------------------------------------
-        # 1️⃣ Recover STOPPED / ERROR run FIRST
-        # --------------------------------------------------
-        recoverable = (
-            db.query(SessionRun)
-            .filter(
-                SessionRun.session_id == payload.session_id,
-                SessionRun.pilot_id == payload.pilot_id,
-                SessionRun.status.in_([
-                    SessionRunStatus.STOPPED,
-                    SessionRunStatus.ERROR,
-                ]),
-            )
-            .order_by(SessionRun.id.desc())
-            .first()
-        )
+        mode = (payload.mode or "new").lower()
 
-        if recoverable:
+        # --------------------------------------------------
+        # 1) Find recoverable run (STOPPED/ERROR), unless mode == "new"
+        # --------------------------------------------------
+        recoverable = None
+        if mode != "new":
+            recoverable = (
+                db.query(SessionRun)
+                .filter(
+                    SessionRun.session_id == payload.session_id,
+                    SessionRun.pilot_id == payload.pilot_id,
+                    SessionRun.status.in_([
+                        SessionRunStatus.STOPPED,
+                        SessionRunStatus.ERROR,
+                    ]),
+                )
+                .order_by(SessionRun.id.desc())
+                .first()
+            )
+
+        # --------------------------------------------------
+        # 2) Resume: reuse row, keep progress, keep index
+        # --------------------------------------------------
+        if recoverable and mode == "resume":
             recoverable.status = SessionRunStatus.PENDING
             recoverable.started_at = datetime.utcnow()
             recoverable.ended_at = None
             recoverable.error_type = None
             recoverable.error_message = None
-
-            # ✅ DO NOT TOUCH progress
+            recoverable.mode = mode
+            recoverable.overrides = payload.overrides or None
             db.commit()
             db.refresh(recoverable)
             return recoverable
 
+        # --------------------------------------------------
+        # 3) Restart: reuse row, reset progress, keep index
+        # --------------------------------------------------
+        if recoverable and mode == "restart":
+            prog = (
+                db.query(RunProgress)
+                .filter(RunProgress.run_id == recoverable.id)
+                .one_or_none()
+            )
+            if prog:
+                db.delete(prog)
+                db.flush()  # ensure deleted before continuing
 
+            recoverable.status = SessionRunStatus.PENDING
+            recoverable.started_at = datetime.utcnow()
+            recoverable.ended_at = None
+            recoverable.error_type = None
+            recoverable.error_message = None
+            recoverable.mode = mode
+            recoverable.overrides = payload.overrides or None
+
+            # ✅ DO NOT touch recoverable.session_run_index
             db.commit()
             db.refresh(recoverable)
             return recoverable
 
+        # --------------------------------------------------
+        # 4) Otherwise: create a BRAND NEW SessionRun row
+        #    and assign a new session_run_index by bumping Session.run_counter
+        # --------------------------------------------------
 
-        # --------------------------------------------------
-        # 2️⃣ Block ONLY if another run is truly RUNNING
-        # --------------------------------------------------
-        active = (
-            db.query(SessionRun)
-            .filter(
-                SessionRun.session_id == payload.session_id,
-                SessionRun.status == SessionRunStatus.RUNNING,
-            )
-            .first()
-        )
-
-        if active:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Session {payload.session_id} already has a RUNNING run "
-                    f"(run_id={active.id}, pilot_id={active.pilot_id})"
-                ),
-            )
-
-        # --------------------------------------------------
-        # 3️⃣ Normal creation
-        # --------------------------------------------------
+        # Ensure Session exists
         session_obj = db.query(Session).get(payload.session_id)
         if not session_obj:
             session_obj = Session(
                 id=payload.session_id,
                 name=f"Blueprint {payload.session_id}",
                 label=f"Blueprint {payload.session_id}",
+                # run_counter defaults to 0 in DB/model
             )
             db.add(session_obj)
             db.commit()
             db.refresh(session_obj)
 
+        # Ensure Pilot exists
         pilot_obj = db.query(Pilot).get(payload.pilot_id)
         if not pilot_obj:
             raise HTTPException(404, "Pilot not found")
 
+        # ✅ Lock the session row to atomically increment run_counter
+        locked_session = (
+            db.query(Session)
+            .filter(Session.id == session_obj.id)
+            .with_for_update()
+            .one()
+        )
+        locked_session.run_counter = int(locked_session.run_counter or 0) + 1
+        new_index = locked_session.run_counter
+
+        # Create the run
         run = SessionRun(
             session_id=session_obj.id,
             pilot_id=pilot_obj.id,
             status=SessionRunStatus.PENDING,
-            subject_key="",
+            subject_key="",  # server sets after flush
+            mode=mode,       # usually "new"
+            overrides=payload.overrides or None,
+            session_run_index=new_index,  # ✅ stable index
         )
 
         db.add(run)
-        db.flush()
+        db.flush()  # assigns run.id
+
+        # Set subject_key after we have the run id
         run.subject_key = f"bp_s{session_obj.id}_r{run.id}"
+
         db.commit()
         db.refresh(run)
         return run
 
     finally:
         db.close()
+
+
+@app.get("/sessions/{session_id}/pilots/{pilot_id}/latest-run")
+def latest_run(session_id: int, pilot_id: int, _: dict = Depends(verify_token)):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        run = (
+            db.query(SessionRun)
+            .filter(SessionRun.session_id == session_id, SessionRun.pilot_id == pilot_id)
+            .order_by(SessionRun.id.desc())
+            .first()
+        )
+        if not run:
+            return None
+
+        prog = run.progress
+        return {
+            "run": {
+                "id": run.id,
+                "status": run.status,
+                "mode": run.mode,
+                "started_at": run.started_at,
+                "ended_at": run.ended_at,
+                "error_type": run.error_type,
+                "error_message": run.error_message,
+            },
+            "progress": {
+                "current_step": prog.current_step_idx if prog else None,
+                "current_trial": prog.current_trial if prog else None,
+            },
+        }
+    finally:
+        db.close()
+
+
+from sqlalchemy import desc
+from sqlalchemy.orm import Session as OrmSession
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+from sqlalchemy import desc
+
+class LatestRunsBulkPayload(BaseModel):
+    session_ids: List[int]
+
+@app.post("/sessions/pilots/{pilot_id}/latest-runs")
+def latest_runs_bulk(pilot_id: int, payload: LatestRunsBulkPayload, _: dict = Depends(verify_token)):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        out: Dict[str, Any] = {}
+
+        for session_id in payload.session_ids:
+            run = (
+                db.query(SessionRun)
+                .filter(SessionRun.session_id == session_id, SessionRun.pilot_id == pilot_id)
+                .order_by(desc(SessionRun.id))
+                .first()
+            )
+
+            if not run:
+                out[str(session_id)] = None
+                continue
+
+            prog = run.progress
+            out[str(session_id)] = {
+                "run": {
+                    "id": run.id,
+                    "session_id": run.session_id,
+                    "pilot_id": run.pilot_id,
+                    "status": run.status,
+                    "mode": getattr(run, "mode", "new") or "new",
+                    "started_at": run.started_at,
+                    "ended_at": run.ended_at,
+                },
+                "progress": {
+                    "current_step": prog.current_step_idx if prog else None,
+                    "current_trial": prog.current_trial if prog else None,
+                },
+            }
+
+        return out
+    finally:
+        db.close()
+
+
+
 
 
 
@@ -773,6 +886,7 @@ def increment_trial_counter(run_id: int, _: dict = Depends(verify_token)):
                 current_trial=0,
                 graduation_type=grad.get("type"),
                 graduation_params=grad.get("value"),
+                session_progress_index=run.session_run_index,
             )
             db.add(prog)
             db.commit()
@@ -1012,13 +1126,8 @@ def complete_session_run(
 
 
 
-
-# 🔑 ADD THIS RIGHT AFTER
 @app.get("/session-runs/{run_id}/with-progress")
-def get_run_with_progress(
-    run_id: int,
-    _: dict = Depends(verify_token),
-):
+def get_run_with_progress(run_id: int, _: dict = Depends(verify_token)):
     db: OrmSession = SA_SessionLocal()
     try:
         run = db.query(SessionRun).get(run_id)
@@ -1026,6 +1135,7 @@ def get_run_with_progress(
             raise HTTPException(404, "Run not found")
 
         prog = run.progress
+
         return {
             "run": {
                 "id": run.id,
@@ -1039,10 +1149,15 @@ def get_run_with_progress(
             "progress": {
                 "current_step": prog.current_step_idx if prog else None,
                 "current_trial": prog.current_trial if prog else None,
+                # ✅ ADD THIS
+                "session_progress_index": (
+                    prog.session_progress_index if prog else run.session_run_index
+                ),
             },
         }
     finally:
         db.close()
+
 
 
 
@@ -1063,6 +1178,62 @@ def list_tasks(_: dict = Depends(verify_token)):
         ]
     finally:
         db.close()
+
+
+@app.get("/sessions/{session_id}/pilots/{pilot_id}/start-options")
+def start_options(session_id: int, pilot_id: int, _: dict = Depends(verify_token)):
+    """
+    Return whether there's an active run, a recoverable run (STOPPED/ERROR),
+    and existing progress for that run.
+    """
+    db: OrmSession = SA_SessionLocal()
+    try:
+        # active RUNNING run for this pilot + session
+        active = (
+            db.query(SessionRun)
+            .filter(
+                SessionRun.session_id == session_id,
+                SessionRun.pilot_id == pilot_id,
+                SessionRun.status == SessionRunStatus.RUNNING,
+            )
+            .one_or_none()
+        )
+
+        # recoverable STOPPED / ERROR run
+        recoverable = (
+            db.query(SessionRun)
+            .filter(
+                SessionRun.session_id == session_id,
+                SessionRun.pilot_id == pilot_id,
+                SessionRun.status.in_([SessionRunStatus.STOPPED, SessionRunStatus.ERROR]),
+            )
+            .order_by(SessionRun.id.desc())
+            .first()
+        )
+
+        progress = None
+        if recoverable:
+            prog = db.query(RunProgress).filter(RunProgress.run_id == recoverable.id).one_or_none()
+            if prog:
+                progress = {
+                    "current_step": prog.current_step_idx,
+                    "current_trial": prog.current_trial,
+                    "graduation_type": prog.graduation_type,
+                    "graduation_params": prog.graduation_params,
+                }
+
+        return {
+            "session_id": session_id,
+            "pilot_id": pilot_id,
+            "active_run": {"id": active.id, "status": active.status} if active else None,
+            "recoverable_run": {"id": recoverable.id, "status": recoverable.status} if recoverable else None,
+            "progress": progress,
+            "can_resume": recoverable is not None and progress is not None,
+            "can_start_over": True,  # always allow restart (resets progress)
+        }
+    finally:
+        db.close()
+
 
 
 # @app.get("/tasks/leaf")

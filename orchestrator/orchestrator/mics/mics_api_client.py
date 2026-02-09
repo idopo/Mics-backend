@@ -291,6 +291,10 @@ class MicsApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_run_with_progress(self, run_id: int):
+        return self._get(f"/session-runs/{run_id}/with-progress")
+
+
 
 
 

@@ -7,6 +7,31 @@ const stepsList = document.getElementById("steps-list");
 const statusLine = document.getElementById("status-line");
 const saveBtn = document.getElementById("save-protocol-btn");
 
+
+function showSkeleton(container, rows = 8) {
+  container.classList.add("is-loading");
+  container.innerHTML = `
+    <div class="skeleton-list">
+      ${Array.from({ length: rows })
+        .map(() => `<div class="skeleton-row"></div>`)
+        .join("")}
+    </div>
+  `;
+}
+
+function clearLoading(container) {
+  container.classList.remove("is-loading");
+  container.innerHTML = "";
+}
+
+function makeAnimatedLi(text, delayMs = 0) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  li.classList.add("fade-in-item");
+  li.style.animationDelay = `${delayMs}ms`;
+  return li;
+}
+
 // ======================================================
 // STATE
 // ======================================================
@@ -34,15 +59,51 @@ async function apiPost(url, payload) {
   return resp.json();
 }
 
-// ======================================================
-// LOAD TASK PALETTE
-// ======================================================
-
 async function loadTasks() {
-  availableTasks = await apiGet("/api/tasks/leaf");
+  const rawTasks = await apiGet("/api/tasks/leaf");
+  availableTasks = rawTasks;
+
+  const byName = new Map();
+
+  const asTime = (v) => {
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? t : null;
+  };
+
+  const isNewer = (a, b) => {
+    // return true if a is newer than b
+    // 1) higher id wins (best for "last added")
+    const aid = Number(a?.id ?? NaN);
+    const bid = Number(b?.id ?? NaN);
+    if (Number.isFinite(aid) && Number.isFinite(bid) && aid !== bid) return aid > bid;
+    if (Number.isFinite(aid) && !Number.isFinite(bid)) return true;
+    if (!Number.isFinite(aid) && Number.isFinite(bid)) return false;
+
+    // 2) fall back to created_at / updated_at if present
+    const aCreated = asTime(a?.created_at);
+    const bCreated = asTime(b?.created_at);
+    if (aCreated != null && bCreated != null && aCreated !== bCreated) return aCreated > bCreated;
+
+    const aUpdated = asTime(a?.updated_at);
+    const bUpdated = asTime(b?.updated_at);
+    if (aUpdated != null && bUpdated != null && aUpdated !== bUpdated) return aUpdated > bUpdated;
+
+    // 3) last resort: keep existing
+    return false;
+  };
+
+  for (const t of rawTasks) {
+    const name = t.task_name;
+    const prev = byName.get(name);
+    if (!prev || isNewer(t, prev)) byName.set(name, t);
+  }
+
+  const displayTasks = Array.from(byName.values()).sort((a, b) =>
+    a.task_name.localeCompare(b.task_name)
+  );
 
   tasksList.innerHTML = "";
-  availableTasks.forEach(task => {
+  displayTasks.forEach((task) => {
     const li = document.createElement("li");
     li.className = "task-item";
     li.textContent = task.task_name;
@@ -50,6 +111,7 @@ async function loadTasks() {
     tasksList.appendChild(li);
   });
 }
+
 
 // ======================================================
 // STEPS
@@ -232,7 +294,9 @@ saveBtn.onclick = async () => {
           order_index: idx,
           step_name: `Step ${idx + 1}: ${step.task_type}`,
           task_type: step.task_type,
-          params: Object.keys(params).length > 0 ? params : null,
+
+          // ✅ FIX: never send null; send {} when empty
+          params: Object.keys(params).length > 0 ? params : {},
         };
       }),
     };
@@ -240,10 +304,10 @@ saveBtn.onclick = async () => {
     await apiPost("/api/protocols", payload);
 
     statusLine.textContent = "Protocol saved successfully ✔";
-    
+
     window.location.assign("/protocols-ui");
     return;
-    
+
     // Reset UI
     steps = [];
     renderSteps();
@@ -255,7 +319,6 @@ saveBtn.onclick = async () => {
     statusLine.textContent = "Failed to save protocol.";
   }
 };
-
 
 
 // ======================================================

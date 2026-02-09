@@ -49,30 +49,48 @@ async def get_pilots():
 async def pilots_ws(ws: WebSocket):
     await ws.accept()
 
-    try:
-        while True:
-            try:
-                async with backend_client() as client:
+    async def safe_send(payload: dict) -> bool:
+        """Return False if the socket is closed/disconnected."""
+        try:
+            await ws.send_json(payload)
+            return True
+        except (WebSocketDisconnect, RuntimeError):
+            return False
+
+    # Reuse a single httpx client (much cheaper than creating one every second)
+    async with backend_client() as client:
+        try:
+            while True:
+                try:
                     resp = await client.get(
                         f"{ORCHESTRATOR_URL}/pilots/live",
                         timeout=2.0,
                     )
-                    await ws.send_json(resp.json())
+                    resp.raise_for_status()
 
-            except (ConnectError, ReadTimeout):
-                # 🔑 Orchestrator temporarily unavailable
-                # Send empty payload → frontend treats as OFFLINE
-                await ws.send_json({})
+                    if not await safe_send(resp.json()):
+                        break
 
-            except Exception as e:
-                # Any other unexpected error: log but DO NOT crash WS
-                print("pilots_ws error:", repr(e))
-                await ws.send_json({})
+                except (ConnectError, ReadTimeout, httpx.HTTPStatusError):
+                    # Orchestrator unavailable or returning bad status
+                    if not await safe_send({}):
+                        break
 
-            await asyncio.sleep(1.0)
+                except WebSocketDisconnect:
+                    break
 
-    except WebSocketDisconnect:
-        pass
+                except Exception as e:
+                    # Unexpected error: log, but don't crash the server.
+                    print("pilots_ws error:", repr(e))
+                    if not await safe_send({}):
+                        break
+
+                await asyncio.sleep(1.0)
+
+        except asyncio.CancelledError:
+            # Server shutdown / task cancelled
+            pass
+
 
 
 
@@ -87,6 +105,26 @@ class SubjectCreate(BaseModel):
 @app.get("/subjects-ui", response_class=HTMLResponse)
 def subjects_page(request: Request):
     return templates.TemplateResponse("subjects.html", {"request": request})
+
+
+from pydantic import BaseModel
+from typing import List, Dict, Any
+
+class LatestRunsBulkPayload(BaseModel):
+    session_ids: List[int]
+
+@app.post("/api/sessions/pilots/{pilot_id}/latest-runs")
+async def latest_runs_bulk_ui(pilot_id: int, payload: LatestRunsBulkPayload):
+    """
+    Returns { "<session_id>": { run: {...}, progress: {...} } | None, ... }
+    """
+    async with backend_client() as client:
+        resp = await client.post(
+            f"{API_URL}/sessions/pilots/{pilot_id}/latest-runs",
+            json=payload.dict(),
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 @app.get("/api/subjects")
@@ -191,6 +229,13 @@ def pilot_sessions_page(pilot_name: str, request: Request):
         {"request": request, "pilot": pilot_name},
     )
 
+@app.get("/api/sessions/{session_id}/pilots/{pilot_id}/latest-run")
+async def latest_run_ui(session_id: int, pilot_id: int):
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/sessions/{session_id}/pilots/{pilot_id}/latest-run")
+        resp.raise_for_status()
+        return resp.json()
+
 @app.get("/api/sessions")
 async def list_sessions():
     async with backend_client() as client:
@@ -198,14 +243,23 @@ async def list_sessions():
         r.raise_for_status()
         return r.json()
 
+from fastapi import HTTPException
+
 @app.post("/api/sessions/{session_id}/start-on-pilot")
 async def start_session_on_pilot(session_id: int, payload: dict):
     pilot_id = payload["pilot_id"]
+    mode = payload.get("mode")
+    overrides = payload.get("overrides")  # ✅ ADD
 
     async with backend_client() as client:
         run_resp = await client.post(
             f"{API_URL}/session-runs",
-            json={"session_id": session_id, "pilot_id": pilot_id},
+            json={
+                "session_id": session_id,
+                "pilot_id": pilot_id,
+                "mode": mode,
+                "overrides": overrides,  # ✅ ADD
+            },
         )
 
         if run_resp.status_code not in (200, 201):
@@ -217,9 +271,7 @@ async def start_session_on_pilot(session_id: int, payload: dict):
         run_id = run_resp.json()["id"]
 
     async with httpx.AsyncClient() as orch:
-        orch_resp = await orch.post(
-            f"{ORCHESTRATOR_URL}/runs/{run_id}/start"
-        )
+        orch_resp = await orch.post(f"{ORCHESTRATOR_URL}/runs/{run_id}/start")
 
         if orch_resp.status_code >= 400:
             return {
@@ -230,10 +282,9 @@ async def start_session_on_pilot(session_id: int, payload: dict):
                 "orchestrator_error": orch_resp.text,
             }
 
-    return {
-        "status": "started",
-        "run_id": run_id,
-    }
+    return {"status": "started", "run_id": run_id}
+
+
 
 
 @app.get("/pilots/{pilot_name}/sessions-ui", response_class=HTMLResponse)
@@ -300,21 +351,18 @@ async def create_protocol_ui(payload: dict):
 
 @app.post("/api/session-runs/{run_id}/stop")
 async def stop_session_run_ui(run_id: int):
-    # 1️⃣ Mark STOPPED in backend (authoritative)
-    async with backend_client() as client:
-        resp = await client.post(
-            f"{API_URL}/session-runs/{run_id}/stop"
-        )
-        resp.raise_for_status()
-
-    # 2️⃣ Tell orchestrator to stop the Pi
+    # Only tell orchestrator. Orchestrator is authoritative and will mark backend STOPPED.
     async with httpx.AsyncClient() as orch:
-        orch_resp = await orch.post(
-            f"{ORCHESTRATOR_URL}/runs/{run_id}/stop"
-        )
-        orch_resp.raise_for_status()
+        orch_resp = await orch.post(f"{ORCHESTRATOR_URL}/runs/{run_id}/stop")
+
+        if orch_resp.status_code >= 400:
+            raise HTTPException(
+                status_code=orch_resp.status_code,
+                detail=orch_resp.text,
+            )
 
     return {"status": "stopped", "run_id": run_id}
+
 
 
 @app.get("/api/session-runs/{run_id}/with-progress")
@@ -325,6 +373,19 @@ async def get_run_with_progress_ui(run_id: int):
         )
         resp.raise_for_status()
         return resp.json()
+
+
+
+@app.get("/api/sessions/{session_id}/pilots/{pilot_id}/start-options")
+async def get_start_options(session_id: int, pilot_id: int):
+    async with backend_client() as client:
+        resp = await client.get(
+            f"{API_URL}/sessions/{session_id}/pilots/{pilot_id}/start-options"
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 
 
 

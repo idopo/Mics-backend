@@ -80,8 +80,11 @@ class Station(multiprocessing.Process):
     # ------------------------------------------------------------------
 
     def run(self):
-        self.logger.info("Station starting (id=%s port=%s)", self.id, self.listen_port)
 
+        self.logger.info("Station starting (id=%s port=%s)", self.id, self.listen_port)
+        logging.getLogger("elastic_transport").setLevel(logging.WARNING)
+        logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
+        logging.getLogger("elasticsearch").setLevel(logging.WARNING)
         self.context = zmq.Context()
         self.loop = IOLoop()
 

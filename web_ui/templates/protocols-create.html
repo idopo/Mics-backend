@@ -9,7 +9,15 @@
 <body>
 
 <header>
-  <h1>MICS</h1>
+  <pre class="ascii-logo">
+    ███╗   ███╗ ██╗ ██████╗ ███████╗
+    ████╗ ████║ ██║██╔════╝ ██╔════╝
+    ██╔████╔██║ ██║██║      ███████╗
+    ██║╚██╔╝██║ ██║██║      ╚════██║
+    ██║ ╚═╝ ██║ ██║╚██████╗ ███████║
+    ╚═╝     ╚═╝ ╚═╝ ╚═════╝ ╚══════╝
+  </pre>
+    
   <span class="subtitle">Create Protocol</span>
   <nav>
     <a href="/">Pilots</a>
@@ -24,7 +32,7 @@
   <section class="card">
     <h2>Available Tasks</h2>
     <p class="muted">Leaf tasks only (executable)</p>
-    <ul id="tasks-list"></ul>
+    <ul id="tasks-list" class="scroll-list"></ul></ul>
   </section>
 
   <!-- RIGHT: Protocol builder -->
@@ -35,7 +43,7 @@
     <textarea id="protocol-desc" placeholder="Description"></textarea>
 
     <h3>Steps</h3>
-    <ol id="steps-list"></ol>
+    <ol id="steps-list" class="scroll-list"></ol></ol>
 
     <button id="save-protocol-btn" type="button" class="button-primary">Save Protocol</button>
     <div id="status-line" class="status-line"></div>

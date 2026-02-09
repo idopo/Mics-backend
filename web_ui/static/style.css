@@ -647,12 +647,13 @@ li.selected {
 }
 
 .hardware-tag {
-  font-size: 0.7rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(143, 211, 182, 0.15);
-  color: var(--green);
-  border: 1px solid rgba(143, 211, 182, 0.35);
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: rgba(143, 211, 182, 0.10);
+  color: rgba(143, 211, 182, 0.9);
+  border: 1px solid rgba(143, 211, 182, 0.22);
+  line-height: 1.15;
 }
 
 
@@ -702,3 +703,1068 @@ form {
   font-style: italic;
 }
 
+
+/* ======================================================
+   Modal (Resume/Restart/New)
+   ====================================================== */
+
+   .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 9999;
+  }
+  
+  .modal {
+    width: 100%;
+    max-width: 520px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+    overflow: hidden;
+  }
+  
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  
+  .modal-close {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 6px 8px;
+    border-radius: 6px;
+  }
+  
+  .modal-close:hover {
+    color: var(--text);
+    background: rgba(182, 166, 255, 0.08);
+  }
+  
+  .modal-body {
+    padding: 14px;
+  }
+  
+  .modal-muted {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+  }
+  
+  .modal-kv {
+    background: #14171e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  
+  .modal-kv > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+  }
+  
+  .modal-kv span {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  
+  .modal-kv strong {
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  
+  .modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .modal-actions button {
+    width: 100%;
+    justify-content: space-between;
+    text-align: left;
+    padding: 10px 12px;
+  }
+  
+  .modal-sub {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 400;
+  }
+  
+/* ======================================================
+   Scrollable lists (Protocols UI + Assign Protocol)
+   Keeps actions visible while lists scroll inside cards
+   ====================================================== */
+
+   .scroll-list {
+    max-height: 55vh;       /* tune: 45-65vh depending on your layout */
+    overflow-y: auto;
+    padding-right: 6px;     /* room for scrollbar */
+  }
+  
+  /* nice scrollbar (webkit) */
+  .scroll-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scroll-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .scroll-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+
+  /* =========================
+   Loading mask (no flicker)
+   ========================= */
+
+.is-loading {
+  position: relative;
+  min-height: 180px; /* reserve space so layout doesn't jump */
+}
+
+/* subtle overlay */
+.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 17, 21, 0.00),
+    rgba(15, 17, 21, 0.35)
+  );
+  pointer-events: none;
+}
+
+/* skeleton rows */
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-row {
+  height: 34px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  position: relative;
+}
+
+.skeleton-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.00),
+    rgba(255,255,255,0.08),
+    rgba(255,255,255,0.00)
+  );
+  animation: shimmer 1.2s infinite;
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* =========================
+   Item entrance animation
+   ========================= */
+.fade-in-item {
+  animation: fadeInUp 1000ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* small stagger if you want (optional) */
+
+
+/* ===== Modal (for resume/restart/new) ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+}
+
+
+/* hide only the label, keep button visible */
+.btn-label-sr {
+  visibility: hidden;
+}
+.session-card[data-hydrated="1"] .btn-label-sr {
+  visibility: visible;
+}
+
+.modal {
+  width: min(520px, calc(100vw - 24px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+  overflow: hidden;
+
+  transform: translateY(8px);
+  opacity: 0;
+  animation: modalIn 160ms ease-out forwards;
+}
+
+@keyframes modalIn {
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-weight: 600;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.modal-close:hover { color: var(--text); }
+
+.modal-body {
+  padding: 14px;
+}
+
+.modal-muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.modal-kv {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.modal-kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+}
+
+.modal-kv span { color: var(--muted); font-size: 0.85rem; }
+.modal-kv strong { color: var(--text); }
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.modal-actions button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.modal-sub {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.sessions-scroll {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* Prevent subpixel bounce during animation */
+.fade-in-item {
+  will-change: transform, opacity;
+}
+
+/* allow scroll-list styling on <ol> too */
+ol.scroll-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.ascii-logo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.15;
+  letter-spacing: 0.5px;
+  color: var(--lavender);
+  user-select: none;
+  white-space: pre; /* critical */
+  margin: 0;              /* 🔑 removes browser default */
+  padding: 0;
+  text-align: left;
+  margin-left: -2.8rem;
+}
+
+.filter-bar {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+/* chips row */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  /* default: no space when empty */
+  margin: 0;
+  padding: 0;
+}
+
+/* only when chips exist */
+.chips:not(:empty) {
+  margin-top: 4px;     /* small space from header */
+  margin-bottom: 6px;  /* small space from input */
+}
+
+.chips:not(:empty)::before {
+  content: "Filtering by:";
+  font-size: 0.7rem;
+  color: var(--lavender);
+  opacity: 0.75;
+  margin-right: 6px;
+  align-self: center;
+}
+
+
+.chip button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.typeahead {
+  position: relative;
+}
+
+.typeahead-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 50;
+}
+
+.typeahead-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.typeahead-item:hover {
+  background: rgba(182, 166, 255, 0.08);
+}
+
+.typeahead-item.active {
+  background: rgba(182, 166, 255, 0.18);
+  color: var(--lavender);
+}
+
+.filter-input-wrap {
+  position: relative;
+}
+
+#subject-filter {
+  padding-right: 34px; /* tighter than 42px */
+}
+
+/* inline clear button (minimal) */
+.input-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 18px;
+  height: 18px;
+  padding: 0;
+
+  border: 1px solid transparent;
+  border-radius: 999px;
+
+  background: transparent;
+  color: var(--muted);
+
+  display: grid;
+  place-items: center;
+
+  font-size: 13px;   /* fits bar */
+  line-height: 1;
+  font-weight: 600;
+
+  opacity: 0;
+  pointer-events: none; /* hidden by default */
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+/* when enabled */
+.input-clear.is-visible {
+  opacity: 0.9;
+  pointer-events: auto;
+}
+
+.input-clear:hover {
+  background: rgba(182, 166, 255, 0.08);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+
+.session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+}
+
+.meta-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(182,166,255,0.25);
+  background: rgba(182,166,255,0.08);
+  color: var(--lavender);
+}
+
+.meta-dates {
+  opacity: 0.85;
+}
+
+
+.session-meta {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.meta-row-dates {
+  gap: 10px;
+  opacity: 0.85;
+}
+
+.meta-date {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.meta-date + .meta-date::before {
+  content: "•";
+  margin: 0 8px 0 0;
+  opacity: 0.35;
+}
+
+
+/* status coloring (optional) */
+.status-running { border-color: rgba(143,211,182,0.45); color: var(--green); }
+.status-stopped { border-color: rgba(242,195,143,0.45); color: var(--warn); }
+.status-error { border-color: rgba(224,122,122,0.45); color: var(--error); }
+.status-completed { border-color: rgba(182,166,255,0.45); color: var(--lavender); }
+
+.session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+
+.meta-dates {
+  font-size: 0.75rem;
+  color: var(--muted);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* optional subtle divider look */
+.meta-dates::before {
+  content: "• ";
+  opacity: 0.4;
+}
+
+
+/* =========================
+   Session card loading mask
+   ========================= */
+   .session-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: 0.2px;
+    color: var(--text);
+    margin: 0;
+  }
+  
+  .session-header {
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 8px;
+  }
+  
+
+  .session-card {
+    position: relative; /* needed for overlay */
+  }
+  
+  /* while loading extra data (latest run / hardware etc) */
+  .session-card.is-loading {
+    overflow: hidden;
+  }
+  
+  /* subtle veil */
+  .session-card.is-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(15, 17, 21, 0.15),
+      rgba(15, 17, 21, 0.55)
+    );
+    pointer-events: none;
+  }
+  
+  /* shimmer bar */
+  .session-card.is-loading::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,0.00),
+      rgba(255,255,255,0.06),
+      rgba(255,255,255,0.00)
+    );
+    animation: shimmer 1.15s infinite;
+    pointer-events: none;
+  }
+  
+  /* placeholders inside the card */
+  .session-skel {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  
+  .session-skel-line {
+    height: 12px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+  }
+  
+  .session-skel-line.w40 { width: 40%; }
+  .session-skel-line.w55 { width: 55%; }
+  .session-skel-line.w70 { width: 70%; }
+  .session-skel-line.w85 { width: 85%; }
+  
+  /* page-level overlay (optional) */
+  .page-loading {
+    position: relative;
+  }
+  
+  .page-loading::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.25);
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0;
+    animation: pageVeilIn 120ms ease-out forwards;
+  }
+  
+  @keyframes pageVeilIn {
+    to { opacity: 1; }
+  }
+  
+
+
+/* =========================
+   SESSION CARD: declutter
+   (paste at end to override duplicates)
+   ========================= */
+
+/* Title: more important */
+.session-title {
+  font-weight: 750;
+  font-size: 1.12rem;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  margin: 0;
+}
+
+/* Subjects: bigger + clearer */
+.subject-tag {
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  background: rgba(182, 166, 255, 0.14);
+  border: 1px solid rgba(182, 166, 255, 0.32);
+}
+
+/* Optional: give subjects row a touch more prominence */
+.subject-tags {
+  margin-top: 8px;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+/* Meta: smaller */
+.session-meta {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 8px;
+  font-size: 0.72rem;   /* 👈 smaller */
+  color: rgba(154, 160, 170, 0.92);
+}
+
+/* if you use the 2-row meta HTML (recommended) */
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+}
+
+.meta-row-dates {
+  opacity: 0.8;
+}
+
+.meta-date {
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* Make pills less chunky */
+.badge,
+.meta-pill {
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+/* Dates visually secondary */
+.meta-date + .meta-date::before {
+  content: "•";
+  margin: 0 8px 0 0;
+  opacity: 0.35;
+}
+
+
+/* =========================
+   Session title (nicer header)
+   ========================= */
+
+   .session-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  
+  .session-title {
+    font-weight: 750;
+    font-size: 1.18rem;
+    line-height: 1.2;
+    letter-spacing: 0.2px;
+    color: var(--text);
+    margin: 0;
+  
+    /* nice truncation if too long */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  
+    /* subtle glow */
+    text-shadow: 0 0 18px rgba(182,166,255,0.10);
+  }
+  
+
+  .session-card-grid{
+    display: grid;
+    grid-template-columns: 1fr 1px 420px; /* adjust right width */
+    gap: 0;
+    align-items: stretch;
+  }
+  
+  .session-left{ padding-right: 14px; }
+  .session-right{ padding-left: 14px; }
+  
+  .session-divider{
+    background: rgba(0,0,0,0.55); /* thin dark line */
+  }
+  
+  .right-title{
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  
+  .right-body .small{ font-size: 12px; }
+  
+  .step-box{
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  
+  .step-head{
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  
+  .step-name{ font-weight: 600; }
+  .step-type{ opacity: 0.7; font-size: 12px; }
+  
+  .step-sections{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  
+  .step-section-title{
+    font-size: 12px;
+    opacity: 0.75;
+    margin-bottom: 6px;
+  }
+  
+  .json-pre{
+    margin: 0;
+    font-size: 12px;
+    max-height: 160px;
+    overflow: auto;
+    background: rgba(0,0,0,0.04);
+    padding: 8px;
+    border-radius: 8px;
+  }
+  
+  .json-box{
+    width: 100%;
+    min-height: 120px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.18);
+    background: rgba(0,0,0,0.02);
+  }
+  
+  .json-box.is-invalid{
+    border-color: #b00020;
+    background: rgba(176,0,32,0.05);
+  }
+  
+  .override-actions{
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+  }
+  .params-grid-2col {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .param-field label {
+    display: block;
+    font-size: 12px;
+    opacity: 0.8;
+    margin-bottom: 4px;
+  }
+  .param-field input.is-invalid {
+    outline: 2px solid #c33;
+  }
+  .session-right, .session-right * {
+    pointer-events: auto;
+  }
+
+  /* =========================
+   SESSION CARD: fixed "1-step" height
+   right side scrolls, card never grows
+   ========================= */
+
+:root{
+  --session-card-h: 240px; /* ✅ this is "1 step" size. tweak 240–280 if needed */
+}
+
+/* lock the <li> itself */
+#sessions > li.session-card{
+  height: var(--session-card-h) !important;
+  overflow: hidden !important;
+}
+
+/* grid must fill the fixed height */
+#sessions > li.session-card .session-card-grid{
+  height: 100% !important;
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr; /* equal ratio */
+  align-items: stretch;
+}
+
+/* prevent columns from forcing size */
+#sessions > li.session-card .session-left,
+#sessions > li.session-card .session-right{
+  min-width: 0;
+  min-height: 0;
+}
+
+/* left: NEVER scroll internally */
+#sessions > li.session-card .session-left{
+  overflow: visible !important;
+}
+
+/* right: make it a column so the body can scroll */
+#sessions > li.session-card .session-right{
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden; /* scroll only inside right-body */
+}
+
+/* keep title pinned */
+#sessions > li.session-card .right-title{
+  flex: 0 0 auto;
+}
+
+/* this is the ONLY scrolling region inside the card */
+#sessions > li.session-card .right-body{
+  flex: 1 1 auto;
+  min-height: 0;        /* ✅ critical */
+  overflow-y: auto;     /* ✅ scroll steps/overrides here */
+  padding-right: 6px;
+}
+
+/* keep step boxes from adding weird extra space */
+#sessions > li.session-card .step-box{
+  margin-bottom: 10px;
+}
+
+/* buttons never escape */
+#sessions > li.session-card .override-actions{
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+
+/* =========================
+   Put START/STOP bottom-left in each session card
+   ========================= */
+
+   #sessions > li.session-card .session-left{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  
+  /* push actions to the bottom */
+  #sessions > li.session-card .session-actions{
+    margin-top: auto;      /* ✅ moves to bottom */
+    align-self: flex-start;/* ✅ left */
+    padding-top: 10px;     /* small breathing room */
+  }
+  
+
+  /* =========================
+   Subjects as mouse icons (no pills)
+   ========================= */
+
+/* container spacing */
+.subject-tags{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;              /* tighter + elegant */
+  margin: 8px 0 10px;
+}
+
+/* each subject */
+.subject-tag{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 0;             /* remove pill feel */
+  border: none;
+  background: transparent;
+
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* mouse icon */
+.subject-tag::before{
+  content: "🐭";
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+/* optional subtle hover */
+.subject-tag:hover{
+  color: var(--lavender);
+}
+
+/* =========================
+   Session left column layout polish
+   ========================= */
+
+/* Make left side a vertical layout */
+.session-left{
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Title stays at the top */
+.session-header{
+  margin-bottom: 6px;
+}
+
+/* Subjects block */
+.subject-tags{
+  margin-top: 6px;
+  margin-bottom: 14px;   /* 👈 more air before meta */
+}
+
+/* Meta block (status / mode / dates) */
+.session-meta{
+  margin-top: auto;      /* 👈 pushes meta downward */
+  margin-bottom: 10px;   /* 👈 space before button */
+  gap: 6px;
+}
+
+/* Meta rows spacing */
+.session-meta .meta-row{
+  gap: 6px 10px;
+}
+
+/* Start / Stop button always bottom-left */
+.session-actions{
+  margin-top: 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* Optional: slightly smaller meta text for hierarchy */
+.session-meta{
+  font-size: 0.72rem;
+  opacity: 0.9;
+}
+
+/* =========================
+   Fine-tune meta vertical spacing
+   ========================= */
+
+/* Pull meta closer to subjects */
+.session-meta{
+  margin-top: 6px;        /* 👈 was auto / too far */
+  margin-bottom: 12px;    /* space before START button */
+}
+
+/* Space BETWEEN meta rows (mode vs dates) */
+.session-meta .meta-row-top{
+  margin-bottom: 6px;     /* 👈 separates mode/status from dates */
+}
+
+/* Dates slightly softer + tighter */
+.session-meta .meta-row-dates{
+  opacity: 0.8;
+}
+
+/* Optional: keep everything visually balanced */
+.subject-tags{
+  margin-bottom: 10px;    /* slightly less than before */
+}
+
+#sessions > li.session-card .session-actions{
+  margin-top: auto;
+  padding-top: 0;          /* was 10px */
+  margin-bottom: 10px;     /* ✅ lifts it up */
+}

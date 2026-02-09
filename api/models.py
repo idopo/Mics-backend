@@ -175,6 +175,8 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     label = Column(String, nullable=True)
 
+    run_counter = Column(Integer, nullable=False, default=0)
+
     runs = relationship("SessionRun", back_populates="session")
 
 
@@ -216,7 +218,9 @@ class SessionRun(Base):
     session = relationship("Session", back_populates="runs")
     pilot = relationship("Pilot")
     progress = relationship("RunProgress", uselist=False, backref="run")
-
+    mode = Column(String, nullable=False, default="new")
+    overrides = Column(SAJSON, nullable=True) 
+    session_run_index = Column(Integer, nullable=False) 
 
 
 # Added cleanly & correctly:
@@ -234,12 +238,16 @@ class RunProgress(Base):
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    session_progress_index = Column(Integer, nullable=False)
+
 # ------------------ SessionRun Pydantic Schemas ------------------------
 
 class SessionRunCreate(BaseModel):
     session_id: int
     pilot_id: int
     subject_key: Optional[str] = None  # server sets this
+    mode: Optional[str] = None
+    overrides: Optional[Dict[str, Any]] = None 
 
 class SessionRunRead(BaseModel):
     id: int
@@ -249,6 +257,8 @@ class SessionRunRead(BaseModel):
     status: SessionRunStatus
     started_at: datetime
     ended_at: Optional[datetime]
+    mode: Optional[str] = None
+    overrides: Optional[Dict[str, Any]] = None 
 
     class Config:
         orm_mode = True   # for Pydantic v1
@@ -324,4 +334,11 @@ class TaskDescriptor(BaseModel):
 
 class PilotTaskHandshake(BaseModel):
     tasks: List[TaskDescriptor]
+
+
+class StartOnPilotPayload(BaseModel):
+    pilot_id: int
+    mode: Optional[Literal["resume", "restart", "new"]] = None
+    overrides: Optional[Dict[str, Any]] = None 
+
 

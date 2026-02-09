@@ -188,32 +188,81 @@ class OrchestratorStation:
             db_name=pilot.get("name"),
             ip=pilot.get("ip"),
         )
-
         logger.info("Resolved pilot key: %s", pilot_key)
 
         # 3️⃣ Resolve protocol context
         proto_runs = self.api.get_subject_runs_for_session(run_meta["session_id"])
         if not proto_runs:
-            raise RuntimeError(
-                f"Session {run_meta['session_id']} has no SubjectProtocolRun"
-            )
-
+            raise RuntimeError(f"Session {run_meta['session_id']} has no SubjectProtocolRun")
         protocol_id = proto_runs[0]["protocol_id"]
 
-        # 4️⃣ Build first task
-        task = self._build_first_step_task({
-            **run_meta,
-            "protocol_id": protocol_id,
-        })
-        task["current_trial"] = 0
+        # 4️⃣ Load run WITH progress so we can resume if needed
+        try:
+            run_with_prog = self.api.get_run_with_progress(run_id)
+            prog = (run_with_prog or {}).get("progress") or {}
+        except Exception:
+            logger.exception(
+                "Failed to fetch run progress for run %s; falling back to step 0",
+                run_id,
+            )
+            prog = {}
 
-        # 5️⃣ Mark backend RUNNING
-        self.api.mark_run_running(run_id)
+        # 5️⃣ Build the task according to existing progress (resume) or fresh start
+        if prog and prog.get("current_step") is not None:
+            step_idx = prog["current_step"]
+            task = self._build_step_task({**run_meta, "protocol_id": protocol_id}, step_idx=step_idx)
+            task["current_trial"] = prog.get("current_trial", 0)
+            logger.info(
+                "Resuming run %s at step %s trial %s",
+                run_id,
+                task.get("step"),
+                task.get("current_trial"),
+            )
+        else:
+            task = self._build_first_step_task({**run_meta, "protocol_id": protocol_id})
+            task["current_trial"] = 0
+            logger.info("Starting run %s from step 0", run_id)
 
-        # 6️⃣ Send START to Pi (IMPORTANT: use pilot_key)
-        self.gateway.send(pilot_key, "START", task)
+        # ✅ Make sure run_id exists in payload (Pi expects it)
+        task["run_id"] = run_meta["id"]
 
-        # 7️⃣ Track active run (IMPORTANT: same pilot_key)
+        # include pilot + subject keys in payload
+        task["pilot"] = pilot.get("name")
+        task["subject"] = run_meta.get("subject_key")
+
+        # minimal additions (do not change existing behavior)
+        self._attach_session_context(
+            task,
+            run_meta=run_meta,
+            proto_runs=proto_runs,
+            progress=prog,
+        )
+        task["subjects"] = task.get("subjects") or []
+        task["session_progress_index"] = task.get("session_progress_index")
+
+        # 6️⃣ Send START to Pi
+        try:
+            self.gateway.send(pilot_key, "START", task)
+            logger.info("START sent to pilot %s for run %s", pilot_key, run_id)
+        except Exception as e:
+            logger.exception("Failed to send START to pilot %s for run %s: %s", pilot_key, run_id, e)
+            try:
+                self.api.mark_run_error(run_id, error_type="OrchGatewayError", error_message=str(e))
+            except Exception:
+                logger.exception("Failed to mark run error in backend after gateway failure for run %s", run_id)
+
+            self.state.set_active_run(pilot_key, None)
+            self._redis_set_active_run(pilot_key, None)
+            raise
+
+        # 7️⃣ Now mark backend RUNNING
+        try:
+            self.api.mark_run_running(run_id)
+            logger.info("Marked run %s RUNNING in backend", run_id)
+        except Exception:
+            logger.exception("Failed to mark run %s as RUNNING in backend after sending START", run_id)
+
+        # 8️⃣ Update local state & mirror to Redis
         active_run = {
             "id": run_meta["id"],
             "session_id": run_meta["session_id"],
@@ -221,16 +270,12 @@ class OrchestratorStation:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "status": "running",
         }
-
-        # update local in-memory state
         self.state.set_active_run(pilot_key, active_run)
 
-        # mirror to redis (if available)
         try:
             self._redis_set_active_run(pilot_key, active_run)
         except Exception:
-            # already logged inside _redis_set_active_run, but don't fail start
-            logger.exception("Redis mirror failed when starting run %s", run_id)
+            logger.exception("Failed updating redis active_run for pilot %s run %s", pilot_key, run_id)
 
         logger.info("Active run set for %s (run_id=%s)", pilot_key, run_meta["id"])
 
@@ -252,20 +297,36 @@ class OrchestratorStation:
 
         logger.info("Stopping run %s on pilot %s", run_id, pilot_key)
 
-        # Backend authoritative
-        self.api.stop_session_run(run_id)
+        # 1) Tell Pi to STOP
+        try:
+            self.gateway.send(pilot_key, "STOP")
+            logger.info("STOP sent to pilot %s for run %s", pilot_key, run_id)
+        except Exception as e:
+            logger.exception("Failed to send STOP to pilot %s for run %s: %s", pilot_key, run_id, e)
+            # Best-effort mark error in backend
+            try:
+                self.api.mark_run_error(run_id, error_type="OrchGatewayError", error_message=str(e))
+            except Exception:
+                logger.exception("Failed to mark run error in backend after STOP gateway failure for run %s", run_id)
+            # Clear local state to avoid dangling UI
+            self.state.set_active_run(pilot_key, None)
+            self._redis_set_active_run(pilot_key, None)
+            raise
 
-        # Stop Pi
-        self.gateway.send(pilot_key, "STOP")
+        # 2) Mark backend STOPPED (orchestrator wrote DB authoritative)
+        try:
+            self.api.stop_session_run(run_id)
+            logger.info("Marked run %s STOPPED in backend", run_id)
+        except Exception:
+            logger.exception("Failed to mark run %s STOPPED in backend after sending STOP", run_id)
+            # No retries per request — log and continue
 
-        # Clear local in-memory state
+        # 3) Clear orchestrator state + Redis mirror
         self.state.set_active_run(pilot_key, None)
-
-        # Mirror clear to Redis
         try:
             self._redis_set_active_run(pilot_key, None)
         except Exception:
-            logger.exception("Redis mirror failed when stopping run %s", run_id)
+            logger.exception("Failed to clear redis active_run for pilot %s run %s", pilot_key, run_id)
 
         logger.info("Active run cleared for %s (run_id=%s)", pilot_key, run_id)
 
@@ -307,6 +368,19 @@ class OrchestratorStation:
 
         self.state.set_active_run(pilot_key, None)
         self._redis_set_active_run(pilot_key, None)
+
+    def _apply_overrides(self, task: dict, run_meta: dict, step_idx: int) -> dict:
+        ov = run_meta.get("overrides") or {}
+        global_ov = ov.get("global") or {}
+        steps_ov = ov.get("steps") or {}
+
+        step_ov = steps_ov.get(str(step_idx)) or steps_ov.get(step_idx) or {}
+
+        task.update(global_ov)
+        task.update(step_ov)
+        return task
+
+
 
 
     def _resolve_pilot_key(self, pilot_ip: str) -> str:
@@ -377,6 +451,12 @@ class OrchestratorStation:
         pilot = self.api.get_pilot(run["pilot_id"])
         pilot_name = pilot["name"]
 
+        # ✅ keep gateway routing consistent with start_run()
+        pilot_key = self.state.resolve_pilot_key(
+            db_name=pilot.get("name"),
+            ip=pilot.get("ip"),
+        )
+
         logger.info(
             "Advancing run %s (pilot=%s)",
             run["id"],
@@ -384,30 +464,19 @@ class OrchestratorStation:
         )
 
         # 1️⃣ Stop current task
-        self.gateway.send(pilot_name, "STOP")
-        self._wait_for_idle(pilot_name)
+        self.gateway.send(pilot_key, "STOP")
+        self._wait_for_idle(pilot_key)
 
         # 2️⃣ Advance step in backend FIRST
         resp = self.api.advance_step(run["id"])
 
-        # =====================================================
-        # ✅ FINISHED PROTOCOL — NO SLEEP HERE
-        # =====================================================
         if resp.get("finished"):
             logger.info("Run %s completed", run["id"])
-
-            # mark run completed in backend
             self.api.complete_session_run(run["id"])
-
-            # clear active run immediately (UI responsiveness)
-            self.state.set_active_run(pilot_name, None)
-            self._redis_set_active_run(pilot_name, None)
-
+            self.state.set_active_run(pilot_key, None)
+            self._redis_set_active_run(pilot_key, None)
             return
 
-        # =====================================================
-        # 🔁 MORE STEPS — WAIT FOR HARDWARE RELEASE
-        # =====================================================
         logger.info(
             "Waiting for hardware release (10s) before next step on pilot %s",
             pilot_name,
@@ -418,6 +487,36 @@ class OrchestratorStation:
         next_step_idx = resp["current_step"]
         next_task = self._build_step_task(run, step_idx=next_step_idx)
 
+        # ✅ attach minimal context for Pi (subjects + session_progress_index)
+        try:
+            run_with_prog = self.api.get_run_with_progress(run["id"])
+            prog = (run_with_prog or {}).get("progress") or {}
+        except Exception:
+            logger.exception(
+                "Failed to fetch run progress for run %s in advance; continuing without progress",
+                run["id"],
+            )
+            prog = {}
+
+        try:
+            proto_runs = self.api.get_subject_runs_for_session(run["session_id"])
+        except Exception:
+            logger.exception(
+                "Failed to fetch proto_runs for session %s in advance; continuing without subjects",
+                run["session_id"],
+            )
+            proto_runs = None
+
+        self._attach_session_context(
+            next_task,
+            run_meta=run,
+            proto_runs=proto_runs,
+            progress=prog,
+        )
+
+        next_task["subjects"] = next_task.get("subjects") or []
+        next_task["session_progress_index"] = next_task.get("session_progress_index")
+
         logger.info(
             "Starting step %s for run %s on pilot %s",
             next_step_idx,
@@ -425,7 +524,8 @@ class OrchestratorStation:
             pilot_name,
         )
 
-        self.gateway.send(pilot_name, "START", next_task)
+        self.gateway.send(pilot_key, "START", next_task)
+
 
 
     def _wait_for_idle(self, pilot: str, timeout: float = 15.0):
@@ -444,26 +544,43 @@ class OrchestratorStation:
         session_id = run["session_id"]
         subject_key = run["subject_key"]
 
-        session = self.api.get_session_detail(session_id)
         runs = self.api.get_subject_runs_for_session(session_id)
-
         proto_run = runs[0]
+
         protocol = self.api.get_protocol(proto_run["protocol_id"])
-        step = protocol["steps"][0]
+        step_idx = 0  # ✅ ADD THIS
+        step = protocol["steps"][step_idx]
 
         task = dict(step.get("params") or {})
         task["task_type"] = step["task_type"]
         task["step_name"] = step["step_name"]
 
         pilot = self.api.get_pilot(run["pilot_id"])
-        task["pilot"] = pilot["name"]   # ✅ ADD THIS
+        task["pilot"] = pilot["name"]
 
         task["subject"] = subject_key
-        task["step"] = 0
+        task["step"] = step_idx
         task["current_trial"] = 0
         task["session"] = session_id
 
+        task["run_id"] = run["id"]                 # ✅ ADD THIS (required)
+        task["protocol_id"] = proto_run["protocol_id"]  # ✅ optional but useful
+
+        # Apply overrides last
+        task = self._apply_overrides(task, run_meta=run, step_idx=step_idx)
+
+        # ✅ recommended: re-assert reserved keys so overrides can't break routing/meta
+        task["task_type"] = step["task_type"]
+        task["step_name"] = step["step_name"]
+        task["pilot"] = pilot["name"]
+        task["subject"] = subject_key
+        task["session"] = session_id
+        task["step"] = step_idx
+        task["run_id"] = run["id"]
+        task["protocol_id"] = proto_run["protocol_id"]
+
         return task
+
 
     def _build_step_task(self, run: dict, step_idx: int) -> dict:
         session_id = run["session_id"]
@@ -487,7 +604,23 @@ class OrchestratorStation:
         task["current_trial"] = 0
         task["session"] = session_id
 
+        task["run_id"] = run["id"]                 # ✅ ADD THIS
+        task["protocol_id"] = proto_run["protocol_id"]  # ✅ optional
+
+        task = self._apply_overrides(task, run_meta=run, step_idx=step_idx)
+
+        # ✅ recommended protection
+        task["task_type"] = step["task_type"]
+        task["step_name"] = step["step_name"]
+        task["pilot"] = pilot["name"]
+        task["subject"] = subject_key
+        task["session"] = session_id
+        task["step"] = step_idx
+        task["run_id"] = run["id"]
+        task["protocol_id"] = proto_run["protocol_id"]
+
         return task
+
 
     def _run_watchdog(self):
         logger.info("Run watchdog started")
@@ -558,4 +691,106 @@ class OrchestratorStation:
             )
         except Exception:
             logger.exception("Redis touch failed for %s", pilot_key)
+
+    def _attach_session_context(
+        self,
+        task: dict,
+        *,
+        run_meta: dict,
+        proto_runs: list | None,
+        progress: dict | None,) -> dict:
+        """
+        Minimal payload additions for Pi:
+        - session_progress_index: int | None
+        - subjects: [str, ...]
+        Always produces:
+        task["session_progress_index"] exists (maybe None)
+        task["subjects"] exists (list)
+        """
+
+        # -----------------------------
+        # 1) Normalize progress input
+        # -----------------------------
+        prog = None
+        if progress is None:
+            prog = {}
+        elif isinstance(progress, dict):
+            # if caller accidentally passed the full {"run":..., "progress":...} payload
+            if "progress" in progress and isinstance(progress.get("progress"), dict):
+                prog = progress["progress"]
+            else:
+                prog = progress
+        else:
+            # tolerate objects with attributes
+            try:
+                prog = {
+                    "session_progress_index": getattr(progress, "session_progress_index", None),
+                    "current_step": getattr(progress, "current_step", None),
+                    "current_trial": getattr(progress, "current_trial", None),
+                }
+            except Exception:
+                prog = {}
+
+        # -----------------------------
+        # 2) session_progress_index
+        # -----------------------------
+        spi = None
+        if isinstance(prog, dict):
+            # tolerant to different backend field names / migrations
+            spi = (
+                prog.get("session_progress_index")
+                or prog.get("session_run_index")
+                or prog.get("run_index")
+                or prog.get("index")
+            )
+
+        # Force presence (like run_id)
+        task["session_progress_index"] = spi
+
+        # -----------------------------
+        # 3) subjects list
+        # -----------------------------
+        subjects: list[str] = []
+
+        if proto_runs:
+            for r in proto_runs:
+                if r is None:
+                    continue
+
+                # tolerate dict rows
+                if isinstance(r, dict):
+                    name = (
+                        r.get("subject_name")
+                        or r.get("subject_key")
+                        or r.get("subject")
+                    )
+
+                    # subject might be nested dict {"name": "..."} or {"key": "..."}
+                    if isinstance(name, dict):
+                        name = name.get("name") or name.get("key") or name.get("subject_key")
+
+                else:
+                    # tolerate objects
+                    name = (
+                        getattr(r, "subject_name", None)
+                        or getattr(r, "subject_key", None)
+                        or getattr(r, "subject", None)
+                    )
+                    if isinstance(name, dict):
+                        name = name.get("name") or name.get("key") or name.get("subject_key")
+
+                if name:
+                    subjects.append(str(name))
+
+        # De-dup while preserving order
+        seen = set()
+        subjects = [s for s in subjects if not (s in seen or seen.add(s))]
+
+        # Force presence (never None)
+        task["subjects"] = subjects
+
+        return task
+
+
+
 

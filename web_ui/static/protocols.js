@@ -2,6 +2,31 @@ let PROTOCOLS_CACHE = null;
 let SUBJECTS_CACHE = null;
 
 
+function showSkeleton(container, rows = 8) {
+  container.classList.add("is-loading");
+  container.innerHTML = `
+    <div class="skeleton-list">
+      ${Array.from({ length: rows })
+        .map(() => `<div class="skeleton-row"></div>`)
+        .join("")}
+    </div>
+  `;
+}
+
+function clearLoading(container) {
+  container.classList.remove("is-loading");
+  container.innerHTML = "";
+}
+
+function makeAnimatedLi(text, delayMs = 0) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  li.classList.add("fade-in-item");
+  li.style.animationDelay = `${delayMs}ms`;
+  return li;
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
   // ======================================================
   // DOM
@@ -50,28 +75,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadProtocols() {
     if (!PROTOCOLS_CACHE) {
+      showSkeleton(protocolsList, 10);
       PROTOCOLS_CACHE = await apiGet("/api/protocols");
-    }
-  
-    const protocols = PROTOCOLS_CACHE;
-  
-    // Do NOT wipe unless first render
-    if (protocolsList.children.length === 0) {
+    } else {
+      // If cached, no need to skeleton/flicker
       protocolsList.innerHTML = "";
     }
   
+    const protocols = PROTOCOLS_CACHE;
+    clearLoading(protocolsList);
+  
     selectedProtocolId = null;
   
-    protocols.forEach(protocol => {
-      const li = document.createElement("li");
-      li.textContent = protocol.name;
+    protocols.forEach((protocol, idx) => {
+      const li = makeAnimatedLi(protocol.name, Math.min(idx * 18, 180));
       li.dataset.protocolId = protocol.id;
   
       li.onclick = () => {
         selectedProtocolId = protocol.id;
-        [...protocolsList.children].forEach(el =>
-          el.classList.remove("selected")
-        );
+        [...protocolsList.children].forEach(el => el.classList.remove("selected"));
         li.classList.add("selected");
       };
   

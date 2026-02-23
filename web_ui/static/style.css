@@ -1545,11 +1545,12 @@ ol.scroll-list {
     justify-content: flex-end;
     margin-top: 6px;
   }
-  .params-grid-2col {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
+.params-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+  
   .param-field label {
     display: block;
     font-size: 12px;
@@ -1768,3 +1769,1106 @@ ol.scroll-list {
   padding-top: 0;          /* was 10px */
   margin-bottom: 10px;     /* ✅ lifts it up */
 }
+input.is-missing {
+  border-color: rgba(224,122,122,0.65);
+  background: rgba(224,122,122,0.06);
+}
+
+/* Add this CSS to your stylesheet (or in a <style> tag) */
+.graduation-pill {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: rgba(111, 66, 193, 0.08); /* soft lavender */
+  color: var(--lavender);
+  font-weight: 600;
+  font-size: 13px;
+  margin: 6px 0;
+  border: 1px solid rgba(111,66,193,0.12);
+}
+.graduation-detail {
+  display: block;
+  margin-top: 4px;
+  color: #666;
+  font-size: 12px;
+}
+
+/* Graduation pill */
+.graduation-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: rgba(111, 66, 193, 0.08); /* soft lavender */
+  color: var(--lavender);
+  font-weight: 600;
+  font-size: 13px;
+  margin: 6px 0;
+  border: 1px solid rgba(111,66,193,0.12);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+
+/* small subdued details under the pill */
+.graduation-detail {
+  display: block;
+  margin-top: 4px;
+  color: #6b6b6b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* optional small icon */
+.graduation-pill .grad-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: rgba(111,66,193,0.18);
+  color: var(--lavender);
+}
+
+/* ======================================================
+   Pilot view: Params + Graduation polish (append last)
+   ====================================================== */
+
+/* Right panel title */
+.session-right .right-title{
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: var(--text);
+  margin: 2px 0 10px;
+}
+
+/* Step box container (right panel + modal) */
+.step-box{
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+}
+
+/* Step header */
+.step-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.step-name{
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+/* Section titles inside step */
+.step-section{
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.step-section:first-of-type{
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.step-section-title{
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: rgba(154,160,170,0.95);
+  text-transform: none;
+  margin-bottom: 8px;
+}
+
+/* =========================
+   Params grid (read-only + overrides)
+   ========================= */
+
+.params-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin-top: 8px;
+}
+
+@media (max-width: 980px){
+  .params-grid{ grid-template-columns: 1fr; }
+}
+
+/* Field */
+.param-field{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.param-field label{
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(154,160,170,0.95);
+  letter-spacing: .15px;
+  margin: 0;
+}
+
+/* Inputs (override + modal read-only) */
+.param-field input,
+.param-field textarea,
+.param-field select{
+  width: 100%;
+  background: rgba(18,20,26,0.88);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 9px 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.25;
+  outline: none;
+  transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
+}
+
+/* Focus */
+.param-field input:focus,
+.param-field textarea:focus,
+.param-field select:focus{
+  border-color: rgba(182,166,255,0.55);
+  box-shadow: 0 0 0 3px rgba(182,166,255,0.12);
+  background: rgba(18,20,26,0.96);
+}
+
+/* Disabled (modal read-only) */
+.param-field input:disabled,
+.param-field textarea:disabled,
+.param-field select:disabled{
+  opacity: 0.95;
+  color: rgba(230,232,238,0.90);
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.08);
+  cursor: not-allowed;
+}
+
+/* Placeholder */
+.param-field input::placeholder,
+.param-field textarea::placeholder{
+  color: rgba(154,160,170,0.75);
+}
+
+/* Missing + invalid visual states */
+.param-field input.is-missing{
+  border-color: rgba(242,195,143,0.65);
+  background: rgba(242,195,143,0.06);
+}
+
+.param-field input.is-invalid{
+  border-color: rgba(224,122,122,0.70) !important;
+  background: rgba(224,122,122,0.08) !important;
+  box-shadow: 0 0 0 3px rgba(224,122,122,0.12);
+}
+
+/* Clear-step button row */
+.override-actions{
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+/* Make the ghost clear button actually look like a subtle action */
+.button-ghost{
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.10);
+  color: rgba(154,160,170,0.95);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.button-ghost:hover{
+  border-color: rgba(182,166,255,0.35);
+  background: rgba(182,166,255,0.06);
+  color: var(--text);
+}
+
+/* =========================
+   Graduation pill (used in modal and anywhere else)
+   ========================= */
+
+.graduation-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(182,166,255,0.10);
+  border: 1px solid rgba(182,166,255,0.20);
+  color: var(--text);
+  max-width: 100%;
+}
+
+.graduation-pill .grad-icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(182,166,255,0.18);
+  border: 1px solid rgba(182,166,255,0.22);
+  color: var(--lavender);
+  font-weight: 800;
+  font-size: 12px;
+  flex: 0 0 22px;
+}
+
+.graduation-pill > div{
+  min-width: 0;
+}
+
+.graduation-pill .graduation-detail{
+  margin-top: 3px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: rgba(154,160,170,0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 520px;
+}
+
+/* =========================
+   Modal step box tweaks (optional but nice)
+   ========================= */
+
+.modal .step-box{
+  background: rgba(255,255,255,0.02);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.modal .json-pre{
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 0.8rem;
+  color: rgba(230,232,238,0.92);
+  max-height: 220px;
+  overflow: auto;
+}
+
+/* Scrollbar in the right panel */
+.session-right .right-body::-webkit-scrollbar,
+.modal #protoModalSteps::-webkit-scrollbar{
+  width: 8px;
+}
+.session-right .right-body::-webkit-scrollbar-thumb,
+.modal #protoModalSteps::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+.session-right .right-body::-webkit-scrollbar-track,
+.modal #protoModalSteps::-webkit-scrollbar-track{
+  background: transparent;
+}
+#sessions > li.session-card{
+  height: var(--session-card-h) !important;
+  overflow: hidden !important;
+}
+
+/* --- FIX: stop "1-step" cards from showing a scrollbar --- */
+
+/* right-body is the scroll container */
+#sessions > li.session-card .right-body{
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 2px; /* tiny buffer prevents 1-2px overflow */
+}
+
+/* remove extra bottom space that can force overflow */
+#sessions > li.session-card .right-body > :last-child{
+  margin-bottom: 0 !important;
+}
+
+/* your step boxes currently have margin-bottom that can trigger overflow */
+#sessions > li.session-card .step-box{
+  margin-bottom: 12px;
+}
+#sessions > li.session-card .right-body .step-box:last-child{
+  margin-bottom: 0 !important;
+}
+
+/* OPTIONAL (only if you still see it): prevent horizontal layout wiggles */
+#sessions > li.session-card .right-body{
+  overflow-x: hidden;
+}
+
+/* if json-pre has max-height forcing scrollbars when it shouldn't */
+#sessions > li.session-card .json-pre{
+  overflow: auto;
+  max-height: 160px;
+}
+
+/* optional: hide json-pre scrollbar if it's not actually overflowing */
+#sessions > li.session-card .json-pre:has(code:only-child){
+  scrollbar-width: auto;
+}
+/* =========================================================
+   OVERFLOW FIX PACK (paste at END of file)
+   - Prevent page horizontal scroll
+   - Make session grid + modal shrinkable
+   - Ensure inner grids/pre never force width
+   ========================================================= */
+
+/* 1) Hard guard: never allow accidental horizontal scroll */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* 2) Grid: right column must be shrinkable (fixed 420px was forcing overflow) */
+#sessions > li.session-card .session-card-grid,
+.session-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 420px);
+  gap: 0;
+  align-items: stretch;
+}
+
+/* Make grid children allowed to shrink (CRITICAL for overflow in CSS grid/flex) */
+#sessions > li.session-card .session-left,
+#sessions > li.session-card .session-right,
+.session-left,
+.session-right {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Responsive fallback: on small screens, stack columns */
+@media (max-width: 900px) {
+  #sessions > li.session-card .session-card-grid,
+  .session-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .session-divider { display: none; }
+}
+
+/* 3) Modal: prevent modal content from expanding the page */
+.modal-overlay {
+  overflow-x: hidden;
+}
+
+.modal {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.modal-body {
+  min-width: 0;
+}
+
+/* Any grid inside modal must be shrinkable */
+.modal .params-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.modal .param-field,
+.modal input,
+.modal textarea,
+.modal select {
+  min-width: 0;
+}
+
+/* Pre/code blocks should scroll internally, never force width */
+.modal pre,
+.modal .json-pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* 4) Extra safety: long titles/labels should truncate instead of forcing width */
+.session-title,
+.step-name,
+.right-title,
+.modal-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 5) If you keep the fixed-height session card, ensure right side scroll works */
+#sessions > li.session-card .session-right {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#sessions > li.session-card .right-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* =========================================================
+   FINAL: correct scrolling behavior
+   - page does NOT scroll when modal open
+   - session list can scroll (if you want)
+   - params (right-body) scrolls ONLY when needed
+   ========================================================= */
+
+/* 1) Lock page scroll ONLY while modal is open (background should not move) */
+html:has(.modal-overlay),
+body:has(.modal-overlay){
+  overflow: hidden !important;
+  height: 100% !important;
+}
+
+.modal-overlay{
+  overflow: auto;           /* overlay can scroll if modal content is tall */
+}
+
+/* 2) Sessions list: choose ONE behavior */
+
+/* Option A (recommended): page stays normal, sessions list scrolls */
+.sessions-scroll{
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* If you prefer Option B (no list scroll, page grows), use this instead:
+.sessions-scroll{
+  max-height: none !important;
+  overflow: visible !important;
+  padding-right: 0 !important;
+}
+*/
+
+/* 3) Session card fixed height (you already have this; keeping it consistent) */
+#sessions > li.session-card{
+  height: var(--session-card-h, 240px) !important;
+  overflow: hidden !important;
+}
+
+/* 4) Right panel: only right-body scrolls when content is too long */
+#sessions > li.session-card .session-right{
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;          /* prevent the column itself from scrolling */
+}
+
+#sessions > li.session-card .right-title{
+  flex: 0 0 auto;            /* pinned header */
+}
+
+#sessions > li.session-card .right-body{
+  flex: 1 1 auto;
+  min-height: 0;             /* CRITICAL: allows scrolling to work correctly */
+  overflow-y: auto;          /* ✅ scroll appears ONLY when needed */
+  overflow-x: hidden;
+  padding-right: 6px;
+  padding-bottom: 2px;       /* tiny buffer prevents 1px “phantom” scroll */
+}
+
+/* Prevent last child margins from causing “almost scroll” */
+#sessions > li.session-card .right-body > :last-child{
+  margin-bottom: 0 !important;
+}
+#sessions > li.session-card .right-body .step-box:last-child{
+  margin-bottom: 0 !important;
+}
+
+
+/* =========================================================
+   FIX: remove the tiny "phantom" scrollbar in small params cards
+   (keep scrolling only when content is actually long)
+   Paste at VERY END
+   ========================================================= */
+
+   #sessions > li.session-card .session-right {
+    overflow: hidden !important;
+    min-height: 0 !important;
+  }
+  
+  /* Make the scroll container robust */
+  #sessions > li.session-card .right-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  
+    /* show scrollbar ONLY when needed */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  
+    /* prevents 1-2px overflow from triggering scroll */
+    padding-bottom: 8px !important;    /* <- "dead zone" */
+    box-sizing: border-box !important;
+  
+    /* Firefox: don't reserve scrollbar space */
+    scrollbar-gutter: auto;
+  }
+  
+  /* Kill the common 1px overflow culprits */
+  #sessions > li.session-card .right-body > :last-child,
+  #sessions > li.session-card .right-body .step-box:last-child,
+  #sessions > li.session-card .right-body .step-section:last-child,
+  #sessions > li.session-card .right-body .override-actions:last-child {
+    margin-bottom: 0 !important;
+  }
+  
+  /* If ANY rule forced scrollbars, undo it */
+  #sessions > li.session-card .right-body {
+    overflow-y: auto !important;  /* not scroll */
+  }
+  
+  /* Optional: WebKit scrollbar should be overlay-like & not "steal" width */
+  #sessions > li.session-card .right-body::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+
+  /* =========================================================
+   FIX: kill phantom scrollbar in short Params cards
+   (scroll only when content truly overflows)
+   Paste at VERY END
+   ========================================================= */
+
+/* Make the right column a strict flex column */
+#sessions > li.session-card .session-right{
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+}
+
+/* Title must not create weird extra height via margins */
+#sessions > li.session-card .right-title{
+  flex: 0 0 auto !important;
+  margin: 0 0 8px 0 !important;  /* reset top margin to 0 */
+}
+
+/* The ONLY scrolling area */
+#sessions > li.session-card .right-body{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  /* IMPORTANT: no bottom padding (it forces scroll) */
+  padding-bottom: 0 !important;
+
+  /* if you had padding-right for scrollbar room, keep it small */
+  padding-right: 4px !important;
+}
+
+/* Remove bottom margins that often cause 1-2px overflow */
+#sessions > li.session-card .right-body > :last-child,
+#sessions > li.session-card .right-body .step-box:last-child{
+  margin-bottom: 0 !important;
+}
+
+/* If step-box has a margin-bottom that triggers overflow, make it smaller */
+#sessions > li.session-card .right-body .step-box{
+  margin-bottom: 8px !important;
+}
+
+/* Scrollbar should be thin (and only visible when needed) */
+#sessions > li.session-card .right-body::-webkit-scrollbar{
+  width: 6px !important;
+}
+/* Graduation pill — strong & readable */
+.graduation-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 6px 12px;
+  border-radius: 999px;
+
+  background: rgba(182,166,255,0.14);
+  border: 1px solid rgba(182,166,255,0.35);
+
+  color: var(--lavender);
+  font-weight: 700;
+}
+
+/* Circular arrow */
+.graduation-pill .grad-icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+
+  background: rgba(182,166,255,0.22);
+  color: var(--lavender);
+
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* Trial number */
+.graduation-pill .grad-value{
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--lavender);
+  letter-spacing: 0.2px;
+}
+
+.param-field label { pointer-events: auto; }/* ===== Param tooltip (reliable, even if input is disabled) ===== */
+.param-field { 
+  position: relative; 
+}
+
+
+
+
+.param-field label { pointer-events: auto; }
+
+/* ===== Tooltip ONLY on the param label ===== */
+.param-field label {
+  position: relative;          /* anchor tooltip */
+  display: inline-block;       /* keeps anchor tight */
+  width: fit-content;          /* tooltip aligns nicely */
+}
+
+
+/* ===== ONLY TOOLTIP SYSTEM (JS floating tooltip) ===== */
+.ui-tooltip{
+  position: fixed;
+  z-index: 999999;
+  pointer-events: none;
+
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border-radius: 10px;
+
+  background: rgba(182,166,255,0.16);
+  border: 1px solid rgba(182,166,255,0.45);
+  color: var(--lavender);
+
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: normal;
+
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+}
+.ui-tooltip::after{
+  content:"";
+  position:absolute;
+  left: 14px;
+  top: -6px;
+  border: 6px solid transparent;
+  border-bottom-color: rgba(182,166,255,0.45);
+}
+
+
+
+
+/* Make label a flex row */
+.param-field label{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* source indicator (small, subtle, no height shift) */
+.param-src{
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.65;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+/* optional subtle color coding */
+.param-src-protocol{ color: var(--green); }
+.param-src-default{ color: var(--lavender); }
+.param-src-missing{ color: var(--error); }
+
+
+.param-field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* wrap just the name in a span so we can clamp it */
+.param-name {
+  min-width: 0;              /* IMPORTANT: allows flex child to shrink */
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the source indicator stays fixed-size */
+.param-src {
+  flex: 0 0 auto;
+}
+
+.param-field label{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.param-name{
+  min-width: 0;          /* required for ellipsis in flex */
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* allow grid items to shrink properly */
+.params-grid .param-field {
+  min-width: 0;
+}
+
+.param-field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;   /* critical */
+}
+
+.param-name {
+  flex: 1 1 auto;
+  min-width: 0;   /* CRITICAL for ellipsis */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================
+   PARAM LABEL ELLIPSIS FIX
+   paste at VERY END
+   ========================= */
+
+/* Ensure the grid is actually 2 columns in session cards */
+#sessions .params-grid.params-grid-2col{
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important; /* minmax(0,1fr) is key */
+  gap: 10px 12px !important;
+}
+
+/* Allow grid items to shrink */
+#sessions .params-grid.params-grid-2col > .param-field{
+  min-width: 0 !important;
+}
+
+/* Make label a shrinkable flex row */
+#sessions .param-field > label{
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+
+  min-width: 0 !important;      /* critical */
+  max-width: 100% !important;   /* prevents spill */
+}
+
+/* The name is what truncates */
+#sessions .param-field > label > .param-name{
+  flex: 1 1 auto !important;
+  min-width: 0 !important;      /* critical */
+  max-width: 100% !important;
+
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* The source pill never shrinks */
+#sessions .param-field > label > .param-src{
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+/* ===== PARAM LABEL: FORCE TRUNCATION (paste at very end) ===== */
+
+.params-grid{
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.param-field{
+  min-width: 0 !important;     /* allow shrink inside grid */
+  overflow: hidden !important; /* prevents bleed into neighbor */
+}
+
+.param-field > label{
+  width: 100% !important;      /* key: create a real constraint */
+  min-width: 0 !important;
+
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  /* IMPORTANT: don't use space-between, it can create weird overflow */
+  justify-content: flex-start !important;
+}
+
+.param-field > label > .param-name{
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* push the source to the far right without space-between */
+.param-field > label > .param-src{
+  margin-left: auto !important;
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+/* ===== Param name color by source (minimal) ===== */
+
+.param-field > label{
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Truncation stays */
+.param-name{
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-weight: 600;
+}
+
+/* Color by origin */
+.param-name-protocol{
+  color: var(--green);
+}
+
+.param-name-default{
+  color: var(--lavender);
+}
+
+.param-name-missing{
+  color: var(--error);
+}
+
+/* ===== Minimal param origin coloring ===== */
+
+.param-field > label{
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Truncation */
+.param-name{
+  display: block;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-weight: 600;
+}
+
+/* Origin colors */
+.param-name-protocol{
+  color: var(--green);
+}
+
+.param-name-default{
+  color: var(--lavender);
+}
+
+.param-name-missing{
+  color: var(--error);
+}
+/* Overrides modal validation */
+input.is-invalid{
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.12);
+}
+
+/* Overrides modal: actions should NOT be full-width */
+#ovDone{
+  width: auto !important;
+}
+
+#ovDone.button-primary{
+  width: auto !important;
+}
+
+
+.ov-actions button{
+  width: auto !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+/* =========================
+   Overrides modal: make Apply overrides a normal-sized button
+   (PASTE AT VERY END)
+   ========================= */
+
+
+/* extra hard lock on your specific button */
+#ovDone{
+  width: fit-content !important;
+  flex: 0 0 auto !important;
+/* just in case parent is column somewhere */
+  justify-content: center !important;
+  text-align: center !important;
+  padding: 8px 14px !important;   /* optional: “normal” size */
+}
+/* Only affect the overrides modal button */
+.modal-overlay #ovDone{
+  width: fit-content !important;
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+}
+/* =========================
+   Overrides modal button LEFT aligned
+   ========================= */
+
+  
+  #ovDone{
+    width: fit-content !important;
+    flex: 0 0 auto !important;
+  }
+
+
+
+  .overrides-modal .modal-actions{
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-start !important; /* left */
+    align-items: center !important;
+  }
+  
+  .overrides-modal .modal-actions > button{
+    width: auto !important;
+    flex: 0 0 auto !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  /* =========================
+   MODALS: default (resume/restart/new)
+   ========================= */
+.modal .modal-actions{
+  display: grid;
+  gap: 10px;
+}
+
+.modal .modal-actions button{
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+
+/* =========================
+   Overrides modal ONLY
+   ========================= */
+   .modal.overrides-modal .modal-actions{
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-start !important; /* ✅ LEFT */
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  
+  .modal.overrides-modal .modal-actions button{
+    width: auto !important;
+    flex: 0 0 auto !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 8px 14px !important;
+  }
+  
+  /* hard lock for the specific button */
+  .modal.overrides-modal #ovDone{
+    width: auto !important;
+    display: inline-flex !important;
+  }
+
+  .param-current{
+    margin-left: 8px;
+    font-size: 12px;
+    color: #666;
+    white-space: nowrap;
+  }
+  
+/* =========================================================
+   FIX: Overrides modal param alignment
+   - keep label on ONE line (graduation + current)
+   - prevent label from becoming taller than neighbors
+   ========================================================= */
+
+   .modal.overrides-modal .params-grid {
+    align-items: start; /* just in case */
+  }
+  
+  .modal.overrides-modal .param-field {
+    min-width: 0;
+  }
+  
+  .modal.overrides-modal .param-field > label {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+  
+    width: 100% !important;
+    min-width: 0 !important;
+  
+    /* critical: never wrap to 2 lines */
+    white-space: nowrap !important;
+    overflow: hidden !important;
+  }
+  
+  .modal.overrides-modal .param-field > label > .param-name {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  
+  .modal.overrides-modal .param-field > label > .param-current {
+    flex: 0 0 auto !important;
+    margin-left: auto !important;
+    white-space: nowrap !important;
+    opacity: 0.85;
+  }
+  
+  /* Optional: make label height consistent even if someone adds extra spans later */
+  .modal.overrides-modal .param-field > label {
+    line-height: 1.1 !important;
+    min-height: 16px !important;
+  }
+  

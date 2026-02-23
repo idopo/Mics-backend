@@ -46,6 +46,49 @@ SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 app = FastAPI(title="MICS Backend API")
 
 
+# inside upsert_pilot_tasks (near top), define helper:
+
+def normalize_task_params_schema(params: dict) -> dict:
+    """
+    params is dict: { param_name: {tag, type, default, ...} }
+    Ensure type is a string, default exists (maybe None).
+    """
+    if not isinstance(params, dict):
+        return {}
+
+    def norm_type(t):
+        if t is None:
+            return None
+        if isinstance(t, dict):
+            return norm_type(t.get("kind") or t.get("type"))
+        if isinstance(t, str):
+            return t.strip().lower()
+        # if someone accidentally sent python type name
+        try:
+            return getattr(t, "__name__", str(t)).strip().lower()
+        except Exception:
+            return str(t).strip().lower()
+
+    out = {}
+    for k, spec in params.items():
+        spec = spec or {}
+        if isinstance(spec, str):
+            # super legacy: params["ITI_center"] = "int"
+            out[k] = {"type": spec.strip().lower(), "tag": None, "default": None}
+            continue
+
+        if not isinstance(spec, dict):
+            out[k] = {"type": None, "tag": None, "default": None}
+            continue
+
+        out[k] = {
+            "tag": spec.get("tag"),
+            "type": norm_type(spec.get("type")),
+            "default": spec.get("default", None),
+        }
+    return out
+
+
 # ----------------------------------------------------------
 # INIT
 # ----------------------------------------------------------
@@ -491,7 +534,7 @@ def upsert_pilot_tasks(
                     task_name=task.task_name,
                     base_class_name=task.base_class,
                     module=task.module,
-                    params=task.params,
+                    params=normalize_task_params_schema(task.params),
                     hardware=task.hardware,
                     file_hash=task.file_hash,
                 )
@@ -578,6 +621,15 @@ def upsert_pilot_tasks(
 # SESSION RUNS (Pilot-bound blueprint execution)
 # ----------------------------------------------------------
 
+# ============================================
+# PATCH 4: FULL create_session_run() (backend)
+# ============================================
+# Drop-in replacement for your existing create_session_run()
+# Changes:
+# - NEW runs DO NOT inherit prior overrides
+# - Only use overrides when client explicitly sends them
+# - (Optional) inheritance allowed for non-new modes only
+
 @app.post("/session-runs", response_model=SessionRunRead, status_code=201)
 def create_session_run(
     payload: SessionRunCreate,
@@ -616,7 +668,7 @@ def create_session_run(
             recoverable.error_type = None
             recoverable.error_message = None
             recoverable.mode = mode
-            recoverable.overrides = payload.overrides or None
+            # IMPORTANT: do not touch overrides here unless you want resume to accept new overrides
             db.commit()
             db.refresh(recoverable)
             return recoverable
@@ -632,7 +684,7 @@ def create_session_run(
             )
             if prog:
                 db.delete(prog)
-                db.flush()  # ensure deleted before continuing
+                db.flush()
 
             recoverable.status = SessionRunStatus.PENDING
             recoverable.started_at = datetime.utcnow()
@@ -640,37 +692,29 @@ def create_session_run(
             recoverable.error_type = None
             recoverable.error_message = None
             recoverable.mode = mode
-            recoverable.overrides = payload.overrides or None
-
-            # ✅ DO NOT touch recoverable.session_run_index
+            # IMPORTANT: do not touch overrides here unless you want restart to accept new overrides
             db.commit()
             db.refresh(recoverable)
             return recoverable
 
         # --------------------------------------------------
-        # 4) Otherwise: create a BRAND NEW SessionRun row
-        #    and assign a new session_run_index by bumping Session.run_counter
+        # 4) Create a BRAND NEW SessionRun row
         # --------------------------------------------------
-
-        # Ensure Session exists
         session_obj = db.query(Session).get(payload.session_id)
         if not session_obj:
             session_obj = Session(
                 id=payload.session_id,
                 name=f"Blueprint {payload.session_id}",
                 label=f"Blueprint {payload.session_id}",
-                # run_counter defaults to 0 in DB/model
             )
             db.add(session_obj)
             db.commit()
             db.refresh(session_obj)
 
-        # Ensure Pilot exists
         pilot_obj = db.query(Pilot).get(payload.pilot_id)
         if not pilot_obj:
             raise HTTPException(404, "Pilot not found")
 
-        # ✅ Lock the session row to atomically increment run_counter
         locked_session = (
             db.query(Session)
             .filter(Session.id == session_obj.id)
@@ -680,21 +724,42 @@ def create_session_run(
         locked_session.run_counter = int(locked_session.run_counter or 0) + 1
         new_index = locked_session.run_counter
 
-        # Create the run
+        # --------------------------------------------------
+        # ✅ NEW OVERRIDES RULE:
+        # - NEW runs do NOT inherit overrides.
+        # - Only apply overrides if client explicitly sends them.
+        # --------------------------------------------------
+        effective_overrides = payload.overrides or None
+
+        # OPTIONAL: if you still want inheritance for non-new modes, gate it:
+        if mode != "new" and effective_overrides is None:
+            prev = (
+                db.query(SessionRun)
+                .filter(
+                    SessionRun.session_id == payload.session_id,
+                    SessionRun.pilot_id == payload.pilot_id,
+                    SessionRun.overrides.isnot(None),
+                )
+                .order_by(SessionRun.id.desc())
+                .first()
+            )
+            if prev and prev.overrides:
+                inherited = _strip_graduation_from_overrides(prev.overrides)
+                effective_overrides = inherited or None
+
         run = SessionRun(
             session_id=session_obj.id,
             pilot_id=pilot_obj.id,
             status=SessionRunStatus.PENDING,
-            subject_key="",  # server sets after flush
-            mode=mode,       # usually "new"
-            overrides=payload.overrides or None,
-            session_run_index=new_index,  # ✅ stable index
+            subject_key="",
+            mode=mode,
+            overrides=effective_overrides,
+            session_run_index=new_index,
         )
 
         db.add(run)
-        db.flush()  # assigns run.id
+        db.flush()
 
-        # Set subject_key after we have the run id
         run.subject_key = f"bp_s{session_obj.id}_r{run.id}"
 
         db.commit()
@@ -728,6 +793,7 @@ def latest_run(session_id: int, pilot_id: int, _: dict = Depends(verify_token)):
                 "ended_at": run.ended_at,
                 "error_type": run.error_type,
                 "error_message": run.error_message,
+                "overrides": run.overrides,
             },
             "progress": {
                 "current_step": prog.current_step_idx if prog else None,
@@ -841,6 +907,131 @@ def stop_session_run(run_id: int, _: dict = Depends(verify_token)):
     finally:
         db.close()
 
+def _normalize_overrides(ov: dict | None) -> dict:
+    if not isinstance(ov, dict):
+        return {}
+    return ov
+
+
+def _get_step_override(ov: dict, step_idx: int) -> dict:
+    steps = ov.get("steps") or {}
+    if not isinstance(steps, dict):
+        return {}
+
+    # allow int or string keys
+    s = steps.get(str(step_idx))
+    if isinstance(s, dict):
+        return s
+    s = steps.get(step_idx)
+    if isinstance(s, dict):
+        return s
+
+    return {}
+def _strip_graduation_from_overrides(ov: dict | None) -> dict | None:
+    if not isinstance(ov, dict):
+        return None
+    # copy so we don't mutate original
+    try:
+        copied = json.loads(json.dumps(ov))
+    except Exception:
+        copied = dict(ov)
+    steps = copied.get("steps")
+    if isinstance(steps, dict):
+        for k in list(steps.keys()):
+            step = steps.get(k) or {}
+            if isinstance(step, dict):
+                # remove any key whose normalized name is "graduation"
+                for sk in list(step.keys()):
+                    if str(sk).strip().lower() == "graduation":
+                        del step[sk]
+                # if step becomes empty, you can optionally delete it:
+                # if not step:
+                #     del steps[k]
+        copied["steps"] = steps
+    # Also guard top-level "global" graduation if present
+    global_ = copied.get("global")
+    if isinstance(global_, dict):
+        for gk in list(global_.keys()):
+            if str(gk).strip().lower() == "graduation":
+                del global_[gk]
+        copied["global"] = global_
+    return copied
+
+def _coerce_graduation(grad: Any) -> dict:
+    # numeric shorthand
+    if isinstance(grad, (int, float)) and int(grad) == grad:
+        return {"type": "NTrials", "value": {"current_trial": int(grad)}}
+
+    if isinstance(grad, str):
+        s = grad.strip()
+        if s.isdigit():
+            return {"type": "NTrials", "value": {"current_trial": int(s)}}
+        return {}
+
+    if not isinstance(grad, dict):
+        return {}
+
+    gtype = grad.get("type")
+
+    # allow mis-shaped direct keys
+    direct_n = grad.get("current_trial") or grad.get("n_trials") or grad.get("n")
+
+    gval = grad.get("value")
+
+    # ✅ if value is a number/string, treat it as the count
+    if isinstance(gval, (int, float)) and int(gval) == gval:
+        gval = {"current_trial": int(gval)}
+    elif isinstance(gval, str) and gval.strip().isdigit():
+        gval = {"current_trial": int(gval.strip())}
+    elif not isinstance(gval, dict):
+        gval = {}
+
+    # ✅ NEW: infer NTrials if type missing but a direct count is present
+    if not gtype and direct_n is not None:
+        gtype = "NTrials"
+        try:
+            gval["current_trial"] = int(direct_n)
+        except Exception:
+            gval["current_trial"] = 0
+
+    # ✅ normalize NTrials keys
+    if gtype == "NTrials":
+        n = (
+            gval.get("current_trial")
+            if gval.get("current_trial") is not None
+            else gval.get("n_trials")
+            if gval.get("n_trials") is not None
+            else gval.get("n")
+            if gval.get("n") is not None
+            else direct_n
+        )
+        try:
+            gval["current_trial"] = int(n) if n is not None else 0
+        except Exception:
+            gval["current_trial"] = 0
+
+    return {"type": gtype, "value": gval}
+
+
+def _apply_overrides_to_params(base_params: dict | None, overrides: dict | None, step_idx: int) -> dict:
+    """
+    Mirrors orchestrator _apply_overrides():
+    - global overrides applied first
+    - then step-specific overrides
+    """
+    params = dict(base_params or {})
+
+    ov = _normalize_overrides(overrides)
+    global_ov = ov.get("global") or {}
+    if isinstance(global_ov, dict):
+        params.update(global_ov)
+
+    step_ov = _get_step_override(ov, step_idx)
+    if isinstance(step_ov, dict):
+        params.update(step_ov)
+
+    return params
+
 
 @app.post("/runs/{run_id}/progress/increment")
 def increment_trial_counter(run_id: int, _: dict = Depends(verify_token)):
@@ -878,7 +1069,17 @@ def increment_trial_counter(run_id: int, _: dict = Depends(verify_token)):
                 raise HTTPException(500, "Protocol has no steps")
 
             step0 = steps[0]
-            grad = step0.params.get("graduation", {}) if step0.params else {}
+
+            # ✅ use effective params (protocol step params + this run's overrides)
+            effective_params = _apply_overrides_to_params(
+                base_params=step0.params,
+                overrides=run.overrides,
+                step_idx=0,
+            )
+
+            grad_raw = effective_params.get("graduation") if isinstance(effective_params, dict) else None
+            grad = _coerce_graduation(grad_raw)
+
 
             prog = RunProgress(
                 run_id=run_id,
@@ -946,7 +1147,16 @@ def advance_step(run_id: int, _: dict = Depends(verify_token)):
         prog.current_trial = 0
 
         next_step = steps[prog.current_step_idx]
-        grad = next_step.params.get("graduation", {})
+
+        # ✅ use effective params (protocol step params + this run's overrides)
+        effective_params = _apply_overrides_to_params(
+            base_params=next_step.params,
+            overrides=run.overrides,
+            step_idx=prog.current_step_idx,
+        )
+
+        grad_raw = effective_params.get("graduation") if isinstance(effective_params, dict) else None
+        grad = _coerce_graduation(grad_raw)
 
         prog.graduation_type = grad.get("type")
         prog.graduation_params = grad.get("value")
@@ -1350,3 +1560,6 @@ def list_leaf_tasks(_: dict = Depends(verify_token)):
         )
     finally:
         db.close()
+
+
+

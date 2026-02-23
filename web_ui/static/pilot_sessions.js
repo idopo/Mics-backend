@@ -12,6 +12,57 @@
 
 (() => {
   // --------------------------------------------------
+  // Inject minimal CSS for graduation pill (safe, small)
+  // --------------------------------------------------
+  (function injectGraduationCSS() {
+    if (document.getElementById("__pilot_graduation_css")) return;
+    const css = `
+      /* Graduation pill */
+      .graduation-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(102, 84, 255, 0.06);
+        border: 1px solid rgba(102, 84, 255, 0.12);
+        padding: 6px 10px;
+        border-radius: 12px;
+        font-size: 13px;
+        color: #2b2b2b;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      .graduation-pill .grad-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: rgba(102,84,255,0.12);
+        color: #664eff;
+        font-weight: 700;
+        font-size: 12px;
+        flex: 0 0 20px;
+      }
+      .graduation-pill .graduation-detail {
+        font-size: 12px;
+        color: #444;
+        opacity: 0.95;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 380px;
+      }
+      .step-section[data-grad-slot="1"] { margin-bottom: 8px; }
+      .step-section-title { font-weight: 600; margin-bottom: 6px; }
+    `;
+    const s = document.createElement("style");
+    s.id = "__pilot_graduation_css";
+    s.appendChild(document.createTextNode(css));
+    document.head && document.head.appendChild(s);
+  })();
+
+  // --------------------------------------------------
   // Globals / state
   // --------------------------------------------------
   let pilotId = null;
@@ -31,7 +82,7 @@
   const SESSION_DETAILS_CACHE = {};
   const PROTOCOL_CACHE = {};
   const LATEST_BY_SESSION_CACHE = {}; // only filled for visible sessions (per sessionId)
-
+  const MAX_LABEL_CHARS = 15;
   // In-flight dedupe
   const SESSION_DETAILS_INFLIGHT = {};
   const PROTOCOL_INFLIGHT = {};
@@ -40,11 +91,773 @@
   // per sessionId: { steps: { "0": {...}, "1": {...} } }
   const OVERRIDES_DRAFT = {};
 
+  const OVERRIDES_LAST = {};
+  const OVERRIDES_DIRTY = {};
+  window.OVERRIDES_LAST = OVERRIDES_LAST;
+  window.OVERRIDES_DIRTY = OVERRIDES_DIRTY;
+
+
   let FIRST_RENDER = true;
+
+  /* =========================================================
+   Session Overrides Modal (editable)
+   - Opens from session title click
+   - Shows ALL params per step (from task schema union protocol params)
+   - Writes into OVERRIDES_DRAFT[sessionId].steps[stepIndex]
+   - Uses parseByType(spec.type) for typed overrides
+   ========================================================= */
+// DROP-IN REPLACEMENT
+// Replaces ONLY: window.showSessionOverridesModal = function showSessionOverridesModal(sessionId, protocolId) { ... }
+// Fixes:
+// 1) "Cannot access 'label' before initialization" (no use-before-declare)
+// 2) graduation UI: shows CURRENT number in the LABEL (current: N), NOT inside the input
+// 3) graduation input: if override exists, show just the number; otherwise empty
+// 4) typing works (stopPropagation guards preserved)
+// 5) case-insensitive override keys (iti vs ITI) preserved
+// ==========================================================
+// PATCH 3: FULL showSessionOverridesModal(sessionId, protocolId)
+// ==========================================================
+// Drop-in replacement for window.showSessionOverridesModal
+// Changes:
+// - Marks OVERRIDES_DIRTY[sessionId] = true whenever user edits/removes any override
+// - Graduation remains: current N shown in label, input never filled with JSON
+window.showSessionOverridesModal = function showSessionOverridesModal(sessionId, protocolId) {
+  return new Promise((resolve) => {
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      document.removeEventListener("keydown", onKeyDown, true);
+      overlay.remove();
+      resolve();
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        finish();
+      }
+    };
+
+    const pickParamSpec = (task) => {
+      if (!task || typeof task !== "object") return {};
+      return (
+        task.default_params ||
+        task.defaultParams ||
+        task.params ||
+        task.parameters ||
+        task.param_specs ||
+        task.paramSpecs ||
+        task.param_spec ||
+        task.paramSpec ||
+        task.schema ||
+        {}
+      );
+    };
+
+    const isPopulatedValue = (v) => {
+      if (v === undefined || v === null) return false;
+      if (typeof v === "string" && v.trim() === "") return false;
+      if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) return false;
+      return true;
+    };
+
+    // Ensure draft exists
+    if (!OVERRIDES_DRAFT[sessionId]) OVERRIDES_DRAFT[sessionId] = { steps: {} };
+    if (!OVERRIDES_DRAFT[sessionId].steps) OVERRIDES_DRAFT[sessionId].steps = {};
+
+    // Ensure dirty flag exists
+    if (typeof window.OVERRIDES_DIRTY !== "undefined") {
+      if (window.OVERRIDES_DIRTY[sessionId] == null) window.OVERRIDES_DIRTY[sessionId] = false;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+
+    const modal = document.createElement("div");
+    modal.className = "modal overrides-modal";
+    modal.style.maxWidth = "1080px";
+    modal.style.width = "min(1080px, calc(100vw - 24px))";
+
+    modal.innerHTML = `
+      <div class="modal-header">
+        <div style="min-width:0;">
+          <div class="modal-title" id="ovModalTitle">Session Overrides</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="modal-close" type="button" aria-label="Close">✕</button>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding: 12px 14px;">
+        <div id="ovModalStatus" class="modal-muted">Loading…</div>
+        <div id="ovModalSteps" style="margin-top: 10px; max-height: 72vh; overflow:auto;"></div>
+        <div class="modal-actions ov-actions" style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+          <button class="button-primary" type="button" id="ovDone">Apply overrides</button>
+        </div>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    modal.querySelector(".modal-close").onclick = finish;
+    modal.querySelector("#ovDone").onclick = finish;
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) finish(); });
+    document.addEventListener("keydown", onKeyDown, true);
+
+    modal.addEventListener("keydown", (e) => e.stopPropagation(), true);
+    modal.addEventListener("keypress", (e) => e.stopPropagation(), true);
+    modal.addEventListener("keyup", (e) => e.stopPropagation(), true);
+
+    // helpers
+    const buildStepTitle = (step, idx) => sanitizeStepTitle(step.step_name, idx, step.task_type);
+
+    const getDraftStepObj = (stepIdx) => {
+      const s = String(stepIdx);
+      OVERRIDES_DRAFT[sessionId].steps[s] = OVERRIDES_DRAFT[sessionId].steps[s] || {};
+      return OVERRIDES_DRAFT[sessionId].steps[s];
+    };
+
+    const deleteKeyCI = (obj, key) => {
+      const nk = norm(key);
+      for (const k of Object.keys(obj || {})) {
+        if (norm(k) === nk) delete obj[k];
+      }
+    };
+
+    const markDirty = () => {
+      if (typeof window.OVERRIDES_DIRTY !== "undefined") {
+        window.OVERRIDES_DIRTY[sessionId] = true;
+      }
+    };
+
+    const setDraftValue = (stepIdx, key, specType, rawStr) => {
+      const draft = getDraftStepObj(stepIdx);
+
+      // any interaction counts as intent to override
+      markDirty();
+
+      if (rawStr.trim() === "") {
+        deleteKeyCI(draft, key);
+        return { ok: true, removed: true };
+      }
+
+      const parsed = parseByType(rawStr, specType);
+      if (parsed && parsed.__invalid) return { ok: false };
+
+      deleteKeyCI(draft, key);
+      draft[key] = parsed.value;
+      return { ok: true };
+    };
+
+    const getEffectiveValue = ({ protocolParams, spec, key }) => {
+      const protocolVal = getValCI(protocolParams, key);
+      const hasProtocol = isPopulatedValue(protocolVal);
+
+      const defaultVal = getSpecDefaultValue(spec);
+      const hasDefault = isPopulatedValue(defaultVal);
+
+      if (hasProtocol) return { val: protocolVal, source: "protocol" };
+      if (hasDefault) return { val: defaultVal, source: "default" };
+      return { val: "", source: "missing" };
+    };
+
+    const getGraduationN = (gr) => {
+      if (!gr) return null;
+
+      if (typeof gr === "number") return Number.isFinite(gr) ? gr : null;
+      if (typeof gr === "string") {
+        const s = gr.trim();
+        if (/^\d+$/.test(s)) return Number(s);
+        return null;
+      }
+      if (typeof gr !== "object") return null;
+
+      const v = gr.value ?? gr;
+      const n = v?.current_trial ?? v?.n_trials ?? v?.n ?? null;
+      if (n == null) return null;
+
+      const nn = Number(n);
+      return Number.isFinite(nn) ? nn : null;
+    };
+
+    const formatGraduationOverrideForInput = (draftVal) => {
+      const n = getGraduationN(draftVal);
+      return n == null ? "" : String(n);
+    };
+
+    (async () => {
+      const statusEl = modal.querySelector("#ovModalStatus");
+      const stepsEl = modal.querySelector("#ovModalSteps");
+      const titleEl = modal.querySelector("#ovModalTitle");
+
+      try {
+        titleEl.textContent = `Session ${sessionId} Overrides`;
+
+        if (!TASKS_BY_NAME) await loadTasksOnce();
+
+        const protocol = await fetchProtocolCached(protocolId);
+        if (!protocol) throw new Error("Failed to load protocol");
+
+        const steps = protocol?.steps || [];
+        if (!steps.length) {
+          statusEl.textContent = "";
+          stepsEl.innerHTML = `<div class="muted">No steps</div>`;
+          return;
+        }
+
+        statusEl.textContent = "";
+        stepsEl.innerHTML = "";
+
+        steps.forEach((step, idx) => {
+          const task = TASKS_BY_NAME?.get(norm(step.task_type));
+          const specObj = pickParamSpec(task) || {};
+          const protocolParams = step.params || {};
+
+          // Union keys
+          const keyNormToKey = new Map();
+          Object.keys(specObj || {}).forEach((k) => {
+            const nk = norm(k);
+            if (!keyNormToKey.has(nk)) keyNormToKey.set(nk, k);
+          });
+          Object.keys(protocolParams || {}).forEach((k) => {
+            const nk = norm(k);
+            keyNormToKey.set(nk, k);
+          });
+
+          let keys = Array.from(keyNormToKey.values())
+            .filter(k => !["step_name", "task_type"].includes(norm(k)))
+            .sort((a, b) => a.localeCompare(b));
+
+          const stepIdxStr = String(idx);
+          const draftStep = getDraftStepObj(stepIdxStr);
+
+          const box = document.createElement("div");
+          box.className = "step-box";
+
+          box.innerHTML = `
+            <div class="step-head" style="cursor:pointer;">
+              <div style="min-width:0;">
+                <div class="step-name">${escapeHtml(buildStepTitle(step, idx))}</div>
+              </div>
+              <button class="button-secondary" type="button" data-toggle="1">▸</button>
+            </div>
+
+            <div data-body="1" style="margin-top:10px; display:none;">
+              <div class="step-section">
+                <div class="params-grid params-grid-2col" data-params-grid="1"></div>
+              </div>
+            </div>
+          `;
+
+          const toggleBtn = box.querySelector('[data-toggle="1"]');
+          const body = box.querySelector('[data-body="1"]');
+          let open = false;
+          const setOpen = (v) => {
+            open = v;
+            body.style.display = open ? "block" : "none";
+            toggleBtn.textContent = open ? "▾" : "▸";
+          };
+          setOpen(idx === 0);
+
+          box.querySelector(".step-head").addEventListener("click", (e) => {
+            if (e.target === toggleBtn) return;
+            if (e.target?.getAttribute && e.target.getAttribute("data-clear-step") === "1") return;
+            setOpen(!open);
+          });
+
+          toggleBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          });
+
+          const grid = box.querySelector('[data-params-grid="1"]');
+          if (!keys.length) {
+            grid.innerHTML = `<div class="muted small">No params</div>`;
+            stepsEl.appendChild(box);
+            return;
+          }
+
+          keys.forEach((key) => {
+            const spec = getSpecCI(specObj, key) || {};
+            const typeHint = spec.type ? ` – ${spec.type}` : "";
+            const tag = spec.tag ?? key;
+
+            const eff = getEffectiveValue({ protocolParams, spec, key });
+
+            const draftVal = getValCI(draftStep, key);
+            const hasDraft = isPopulatedValue(draftVal);
+
+            const isGrad = norm(key) === "graduation";
+            const gradCurrent = isGrad ? getGraduationN(eff.val) : null;
+
+            const effText = (() => {
+              if (isGrad) return (gradCurrent == null ? "" : String(gradCurrent));
+              return (eff.val === "" ? "" : formatAny(eff.val));
+            })();
+
+            const field = document.createElement("div");
+            field.className = "param-field";
+
+            const labelEl = document.createElement("label");
+            labelEl.textContent = "";
+
+            const name = document.createElement("span");
+            name.className = `param-name param-name-${eff.source}`;
+            name.title = key;
+            name.textContent =
+              key.length > MAX_LABEL_CHARS
+                ? key.slice(0, MAX_LABEL_CHARS - 1) + "…"
+                : key;
+
+            labelEl.appendChild(name);
+
+            if (isGrad && gradCurrent != null) {
+              const cur = document.createElement("span");
+              cur.className = "param-current";
+              cur.style.marginLeft = "8px";
+              cur.style.fontSize = "12px";
+              cur.style.opacity = "0.85";
+              cur.textContent = `current: ${gradCurrent}`;
+              labelEl.appendChild(cur);
+            }
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.disabled = false;
+            input.setAttribute("data-step-idx", stepIdxStr);
+            input.setAttribute("data-param-key", key);
+
+            input.placeholder = `${String(tag)}${typeHint}${effText ? `  |  effective: ${effText}` : ""}`;
+
+            if (isGrad) {
+              input.value = hasDraft ? formatGraduationOverrideForInput(draftVal) : "";
+            } else {
+              input.value = hasDraft ? formatAny(draftVal) : "";
+            }
+
+            input.addEventListener("keydown", (e) => e.stopPropagation(), true);
+
+            input.addEventListener("input", (e) => {
+              e.stopPropagation();
+
+              const raw = input.value;
+              const stepIdx = stepIdxStr;
+
+              if (isGrad) {
+                const s = raw.trim();
+
+                // empty => remove override
+                if (s === "") {
+                  markDirty();
+                  setDraftValue(stepIdx, key, spec.type, raw);
+                  input.classList.remove("is-invalid");
+                  input.removeAttribute("title");
+                  return;
+                }
+
+                // numeric => build NTrials graduation object
+                if (/^\d+$/.test(s)) {
+                  const n = Number(s);
+                  const g = buildNTrialsGraduation(n);
+                  if (!g) {
+                    input.classList.add("is-invalid");
+                    input.title = "Graduation must be a positive integer";
+                    return;
+                  }
+
+                  markDirty();
+                  const draft = getDraftStepObj(stepIdx);
+                  deleteKeyCI(draft, key);
+                  draft[key] = g;
+
+                  input.classList.remove("is-invalid");
+                  input.removeAttribute("title");
+                  return;
+                }
+
+                // allow JSON
+                const parsed = parseByType(raw, "json");
+                if (!parsed.__invalid && parsed.value && typeof parsed.value === "object") {
+                  markDirty();
+                  const draft = getDraftStepObj(stepIdx);
+                  deleteKeyCI(draft, key);
+                  draft[key] = parsed.value;
+
+                  input.classList.remove("is-invalid");
+                  input.removeAttribute("title");
+                  return;
+                }
+
+                input.classList.add("is-invalid");
+                input.title = "Enter an integer N (or paste JSON like {type,value})";
+                return;
+              }
+
+              const res = setDraftValue(stepIdxStr, key, spec.type, raw);
+              if (!res.ok) {
+                input.classList.add("is-invalid");
+                input.title = "Invalid value for type";
+              } else {
+                input.classList.remove("is-invalid");
+                input.removeAttribute("title");
+              }
+            });
+
+            field.appendChild(labelEl);
+            field.appendChild(input);
+            grid.appendChild(field);
+          });
+
+          stepsEl.appendChild(box);
+        });
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = `Failed to load overrides UI: ${e.message || e}`;
+      }
+    })();
+  });
+};
+
 
   // --------------------------------------------------
   // Small utils
   // --------------------------------------------------
+  /* =========================================================
+   Protocol Details Modal (overlay, no new HTML)
+   Paste into session_launcher_lazy_hydrate.js
+   1) Add the modal function (Section A)
+   2) Patch hydrateCard title click (Section B)
+   ========================================================= */
+
+  /* -----------------------------
+     Section A: Add this ONCE
+     Put it near showStartModeModal
+  ------------------------------ */
+  window.showProtocolDetailsModal = function showProtocolDetailsModal(protocolId) {
+    return new Promise((resolve) => {
+      let done = false;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        document.removeEventListener("keydown", onKeyDown, true);
+        overlay.remove();
+        resolve();
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          finish();
+        }
+      };
+
+      const norm = (s) => String(s || "").trim().toLowerCase();
+
+      const escapeHtml = (s) =>
+        String(s).replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[c]));
+
+      const formatAny = (v) => {
+        if (v == null) return "";
+        if (typeof v === "string") return v;
+        if (typeof v === "number" || typeof v === "boolean") return String(v);
+        try { return JSON.stringify(v); } catch { return String(v); }
+      };
+
+      const sanitizeStepTitle = (stepName, idx, taskType) => {
+        const stepNum = idx + 1;
+        let s = String(stepName || "").trim();
+        s = s.replace(/^step\s*\d+\s*[:\-–]?\s*/i, "").trim();
+        const label = s || String(taskType || "").trim() || "Unnamed step";
+        const tt = String(taskType || "").trim();
+        const clean = tt && label.toLowerCase() === tt.toLowerCase() ? tt : label;
+        return `Step ${stepNum}: ${clean}`.trim();
+      };
+
+      const pickParamSpec = (task) => {
+        if (!task || typeof task !== "object") return {};
+        return (
+          task.default_params ||
+          task.defaultParams ||
+          task.params ||
+          task.parameters ||
+          task.param_specs ||
+          task.paramSpecs ||
+          task.param_spec ||
+          task.paramSpec ||
+          task.schema ||
+          {}
+        );
+      };
+
+      const getValCI = (obj, key) => {
+        if (!obj) return undefined;
+        const nk = norm(key);
+        for (const k of Object.keys(obj)) {
+          if (norm(k) === nk) return obj[k];
+        }
+        return undefined;
+      };
+
+      // Treat undefined/null/""/{} as not populated
+      const isPopulatedValue = (v) => {
+        if (v === undefined || v === null) return false;
+        if (typeof v === "string" && v.trim() === "") return false;
+        if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) return false;
+        return true;
+      };
+
+      // Create overlay/modal (reuses your .modal CSS)
+      const overlay = document.createElement("div");
+      overlay.className = "modal-overlay";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+
+      const modal = document.createElement("div");
+      modal.className = "modal overrides-modal";
+
+      modal.style.maxWidth = "980px";
+      modal.style.width = "min(980px, calc(100vw - 24px))";
+
+      modal.innerHTML = `
+      <div class="modal-header">
+        <div style="min-width:0;">
+          <div class="modal-title" id="protoModalTitle">Protocol</div>
+          <div class="modal-muted" id="protoModalDesc" style="margin:4px 0 0 0;"></div>
+        </div>
+        <button class="modal-close" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 12px 14px;">
+        <div id="protoModalStatus" class="modal-muted">Loading…</div>
+        <div id="protoModalSteps" style="margin-top: 10px; max-height: 72vh; overflow:auto;"></div>
+      </div>
+    `;
+
+
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      // Close handlers
+      modal.querySelector(".modal-close").onclick = finish;
+      overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) finish(); });
+      document.addEventListener("keydown", onKeyDown, true);
+
+      // Render helpers (create-protocol-like, read-only)
+      function renderParamsGridReadOnly({ specObj, stepParams }) {
+        const keys = Object.keys(specObj || {}).sort((a, b) => a.localeCompare(b));
+        if (!keys.length) return `<div class="muted small">No params schema</div>`;
+
+        const html = keys.map((key) => {
+          const spec = specObj[key] || {};
+          const tag = spec.tag ?? key;
+          const type = spec.type ? ` – ${spec.type}` : "";
+
+          const v = getValCI(stepParams, key);
+          const populated = isPopulatedValue(v);
+
+          // show concrete protocol value (from ProtocolStepTemplate.params)
+          const valueText = populated ? formatAny(v) : "";
+
+          // mark missing with a class (CSS optional)
+          const missingClass = populated ? "" : "is-missing";
+
+          return `
+            <div class="param-field">
+              <label>${escapeHtml(key)}</label>
+              <input
+                type="text"
+                disabled
+                class="${missingClass}"
+                placeholder="${escapeHtml(String(tag) + type)}"
+                value="${escapeHtml(valueText)}"
+              />
+            </div>
+          `;
+        }).join("");
+
+        return `<div class="params-grid">${html}</div>`;
+      }
+
+      function computeMissingList({ specObj, stepParams }) {
+        const keys = Object.keys(specObj || {});
+        const missing = [];
+        for (const k of keys) {
+          const v = getValCI(stepParams, k);
+          if (!isPopulatedValue(v)) missing.push(k);
+        }
+        return missing.sort((a, b) => a.localeCompare(b));
+      }
+
+      function computeExtras({ specObj, stepParams }) {
+        const specNorm = new Set(Object.keys(specObj || {}).map(norm));
+        const extras = [];
+        for (const k of Object.keys(stepParams || {})) {
+          if (!specNorm.has(norm(k))) extras.push(k);
+        }
+        return extras.sort((a, b) => a.localeCompare(b));
+      }
+
+      // Fetch + render
+      (async () => {
+        const titleEl = modal.querySelector("#protoModalTitle");
+        const descEl = modal.querySelector("#protoModalDesc");
+        const statusEl = modal.querySelector("#protoModalStatus");
+        const stepsEl = modal.querySelector("#protoModalSteps");
+
+        try {
+          const [protocol, tasks] = await Promise.all([
+            fetch(`/api/protocols/${protocolId}`).then((r) => {
+              if (!r.ok) throw new Error("Failed to load protocol");
+              return r.json();
+            }),
+            fetch(`/api/tasks/leaf`).then((r) => {
+              if (!r.ok) throw new Error("Failed to load tasks");
+              return r.json();
+            }),
+          ]);
+
+          const tasksByName = new Map((tasks || []).map((t) => [norm(t.task_name), t]));
+
+          titleEl.textContent = protocol?.name || `Protocol ${protocolId}`;
+          descEl.textContent = protocol?.description || "";
+
+          const steps = protocol?.steps || [];
+          if (!steps.length) {
+            statusEl.textContent = "";
+            stepsEl.innerHTML = `<div class="muted">No steps</div>`;
+            return;
+          }
+
+          statusEl.textContent = "";
+          stepsEl.innerHTML = "";
+
+          steps.forEach((step, idx) => {
+            const task = tasksByName.get(norm(step.task_type));
+            const specObj = pickParamSpec(task) || {};
+            const stepParams = step.params || {}; // ✅ ProtocolStepTemplate.params (concrete)
+
+            const missingKeys = computeMissingList({ specObj, stepParams });
+            const extras = computeExtras({ specObj, stepParams });
+
+            const displayName = sanitizeStepTitle(step.step_name, idx, step.task_type);
+
+            const box = document.createElement("div");
+            box.className = "step-box";
+
+            box.innerHTML = `
+              <div class="step-head" style="cursor:pointer;">
+                <div style="min-width:0;">
+                  <div class="step-name">${escapeHtml(displayName)}</div>
+                  <div class="muted small">Task: <strong>${escapeHtml(step.task_type || "")}</strong></div>
+                </div>
+                <button class="button-secondary" type="button" data-toggle="1">▸</button>
+
+              </div>
+
+              <div data-body="1" style="margin-top:10px; display:none;">
+                <div class="step-section" data-grad-slot="1">
+                  <div class="step-section-title">Graduation</div>
+                </div>
+
+                <div class="step-section">
+                  <div class="step-section-title">Params (read-only)</div>
+                  ${renderParamsGridReadOnly({ specObj, stepParams })}
+                </div>
+
+                <div class="step-section">
+                  <div class="step-section-title">Not populated</div>
+                  ${
+                    missingKeys.length
+                      ? `<div class="muted small">${missingKeys.map(escapeHtml).join(", ")}</div>`
+                      : `<div class="muted small">None</div>`
+                  }
+                </div>
+
+              </div>
+            `;
+
+            // Insert graduation pill (uses global renderGraduation if present)
+            const gradSlot = box.querySelector('[data-grad-slot="1"]');
+            if (gradSlot) {
+              const gradObj = stepParams.graduation ?? null;
+              let gradNode = null;
+
+              // Prefer global renderGraduation helper if available
+              try {
+                if (typeof window.renderGraduation === "function") {
+                  gradNode = window.renderGraduation(gradObj);
+                }
+              } catch (e) {
+                gradNode = null;
+              }
+
+              // Fallback: build a compact read-only display
+              if (!gradNode) {
+                const wrap = document.createElement("div");
+                wrap.className = "graduation-pill";
+                const icon = document.createElement("span");
+                icon.className = "grad-icon";
+                icon.textContent = "★";
+                const txt = document.createElement("div");
+                txt.style.lineHeight = "1";
+                const titleText = (gradObj && gradObj.type) ? gradObj.type : (gradObj ? "Graduation" : "None defined");
+                const valuePreview = gradObj ? (typeof gradObj === "object" ? JSON.stringify(gradObj.value ?? gradObj) : String(gradObj)) : "";
+                const short = valuePreview.length > 120 ? valuePreview.slice(0, 116) + "…" : valuePreview;
+                txt.innerHTML = `<div style="font-weight:600;font-size:13px;">${escapeHtml(titleText)}</div>
+                                 <div class="graduation-detail">${escapeHtml(short)}</div>`;
+                wrap.appendChild(icon);
+                wrap.appendChild(txt);
+                gradNode = wrap;
+                gradNode.title = valuePreview;
+              }
+
+              // If no graduation at all, show "No graduation defined"
+              if (!gradObj && gradNode && (!gradNode.textContent || gradNode.textContent.trim() === "")) {
+                gradSlot.innerHTML = `<div class="muted small">No graduation defined</div>`;
+              } else {
+                gradSlot.appendChild(gradNode);
+              }
+            }
+
+            // collapse behavior
+            const toggleBtn = box.querySelector('[data-toggle="1"]');
+            const body = box.querySelector('[data-body="1"]');
+            let open = false;
+
+            const setOpen = (v) => {
+              open = v;
+              body.style.display = open ? "block" : "none";
+              toggleBtn.textContent = open ? "▾" : "▸";
+            };
+
+            setOpen(false);
+
+
+            toggleBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              setOpen(!open);
+            });
+
+            stepsEl.appendChild(box);
+          });
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = `Failed to load protocol details: ${e.message || e}`;
+        }
+      })();
+    });
+  };
+
+
   function norm(s) { return String(s || "").trim().toLowerCase(); }
 
   function escapeHtml(s) {
@@ -310,6 +1123,41 @@
   }
   const limitFetch = createLimiter(4);
 
+  function renderGraduation(gr) {
+    if (!gr) return null;
+  
+    const obj = typeof gr === "object" ? gr : {};
+    const value =
+      obj && typeof obj.value === "object" && obj.value ? obj.value : obj;
+  
+    const n = value.current_trial ?? value.n_trials ?? value.n ?? null;
+
+  
+    const wrap = document.createElement("div");
+    wrap.className = "graduation-pill";
+  
+    wrap.innerHTML = `
+      <span class="grad-icon">⟳</span>
+      <span class="grad-value">${n != null ? n : ""}</span>
+    `;
+  
+    return wrap;
+  }
+  
+
+  
+  
+  
+window.renderGraduation = renderGraduation;
+
+
+  function buildNTrialsGraduation(n) {
+    const nn = Number(n);
+    if (!Number.isFinite(nn) || nn <= 0) return null;
+    return { type: "NTrials", value: { current_trial: Math.trunc(nn) } };
+  }
+
+  
   // --------------------------------------------------
   // Fetch helpers (cached)
   // --------------------------------------------------
@@ -390,7 +1238,7 @@
 
   async function pickStartMode(sessionId) {
     if (!pilotId) return "new";
-  
+
     let opts = null;
     try {
       const resp = await fetch(`/api/sessions/${sessionId}/pilots/${pilotId}/start-options`);
@@ -399,14 +1247,14 @@
     } catch {
       return "new";
     }
-  
+
     // Optional debug (handy while validating behavior)
     // console.debug("start-options", sessionId, opts);
-  
+
     // If there's an active run right now, UI should just create a new run record
     // (your existing behavior)
     if (opts?.active_run) return "new";
-  
+
     // ✅ Only prompt if backend explicitly says we can resume
     if (opts?.recoverable_run && opts?.can_resume) {
       if (typeof window.showStartModeModal !== "function") {
@@ -414,7 +1262,7 @@
         if (statusEl) statusEl.textContent = "Start mode dialog is missing (showStartModeModal not loaded)";
         return "new";
       }
-  
+
       const p = opts.progress || {};
       const choice = await window.showStartModeModal({
         runId: opts.recoverable_run.id,
@@ -422,15 +1270,15 @@
         step: p.current_step ?? "?",
         trial: p.current_trial ?? "?",
       });
-  
+
       if (!choice) return null; // user cancelled modal
       return choice; // "resume" | "restart" | "new"
     }
-  
+
     // Default: new run
     return "new";
   }
-  
+
 
   // --------------------------------------------------
   // Subject filter UI
@@ -606,88 +1454,106 @@
     ws.onerror = (err) => console.error("Pilot WS error:", err);
   }
 
-  function refreshActionButtonsOnly() {
-    const ul = document.getElementById("sessions");
-    if (!ul) return;
-    const activeRun = CURRENT_PILOT_STATE?.active_run || null;
+  // =========================================
+// PATCH 2: FULL refreshActionButtonsOnly()
+// =========================================
+// Drop-in replacement for your existing refreshActionButtonsOnly()
+// Changes:
+// - On NEW runs, only send overrides if user actually edited (DIRTY)
+// - Keeps your STOP logic + busy logic
+function refreshActionButtonsOnly() {
+  const ul = document.getElementById("sessions");
+  if (!ul) return;
 
-    ul.querySelectorAll("li.session-card[data-session-id]").forEach(li => {
-      const sessionId = Number(li.getAttribute("data-session-id"));
-      const actions = li.querySelector(".session-actions");
-      if (!actions) return;
+  const activeRun = CURRENT_PILOT_STATE?.active_run || null;
 
-      if (li.getAttribute("data-hydrated") !== "1") return;
+  ul.querySelectorAll("li.session-card[data-session-id]").forEach(li => {
+    const sessionId = Number(li.getAttribute("data-session-id"));
+    const actions = li.querySelector(".session-actions");
+    if (!actions) return;
 
-      const btn = actions.querySelector("button");
-      if (!btn) return;
+    if (li.getAttribute("data-hydrated") !== "1") return;
 
-      const isRunningHere = activeRun && activeRun.session_id === sessionId;
-      const isPilotBusy = activeRun && activeRun.session_id !== sessionId;
+    const btn = actions.querySelector("button");
+    if (!btn) return;
 
-      if (isRunningHere) {
-        btn.className = "button-danger";
-        btn.textContent = "STOP";
+    const isRunningHere = !!(activeRun && activeRun.session_id === sessionId);
+    const isPilotBusy   = !!(activeRun && activeRun.session_id !== sessionId);
+
+    if (isRunningHere) {
+      btn.className = "button-danger";
+      btn.textContent = "STOP";
+      btn.disabled = false;
+      btn.title = "";
+      btn.onclick = async () => {
+        const status = document.getElementById("status");
+        btn.disabled = true;
+        if (status) status.textContent = "Stopping run…";
+        try {
+          await fetch(`/api/session-runs/${activeRun.id}/stop`, { method: "POST" });
+        } catch (e) {
+          console.error(e);
+          btn.disabled = false;
+        }
+      };
+      return;
+    }
+
+    // START state
+    btn.className = "button-primary";
+    btn.textContent = "START";
+    btn.disabled = !!isPilotBusy;
+    btn.title = isPilotBusy ? "Another session is running on this pilot" : "";
+
+    btn.onclick = async () => {
+      if (isPilotBusy) return;
+
+      const status = document.getElementById("status");
+      btn.disabled = true;
+      if (status) status.textContent = "Starting session…";
+
+      try {
+        const mode = await pickStartMode(sessionId);
+        if (!mode) {
+          btn.disabled = false;
+          if (status) status.textContent = "";
+          return;
+        }
+
+        const overrides = OVERRIDES_DRAFT[sessionId] || null;
+        const hasOverrides =
+          !!overrides &&
+          overrides.steps &&
+          Object.values(overrides.steps).some(obj => obj && Object.keys(obj).length > 0);
+
+        // ✅ ONLY send overrides for NEW runs if user actually edited them
+        const dirty = (typeof window.OVERRIDES_DIRTY !== "undefined")
+          ? !!window.OVERRIDES_DIRTY[sessionId]
+          : false;
+
+        const overridesToSend =
+          (mode === "new" && dirty && hasOverrides) ? overrides : null;
+
+        const r = await fetch(`/api/sessions/${sessionId}/start-on-pilot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pilot_id: pilotId,
+            mode,
+            overrides: overridesToSend,
+          }),
+        });
+
+        if (!r.ok) throw new Error(await r.text());
+        window.location.href = "/";
+      } catch (e) {
+        console.error(e);
         btn.disabled = false;
-        btn.title = "";
-        btn.onclick = async () => {
-          const status = document.getElementById("status");
-          btn.disabled = true;
-          if (status) status.textContent = "Stopping run…";
-          try {
-            await fetch(`/api/session-runs/${activeRun.id}/stop`, { method: "POST" });
-          } catch (e) {
-            console.error(e);
-            btn.disabled = false;
-          }
-        };
-      } else {
-        btn.className = "button-primary";
-        btn.textContent = "START";
-        btn.disabled = !!isPilotBusy;
-        btn.title = isPilotBusy ? "Another session is running on this pilot" : "";
-        btn.onclick = async () => {
-          if (isPilotBusy) return;
-
-          const status = document.getElementById("status");
-          btn.disabled = true;
-          if (status) status.textContent = "Starting session…";
-
-          try {
-            const mode = await pickStartMode(sessionId);
-            if (!mode) {
-              btn.disabled = false;
-              if (status) status.textContent = "";
-              return;
-            }
-
-            const overrides = OVERRIDES_DRAFT[sessionId] || null;
-
-            const hasOverrides =
-              !!overrides &&
-              overrides.steps &&
-              Object.values(overrides.steps).some(obj => obj && Object.keys(obj).length > 0);
-
-            const r = await fetch(`/api/sessions/${sessionId}/start-on-pilot`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                pilot_id: pilotId,
-                mode,
-                overrides: hasOverrides ? overrides : null,
-              }),
-            });
-
-            if (!r.ok) throw new Error(await r.text());
-            window.location.href = "/";
-          } catch (e) {
-            console.error(e);
-            btn.disabled = false;
-            if (status) status.textContent = "Failed to start session";
-          }
-        };
+        if (status) status.textContent = "Failed to start session";
       }
-    });
-  }
+    };
+  });
+}
 
   // --------------------------------------------------
   // Shell list render + lazy hydration
@@ -779,206 +1645,181 @@
   // --------------------------------------------------
   // FIXED renderParamsPanel
   // --------------------------------------------------
-  function renderParamsPanel(li, protocol, sessionId) {
-    const panel = li.querySelector(".session-right .right-body");
-    if (!panel) return;
-  
-    const steps = protocol?.steps || [];
-    if (!steps.length) {
-      panel.innerHTML = `<div class="muted small">No steps</div>`;
+  // --------------------------------------------------
+// Pilot card right-panel: READ-ONLY params
+// - shows protocol step.params if populated
+// - else shows task-spec defaults
+// - no overrides UI here (overrides only via title modal)
+// --------------------------------------------------
+function renderParamsPanel(li, protocol, sessionId) {
+  const panel = li.querySelector(".session-right .right-body");
+  if (!panel) return;
+
+  const steps = protocol?.steps || [];
+  if (!steps.length) {
+    panel.innerHTML = `<div class="muted small">No steps</div>`;
+    return;
+  }
+
+  panel.innerHTML = "";
+
+  const pickParamSpec = (task) => {
+    if (!task || typeof task !== "object") return {};
+    return (
+      task.default_params ||
+      task.defaultParams ||
+      task.params ||
+      task.parameters ||
+      task.param_specs ||
+      task.paramSpecs ||
+      task.param_spec ||
+      task.paramSpec ||
+      task.schema ||
+      {}
+    );
+  };
+
+  // Treat undefined/null/""/{} as NOT populated
+  const isPopulatedValue = (v) => {
+    if (v === undefined || v === null) return false;
+    if (typeof v === "string" && v.trim() === "") return false;
+    if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) return false;
+    return true;
+  };
+
+  steps.forEach((step, idx) => {
+    const task = TASKS_BY_NAME?.get(norm(step.task_type));
+    const paramSpec = pickParamSpec(task) || {};
+    const protocolParams = step.params || {}; // ✅ concrete values from create-protocol
+
+    // Union of keys from:
+    // - spec keys (defines what exists)
+    // - protocolParams keys (in case protocol has extra keys)
+    const keyNormToKey = new Map();
+    Object.keys(paramSpec || {}).forEach((k) => {
+      const nk = norm(k);
+      if (!keyNormToKey.has(nk)) keyNormToKey.set(nk, k);
+    });
+    Object.keys(protocolParams || {}).forEach((k) => {
+      const nk = norm(k);
+      // prefer protocol casing if present
+      keyNormToKey.set(nk, k);
+    });
+
+    let keys = Array.from(keyNormToKey.values())
+      .filter(k => !["graduation", "step_name", "task_type"].includes(norm(k)))
+      .sort((a, b) => a.localeCompare(b));
+
+    const row = document.createElement("div");
+    row.className = "step-box";
+
+    const displayName = sanitizeStepTitle(step.step_name, idx, step.task_type);
+
+    row.innerHTML = `
+      <div class="step-head">
+        <div class="step-name">${escapeHtml(displayName)}</div>
+      </div>
+
+      <div class="step-section">
+        <div class="step-section-title">Params</div>
+        <div class="params-grid params-grid-2col" data-params-grid="1"></div>
+      </div>
+    `;
+
+    const grid = row.querySelector('[data-params-grid="1"]');
+
+    if (!keys.length) {
+      grid.innerHTML = `<div class="muted small">No params</div>`;
+      panel.appendChild(row);
       return;
     }
-  
-    if (!OVERRIDES_DRAFT[sessionId]) OVERRIDES_DRAFT[sessionId] = { steps: {} };
-    panel.innerHTML = "";
-  
-    const pickParamSpec = (task) => {
-      if (!task || typeof task !== "object") return {};
-      return (
-        task.default_params ||
-        task.defaultParams ||
-        task.params ||
-        task.parameters ||
-        task.param_specs ||
-        task.paramSpecs ||
-        task.param_spec ||
-        task.paramSpec ||
-        task.schema ||
-        {}
-      );
-    };
-  
-    const makeInputTypeable = (input) => {
-      // prevent card handlers / global hotkeys from swallowing input
-      ["pointerdown", "mousedown", "click", "dblclick"].forEach((ev) => {
-        input.addEventListener(ev, (e) => e.stopPropagation(), true);
-      });
-      ["keydown", "keypress", "keyup"].forEach((ev) => {
-        input.addEventListener(ev, (e) => e.stopPropagation(), true);
-      });
-      input.addEventListener("pointerdown", () => input.focus(), true);
-    };
-  
-    steps.forEach((step, idx) => {
-      const task = TASKS_BY_NAME?.get(norm(step.task_type));
-      const paramSpec = pickParamSpec(task) || {};
-      const protocolParams = step.params || {};
-  
-      // draft holder
-      const existing = OVERRIDES_DRAFT[sessionId].steps[String(idx)];
-      const stepDraft = existing && typeof existing === "object" ? existing : {};
-      OVERRIDES_DRAFT[sessionId].steps[String(idx)] = stepDraft;
-  
-      // Build allowed keys (ONLY existing ones):
-      // - spec keys
-      // - protocol step params keys (so you can override them)
-      // Also include any already-set override keys, but ONLY if they match allowed keys (case-insensitive).
-      const keyNormToKey = new Map();
-  
-      Object.keys(paramSpec || {}).forEach((k) => {
-        const nk = norm(k);
-        if (!keyNormToKey.has(nk)) keyNormToKey.set(nk, k);
-      });
-  
-      Object.keys(protocolParams || {}).forEach((k) => {
-        const nk = norm(k);
-        // prefer protocol casing if present
-        keyNormToKey.set(nk, k);
-      });
-  
-      let keys = Array.from(keyNormToKey.values())
-        .filter(k => norm(k) !== "graduation") // keep if you want it editable
-        .sort((a, b) => a.localeCompare(b));
-  
-      const row = document.createElement("div");
-      row.className = "step-box";
-  
-      const displayName = sanitizeStepTitle(step.step_name, idx, step.task_type);
-  
-      row.innerHTML = `
-        <div class="step-head">
-          <div class="step-name">${escapeHtml(displayName)}</div>
-        </div>
-  
-        <div class="step-section">
-          <div class="step-section-title">Overrides</div>
-          <div class="params-grid params-grid-2col" data-override-grid="1"></div>
-  
-          <div class="override-actions" style="margin-top:6px;">
-            <button class="button-ghost" type="button" data-clear-step="${idx}">
-              Clear step overrides
-            </button>
-          </div>
-        </div>
-      `;
-  
-      const overGrid = row.querySelector('[data-override-grid="1"]');
-  
-      // If there are no known keys, show a friendly message
-      if (!keys.length) {
-        overGrid.innerHTML = `<div class="muted small">No overridable params for this step</div>`;
-      } else {
-        keys.forEach((key) => {
-          const spec = getSpecCI(paramSpec, key) || {};
-          const typeHint = spec.type ? ` – ${spec.type}` : "";
-  
-          // find any existing override by case-insensitive match
-          let existingVal;
-          const nk = norm(key);
-          for (const k of Object.keys(stepDraft)) {
-            if (norm(k) === nk) {
-              existingVal = stepDraft[k];
-              // normalize stored key casing to our canonical key
-              if (k !== key) {
-                delete stepDraft[k];
-                stepDraft[key] = existingVal;
-              }
-              break;
-            }
-          }
-  
-          const field = document.createElement("div");
-          field.className = "param-field";
-  
-          const label = document.createElement("label");
-          label.textContent = key;
-  
-          const input = document.createElement("input");
-          input.type = "text";
-          input.autocomplete = "off";
-          input.spellcheck = false;
-          input.placeholder = `override${typeHint}`;
-          input.value = existingVal == null ? "" : String(existingVal);
-  
-          makeInputTypeable(input);
-  
-          input.addEventListener("input", () => {
-            const v = input.value.trim();
-  
-            if (v === "") {
-              // remove any casing variant
-              for (const k of Object.keys(stepDraft)) {
-                if (norm(k) === nk) delete stepDraft[k];
-              }
-              input.classList.remove("is-invalid");
-              return;
-            }
-  
-            // parse using spec.type when available; else store raw string
-            if (spec.type) {
-              const parsed = parseByType(v, spec.type);
-              if (parsed.__invalid) {
-                input.classList.add("is-invalid");
-                return;
-              }
-              input.classList.remove("is-invalid");
-              // normalize and store
-              for (const k of Object.keys(stepDraft)) {
-                if (norm(k) === nk) delete stepDraft[k];
-              }
-              stepDraft[key] = parsed.value;
-            } else {
-              input.classList.remove("is-invalid");
-              for (const k of Object.keys(stepDraft)) {
-                if (norm(k) === nk) delete stepDraft[k];
-              }
-              stepDraft[key] = v;
-            }
-          });
-  
-          field.appendChild(label);
-          field.appendChild(input);
-          overGrid.appendChild(field);
-        });
-      }
-  
-      // clear step overrides
-      row.querySelector(`[data-clear-step="${idx}"]`).onclick = () => {
-        OVERRIDES_DRAFT[sessionId].steps[String(idx)] = {};
-        renderParamsPanel(li, protocol, sessionId);
-      };
-  
-      panel.appendChild(row);
+
+    keys.forEach((key) => {
+      const spec = getSpecCI(paramSpec, key) || {};
+      const typeHint = spec.type ? ` – ${spec.type}` : "";
+      const tag = spec.tag ?? key;
+
+      const protocolVal = getValCI(protocolParams, key);
+      const hasProtocol = isPopulatedValue(protocolVal);
+
+      const defaultVal = getSpecDefaultValue(spec);
+      const hasDefault = isPopulatedValue(defaultVal);
+
+      // What we display:
+      // - prefer protocol populated value
+      // - else spec default if exists
+      // - else empty (missing)
+      const displayVal = hasProtocol ? protocolVal : (hasDefault ? defaultVal : "");
+      const isMissing = !hasProtocol && !hasDefault;
+
+      const sourceLabel = hasProtocol ? "protocol" : (hasDefault ? "default" : "missing");
+
+      const field = document.createElement("div");
+      field.className = "param-field";
+
+      const label = document.createElement("label");
+      label.textContent = ""; // clear (and avoids mixed text node + spans)
+
+      // name span (gets ellipsis via CSS)
+      const name = document.createElement("span");
+      name.className = `param-name param-name-${sourceLabel}`;
+      name.title = key;
+
+      name.textContent =
+        key.length > MAX_LABEL_CHARS
+          ? key.slice(0, MAX_LABEL_CHARS - 1) + "…"
+          : key;
+
+      label.appendChild(name);
+
+
+
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.disabled = true;
+
+      input.placeholder = `${String(tag)}${typeHint}`;
+      input.value = displayVal === "" ? "" : formatAny(displayVal);
+
+      if (isMissing) input.classList.add("is-missing");
+
+      field.appendChild(label);
+      field.appendChild(input);
+      grid.appendChild(field);
     });
-  }
-    
-  // --------------------------------------------------
-  // Hydrate card
-  // --------------------------------------------------
-  async function hydrateCard(li) {
-    if (!li || li.getAttribute("data-hydrated") === "1") return;
 
-    const sessionId = Number(li.getAttribute("data-session-id"));
-    if (!sessionId) return;
+    panel.appendChild(row);
+  });
+}
 
-    if (!CURRENT_PILOT_STATE?.connected) return;
+  // ================================
+// PATCH 1: FULL hydrateCard(li)
+// ================================
+// Drop-in replacement for your existing hydrateCard(li)
+// Changes:
+// - NEVER auto-seed OVERRIDES_DRAFT from latest run overrides
+// - Stores latest DB overrides in OVERRIDES_LAST instead
+// - Initializes OVERRIDES_DIRTY[sessionId] once
+async function hydrateCard(li) {
+  if (!li || li.getAttribute("data-hydrated") === "1") return;
 
+  const sessionId = Number(li.getAttribute("data-session-id"));
+  if (!sessionId) return;
+
+  if (!CURRENT_PILOT_STATE?.connected) return;
+
+  li.classList.add("is-loading");
+
+  try {
     const detail = await fetchSessionDetailCached(sessionId);
     if (!detail) {
-      li.querySelector(".session-title").textContent = "Failed to load";
+      const t = li.querySelector(".session-title");
+      if (t) t.textContent = "Failed to load";
       return;
     }
 
+    // Subject filtering
     if (FILTER_SUBJECTS.length > 0 && !sessionHasAllSubjects(detail, FILTER_SUBJECTS)) {
       li.remove();
       return;
@@ -991,14 +1832,41 @@
     }
 
     const protocolId = runs[0].protocol_id;
+
     const protocol = await fetchProtocolCached(protocolId);
     if (!protocol) {
-      li.querySelector(".session-title").textContent = "Failed to load";
+      const t = li.querySelector(".session-title");
+      if (t) t.textContent = "Failed to load";
       return;
     }
 
     const latest = await fetchLatestForSession(sessionId);
     const run = latest?.run;
+
+    // -------------------------------
+    // ✅ NEW OVERRIDES BEHAVIOR
+    // -------------------------------
+    // Keep last-run overrides separate from draft overrides.
+    // Draft starts empty unless user edits during this page load.
+    if (typeof window.OVERRIDES_LAST !== "undefined") {
+      const dbOverrides = run?.overrides;
+      window.OVERRIDES_LAST[sessionId] =
+        (dbOverrides && typeof dbOverrides === "object")
+          ? JSON.parse(JSON.stringify(dbOverrides))
+          : null;
+    }
+
+    if (!OVERRIDES_DRAFT[sessionId] || typeof OVERRIDES_DRAFT[sessionId] !== "object") {
+      OVERRIDES_DRAFT[sessionId] = { steps: {} };
+    }
+    if (!OVERRIDES_DRAFT[sessionId].steps || typeof OVERRIDES_DRAFT[sessionId].steps !== "object") {
+      OVERRIDES_DRAFT[sessionId].steps = {};
+    }
+
+    if (typeof window.OVERRIDES_DIRTY !== "undefined") {
+      if (window.OVERRIDES_DIRTY[sessionId] == null) window.OVERRIDES_DIRTY[sessionId] = false;
+    }
+
     const prog = latest?.progress;
 
     const statusText = run?.status ? String(run.status) : "never run";
@@ -1010,38 +1878,79 @@
         ? `step ${prog.current_step ?? "?"}, trial ${prog.current_trial ?? "?"}`
         : "";
 
-    li.querySelector(".session-title").textContent = protocol.name;
+    // -------------------------------
+    // title clickable => overrides modal
+    // -------------------------------
+    const titleEl = li.querySelector(".session-title");
+    if (titleEl) {
+      titleEl.innerHTML = "";
 
+      const link = document.createElement("a");
+      link.href = "#";
+      link.textContent = protocol.name;
+      link.style.color = "var(--lavender)";
+      link.style.textDecoration = "none";
+      link.style.cursor = "pointer";
+
+      link.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.showSessionOverridesModal === "function") {
+          await window.showSessionOverridesModal(sessionId, protocolId);
+        }
+      });
+
+      link.addEventListener("mouseenter", () => { link.style.textDecoration = "underline"; });
+      link.addEventListener("mouseleave", () => { link.style.textDecoration = "none"; });
+
+      titleEl.appendChild(link);
+    }
+
+    // Subjects
     const subjectsWrap = li.querySelector(".subject-tags");
-    subjectsWrap.innerHTML = "";
-    runs.forEach((r) => {
-      const pill = document.createElement("span");
-      pill.className = "subject-tag";
-      pill.textContent = r.subject_name;
-      subjectsWrap.appendChild(pill);
-    });
+    if (subjectsWrap) {
+      subjectsWrap.innerHTML = "";
+      runs.forEach((r) => {
+        const pill = document.createElement("span");
+        pill.className = "subject-tag";
+        pill.textContent = r.subject_name;
+        subjectsWrap.appendChild(pill);
+      });
+    }
 
+    // Right side params (read-only)
     renderParamsPanel(li, protocol, sessionId);
 
+    // Meta
     const meta = li.querySelector(".session-meta");
-    meta.innerHTML = `
-      <div class="meta-row meta-row-top">
-        <span class="badge status-${escapeHtml(statusText)}">${escapeHtml(statusText)}</span>
-        ${modeText ? `<span class="meta-pill">${escapeHtml(modeText)}</span>` : ""}
-        ${progText ? `<span class="meta-pill">${escapeHtml(progText)}</span>` : ""}
-      </div>
-
-      ${(started || ended) ? `
-        <div class="meta-row meta-row-dates">
-          ${started ? `<span class="meta-date">Started ${escapeHtml(started)}</span>` : ""}
-          ${ended ? `<span class="meta-date">Ended ${escapeHtml(ended)}</span>` : ""}
+    if (meta) {
+      meta.innerHTML = `
+        <div class="meta-row meta-row-top">
+          <span class="badge status-${escapeHtml(statusText)}">${escapeHtml(statusText)}</span>
+          ${modeText ? `<span class="meta-pill">${escapeHtml(modeText)}</span>` : ""}
+          ${progText ? `<span class="meta-pill">${escapeHtml(progText)}</span>` : ""}
         </div>
-      ` : ""}
-    `;
+
+        ${(started || ended) ? `
+          <div class="meta-row meta-row-dates">
+            ${started ? `<span class="meta-date">Started ${escapeHtml(started)}</span>` : ""}
+            ${ended ? `<span class="meta-date">Ended ${escapeHtml(ended)}</span>` : ""}
+          </div>
+        ` : ""}
+      `;
+    }
 
     li.setAttribute("data-hydrated", "1");
     refreshActionButtonsOnly();
+  } catch (err) {
+    console.error("hydrateCard error:", err);
+    const t = li.querySelector(".session-title");
+    if (t) t.textContent = "Failed to load";
+  } finally {
+    li.classList.remove("is-loading");
   }
+}
+
 
   // --------------------------------------------------
   // Load sessions

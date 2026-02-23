@@ -113,6 +113,75 @@ async function loadTasks() {
 }
 
 
+function setStatus(msg, isError = false) {
+  statusLine.textContent = msg;
+  statusLine.style.color = isError ? "crimson" : "";
+}
+
+async function onSaveProtocol() {
+  try {
+    // ---- gather name/description from DOM (adjust IDs to your HTML) ----
+    const nameEl = document.getElementById("protocol-name");
+    const descEl = document.getElementById("protocol-desc");
+
+    const name = (nameEl?.value || "").trim();
+    const description = (descEl?.value || "").trim() || null;
+
+    if (!name) {
+      setStatus("Protocol name is required.", true);
+      return;
+    }
+    if (steps.length === 0) {
+      setStatus("Add at least one step before saving.", true);
+      return;
+    }
+
+    // ---- build steps payload ----
+    const stepsPayload = steps.map((s, idx) => {
+      // merge user-entered params with graduation block (if set)
+      const params = { ...(s.params || {}) };
+
+      if (s.graduation_ntrials != null && Number.isFinite(s.graduation_ntrials)) {
+        params.graduation = {
+          type: "NTrials",
+          value: { current_trial: Number(s.graduation_ntrials) },
+        };
+      }
+
+      return {
+        order_index: idx,
+        step_name: `${idx + 1}. ${s.task_type}`, // or let user edit a name later
+        task_type: s.task_type,
+        params: params,
+      };
+    });
+
+    const payload = {
+      name,
+      description,
+      steps: stepsPayload,
+    };
+
+    setStatus("Saving...");
+    saveBtn.disabled = true;
+
+    // IMPORTANT: your backend route is /protocols (not /api/protocols) in the code you pasted.
+    // If you have a reverse proxy that prefixes /api, change this to "/api/protocols".
+    const created = await apiPost("api/protocols", payload);
+
+    setStatus(`✅ Saved protocol "${created.name}" (id=${created.id})`);
+    // optional: clear editor
+    // steps = [];
+    // renderSteps();
+  } catch (err) {
+    console.error(err);
+    setStatus(`❌ Save failed: ${err?.message || err}`, true);
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+
 // ======================================================
 // STEPS
 // ======================================================
@@ -139,6 +208,84 @@ function addStep(task) {
 
 
 function renderSteps() {
+  // ---------- Tooltip (single floating element, fixed) ----------
+  let tip = document.getElementById("ui-tooltip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "ui-tooltip";
+    tip.className = "ui-tooltip";
+    tip.style.display = "none";
+    document.body.appendChild(tip);
+  }
+
+  const showTip = (text, x, y) => {
+    if (!text) return;
+    tip.textContent = text;
+    tip.style.display = "block";
+
+    const pad = 12;
+
+    // temp position
+    tip.style.left = `${x + 12}px`;
+    tip.style.top = `${y + 14}px`;
+
+    const r = tip.getBoundingClientRect();
+    let left = x + 12;
+    let top = y + 14;
+
+    if (left + r.width > window.innerWidth - pad) left = window.innerWidth - r.width - pad;
+    if (top + r.height > window.innerHeight - pad) top = y - r.height - 14;
+
+    tip.style.left = `${Math.max(pad, left)}px`;
+    tip.style.top = `${Math.max(pad, top)}px`;
+  };
+
+  const hideTip = () => {
+    tip.style.display = "none";
+  };
+
+  // ---------- Helpers ----------
+  const normType = (t) => String(t || "").trim().toLowerCase();
+
+  const formatAny = (v) => {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    try { return JSON.stringify(v); } catch { return String(v); }
+  };
+
+  const parseByType = (raw, type) => {
+    const t = normType(type);
+    if (!t) return { value: raw };
+    const s = String(raw).trim();
+
+    if (t.includes("int")) {
+      const n = Number(s);
+      if (!Number.isFinite(n) || !Number.isInteger(n)) return { __invalid: true };
+      return { value: n };
+    }
+
+    if (t.includes("float") || t.includes("number") || t.includes("double")) {
+      const n = Number(s);
+      if (!Number.isFinite(n)) return { __invalid: true };
+      return { value: n };
+    }
+
+    if (t.includes("bool")) {
+      const v = s.toLowerCase();
+      if (["true", "1", "yes", "y"].includes(v)) return { value: true };
+      if (["false", "0", "no", "n"].includes(v)) return { value: false };
+      return { __invalid: true };
+    }
+
+    if (t.includes("json") || t.includes("dict") || t.includes("list") || t.includes("object")) {
+      try { return { value: JSON.parse(s) }; } catch { return { __invalid: true }; }
+    }
+
+    return { value: s };
+  };
+
+  // ---------- Render ----------
   stepsList.innerHTML = "";
 
   steps.forEach((step, idx) => {
@@ -156,7 +303,6 @@ function renderSteps() {
     headerActions.style.display = "flex";
     headerActions.style.gap = "6px";
 
-    // Collapse toggle
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "icon-btn";
     toggleBtn.textContent = step.collapsed ? "▸" : "▾";
@@ -165,7 +311,6 @@ function renderSteps() {
       renderSteps();
     };
 
-    // Remove button
     const removeBtn = document.createElement("button");
     removeBtn.className = "icon-btn icon-danger";
     removeBtn.textContent = "🗑️";
@@ -195,21 +340,48 @@ function renderSteps() {
       const label = document.createElement("label");
       label.textContent = key;
 
+      // Tooltip text (ONLY stored here, no CSS selectors, no title)
+      const tag = spec?.tag ?? key;
+      const typeStr = spec?.type ? ` – ${spec.type}` : "";
+      label.dataset.tip = `${tag}${typeStr}`;
+
+      // Single tooltip system (JS)
+      label.addEventListener("mouseenter", (e) => showTip(label.dataset.tip, e.clientX, e.clientY));
+      label.addEventListener("mousemove", (e) => showTip(label.dataset.tip, e.clientX, e.clientY));
+      label.addEventListener("mouseleave", hideTip);
+
       const input = document.createElement("input");
       input.type = "text";
+      input.autocomplete = "off";
+      input.spellcheck = false;
 
-      // 🔑 Tag + type inside placeholder
-      const tag = spec.tag ?? key;
-      const type = spec.type ? ` – ${spec.type}` : "";
-      input.placeholder = `${tag}${type}`;
+      const defVal =
+        spec?.default !== undefined && spec?.default !== null
+          ? formatAny(spec.default)
+          : "";
+      input.placeholder = defVal;
 
-      input.value = step.params[key] ?? "";
+      input.value = step.params[key] === undefined ? "" : formatAny(step.params[key]);
 
       input.oninput = () => {
-        if (input.value.trim() === "") {
+        const v = input.value.trim();
+        if (v === "") {
           delete step.params[key];
+          input.classList.remove("is-invalid");
+          return;
+        }
+
+        if (spec?.type) {
+          const parsed = parseByType(v, spec.type);
+          if (parsed.__invalid) {
+            input.classList.add("is-invalid");
+            return;
+          }
+          input.classList.remove("is-invalid");
+          step.params[key] = parsed.value;
         } else {
-          step.params[key] = input.value;
+          input.classList.remove("is-invalid");
+          step.params[key] = v;
         }
       };
 
@@ -234,9 +406,7 @@ function renderSteps() {
     gradInput.value = step.graduation_ntrials ?? "";
 
     gradInput.oninput = () => {
-      step.graduation_ntrials = gradInput.value
-        ? parseInt(gradInput.value, 10)
-        : null;
+      step.graduation_ntrials = gradInput.value ? parseInt(gradInput.value, 10) : null;
     };
 
     gradRow.appendChild(gradLabel);
@@ -247,78 +417,14 @@ function renderSteps() {
     li.appendChild(body);
     stepsList.appendChild(li);
   });
+
+  // Hide tooltip in common “stuck” cases
+  stepsList.onmouseleave = hideTip;
+  window.addEventListener("scroll", hideTip, { passive: true });
+  window.addEventListener("blur", hideTip);
+  saveBtn.addEventListener("click", onSaveProtocol);
+  
 }
-
-// ======================================================
-// SAVE PROTOCOL
-// ======================================================
-
-saveBtn.onclick = async () => {
-  try {
-    const nameInput = document.getElementById("protocol-name");
-    const descInput = document.getElementById("protocol-desc");
-
-    const name = nameInput?.value.trim();
-    const description = descInput?.value.trim() || null;
-
-    if (!name) {
-      statusLine.textContent = "Protocol name is required.";
-      return;
-    }
-
-    if (steps.length === 0) {
-      statusLine.textContent = "Add at least one step.";
-      return;
-    }
-
-    statusLine.textContent = "Saving protocol…";
-
-    // 🔑 Build payload EXACTLY matching ProtocolCreate
-    const payload = {
-      name,
-      description,
-      steps: steps.map((step, idx) => {
-        const params = { ...step.params };
-
-        // 🔑 Graduation lives INSIDE params
-        if (step.graduation_ntrials) {
-          params.graduation = {
-            type: "NTrials",
-            value: {
-              current_trial: step.graduation_ntrials,
-            },
-          };
-        }
-
-        return {
-          order_index: idx,
-          step_name: `Step ${idx + 1}: ${step.task_type}`,
-          task_type: step.task_type,
-
-          // ✅ FIX: never send null; send {} when empty
-          params: Object.keys(params).length > 0 ? params : {},
-        };
-      }),
-    };
-
-    await apiPost("/api/protocols", payload);
-
-    statusLine.textContent = "Protocol saved successfully ✔";
-
-    window.location.assign("/protocols-ui");
-    return;
-
-    // Reset UI
-    steps = [];
-    renderSteps();
-    nameInput.value = "";
-    descInput.value = "";
-
-  } catch (err) {
-    console.error(err);
-    statusLine.textContent = "Failed to save protocol.";
-  }
-};
 
 
 // ======================================================

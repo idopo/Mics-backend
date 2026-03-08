@@ -349,6 +349,14 @@ async def create_protocol_ui(payload: dict):
         return resp.json()
 
 
+@app.get("/api/sessions/{session_id}/pilots/{pilot_id}/runs")
+async def list_runs_ui(session_id: int, pilot_id: int):
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/sessions/{session_id}/pilots/{pilot_id}/runs")
+        resp.raise_for_status()
+        return resp.json()
+
+
 @app.post("/api/session-runs/{run_id}/stop")
 async def stop_session_run_ui(run_id: int):
     # Only tell orchestrator. Orchestrator is authoritative and will mark backend STOPPED.

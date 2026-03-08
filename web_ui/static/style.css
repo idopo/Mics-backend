@@ -2871,4 +2871,171 @@ input.is-invalid{
     line-height: 1.1 !important;
     min-height: 16px !important;
   }
+  /* =========================================
+   Run History Table (Overrides Modal)
+   ========================================= */
+
+.runs-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.runs-table th {
+  text-align: left;
+  padding: 10px 8px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.runs-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.runs-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Row hover */
+.runs-table tbody tr:hover {
+  background: rgba(182,166,255,0.06);
+}
+
+/* Status badges inside table */
+.runs-table td:nth-child(3) {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* Status coloring */
+.runs-table td:nth-child(3):contains("running") {
+  color: var(--green);
+}
+
+.runs-table td:nth-child(3):contains("stopped") {
+  color: var(--warn);
+}
+
+.runs-table td:nth-child(3):contains("error") {
+  color: var(--error);
+}
+
+.runs-table td:nth-child(3):contains("completed") {
+  color: var(--lavender);
+}
+
+/* Mode subtle styling */
+.runs-table td:nth-child(4) {
+  font-size: 0.75rem;
+  color: var(--lavender);
+  text-transform: capitalize;
+  opacity: 0.9;
+}
+
+/* Date formatting */
+.runs-table td:nth-child(5),
+.runs-table td:nth-child(6) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.run-status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.run-status-running {
+  color: var(--green);
+  border-color: rgba(143,211,182,0.35);
+  background: rgba(143,211,182,0.08);
+}
+
+.run-status-stopped {
+  color: var(--warn);
+  border-color: rgba(242,195,143,0.35);
+  background: rgba(242,195,143,0.08);
+}
+
+.run-status-error {
+  color: var(--error);
+  border-color: rgba(224,122,122,0.35);
+  background: rgba(224,122,122,0.08);
+}
+
+.run-status-completed {
+  color: var(--lavender);
+  border-color: rgba(182,166,255,0.35);
+  background: rgba(182,166,255,0.08);
+}
+
+/* =========================================
+   Overrides Modal Layout Stabilization
+   ========================================= */
+
+/* Make modal a vertical flex layout */
+.modal.overrides-modal {
+  display: flex;
+  flex-direction: column;
+  height: 80vh;              /* fixed height */
+  max-height: 80vh;
+}
+
+/* Tabs fixed height */
+.modal.overrides-modal .modal-tabs {
+  flex: 0 0 auto;
+}
+
+/* Body should fill remaining space */
+.modal.overrides-modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;             /* CRITICAL for proper scroll */
+  overflow: hidden;          /* no resize */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Both tab panels occupy SAME space */
+.modal.overrides-modal #tab-overrides,
+.modal.overrides-modal #tab-history {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Action bar fixed */
+.modal.overrides-modal .modal-actions {
+  flex: 0 0 auto;
+}
+
+/* 🔥 Hard override: hidden must always hide */
+.modal-actions[hidden] {
+  display: none !important;
+}
+
+/* =========================================
+   HARD LOCK: hidden always wins
+   ========================================= */
+
+   .modal.overrides-modal .modal-actions[hidden]{
+    display: none !important;
+  }
+
+  /* Add breathing room around Apply overrides */
+.modal.overrides-modal .modal-actions{
+  padding: 16px 20px !important;
+  border-top: 1px solid var(--border);
+}
+
   

@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
+from sqlalchemy import func
 from db import engine, get_session
 from models import (
     Subject,
@@ -674,28 +675,37 @@ def create_session_run(
             return recoverable
 
         # --------------------------------------------------
-        # 3) Restart: reuse row, reset progress, keep index
+        # 3) Restart: NEW ROW, SAME session_run_index
         # --------------------------------------------------
         if recoverable and mode == "restart":
-            prog = (
-                db.query(RunProgress)
-                .filter(RunProgress.run_id == recoverable.id)
-                .one_or_none()
-            )
-            if prog:
-                db.delete(prog)
-                db.flush()
 
-            recoverable.status = SessionRunStatus.PENDING
-            recoverable.started_at = datetime.utcnow()
-            recoverable.ended_at = None
-            recoverable.error_type = None
-            recoverable.error_message = None
-            recoverable.mode = mode
-            # IMPORTANT: do not touch overrides here unless you want restart to accept new overrides
+            same_index = recoverable.session_run_index
+
+            # Use overrides from payload if provided,
+            # otherwise inherit from previous run
+            effective_overrides = payload.overrides
+            if effective_overrides is None:
+                effective_overrides = recoverable.overrides
+
+            new_run = SessionRun(
+                session_id=recoverable.session_id,
+                pilot_id=recoverable.pilot_id,
+                status=SessionRunStatus.PENDING,
+                subject_key="",  # will set after flush
+                mode=mode,
+                overrides=effective_overrides,
+                session_run_index=same_index,  # ✅ SAME INDEX
+            )
+
+            db.add(new_run)
+            db.flush()
+
+            new_run.subject_key = f"bp_s{new_run.session_id}_r{new_run.id}"
+
             db.commit()
-            db.refresh(recoverable)
-            return recoverable
+            db.refresh(new_run)
+            return new_run
+
 
         # --------------------------------------------------
         # 4) Create a BRAND NEW SessionRun row
@@ -766,6 +776,41 @@ def create_session_run(
         db.refresh(run)
         return run
 
+    finally:
+        db.close()
+
+
+
+@app.get("/sessions/{session_id}/pilots/{pilot_id}/runs")
+def list_session_runs_for_pilot(
+    session_id: int,
+    pilot_id: int,
+    _: dict = Depends(verify_token),
+):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        runs = (
+            db.query(SessionRun)
+            .filter(
+                SessionRun.session_id == session_id,
+                SessionRun.pilot_id == pilot_id,
+            )
+            .order_by(SessionRun.id.desc())
+            .all()
+        )
+
+        return [
+            {
+                "id": r.id,
+                "session_run_index": r.session_run_index,
+                "status": r.status,
+                "mode": r.mode,
+                "started_at": r.started_at,
+                "ended_at": r.ended_at,
+                "error_type": r.error_type,
+            }
+            for r in runs
+        ]
     finally:
         db.close()
 
@@ -1410,16 +1455,37 @@ def start_options(session_id: int, pilot_id: int, _: dict = Depends(verify_token
         )
 
         # recoverable STOPPED / ERROR run
-        recoverable = (
-            db.query(SessionRun)
+        
+
+        # Subquery: get max id per session_run_index
+        subq = (
+            db.query(
+                SessionRun.session_run_index,
+                func.max(SessionRun.id).label("max_id")
+            )
             .filter(
                 SessionRun.session_id == session_id,
                 SessionRun.pilot_id == pilot_id,
-                SessionRun.status.in_([SessionRunStatus.STOPPED, SessionRunStatus.ERROR]),
+            )
+            .group_by(SessionRun.session_run_index)
+            .subquery()
+        )
+
+        # Join to only consider latest physical attempts
+        latest_runs = (
+            db.query(SessionRun)
+            .join(
+                subq,
+                SessionRun.id == subq.c.max_id
+            )
+            .filter(
+                SessionRun.status.in_([SessionRunStatus.STOPPED, SessionRunStatus.ERROR])
             )
             .order_by(SessionRun.id.desc())
-            .first()
         )
+
+        recoverable = latest_runs.first()
+
 
         progress = None
         if recoverable:

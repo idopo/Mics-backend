@@ -394,6 +394,11 @@ async def get_start_options(session_id: int, pilot_id: int):
         return resp.json()
 
 
+@app.get("/react/{path:path}")
+async def react_spa(request: Request, path: str = ""):
+    return templates.TemplateResponse("react/index.html", {"request": request})
+
+
 
 
 

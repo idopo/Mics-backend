@@ -24,7 +24,7 @@ interface Props {
 const MAX_LABEL = 15
 function norm(s: string) { return s.trim().toLowerCase() }
 function sanitizeStepTitle(stepName: string, idx: number, taskType: string) {
-  const s = stepName.trim().replace(/^step\s*\d+\s*[:\-–]?\s*/i, '').trim()
+  const s = stepName.trim().replace(/^step\s*\d+\s*[:\-–]?\s*/i, '').replace(/^\d+\.\s*/, '').trim()
   const label = s || taskType.trim() || 'Unnamed step'
   const clean = taskType && label.toLowerCase() === taskType.toLowerCase() ? taskType : label
   return `Step ${idx + 1}: ${clean}`

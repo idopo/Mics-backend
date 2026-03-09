@@ -31,42 +31,50 @@ function PilotCard({ name, info }: { name: string; info: PilotLive }) {
     !connected ? 'pilot-offline' : isRunning ? 'pilot-running' : 'pilot-idle',
   ].join(' ')
 
+  const dotClass = !connected ? 'dot-offline' : isRunning ? 'dot-running' : 'dot-idle'
+
   return (
     <div
       className={cardClass}
       onClick={connected ? () => navigate(`/pilots/${name}/sessions-ui`) : undefined}
       style={connected ? { cursor: 'pointer' } : undefined}
     >
-      <h2>{name}</h2>
+      <div className="pilot-card-header">
+        <h2>{name}</h2>
+        <span className={`pilot-status-dot ${dotClass}`} />
+      </div>
       <div className={`status${!connected ? ' pilot-offline-badge' : isRunning ? ' connected' : ' disconnected'}`}>
         {!connected ? 'OFFLINE' : info.state}
       </div>
 
       {connected && run && (
-        <>
-          <div className="status-line" style={{ marginTop: '8px' }}>
-            <strong>RUNNING</strong><br />
-            Session: {run.session_id}<br />
-            Subject: {run.subject_key ?? '—'}<br />
-            Time: {elapsed}
+        <div className="pilot-run-info">
+          <div className="pilot-run-grid">
+            <span className="run-label">Session</span>
+            <span className="run-value">{run.session_id}</span>
+            <span className="run-label">Subject</span>
+            <span className="run-value">{run.subject_key ?? '—'}</span>
+            <span className="run-label">Elapsed</span>
+            <span className="run-value run-elapsed">{elapsed}</span>
           </div>
           <button
-            className="button-secondary"
+            className="button-danger"
+            style={{ marginTop: '12px', width: '100%' }}
             onClick={(e) => {
               e.stopPropagation()
               fetch(`/api/session-runs/${run.id}/stop`, { method: 'POST' }).catch(() => {})
             }}
           >
-            STOP
+            ■ STOP
           </button>
-        </>
+        </div>
       )}
     </div>
   )
 }
 
 export default function Index() {
-  const { lastMessage, connected } = useWebSocket<Record<string, PilotLive>>('/ws/pilots')
+  const { lastMessage } = useWebSocket<Record<string, PilotLive>>('/ws/pilots')
 
   const pilots = useMemo(() => {
     if (!lastMessage) return []
@@ -74,9 +82,9 @@ export default function Index() {
   }, [lastMessage])
 
   return (
-    <main>
+    <div className="pilots-page">
       <span className="subtitle">
-        Connected Pilots {connected ? '●' : '○'}
+        Connected Pilots
       </span>
       <div className="grid" style={{ marginTop: '1rem' }}>
         {pilots.length === 0 && (
@@ -86,6 +94,6 @@ export default function Index() {
           <PilotCard key={name} name={name} info={data} />
         ))}
       </div>
-    </main>
+    </div>
   )
 }

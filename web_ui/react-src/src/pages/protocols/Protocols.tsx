@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getProtocols, assignProtocol } from '../../api/protocols'
 import { getSubjects } from '../../api/subjects'
+import ProtocolInfoModal from '../../components/ProtocolInfoModal'
 
 export default function Protocols() {
   const qc = useQueryClient()
   const [selectedProtocol, setSelectedProtocol] = useState<number | null>(null)
+  const [infoProtocolId, setInfoProtocolId] = useState<number | null>(null)
   const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
 
@@ -56,10 +58,18 @@ export default function Protocols() {
               <li
                 key={p.id}
                 className={`fade-in-item${selectedProtocol === p.id ? ' selected' : ''}`}
-                style={{ animationDelay: `${Math.min(idx * 18, 180)}ms`, cursor: 'pointer' }}
+                style={{ animationDelay: `${Math.min(idx * 18, 180)}ms`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}
                 onClick={() => setSelectedProtocol(p.id)}
               >
-                {p.name}
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                <button
+                  type="button"
+                  title="Protocol info"
+                  style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '2px 4px', borderRadius: '4px', fontSize: '0.8rem', lineHeight: 1 }}
+                  onClick={(e) => { e.stopPropagation(); setInfoProtocolId(p.id) }}
+                >
+                  ⓘ
+                </button>
               </li>
             ))}
           </ul>
@@ -106,6 +116,13 @@ export default function Protocols() {
 
         {message && <div className="status-line">{message}</div>}
       </section>
+
+      {infoProtocolId !== null && (
+        <ProtocolInfoModal
+          protocolId={infoProtocolId}
+          onClose={() => setInfoProtocolId(null)}
+        />
+      )}
     </div>
   )
 }

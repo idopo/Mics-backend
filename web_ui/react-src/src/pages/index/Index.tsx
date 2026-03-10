@@ -1,6 +1,8 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { apiFetch } from '../../api/client'
 import type { PilotLive } from '../../types'
 
 function useElapsed(startedAt: string | null | undefined): string {
@@ -76,10 +78,19 @@ function PilotCard({ name, info }: { name: string; info: PilotLive }) {
 export default function Index() {
   const { lastMessage } = useWebSocket<Record<string, PilotLive>>('/ws/pilots')
 
+  // Pre-fetch via REST so cards appear immediately (before WS delivers first message)
+  const { data: restData } = useQuery({
+    queryKey: ['pilots-live'],
+    queryFn: () => apiFetch<Record<string, PilotLive>>('/api/pilots'),
+    staleTime: 0,
+  })
+
+  const source = lastMessage ?? restData ?? null
+
   const pilots = useMemo(() => {
-    if (!lastMessage) return []
-    return Object.entries(lastMessage).map(([name, data]) => ({ name, data }))
-  }, [lastMessage])
+    if (!source) return []
+    return Object.entries(source).map(([name, data]) => ({ name, data }))
+  }, [source])
 
   return (
     <div className="pilots-page">

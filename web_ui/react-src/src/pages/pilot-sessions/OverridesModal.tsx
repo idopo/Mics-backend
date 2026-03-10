@@ -4,6 +4,7 @@ import { getProtocol } from '../../api/protocols'
 import { getLeafTasks } from '../../api/tasks'
 import { apiFetch } from '../../api/client'
 import type { Overrides, SessionRun } from '../../types'
+import ProtocolInfoContent from '../../components/ProtocolInfoContent'
 
 interface Props {
   sessionId: number
@@ -61,7 +62,7 @@ function parseByType(raw: string, type: string): { value: unknown } | { invalid:
 }
 
 export default function OverridesModal({ sessionId, protocolId, pilotId, overrides, onSave, onClose }: Props) {
-  const [tab, setTab] = useState<'overrides' | 'history'>('overrides')
+  const [tab, setTab] = useState<'overrides' | 'history' | 'protocol-info'>('overrides')
 
   // draft: what will be sent on Apply — stores parsed values (or raw strings)
   const [draft, setDraft] = useState<Overrides>(() => JSON.parse(JSON.stringify(overrides ?? {})))
@@ -107,7 +108,7 @@ export default function OverridesModal({ sessionId, protocolId, pilotId, overrid
     }
   }
 
-  const switchTab = (t: 'overrides' | 'history') => {
+  const switchTab = (t: 'overrides' | 'history' | 'protocol-info') => {
     setTab(t)
     if (t === 'history' && runs === null && !historyError) loadHistory()
   }
@@ -231,6 +232,7 @@ export default function OverridesModal({ sessionId, protocolId, pilotId, overrid
         <div className="modal-tabs">
           <button className={`modal-tab${tab === 'overrides' ? ' active' : ''}`} onClick={() => switchTab('overrides')}>Overrides</button>
           <button className={`modal-tab${tab === 'history' ? ' active' : ''}`} onClick={() => switchTab('history')}>Run History</button>
+          <button className={`modal-tab${tab === 'protocol-info' ? ' active' : ''}`} onClick={() => switchTab('protocol-info')}>Protocol Info</button>
         </div>
 
         {/* Scrollable body */}
@@ -341,14 +343,18 @@ export default function OverridesModal({ sessionId, protocolId, pilotId, overrid
                         <td>{r.id}</td>
                         <td><span className={`badge status-${r.status}`}>{r.status}</span></td>
                         <td>{r.mode ?? ''}</td>
-                        <td>{r.started_at ? new Date(r.started_at).toLocaleDateString() : ''}</td>
-                        <td>{r.ended_at ? new Date(r.ended_at).toLocaleDateString() : ''}</td>
+                        <td>{r.started_at ? new Date(r.started_at.endsWith('Z') || r.started_at.includes('+') ? r.started_at : r.started_at + 'Z').toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : ''}</td>
+                        <td>{r.ended_at ? new Date(r.ended_at.endsWith('Z') || r.ended_at.includes('+') ? r.ended_at : r.ended_at + 'Z').toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : ''}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
             </div>
+          )}
+
+          {tab === 'protocol-info' && (
+            <ProtocolInfoContent protocolId={protocolId} />
           )}
         </div>
 

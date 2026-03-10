@@ -102,6 +102,10 @@ export interface TaskParam {
 
 export interface TaskDef {
   task_name: string
+  base_class?: string | null
+  hardware?: Record<string, unknown>
+  file_hash?: string
+  pilots?: string[]
   default_params?: Record<string, TaskParam>
   params?: Record<string, TaskParam>
 }

@@ -85,7 +85,7 @@ async def pilots_ws(ws: WebSocket):
                     if not await safe_send({}):
                         break
 
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
 
         except asyncio.CancelledError:
             # Server shutdown / task cancelled

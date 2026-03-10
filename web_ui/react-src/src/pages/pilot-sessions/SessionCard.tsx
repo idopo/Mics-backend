@@ -93,8 +93,9 @@ function SessionCard({ sessionId, latestRun, pilotId, activeRunId, activeSession
   const status = run?.status ?? 'never run'
   const isRunningHere = activeSessionId === sessionId
   const isPilotBusy = activeSessionId !== null && activeSessionId !== sessionId
-  const started = run?.started_at ? new Date(run.started_at).toLocaleDateString() : ''
-  const ended = run?.ended_at ? new Date(run.ended_at).toLocaleDateString() : ''
+  const toLocal = (iso: string) => new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z')
+  const started = run?.started_at ? toLocal(run.started_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : ''
+  const ended = run?.ended_at ? toLocal(run.ended_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : ''
 
   const isFiltered = filterSubjects.length > 0 && detail !== undefined && !detail.runs.some(
     r => filterSubjects.some(f => norm(r.subject_name) === norm(f))

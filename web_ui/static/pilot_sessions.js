@@ -468,7 +468,7 @@
 
   function formatDateDMY(iso) {
     if (!iso) return "";
-    const d = new Date(iso);
+    const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
     if (isNaN(d)) return "";
     const dd = String(d.getDate()).padStart(2, "0");
     const mm = String(d.getMonth() + 1).padStart(2, "0");

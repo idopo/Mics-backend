@@ -1605,6 +1605,18 @@ def list_leaf_tasks(_: dict = Depends(verify_token)):
             if t.task_name not in base_names
         ]
 
+        # Build task_id -> pilot names mapping
+        task_ids = [t.id for t in leaf_tasks]
+        caps = (
+            db.query(PilotTaskCapability, Pilot)
+            .join(Pilot, PilotTaskCapability.pilot_id == Pilot.id)
+            .filter(PilotTaskCapability.task_definition_id.in_(task_ids))
+            .all()
+        )
+        task_pilots: Dict[int, List[str]] = {}
+        for cap, pilot in caps:
+            task_pilots.setdefault(cap.task_definition_id, []).append(pilot.name)
+
         return [
             {
                 "id": t.id,
@@ -1614,6 +1626,7 @@ def list_leaf_tasks(_: dict = Depends(verify_token)):
                 "default_params": t.params or {},
                 "hardware": t.hardware or {},
                 "file_hash": t.file_hash,
+                "pilots": sorted(task_pilots.get(t.id, [])),
             }
             for t in leaf_tasks
         ]

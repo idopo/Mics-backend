@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MICS Documentation</title>
+<style>
+/* ─── TOKENS ─────────────────────────────────────────────── */
+:root {
+  --bg:          #07090e;
+  --surface:     #0c1018;
+  --surface-2:   #111827;
+  --border:      #1a2436;
+  --border-2:    #243349;
+  --teal:        #b48ef4;
+  --teal-dim:    rgba(180,142,244,.13);
+  --teal-glow:   rgba(180,142,244,.28);
+  --amber:       #f0a04a;
+  --amber-dim:   rgba(240,160,74,.1);
+  --red:         #f85149;
+  --red-dim:     rgba(248,81,73,.1);
+  --text:        #dde4ef;
+  --text-2:      #8a99b3;
+  --text-3:      #4a5a72;
+  --heading:     #f0f4ff;
+  --code-bg:     #0a0f1a;
+  --sidebar-w:   260px;
+  --header-h:    52px;
+  --font-sans:   'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-display:'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:   'Cascadia Code', 'Fira Code', 'SF Mono', 'Consolas', 'Courier New', monospace;
+  --radius:      6px;
+  --transition:  .18s cubic-bezier(.4,0,.2,1);
+}
+
+/* ─── RESET ──────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:16px}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-sans);
+  line-height:1.75;
+  font-weight:400;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+img{max-width:100%}
+
+/* ─── PROGRESS BAR ───────────────────────────────────────── */
+#progress{
+  position:fixed;top:0;left:0;
+  height:2px;width:0%;
+  background:linear-gradient(90deg, var(--teal), #d4b5ff);
+  z-index:1000;
+  transition:width .1s linear;
+  box-shadow:0 0 8px var(--teal-glow);
+}
+
+/* ─── TOP HEADER ─────────────────────────────────────────── */
+header.top{
+  position:fixed;top:2px;left:0;right:0;
+  height:var(--header-h);
+  background:rgba(7,9,14,.9);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  display:flex;align-items:center;
+  padding:0 20px 0 0;
+  z-index:200;
+  gap:0;
+}
+.logo-wrap{
+  width:var(--sidebar-w);
+  display:flex;align-items:center;gap:10px;
+  padding:0 20px;
+  border-right:1px solid var(--border);
+  height:100%;
+  flex-shrink:0;
+}
+.logo-mark{
+  width:28px;height:28px;
+  background:var(--teal);
+  border-radius:5px;
+  display:grid;place-items:center;
+  flex-shrink:0;
+}
+.logo-mark svg{display:block}
+.logo-text{
+  font-family:var(--font-display);
+  font-size:1rem;
+  font-weight:700;
+  color:var(--heading);
+  letter-spacing:.04em;
+}
+.logo-text span{color:var(--teal)}
+
+.header-center{
+  flex:1;
+  display:flex;align-items:center;
+  padding:0 20px;
+}
+#search-wrap{
+  position:relative;
+  max-width:340px;
+  width:100%;
+}
+#suggest-drop{
+  position:absolute;
+  top:calc(100% + 4px);
+  left:0;right:0;
+  background:var(--surface-2);
+  border:1px solid var(--border-2);
+  border-radius:var(--radius);
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+  z-index:400;
+  display:none;
+  overflow:hidden;
+  max-height:300px;
+  overflow-y:auto;
+}
+#suggest-drop.open{display:block}
+.sug-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 14px;
+  font-size:.84rem;
+  color:var(--text-2);
+  cursor:pointer;
+  border-bottom:1px solid var(--border);
+  transition:background var(--transition),color var(--transition);
+}
+.sug-item:last-child{border-bottom:none}
+.sug-item:hover,.sug-item.sug-active{
+  background:var(--teal-dim);
+  color:var(--teal);
+}
+.sug-level{
+  font-family:var(--font-mono);
+  font-size:.65rem;
+  color:var(--text-3);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:1px 5px;
+  flex-shrink:0;
+}
+.sug-item.sug-active .sug-level{color:var(--teal);border-color:rgba(180,142,244,.3)}
+.sug-text em{
+  font-style:normal;
+  color:var(--teal);
+  font-weight:600;
+}
+#search-wrap svg{
+  position:absolute;left:10px;top:50%;
+  transform:translateY(-50%);
+  color:var(--text-3);
+  pointer-events:none;
+}
+#search{
+  width:100%;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  color:var(--text);
+  font-family:var(--font-sans);
+  font-size:.85rem;
+  padding:6px 12px 6px 34px;
+  outline:none;
+  transition:border-color var(--transition), box-shadow var(--transition);
+}
+#search::placeholder{color:var(--text-3)}
+#search:focus{
+  border-color:var(--teal);
+  box-shadow:0 0 0 3px var(--teal-dim);
+}
+
+.version-badge{
+  margin-left:auto;
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  color:var(--text-3);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:3px 10px;
+  white-space:nowrap;
+}
+
+/* ─── LAYOUT ─────────────────────────────────────────────── */
+.layout{
+  display:flex;
+  padding-top:var(--header-h);
+  min-height:100vh;
+}
+
+/* ─── SIDEBAR ────────────────────────────────────────────── */
+nav.sidebar{
+  position:fixed;
+  top:var(--header-h);
+  left:0;
+  width:var(--sidebar-w);
+  height:calc(100vh - var(--header-h));
+  overflow-y:auto;
+  overflow-x:hidden;
+  border-right:1px solid var(--border);
+  background:var(--surface);
+  padding:20px 0 40px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
+nav.sidebar::-webkit-scrollbar{width:4px}
+nav.sidebar::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+
+.nav-section-label{
+  font-family:var(--font-mono);
+  font-size:.65rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text-3);
+  padding:14px 20px 6px;
+  margin-top:8px;
+}
+.nav-section-label:first-child{margin-top:0}
+
+nav.sidebar a{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 20px;
+  font-size:.82rem;
+  color:var(--text-2);
+  border-left:2px solid transparent;
+  transition:color var(--transition), border-color var(--transition), background var(--transition);
+  line-height:1.4;
+}
+nav.sidebar a:hover{
+  color:var(--text);
+  background:rgba(255,255,255,.03);
+  text-decoration:none;
+}
+nav.sidebar a.active{
+  color:var(--teal);
+  border-left-color:var(--teal);
+  background:var(--teal-dim);
+  font-weight:500;
+}
+nav.sidebar a .dot{
+  width:4px;height:4px;
+  border-radius:50%;
+  background:currentColor;
+  opacity:.5;
+  flex-shrink:0;
+}
+
+.nav-divider{
+  height:1px;
+  background:var(--border);
+  margin:12px 20px;
+}
+
+/* ─── MAIN CONTENT ───────────────────────────────────────── */
+main{
+  margin-left:var(--sidebar-w);
+  flex:1;
+  max-width:900px;
+  padding:48px 56px 120px;
+}
+
+/* ─── SECTIONS ───────────────────────────────────────────── */
+.doc-section{
+  padding-top:20px;
+  margin-bottom:56px;
+  scroll-margin-top:calc(var(--header-h) + 24px);
+}
+
+.section-eyebrow{
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--teal);
+  margin-bottom:8px;
+  display:flex;align-items:center;gap:8px;
+}
+.section-eyebrow::after{
+  content:'';flex:1;
+  height:1px;
+  background:linear-gradient(90deg, var(--teal-dim), transparent);
+  max-width:120px;
+}
+
+h1{
+  font-family:var(--font-display);
+  font-size:2rem;
+  font-weight:800;
+  color:var(--heading);
+  line-height:1.2;
+  letter-spacing:-.02em;
+  margin-bottom:16px;
+}
+h2{
+  font-family:var(--font-display);
+  font-size:1.35rem;
+  font-weight:700;
+  color:var(--heading);
+  margin-bottom:12px;
+  margin-top:36px;
+  letter-spacing:-.01em;
+}
+h2:first-child{margin-top:0}
+h3{
+  font-family:var(--font-display);
+  font-size:1rem;
+  font-weight:600;
+  color:var(--heading);
+  margin-bottom:8px;
+  margin-top:24px;
+}
+p{
+  color:var(--text);
+  font-size:1rem;
+  margin-bottom:16px;
+  max-width:72ch;
+  letter-spacing:.01em;
+}
+p:last-child{margin-bottom:0}
+
+/* ─── HERO ───────────────────────────────────────────────── */
+.hero{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:32px 36px;
+  margin-bottom:40px;
+  position:relative;
+  overflow:hidden;
+}
+.hero::before{
+  content:'';
+  position:absolute;top:0;right:0;
+  width:280px;height:280px;
+  background:radial-gradient(circle at 100% 0%, var(--teal-glow), transparent 70%);
+  pointer-events:none;
+}
+.hero-label{
+  font-family:var(--font-mono);
+  font-size:.7rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--teal);
+  margin-bottom:10px;
+}
+.hero h1{margin-bottom:10px}
+.hero p{color:var(--text-2);font-size:.95rem;max-width:60ch;margin-bottom:20px}
+.hero-chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  padding:4px 10px;
+  border-radius:20px;
+  border:1px solid var(--border-2);
+  color:var(--text-2);
+  background:var(--surface-2);
+}
+.chip.teal{color:var(--teal);border-color:rgba(180,142,244,.3);background:var(--teal-dim)}
+
+/* ─── SERVICE CARDS ──────────────────────────────────────── */
+.services-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin:20px 0;
+}
+.service-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:18px 20px;
+  transition:border-color var(--transition);
+}
+.service-card:hover{border-color:var(--border-2)}
+.service-card-top{
+  display:flex;align-items:center;gap:10px;
+  margin-bottom:8px;
+}
+.service-port{
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  color:var(--teal);
+  background:var(--teal-dim);
+  border:1px solid rgba(180,142,244,.2);
+  border-radius:4px;
+  padding:2px 7px;
+  margin-left:auto;
+}
+.service-name{
+  font-family:var(--font-display);
+  font-size:.9rem;
+  font-weight:600;
+  color:var(--heading);
+}
+.service-desc{
+  font-size:.8rem;
+  color:var(--text-2);
+  line-height:1.5;
+}
+
+/* ─── CODE BLOCKS ────────────────────────────────────────── */
+.code-block{
+  position:relative;
+  margin:16px 0;
+  border-radius:8px;
+  overflow:hidden;
+  border:1px solid var(--border);
+}
+.code-header{
+  display:flex;align-items:center;
+  background:var(--surface-2);
+  padding:8px 14px;
+  border-bottom:1px solid var(--border);
+  gap:8px;
+}
+.code-lang{
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--text-3);
+}
+.copy-btn{
+  margin-left:auto;
+  background:transparent;
+  border:1px solid var(--border-2);
+  color:var(--text-3);
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  padding:3px 9px;
+  border-radius:4px;
+  cursor:pointer;
+  transition:color var(--transition), border-color var(--transition);
+}
+.copy-btn:hover{color:var(--text);border-color:var(--text-3)}
+.copy-btn.copied{color:var(--teal);border-color:var(--teal)}
+pre{
+  background:var(--code-bg);
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--font-mono);
+  font-size:.8rem;
+  line-height:1.65;
+  color:#a0b4cc;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
+pre::-webkit-scrollbar{height:4px}
+pre::-webkit-scrollbar-thumb{background:var(--border-2)}
+code.inline{
+  font-family:var(--font-mono);
+  font-size:.8em;
+  color:var(--teal);
+  background:var(--teal-dim);
+  border:1px solid rgba(30,200,172,.15);
+  border-radius:3px;
+  padding:1px 5px;
+}
+/* syntax colors */
+.kw{color:#89b4fa}
+.str{color:#a6da95}
+.cm{color:#4a5a72;font-style:italic}
+.num{color:#f9e2af}
+.fn{color:#cba6f7}
+.op{color:#89dceb}
+.cls{color:#f38ba8}
+
+/* ─── CALLOUT BOXES ──────────────────────────────────────── */
+.callout{
+  border-radius:8px;
+  padding:14px 18px;
+  margin:16px 0;
+  display:flex;gap:12px;
+  font-size:.875rem;
+}
+.callout.info{
+  background:var(--teal-dim);
+  border:1px solid rgba(30,200,172,.25);
+  color:var(--text);
+}
+.callout.warn{
+  background:var(--amber-dim);
+  border:1px solid rgba(240,160,74,.25);
+  color:var(--text);
+}
+.callout.danger{
+  background:var(--red-dim);
+  border:1px solid rgba(248,81,73,.25);
+  color:var(--text);
+}
+.callout-icon{flex-shrink:0;margin-top:1px;font-size:1rem}
+.callout-body{line-height:1.55}
+.callout-body strong{display:block;margin-bottom:3px;font-weight:600}
+
+/* ─── TABLES ─────────────────────────────────────────────── */
+.table-wrap{
+  overflow-x:auto;
+  margin:16px 0;
+  border-radius:8px;
+  border:1px solid var(--border);
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:.84rem;
+}
+th{
+  background:var(--surface-2);
+  color:var(--text-2);
+  font-family:var(--font-display);
+  font-weight:600;
+  font-size:.78rem;
+  letter-spacing:.03em;
+  padding:10px 16px;
+  text-align:left;
+  border-bottom:1px solid var(--border);
+}
+td{
+  padding:9px 16px;
+  border-bottom:1px solid var(--border);
+  color:var(--text);
+  vertical-align:top;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+
+/* ─── STEP LIST ──────────────────────────────────────────── */
+.steps{counter-reset:step;list-style:none;margin:16px 0}
+.steps li{
+  counter-increment:step;
+  display:flex;gap:16px;
+  padding:12px 0;
+  border-bottom:1px solid var(--border);
+  align-items:flex-start;
+}
+.steps li:last-child{border-bottom:none}
+.step-num{
+  width:26px;height:26px;
+  background:var(--teal);
+  color:var(--bg);
+  border-radius:50%;
+  display:grid;place-items:center;
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  font-weight:500;
+  flex-shrink:0;
+  margin-top:1px;
+}
+.steps li::before{content:none}
+.step-content{flex:1}
+.step-content strong{
+  display:block;
+  color:var(--heading);
+  font-weight:600;
+  margin-bottom:3px;
+}
+.step-content p{color:var(--text-2);font-size:.875rem;margin:0}
+
+/* ─── ARCHITECTURE DIAGRAM ───────────────────────────────── */
+.arch-diagram{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:24px 20px;
+  margin:20px 0;
+  overflow-x:auto;
+}
+.arch-diagram pre{
+  background:transparent;
+  padding:0;
+  font-size:.78rem;
+  line-height:1.7;
+  color:var(--text-2);
+}
+
+/* ─── MESSAGE CARDS ──────────────────────────────────────── */
+.msg-grid{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.msg-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:12px 16px;
+  display:flex;gap:14px;align-items:flex-start;
+}
+.msg-key{
+  font-family:var(--font-mono);
+  font-size:.78rem;
+  font-weight:500;
+  color:var(--amber);
+  background:var(--amber-dim);
+  border:1px solid rgba(240,160,74,.2);
+  border-radius:4px;
+  padding:2px 8px;
+  white-space:nowrap;
+  flex-shrink:0;
+  margin-top:1px;
+}
+.msg-desc{font-size:.84rem;color:var(--text-2);line-height:1.5}
+.msg-desc strong{color:var(--text);font-weight:500}
+
+/* ─── URL ROUTE PILLS ────────────────────────────────────── */
+.route{
+  font-family:var(--font-mono);
+  font-size:.78rem;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:3px 10px;
+  color:var(--text);
+  display:inline-block;
+  margin:2px 0;
+}
+.route .method{
+  font-weight:500;
+  margin-right:8px;
+}
+.method.get{color:#79c0ff}
+.method.post{color:#a6da95}
+.method.patch{color:#f9e2af}
+.method.delete{color:#f38ba8}
+
+/* ─── SECTION DIVIDER ────────────────────────────────────── */
+.section-divider{
+  height:1px;
+  background:linear-gradient(90deg, var(--border), transparent);
+  margin:56px 0 0;
+}
+
+/* ─── PART HEADER ────────────────────────────────────────── */
+.part-header{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 20px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  margin-bottom:32px;
+}
+.part-num{
+  font-family:var(--font-display);
+  font-size:2.5rem;
+  font-weight:800;
+  color:var(--teal);
+  opacity:.2;
+  line-height:1;
+}
+.part-label{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:1.1rem;
+  color:var(--heading);
+  letter-spacing:-.01em;
+}
+.part-sub{font-size:.82rem;color:var(--text-2);margin-top:2px}
+
+/* ─── HIGHLIGHT ──────────────────────────────────────────── */
+.highlight{background:rgba(255,220,100,.12);border-radius:2px;padding:0 2px}
+mark.search-hl{background:rgba(30,200,172,.3);color:inherit;border-radius:2px}
+
+/* search hidden */
+.search-hidden{display:none!important}
+
+/* ─── FOOTER ─────────────────────────────────────────────── */
+footer{
+  margin-left:var(--sidebar-w);
+  padding:24px 56px;
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:16px;
+}
+footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margin:0}
+
+/* ─── RESPONSIVE ─────────────────────────────────────────── */
+@media(max-width:900px){
+  nav.sidebar{display:none}
+  main{margin-left:0;padding:32px 24px 80px}
+  footer{margin-left:0;padding:20px 24px}
+  .services-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<!-- TOP HEADER -->
+<header class="top">
+  <div class="logo-wrap">
+    <div class="logo-mark">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="2" y="2" width="5" height="5" rx="1" fill="#07090e"/>
+        <rect x="9" y="2" width="5" height="5" rx="1" fill="#07090e"/>
+        <rect x="2" y="9" width="5" height="5" rx="1" fill="#07090e"/>
+        <rect x="9" y="9" width="5" height="5" rx="1" fill="#07090e" opacity=".4"/>
+      </svg>
+    </div>
+    <span class="logo-text">MICS<span> Docs</span></span>
+  </div>
+  <div class="header-center">
+    <div id="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input id="search" type="text" placeholder="Search documentation…" autocomplete="off"/>
+      <div id="suggest-drop"></div>
+    </div>
+  </div>
+  <span class="version-badge">v1.0 · 2026</span>
+  <img src="yizhar-lab.jpg" alt="Yizhar Lab" style="width:32px;height:auto;border-radius:3px;opacity:0.95;margin-left:12px;mix-blend-mode:screen" title="Yizhar Lab · Weizmann Institute of Science" />
+</header>
+
+<div class="layout">
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <div class="nav-section-label">User Guide</div>
+  <a href="#overview"><span class="dot"></span>System Overview</a>
+  <a href="#pi-setup"><span class="dot"></span>Pi Setup &amp; Onboarding</a>
+  <a href="#subjects"><span class="dot"></span>Managing Subjects</a>
+  <a href="#protocols"><span class="dot"></span>Managing Protocols</a>
+  <a href="#sessions"><span class="dot"></span>Running Sessions</a>
+  <a href="#monitoring"><span class="dot"></span>Monitoring Pilots</a>
+  <a href="#history"><span class="dot"></span>Session History</a>
+  <a href="#researchers"><span class="dot"></span>Researchers</a>
+  <a href="#iacuc"><span class="dot"></span>IACUC Protocols</a>
+
+  <div class="nav-divider"></div>
+
+  <div class="nav-section-label">Technical Reference</div>
+  <a href="#architecture"><span class="dot"></span>Architecture</a>
+  <a href="#services"><span class="dot"></span>Services</a>
+  <a href="#configuration"><span class="dot"></span>Configuration</a>
+  <a href="#database"><span class="dot"></span>Database Schema</a>
+  <a href="#zmq"><span class="dot"></span>ZMQ Protocol</a>
+  <a href="#pi-tasks"><span class="dot"></span>Pi Task System</a>
+  <a href="#run-modes"><span class="dot"></span>Session Run Modes</a>
+  <a href="#api-ref"><span class="dot"></span>API Reference</a>
+  <a href="#backup"><span class="dot"></span>Backup &amp; Recovery</a>
+</nav>
+
+<!-- MAIN -->
+<main id="main-content">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-label">Modular Interactive Control System</div>
+    <h1>MICS Documentation</h1>
+    <p>An open-source hardware–software platform for automated, scalable, and closed-loop experimental control across multiple setups. MICS separates experimental logic from hardware implementation, enabling complex task environments with minimal technical overhead — from long-term home-cage training to closed-loop optogenetics, electrophysiology, calcium imaging, and beyond.</p>
+    <div class="hero-chips">
+      <span class="chip teal">Docker Compose</span>
+      <span class="chip teal">FastAPI</span>
+      <span class="chip teal">ZMQ</span>
+      <span class="chip teal">React</span>
+      <span class="chip">Raspberry Pi</span>
+      <span class="chip">PostgreSQL</span>
+      <span class="chip">Redis</span>
+      <span class="chip">Elasticsearch</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ USER GUIDE -->
+  <div class="part-header">
+    <div class="part-num">01</div>
+    <div>
+      <div class="part-label">User Guide</div>
+      <div class="part-sub">Day-to-day operation: subjects, blueprints, sessions and monitoring</div>
+    </div>
+  </div>
+
+  <!-- OVERVIEW -->
+  <section class="doc-section" id="overview">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>System Overview</h2>
+
+    <p>Traditional experimental approaches require frequent manual intervention, introduce experimenter-dependent variability, and limit throughput, duration, and reproducibility. MICS was built to remove these constraints.</p>
+
+    <p>MICS (Modular Interactive Control System) is an open-source platform for automated, scalable experimental control. It separates interactive task logic from hardware implementation: sensors, effectors, and external systems are abstracted as interchangeable functional units, allowing complex experimental environments to be constructed and modified without low-level engineering effort.</p>
+
+    <p>Experimental flow is executed through finite state machine logic — called <strong>Blueprints</strong> — running on dedicated Raspberry Pi controllers ("pilots"). This provides deterministic control at millisecond resolution while supporting adaptive task progression driven by subject behavior. A central orchestration layer coordinates experiment definition, live monitoring, and cohort-level data integration across all setups simultaneously.</p>
+
+    <p>MICS is designed for seamless integration with neuroscience technologies including optogenetics, electrophysiology, calcium imaging, and video-based behavioral tracking. Event-locked triggers and closed-loop interactions can be embedded directly in task logic, allowing behavioral contingencies to interact dynamically with external measurement or stimulation systems. The same infrastructure supports purely behavioral studies, chronic home-cage monitoring, circadian-scale experiments, and large-cohort automated training.</p>
+
+    <h3>The Four Services</h3>
+    <div class="services-grid">
+      <div class="service-card">
+        <div class="service-card-top">
+          <span class="service-name">Web UI</span>
+          <span class="service-port">:8080</span>
+        </div>
+        <div class="service-desc">The browser interface you interact with. Hosts the React SPA at <code class="inline">/react/</code> and proxies requests to the API and Orchestrator on your behalf.</div>
+      </div>
+      <div class="service-card">
+        <div class="service-card-top">
+          <span class="service-name">Orchestrator</span>
+          <span class="service-port">:9000</span>
+        </div>
+        <div class="service-desc">The gateway between the web and the Pi devices. Receives ZMQ messages from pilots, maintains live state in Redis, streams events to Elasticsearch, and calls the API for trial increments and graduation checks.</div>
+      </div>
+      <div class="service-card">
+        <div class="service-card-top">
+          <span class="service-name">API</span>
+          <span class="service-port">:8000</span>
+        </div>
+        <div class="service-desc">The REST backend. Stores subjects, protocols, sessions, and run progress in PostgreSQL. JWT-authenticated; the Web UI holds the token — you never need it directly.</div>
+      </div>
+      <div class="service-card">
+        <div class="service-card-top">
+          <span class="service-name">Backup</span>
+          <span class="service-port">—</span>
+        </div>
+        <div class="service-desc">Runs a nightly job at 23:59 that takes a PostgreSQL dump and an Elasticsearch snapshot, then uploads them to the lab SMB share on storwiz.</div>
+      </div>
+    </div>
+
+    <h3>Data Flow at a Glance</h3>
+    <div class="arch-diagram">
+<pre>Browser  →  Web UI (:8080)  →  API (:8000)  →  PostgreSQL
+                          ↘  Orchestrator  →  API (:8000)  [trial / graduation / run status]
+                                         →  Redis         [live pilot state]
+                                         ↕  ZMQ (:5560)
+                                 Pilot (Raspberry Pi)
+                                         ↓  events
+                              Elasticsearch (:9200, host)</pre>
+    </div>
+  </section>
+
+  <!-- PI SETUP -->
+  <section class="doc-section" id="pi-setup">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Pi Setup &amp; Onboarding</h2>
+    <p>Each Raspberry Pi arrives as a pre-configured OS image (TAR archive) stored on the lab SMB server. Burning it produces a Pi that is identical to all others — network config, autopilot software, and task plugins are already in place.</p>
+
+    <div class="callout warn">
+      <span class="callout-icon">⚠</span>
+      <div class="callout-body">
+        <strong>Image source</strong>
+        The Pi OS image is stored on <code class="inline">storwiz</code> at:<br>
+        <code class="inline">\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\</code><br>
+        Connect to the Weizmann VPN (or be on campus) before accessing it.
+      </div>
+    </div>
+
+    <h3>Step-by-step: Burning a New Pi</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Get the image</strong>
+          <p>Mount the SMB share and copy the <code class="inline">.tar</code> Pi image file to your local machine. The file is a full SD card image compressed as a TAR archive.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Extract the image</strong>
+          <p>Unpack the TAR to get the raw <code class="inline">.img</code> file. On Windows, use 7-Zip or WinRAR. On macOS/Linux:</p>
+          <div class="code-block">
+            <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">copy</button></div>
+            <pre>tar -xf mics_pi_image.tar</pre>
+          </div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Open Raspberry Pi Imager</strong>
+          <p>Download and install <a href="https://www.raspberrypi.com/software/" target="_blank">Raspberry Pi Imager</a> if you don't have it. Launch it and insert your SD card (≥16 GB recommended).</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Select the custom image</strong>
+          <p>Click <em>Choose OS</em> → scroll to the bottom → <em>Use custom</em> → select the <code class="inline">.img</code> file you extracted in step 2.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <strong>Select the SD card</strong>
+          <p>Click <em>Choose Storage</em> and select your SD card. Double-check it is the correct device before proceeding.</p>
+          <div class="callout danger">
+            <span class="callout-icon">⛔</span>
+            <div class="callout-body"><strong>Select the right device.</strong> Writing to the wrong drive will destroy its data with no undo.</div>
+          </div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">6</div>
+        <div class="step-content">
+          <strong>Write</strong>
+          <p>Click <em>Write</em> and confirm. Raspberry Pi Imager will flash and verify the image. This takes a few minutes depending on SD card speed.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">7</div>
+        <div class="step-content">
+          <strong>Boot and connect</strong>
+          <p>Insert the SD card into the Pi, connect ethernet, and power on. The autopilot service starts automatically on boot. Within ~30 seconds the Pi sends a HANDSHAKE to the orchestrator and appears in the pilot grid.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">8</div>
+        <div class="step-content">
+          <strong>Verify in the UI</strong>
+          <p>Open <code class="inline">http://localhost:8080/react/</code>. The new pilot should appear as <span style="color:var(--teal)">connected</span> within a minute. Its available tasks are auto-discovered from the HANDSHAKE message.</p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Identical setup, every time</strong>
+        Because every Pi is burned from the same TAR image, all configuration (network settings, task plugins, autopilot version, OS config) is guaranteed identical. No manual setup is required after burning.
+      </div>
+    </div>
+  </section>
+
+  <!-- SUBJECTS -->
+  <section class="doc-section" id="subjects">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Managing Subjects</h2>
+    <p>A <em>subject</em> is an animal enrolled in the system. Each subject has a unique name and tracks which protocol it should run next.</p>
+
+    <h3>Creating a Subject</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Navigate to Subjects</strong>
+          <p>Go to <code class="inline">http://localhost:8080/react/subjects-ui</code> or click <em>Subjects</em> in the navigation bar.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Enter a name</strong>
+          <p>Type the subject name in the <em>Create Subject</em> form. Convention is <code class="inline">m_001</code>, <code class="inline">m_002</code>, … but any unique string is valid.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Submit</strong>
+          <p>Click <em>Create</em>. The subject appears in the list immediately and is ready to be assigned a protocol.</p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>Assigning a Protocol</h3>
+    <p>Navigate to <code class="inline">/react/protocols-ui</code>, find the protocol you want, and use the assignment panel on the right to select a subject and assign. This creates a session for that subject with the chosen protocol as its blueprint.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>One active protocol at a time</strong>
+        Each subject has a <em>next_protocol</em> pointer. Assigning a new protocol while one is already active updates that pointer — the new protocol takes effect on the next session start.
+      </div>
+    </div>
+  </section>
+
+  <!-- PROTOCOLS -->
+  <section class="doc-section" id="protocols">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Managing Protocols</h2>
+    <p>A <em>protocol</em> (also called a blueprint) is a sequence of task steps. Each step specifies a task type, display name, parameters, and a graduation rule that determines when the subject advances to the next step.</p>
+
+    <h3>Creating a Protocol</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Open the Protocol Builder</strong>
+          <p>Navigate to <code class="inline">/react/protocols-create</code>. You'll see a two-panel view: available task types on the left, protocol builder on the right.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Add steps from the palette</strong>
+          <p>Click a task type in the left panel to add it as a step. Set the step name and any parameter overrides. Steps run in order from top to bottom.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Configure graduation</strong>
+          <p>Each step has a <em>graduation</em> rule embedded in its parameters. The most common type is <code class="inline">n_trials</code> — the subject moves to the next step after reaching a trial count threshold.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Name and save</strong>
+          <p>Give the protocol a name and click <em>Save Protocol</em>. It is immediately available for assignment to subjects.</p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>Step Parameters</h3>
+    <p>Parameters control task behavior (timing, thresholds, reward amounts). Each task type exposes its own parameter schema — the UI shows the available fields automatically when a task type is selected. The <code class="inline">graduation</code>, <code class="inline">step_name</code>, and <code class="inline">task_type</code> keys are reserved and shown separately.</p>
+  </section>
+
+  <!-- SESSIONS -->
+  <section class="doc-section" id="sessions">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Running Sessions</h2>
+    <p>A <em>session</em> pairs a subject with a protocol. A <em>session run</em> is a single execution attempt on a specific pilot. You can start, stop, resume, and restart runs from the session card view.</p>
+
+    <h3>Starting a Run</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Find the session</strong>
+          <p>Navigate to the pilot's session list at <code class="inline">/react/pilots/:pilotName/sessions-ui</code>, or to a subject's session list at <code class="inline">/react/subjects/:subjectName/sessions-ui</code>.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Choose a pilot and mode</strong>
+          <p>On the subject's page, select which pilot to run on and choose a start mode. On the pilot's page, click <em>START</em> on the session card.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Optionally override parameters</strong>
+          <p>Click the session title (protocol name) to open the <em>Overrides Modal</em>. Set per-step parameter overrides before clicking START — these override the protocol defaults for this run only.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Confirm and start</strong>
+          <p>Click <em>START</em>. The orchestrator sends the task payload to the Pi. The pilot status changes to <span style="color:var(--teal)">running</span> within seconds.</p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>Start Modes</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mode</th><th>What it does</th><th>When to use</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="inline">new</code></td>
+            <td>Creates a fresh run starting from step 0, trial 0</td>
+            <td>Normal start; subject has never run this session</td>
+          </tr>
+          <tr>
+            <td><code class="inline">resume</code></td>
+            <td>Reactivates the most recent stopped or errored run in place — same step, same trial count</td>
+            <td>Session was interrupted (power cut, task error); continue from exact point</td>
+          </tr>
+          <tr>
+            <td><code class="inline">restart</code></td>
+            <td>Creates a new run row but copies the current step index — restarts the step from trial 0</td>
+            <td>Trial data was bad and you want to redo the current step cleanly</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Stopping a Run</h3>
+    <p>Click the <em>STOP</em> button on the pilot card (pilot grid page) or on the session card. The orchestrator sends a stop command to the Pi. The run status changes to <code class="inline">stopped</code>. The subject's progress is preserved and can be resumed.</p>
+  </section>
+
+  <!-- MONITORING -->
+  <section class="doc-section" id="monitoring">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Monitoring Pilots</h2>
+    <p>The <em>Pilot Grid</em> at <code class="inline">/react/</code> shows all registered pilots with their live status, updated in real time via WebSocket.</p>
+
+    <h3>Status Indicators</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><span style="color:var(--teal)">connected / idle</span></td><td>Pi is online and ready to receive a task</td></tr>
+          <tr><td><span style="color:var(--amber)">running</span></td><td>Pi is currently executing a task. Shows session ID, subject name, and elapsed time</td></tr>
+          <tr><td><span style="color:var(--text-3)">offline</span></td><td>No HANDSHAKE or PING received in the last 15 seconds</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Live Information While Running</h3>
+    <p>When a pilot is running, its card displays:</p>
+    <ul style="margin:8px 0 14px 20px;color:var(--text-2);font-size:.88rem;line-height:1.8">
+      <li>Session ID and subject name</li>
+      <li>Elapsed time (live clock, updated every second)</li>
+      <li>A <em>STOP</em> button that immediately halts the task</li>
+    </ul>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>15-second staleness window</strong>
+        A pilot is marked offline if no message has been received in 15 seconds. This accounts for network hiccups. If a pilot stays offline for longer, check the Pi's power and ethernet connection.
+      </div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="doc-section" id="history">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Session History</h2>
+    <p>The session card view shows all runs for a session. Each card lazy-loads its run history when scrolled into view.</p>
+    <p>Open the <em>Overrides Modal</em> (click the session title) and switch to the <em>Run History</em> tab to see a table of all past runs: start time, end time, status (completed / stopped / error), and the pilot it ran on.</p>
+    <p>You can filter session cards by subject name using the filter bar at the top of the page. Type a subject name to show only cards that include a run for that subject.</p>
+
+    <h3>Subject Sessions Page</h3>
+    <p>Navigate to <code class="inline">/react/subjects/:subjectName/sessions-ui</code> to see all sessions for a specific subject. This page shows a pilot selector bar and START / STOP controls. Select a pilot to enable the START buttons, then click START on the session you want to run.</p>
+    <p>Each subject's history is loaded from <code class="inline">GET /api/subjects/{name}/runs</code> and shows all runs for that subject across all sessions, sorted by most recent.</p>
+
+    <h3>Subject Detail Modal</h3>
+    <p>On any subject list view, click the <em>ⓘ</em> info button next to a subject name to open the <strong>Subject Detail Modal</strong>. This overlay has five tabs:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tab</th><th>Contents</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Bio</strong></td><td>Species, sex, date of birth, genotype, source</td></tr>
+          <tr><td><strong>Admin</strong></td><td>Researcher assignment and IACUC protocol association</td></tr>
+          <tr><td><strong>Weights</strong></td><td>Logged body-weight measurements over time</td></tr>
+          <tr><td><strong>Surgeries</strong></td><td>Surgical procedure records with dates and notes</td></tr>
+          <tr><td><strong>Projects</strong></td><td>Project affiliations and cohort membership</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The modal is 560 px wide and anchored near the top of the viewport so it does not jump when switching between tabs of different heights.</p>
+  </section>
+
+  <!-- RESEARCHERS -->
+  <section class="doc-section" id="researchers">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Researchers</h2>
+    <p>The <em>Researchers</em> page (<code class="inline">/react/researchers-ui</code>) lets you manage the list of researchers who use the system. Researcher records are linked to subjects and appear in the Subject Detail Modal's <em>Admin</em> tab.</p>
+
+    <h3>Creating a Researcher</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Navigate to Researchers</strong>
+          <p>Click <em>Researchers</em> in the navigation bar or go to <code class="inline">/react/researchers-ui</code>.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Fill in the form</strong>
+          <p>Enter the researcher's name and email address. Email must be unique across all researchers in the system; the API returns an error if a duplicate is submitted.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Submit</strong>
+          <p>Click <em>Add Researcher</em>. The new entry appears in the list immediately.</p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>Editing a Researcher</h3>
+    <p>Click the <em>Edit</em> button on any researcher row. An inline form appears where you can update the name and/or email. Click <em>Save</em> to confirm. If you enter a duplicate email the API returns a clear error message (e.g. "A researcher with this email already exists").</p>
+
+    <h3>Removing a Researcher</h3>
+    <p>Open the inline Edit form and click <em>Remove</em>. This performs a <strong>soft-delete</strong> — the record remains in the database with <code class="inline">is_hidden = true</code> and disappears from the normal list. Hidden records can be retrieved via the API by passing <code class="inline">?include_hidden=true</code>. This preserves referential integrity for subjects that were linked to the researcher.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Soft-delete is permanent from the UI</strong>
+        There is currently no "undelete" button in the UI. To restore a hidden researcher, use the API directly or a database query to set <code class="inline">is_hidden = false</code>.
+      </div>
+    </div>
+  </section>
+
+  <!-- IACUC -->
+  <section class="doc-section" id="iacuc">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>IACUC Protocols</h2>
+    <p>The <em>IACUC</em> page (<code class="inline">/react/iacuc-ui</code>) manages the institutional animal care and use protocol numbers that subjects must be registered under. IACUC entries are linked to subjects in the Subject Detail Modal's <em>Admin</em> tab.</p>
+
+    <h3>Adding an IACUC Protocol</h3>
+    <p>Click the compact <strong>+</strong> toggle button at the top of the list. A small form slides in where you enter the protocol number and description. Click <em>Add</em> to save. The button changes to <strong>✕</strong> while the form is open — click it to dismiss without saving.</p>
+
+    <h3>Editing an Entry</h3>
+    <p>Click <em>Edit</em> on any row to reveal an inline edit form. Update the protocol number or description, then click <em>Save</em>.</p>
+
+    <h3>Removing an Entry</h3>
+    <p>Open the Edit form for the entry and click <em>Remove</em>. Like researchers, IACUC entries are soft-deleted (<code class="inline">is_hidden = true</code>) rather than permanently erased, preserving links from existing subject records.</p>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ══════════════════════════════════════ TECHNICAL REFERENCE -->
+  <div class="part-header" style="margin-top:56px">
+    <div class="part-num">02</div>
+    <div>
+      <div class="part-label">Technical Reference</div>
+      <div class="part-sub">Architecture, services, configuration, protocol internals and API</div>
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <section class="doc-section" id="architecture">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Architecture</h2>
+    <p>MICS is a set of five Docker containers orchestrated by Compose, plus supporting infrastructure (PostgreSQL, Redis, Elasticsearch) and one or more Raspberry Pi devices on the local network.</p>
+
+    <div class="arch-diagram">
+<pre>┌───────────────────────────────────────────────────────────────────┐
+│                          Docker Host                              │
+│                                                                   │
+│  ┌──────────┐    ┌──────────────┐    ┌─────────────────────────┐ │
+│  │  Web UI  │───▶│     API      │───▶│       PostgreSQL        │ │
+│  │  :8080   │    │    :8000     │    │         :5432           │ │
+│  └────┬─────┘    └──────▲───────┘    └─────────────────────────┘ │
+│       │                 │ HTTP (trial increments,                 │
+│       │ proxy           │ graduation checks, run status)          │
+│       └────────▶┌───────┴──────┐    ┌─────────────────────────┐ │
+│                 │ Orchestrator │───▶│         Redis           │ │
+│                 │    :9000     │    │         :6379           │ │
+│                 └──────┬───────┘    └─────────────────────────┘ │
+│                        │ ZMQ ROUTER (:5560)                      │
+│                 ┌──────┴───────┐    ┌─────────────────────────┐ │
+│                 │  Backup Svc  │    │     Elasticsearch       │ │
+│                 │ (23:59 IST)  │    │    :9200  (on host)     │ │
+│                 └──────┬───────┘    └──────────▲──────────────┘ │
+│                        │ SMB upload            │ events stream   │
+└────────────────────────┼───────────────────────┼─────────────────┘
+                         ▼                       │
+                      storwiz              ┌─────┴──────────┐
+                                           │  Raspberry Pi  │
+                   ZMQ DEALER ─────────────│  (Pilot Device)│
+                   (:5560)                 └────────────────┘</pre>
+    </div>
+
+    <p>The Orchestrator uses <code class="inline">network_mode: host</code> so it can reach both the local Docker network (API) and the Pi devices on the physical network via ZMQ without NAT complications.</p>
+    <p>Elasticsearch runs outside Docker (directly on the host) and is accessed from containers via <code class="inline">host.docker.internal:9200</code>.</p>
+  </section>
+
+  <!-- SERVICES -->
+  <section class="doc-section" id="services">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Services</h2>
+
+    <h3>API (<code class="inline">api/</code>)</h3>
+    <p>FastAPI application served by Uvicorn on port 8000. Owns the persistent data model. All routes require a JWT Bearer token (<code class="inline">HS256</code>, audience <code class="inline">mics-clients</code>, issuer <code class="inline">mics-api</code>). The Web UI holds the token; browser clients never see it.</p>
+    <p>Uses a <strong>dual ORM</strong>: SQLModel manages newer tables (subjects, protocols); SQLAlchemy manages legacy tables (pilots, sessions, session runs, run progress, task definitions). Both share the same PostgreSQL engine.</p>
+
+    <h3>Orchestrator (<code class="inline">orchestrator/</code>)</h3>
+    <p>FastAPI + Tornado + PyZMQ. Runs a ZMQ ROUTER socket on port 5560 that Pi pilots connect to as DEALER sockets. Incoming messages are dispatched to handler methods by message key. Write-heavy operations (Elasticsearch ingestion) are handled by worker threads draining bounded queues (<code class="inline">maxsize=50,000</code>) to prevent IOLoop stalls.</p>
+    <p>Live pilot state is maintained as Redis hashes (<code class="inline">pilot:{name}</code>). The Web UI polls <code class="inline">GET /pilots/live</code> every second and pushes updates to connected browsers over WebSocket.</p>
+
+    <h3>Web UI (<code class="inline">web_ui/</code>)</h3>
+    <p>FastAPI reverse proxy on port 8080. Authenticates all upstream calls to the API and Orchestrator using the <code class="inline">MICS_API_TOKEN</code> env var. Browser clients never touch API credentials directly.</p>
+    <p>Also serves the React SPA at <code class="inline">/react/</code> — a Vite-built TypeScript application using React 18, React Router, and TanStack React Query. Pilot state is delivered to the browser via a WebSocket at <code class="inline">/ws/pilots</code>.</p>
+
+    <h3>Backup (<code class="inline">backup/</code>)</h3>
+    <p>Supercronic-scheduled container. Runs at 23:59 (Asia/Jerusalem) every night:
+    <ol style="margin:8px 0 8px 20px;color:var(--text-2);font-size:.88rem;line-height:1.9">
+      <li>Runs <code class="inline">pg_dump</code> against the PostgreSQL service and compresses it</li>
+      <li>Triggers an Elasticsearch snapshot to the configured repository</li>
+      <li>Uploads both to the SMB share at <code class="inline">\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\database_backup</code></li>
+    </ol>
+    Credentials are injected via Docker secrets (never in environment variables).</p>
+  </section>
+
+  <!-- CONFIGURATION -->
+  <section class="doc-section" id="configuration">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Configuration</h2>
+
+    <h3>docker-compose.yml — Key Environment Variables</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Service</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">DATABASE_URL</code></td><td>api</td><td>PostgreSQL DSN: <code class="inline">postgresql+psycopg2://mics_user:…@db:5432/mics_db</code></td></tr>
+          <tr><td><code class="inline">JWT_SECRET</code></td><td>api</td><td>HS256 signing key. Must match the key used to issue <code class="inline">MICS_API_TOKEN</code></td></tr>
+          <tr><td><code class="inline">JWT_ALGORITHM</code></td><td>api</td><td><code class="inline">HS256</code></td></tr>
+          <tr><td><code class="inline">JWT_AUDIENCE</code></td><td>api</td><td><code class="inline">mics-clients</code></td></tr>
+          <tr><td><code class="inline">JWT_ISSUER</code></td><td>api</td><td><code class="inline">mics-api</code></td></tr>
+          <tr><td><code class="inline">MICS_API_TOKEN</code></td><td>web_ui</td><td>Pre-issued JWT used by Web UI and Orchestrator to call the API</td></tr>
+          <tr><td><code class="inline">REDIS_URL</code></td><td>orchestrator, web_ui</td><td><code class="inline">redis://127.0.0.1:6379/0</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Orchestrator — <code class="inline">prefs.json</code></h3>
+    <p>Located at <code class="inline">orchestrator/orchestrator/prefs.json</code>. Configures the orchestrator's own identity and connectivity:</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">json</span><button class="copy-btn">copy</button></div>
+      <pre>{
+  <span class="str">"NAME"</span>: <span class="str">"T"</span>,          <span class="cm">// orchestrator ZMQ identity — Pi must send to "T"</span>
+  <span class="str">"MSGPORT"</span>: <span class="num">5560</span>,    <span class="cm">// ZMQ ROUTER port Pi pilots connect to</span>
+  <span class="str">"MICS_API_URL"</span>: <span class="str">"http://localhost:8000"</span>,
+  <span class="str">"MICS_API_TOKEN"</span>: <span class="str">"&lt;pre-issued JWT&gt;"</span>
+}</pre>
+    </div>
+
+    <h3>Docker Secrets</h3>
+    <p>Sensitive credentials are mounted as Docker secrets (never in env vars):</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Secret file</th><th>Used by</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">secrets/smb_user.txt</code></td><td>backup — SMB authentication</td></tr>
+          <tr><td><code class="inline">secrets/smb_pass.txt</code></td><td>backup — SMB authentication</td></tr>
+          <tr><td><code class="inline">secrets/pg_password.txt</code></td><td>backup — PostgreSQL pg_dump</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- DATABASE -->
+  <section class="doc-section" id="database">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Database Schema</h2>
+    <p>All tables live in a single PostgreSQL database (<code class="inline">mics_db</code>). Tables are created automatically at API startup via <code class="inline">create_all()</code> — there is no manual migration step.</p>
+
+    <h3>SQLModel Tables (newer)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Key Columns</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="inline">subjects</code></td>
+            <td><code class="inline">id, name, current_run_id, next_protocol_id</code></td>
+            <td>Registered lab animals</td>
+          </tr>
+          <tr>
+            <td><code class="inline">protocol_templates</code></td>
+            <td><code class="inline">id, name, description, created_at</code></td>
+            <td>Named protocol blueprints</td>
+          </tr>
+          <tr>
+            <td><code class="inline">protocol_step_templates</code></td>
+            <td><code class="inline">id, order_index, step_name, task_type, params (JSON), protocol_id</code></td>
+            <td>Ordered steps within a protocol. <code class="inline">params</code> includes graduation rules</td>
+          </tr>
+          <tr>
+            <td><code class="inline">subject_protocol_runs</code></td>
+            <td><code class="inline">id, subject_id, protocol_id, session_id, current_step, started_at, finished_at</code></td>
+            <td>Tracks a subject's progress through a protocol</td>
+          </tr>
+          <tr>
+            <td><code class="inline">researchers</code></td>
+            <td><code class="inline">id, name, email, is_hidden</code></td>
+            <td>Lab researchers. <code class="inline">is_hidden</code> (default <code class="inline">false</code>) supports soft-delete. Email is unique. Migration: <code class="inline">ALTER TABLE researchers ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE</code></td>
+          </tr>
+          <tr>
+            <td><code class="inline">iacuc_protocols</code></td>
+            <td><code class="inline">id, protocol_number, description, is_hidden</code></td>
+            <td>IACUC protocol approvals linked to subjects. <code class="inline">is_hidden</code> supports soft-delete. Same migration pattern as researchers.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>SQLAlchemy Tables (legacy)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Key Columns</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="inline">pilots</code></td>
+            <td><code class="inline">id, name, ip, prefs (JSON), created_at</code></td>
+            <td>Registered Pi devices</td>
+          </tr>
+          <tr>
+            <td><code class="inline">sessions</code></td>
+            <td><code class="inline">id, name, label, run_counter</code></td>
+            <td>A subject–protocol pairing; container for runs</td>
+          </tr>
+          <tr>
+            <td><code class="inline">session_runs</code></td>
+            <td><code class="inline">id, session_id, pilot_id, subject_key, status, mode, overrides (JSON), started_at</code></td>
+            <td>A single execution attempt. status: running / stopped / completed / error / pending</td>
+          </tr>
+          <tr>
+            <td><code class="inline">run_progress</code></td>
+            <td><code class="inline">id, run_id, current_step_idx, current_trial, graduation_params (JSON)</code></td>
+            <td>Step/trial counters for a run; updated on every INC_TRIAL_COUNTER</td>
+          </tr>
+          <tr>
+            <td><code class="inline">task_definitions</code></td>
+            <td><code class="inline">id, task_name, module, params (JSON), hardware (JSON), file_hash</code></td>
+            <td>Pi-discovered task classes. Populated automatically via HANDSHAKE</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ZMQ -->
+  <section class="doc-section" id="zmq">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>ZMQ Protocol</h2>
+    <p>Pi pilots connect to the orchestrator's ZMQ ROUTER socket on port <code class="inline">5560</code> using DEALER sockets. Each pilot's DEALER identity is its configured <code class="inline">NAME</code>. The orchestrator's own name is <code class="inline">"T"</code>.</p>
+    <p>All messages are multi-part ZMQ frames. The orchestrator dispatches on the <em>message key</em> (second frame), routing to the corresponding handler method.</p>
+
+    <h3>Message Types</h3>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <span class="msg-key">HANDSHAKE</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Sent on pilot startup. Contains the pilot's name, available task classes (with PARAMS, HARDWARE, FLAGS), and hardware configuration. The orchestrator upserts the pilot in PostgreSQL and populates <code class="inline">task_definitions</code>.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">PING</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Keepalive. Updates the pilot's <code class="inline">updated_at</code> timestamp in Redis. Used for the 15-second staleness check.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">STATE</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Pilot state transition (e.g. IDLE → RUNNING → IDLE). Updates the Redis <code class="inline">state</code> field and propagates to the browser via WebSocket.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">CONTINUOUS / STREAM</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> High-frequency behavioral events — hardware sensor reads, lick detection, timer firings, state transitions. Both keys route to <code class="inline">on_data()</code>. Events are enqueued and written to Elasticsearch by worker threads.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">INC_TRIAL_COUNTER</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Sent explicitly by the task when a trial completes. Triggers the graduation check: the orchestrator calls the API to increment the trial count and checks if the subject should advance to the next protocol step.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">DONE</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Task has finished all its work cleanly. Marks the session run as <code class="inline">completed</code>.</div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-icon">⚠</span>
+      <div class="callout-body">
+        <strong>INC_TRIAL_COUNTER is never automatic</strong>
+        Every Pi task must send this message explicitly at the end of each trial. If a subject is not graduating, verify that the task code dispatches this message and that it is reaching the orchestrator (check orchestrator logs).
+      </div>
+    </div>
+  </section>
+
+  <!-- PI TASKS -->
+  <section class="doc-section" id="pi-tasks">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Pi Task System</h2>
+    <p>Each behavioral task runs on the Pi as a Python class. Tasks are discovered automatically via HANDSHAKE — no manual registration required. All task files live in <code class="inline">~/Apps/mice_interactive_home_cage/terminal/plugins/</code> on the Pi.</p>
+
+    <h3>Class Hierarchy</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="copy-btn">copy</button></div>
+      <pre><span class="cls">Task</span>  <span class="cm">(autopilot base)</span>
+  └── <span class="cls">mics_task</span>  <span class="cm">(ZMQ comms, HANDSHAKE auto-registration)</span>
+        └── <span class="cls">learning_cage</span>  <span class="cm">(standard cage hardware defaults)</span>
+              └── <span class="cls">YourConcreteTask</span>  <span class="cm">(in terminal/plugins/)</span></pre>
+    </div>
+
+    <h3>Task Declaration</h3>
+    <p>Every task class declares three class-level dicts that are read at HANDSHAKE time and stored in the DB:</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="copy-btn">copy</button></div>
+      <pre><span class="kw">class</span> <span class="cls">AppetitiveTask</span>(<span class="cls">learning_cage</span>):
+
+    <span class="cm"># Tunable parameters — shown in the UI param editor</span>
+    PARAMS = {
+        <span class="str">'open_duration'</span>:  {<span class="str">'tag'</span>: <span class="str">'Reward open (ms)'</span>,    <span class="str">'type'</span>: <span class="fn">float</span>, <span class="str">'default'</span>: <span class="num">50</span>},
+        <span class="str">'iti_duration'</span>:   {<span class="str">'tag'</span>: <span class="str">'ITI duration (ms)'</span>,    <span class="str">'type'</span>: <span class="fn">float</span>, <span class="str">'default'</span>: <span class="num">5000</span>},
+        <span class="str">'lick_threshold'</span>: {<span class="str">'tag'</span>: <span class="str">'Lick count to reward'</span>, <span class="str">'type'</span>: <span class="fn">int</span>,   <span class="str">'default'</span>: <span class="num">3</span>},
+    }
+
+    <span class="cm"># Physical hardware — GPIO pins, I2C devices</span>
+    HARDWARE = {
+        <span class="str">'REWARD'</span>: {<span class="str">'type'</span>: <span class="str">'Solenoid'</span>,   <span class="str">'pin'</span>: <span class="num">11</span>},
+        <span class="str">'LICKER'</span>: {<span class="str">'type'</span>: <span class="str">'LickSensor'</span>, <span class="str">'pin'</span>: <span class="num">7</span>},
+        <span class="str">'IR2'</span>:    {<span class="str">'type'</span>: <span class="str">'Beambreak'</span>,  <span class="str">'pin'</span>: <span class="num">13</span>},
+    }
+
+    <span class="cm"># Tracker flags — binary/counted state (lick count, hit/miss, etc.)</span>
+    FLAGS = {
+        <span class="str">'hit_trial'</span>:    <span class="cls">BooleanTracker</span>,
+        <span class="str">'lick_count'</span>:   <span class="cls">CountTracker</span>,
+    }</pre>
+    </div>
+
+    <h3>State Machine (FDA)</h3>
+    <p>Task flow is a <code class="inline">FiniteDeterministicAutomaton</code>. Each stage method ends with <code class="inline">return self.wait_for_condition()</code>, which blocks until a registered transition fires. Transitions are declared as lists of lambda conditions over <code class="inline">self.view</code>:</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="copy-btn">copy</button></div>
+      <pre><span class="kw">def</span> <span class="fn">__init__</span>(self, **kwargs):
+    <span class="fn">super</span>().__init__(**kwargs)
+
+    self.stages = <span class="cls">FiniteDeterministicAutomaton</span>()
+    self.stages.add_method(self.wait_for_lick)
+    self.stages.add_method(self.deliver_reward)
+    self.stages.add_method(self.iti)
+
+    <span class="cm"># Transition: wait_for_lick → deliver_reward when LICKER fires</span>
+    self.stages.add_transition(
+        self.wait_for_lick, self.deliver_reward,
+        [<span class="kw">lambda</span>: self.view.get_value(<span class="str">'LICKER'</span>) == <span class="kw">True</span>]
+    )
+
+<span class="kw">def</span> <span class="fn">wait_for_lick</span>(self):
+    self.hardware[<span class="str">'REWARD'</span>].trigger()   <span class="cm"># auto-logged via @log_action</span>
+    <span class="kw">return</span> self.wait_for_condition()     <span class="cm"># blocks here</span>
+
+<span class="kw">def</span> <span class="fn">deliver_reward</span>(self):
+    <span class="cm"># Graduation check — must be sent explicitly</span>
+    self.node.send(<span class="str">'T'</span>, <span class="str">'INC_TRIAL_COUNTER'</span>, {<span class="str">'n_trials'</span>: self.trial_counter})
+    <span class="kw">return</span> self.wait_for_condition()</pre>
+    </div>
+
+    <h3>Auto-logging</h3>
+    <p>All methods on <code class="inline">Hardware</code> and <code class="inline">Tracker</code> classes are decorated with <code class="inline">@log_action</code>. This automatically dispatches a <code class="inline">CONTINUOUS</code> ZMQ event whenever hardware is activated — no manual logging code required in task methods.</p>
+  </section>
+
+  <!-- RUN MODES -->
+  <section class="doc-section" id="run-modes">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Session Run Modes</h2>
+    <p>The <code class="inline">mode</code> field on a <code class="inline">session_run</code> controls how progress is initialized when a task starts:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mode</th><th>DB behavior</th><th>Pi payload</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="inline">new</code></td>
+            <td>New <code class="inline">session_run</code> row + new <code class="inline">run_progress</code> at step 0, trial 0</td>
+            <td>Fresh start; no prior state sent to Pi</td>
+          </tr>
+          <tr>
+            <td><code class="inline">resume</code></td>
+            <td>Reactivates the most recent STOPPED or ERROR run — no new rows created</td>
+            <td>Sends <code class="inline">current_step_idx</code> and <code class="inline">current_trial</code> from existing <code class="inline">run_progress</code></td>
+          </tr>
+          <tr>
+            <td><code class="inline">restart</code></td>
+            <td>New <code class="inline">session_run</code> row with same <code class="inline">session_run_index</code> as the previous run (records the retry). New <code class="inline">run_progress</code> at same step, trial 0</td>
+            <td>Same step, fresh trial counter</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Override Layering</h3>
+    <p>Overrides set in the UI are stored on <code class="inline">session_run.overrides</code> as a JSON object with this shape:</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">json</span><button class="copy-btn">copy</button></div>
+      <pre>{
+  <span class="str">"global"</span>: {
+    <span class="str">"iti_duration"</span>: <span class="num">3000</span>   <span class="cm">// applies to all steps</span>
+  },
+  <span class="str">"steps"</span>: {
+    <span class="str">"0"</span>: { <span class="str">"lick_threshold"</span>: <span class="num">1</span> },  <span class="cm">// step-specific wins over global</span>
+    <span class="str">"2"</span>: { <span class="str">"lick_threshold"</span>: <span class="num">5</span> }
+  }
+}</pre>
+    </div>
+    <p>The orchestrator applies global overrides first, then step-specific values (which win). The merged result is sent to the Pi in the START payload.</p>
+  </section>
+
+  <!-- API REFERENCE -->
+  <section class="doc-section" id="api-ref">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>API Reference</h2>
+    <p>All endpoints require <code class="inline">Authorization: Bearer &lt;token&gt;</code>. The token is the pre-issued JWT in <code class="inline">MICS_API_TOKEN</code>.</p>
+
+    <h3>Subjects</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/subjects</span></td><td>List all subjects. Returns <code class="inline">[{id, name, current_run_id, next_protocol_id}]</code></td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/subjects</span></td><td>Create subject. Body: <code class="inline">{name: string}</code></td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/subjects/{name}/runs</span></td><td>All session runs for a subject across all sessions, ordered by most recent</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Protocols</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/protocols</span></td><td>List all protocols with steps</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/protocols</span></td><td>Create protocol. Body: <code class="inline">{name, description?, steps: [{order_index, step_name, task_type, params}]}</code></td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/protocols/{id}</span></td><td>Get protocol with full step list</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/assign-protocol</span></td><td>Assign protocol to subject. Returns <code class="inline">{status, session: {session_id, …}}</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Sessions &amp; Runs</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/sessions</span></td><td>List sessions. Returns <code class="inline">[{session_id, started_at, n_runs}]</code></td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/sessions/{id}</span></td><td>Session detail with runs array</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/sessions/{id}/start-on-pilot</span></td><td>Start run. Body: <code class="inline">{pilot_id, mode?, overrides?}</code></td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/session-runs/{id}/stop</span></td><td>Stop a running session run</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/sessions/{sid}/pilots/{pid}/runs</span></td><td>Run history for a session on a specific pilot</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Pilots &amp; Tasks</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/pilots</span></td><td>List all registered pilots</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/tasks/leaf</span></td><td>List task types available on connected pilots (from HANDSHAKE). Returns <code class="inline">[{task_name, default_params}]</code></td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/orchestrator/pilots/live</span></td><td>Live pilot state from Redis (used by Web UI WebSocket poller)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Researchers</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/researchers</span></td><td>List researchers. Pass <code class="inline">?include_hidden=true</code> to include soft-deleted entries</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/researchers</span></td><td>Create researcher. Body: <code class="inline">{name, email}</code>. Returns 400 if email already exists</td></tr>
+          <tr><td><span class="route"><span class="method patch">PATCH</span>/api/researchers/{id}</span></td><td>Update researcher name and/or email. Returns 400 on duplicate email</td></tr>
+          <tr><td><span class="route"><span class="method patch">PATCH</span>/api/researchers/{id}/hide</span></td><td>Soft-delete: sets <code class="inline">is_hidden = true</code>. Record remains in DB</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>IACUC Protocols</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/iacuc</span></td><td>List IACUC protocols. Pass <code class="inline">?include_hidden=true</code> to include soft-deleted entries</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/iacuc</span></td><td>Create IACUC protocol entry. Body: <code class="inline">{protocol_number, description?}</code></td></tr>
+          <tr><td><span class="route"><span class="method patch">PATCH</span>/api/iacuc/{id}/hide</span></td><td>Soft-delete: sets <code class="inline">is_hidden = true</code>. Record remains in DB</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>React SPA Routes</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Path</th><th>Component / Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">/react/</code></td><td>Pilot grid — live status for all pilots via WebSocket</td></tr>
+          <tr><td><code class="inline">/react/subjects-ui</code></td><td>Subject list and create form</td></tr>
+          <tr><td><code class="inline">/react/protocols-ui</code></td><td>Protocol list and assign-to-subject panel</td></tr>
+          <tr><td><code class="inline">/react/protocols-create</code></td><td>Protocol builder — task palette + step editor</td></tr>
+          <tr><td><code class="inline">/react/pilots/:pilot/sessions-ui</code></td><td>Session cards for a specific pilot — lazy hydration, filter, overrides modal</td></tr>
+          <tr><td><code class="inline">/react/subjects/:subject/sessions-ui</code></td><td>Sessions for a specific subject — pilot selector, START / STOP controls</td></tr>
+          <tr><td><code class="inline">/react/researchers-ui</code></td><td>Researchers list, create form, inline edit and soft-remove</td></tr>
+          <tr><td><code class="inline">/react/iacuc-ui</code></td><td>IACUC protocol list, create form, inline edit and soft-remove</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Health</h3>
+    <p><span class="route"><span class="method get">GET</span>/health</span> — Returns <code class="inline">{"status": "ok"}</code>. No auth required. Use to verify the API is up.</p>
+  </section>
+
+  <!-- BACKUP -->
+  <section class="doc-section" id="backup">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Backup &amp; Recovery</h2>
+
+    <h3>What is backed up</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Method</th><th>Destination</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>PostgreSQL database (<code class="inline">mics_db</code>)</td>
+            <td><code class="inline">pg_dump</code> → gzip</td>
+            <td><code class="inline">\\storwiz\labs\yizharlab\Mics\database_backup\</code></td>
+          </tr>
+          <tr>
+            <td>Elasticsearch indices</td>
+            <td>ES snapshot API → <code class="inline">org_repo</code></td>
+            <td>Same SMB share via bind mount at <code class="inline">/home/ido/Elastic_snapshots</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Schedule</h3>
+    <p>Backups run at <strong>23:59 Israel time</strong> every night (<code class="inline">BACKUP_SCHEDULE="59 23 * * *"</code>, timezone <code class="inline">Asia/Jerusalem</code>).</p>
+
+    <h3>Restoring PostgreSQL</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">copy</button></div>
+      <pre><span class="cm"># Copy the dump from SMB to local, then restore:</span>
+gunzip mics_db_YYYY-MM-DD.sql.gz
+docker exec -i mics_db psql -U mics_user -d mics_db &lt; mics_db_YYYY-MM-DD.sql</pre>
+    </div>
+
+    <h3>Restoring Elasticsearch</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">copy</button></div>
+      <pre><span class="cm"># Register the repository (if not already registered):</span>
+curl -X PUT http://localhost:9200/_snapshot/org_repo \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"fs","settings":{"location":"/backups"}}'
+
+<span class="cm"># Restore a specific snapshot:</span>
+curl -X POST http://localhost:9200/_snapshot/org_repo/&lt;snapshot_name&gt;/_restore</pre>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Elasticsearch runs outside Docker</strong>
+        ES is not containerized. Its snapshot directory is bind-mounted from the host at <code class="inline">/home/ido/Elastic_snapshots</code>. Ensure this path exists before starting the stack.
+      </div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<footer>
+  <img src="yizhar-lab.jpg" alt="Yizhar Lab" style="width:48px;height:auto;border-radius:4px;opacity:0.95;flex-shrink:0;mix-blend-mode:screen" />
+  <p>MICS Documentation · Yizhar Lab · Weizmann Institute of Science</p>
+  <p style="margin-left:auto">Built with MICS v1.0</p>
+</footer>
+
+<script>
+// ── PROGRESS BAR ───────────────────────────────────────────
+const progress = document.getElementById('progress');
+window.addEventListener('scroll', () => {
+  const s = document.documentElement;
+  const pct = (s.scrollTop / (s.scrollHeight - s.clientHeight)) * 100;
+  progress.style.width = pct + '%';
+}, {passive:true});
+
+// ── ACTIVE NAV ─────────────────────────────────────────────
+const sections = document.querySelectorAll('.doc-section');
+const navLinks = document.querySelectorAll('nav.sidebar a');
+const headerH = 52 + 28;
+
+function setActive() {
+  let current = '';
+  sections.forEach(s => {
+    const top = s.getBoundingClientRect().top;
+    if (top <= headerH + 10) current = s.id;
+  });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+}
+window.addEventListener('scroll', setActive, {passive:true});
+setActive();
+
+// ── COPY BUTTONS ───────────────────────────────────────────
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const pre = btn.closest('.code-block').querySelector('pre');
+    const text = pre.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  });
+});
+
+// ── SEARCH + AUTOCOMPLETE ──────────────────────────────────
+const searchInput = document.getElementById('search');
+const drop = document.getElementById('suggest-drop');
+
+// Build heading index once
+const headingIndex = [];
+document.querySelectorAll('.doc-section').forEach(sec => {
+  sec.querySelectorAll('h2, h3').forEach(h => {
+    headingIndex.push({
+      label: h.textContent.trim(),
+      level: h.tagName === 'H2' ? 'section' : 'topic',
+      sectionId: sec.id,
+      el: h
+    });
+  });
+});
+
+let activeIdx = -1;
+
+function highlight(text, q) {
+  const i = text.toLowerCase().indexOf(q);
+  if (i < 0) return text;
+  return text.slice(0, i) +
+    '<em>' + text.slice(i, i + q.length) + '</em>' +
+    text.slice(i + q.length);
+}
+
+function closeDrop() {
+  drop.classList.remove('open');
+  drop.innerHTML = '';
+  activeIdx = -1;
+}
+
+function filterSections(q) {
+  document.querySelectorAll('.doc-section').forEach(s => {
+    s.style.display = (!q || s.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+
+function buildDrop(q) {
+  if (!q) { closeDrop(); filterSections(''); return; }
+  filterSections(q);
+
+  const matches = headingIndex.filter(h =>
+    h.label.toLowerCase().includes(q)
+  ).slice(0, 9);
+
+  if (!matches.length) { closeDrop(); return; }
+
+  drop.innerHTML = matches.map((m, i) =>
+    `<div class="sug-item" data-section="${m.sectionId}" data-idx="${i}">
+      <span class="sug-level">${m.level}</span>
+      <span class="sug-text">${highlight(m.label, q)}</span>
+    </div>`
+  ).join('');
+
+  drop.querySelectorAll('.sug-item').forEach(item => {
+    item.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const id = item.dataset.section;
+      closeDrop();
+      searchInput.value = '';
+      filterSections('');
+      const target = document.getElementById(id);
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  activeIdx = -1;
+  drop.classList.add('open');
+}
+
+searchInput.addEventListener('input', () => {
+  buildDrop(searchInput.value.trim().toLowerCase());
+});
+
+searchInput.addEventListener('keydown', e => {
+  const items = drop.querySelectorAll('.sug-item');
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    activeIdx = Math.min(activeIdx + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('sug-active', i === activeIdx));
+    if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    activeIdx = Math.max(activeIdx - 1, 0);
+    items.forEach((el, i) => el.classList.toggle('sug-active', i === activeIdx));
+  } else if (e.key === 'Enter') {
+    if (activeIdx >= 0 && items[activeIdx]) {
+      items[activeIdx].dispatchEvent(new MouseEvent('mousedown'));
+    }
+  } else if (e.key === 'Escape') {
+    searchInput.value = '';
+    filterSections('');
+    closeDrop();
+    searchInput.blur();
+  }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#search-wrap')) closeDrop();
+});
+
+// ── SMOOTH SCROLL OFFSET ──────────────────────────────────
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const id = a.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (!el) return;
+    e.preventDefault();
+    el.scrollIntoView({behavior:'smooth'});
+  });
+});
+</script>
+</body>
+</html>

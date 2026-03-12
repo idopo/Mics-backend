@@ -23,6 +23,91 @@ export interface Subject {
   name: string
   protocol_id?: number | null
   protocol_name?: string | null
+  strain?: string | null
+  sex?: string | null
+  group_type?: string | null
+}
+
+export interface SubjectProtocolRunItem {
+  id: number
+  subject_id: number
+  protocol_id: number
+  session_id: number
+  current_step: number
+  started_at: string
+  finished_at: string | null
+}
+
+export interface ResearcherRead {
+  id: number
+  name: string
+  email?: string | null
+}
+
+export interface IACUCRead {
+  id: number
+  number: string
+  title: string
+  expires_at?: string | null
+}
+
+export interface WeightRead {
+  id: number
+  subject_id: number
+  measured_at: string
+  weight_grams: number
+  notes?: string | null
+}
+
+export interface SurgeryRead {
+  id: number
+  subject_id: number
+  procedure_type: string
+  performed_at?: string | null
+  notes?: string | null
+}
+
+export interface ProjectRead {
+  id: number
+  name: string
+  description?: string | null
+  iacuc_id?: number | null
+  lead_researcher_id?: number | null
+  results_notes?: string | null
+  notes?: string | null
+  created_at: string
+}
+
+export interface ExperimentRead {
+  id: number
+  name: string
+  project_id: number
+  description?: string | null
+  notes?: string | null
+  created_at: string
+}
+
+export interface SubjectExtendedRead {
+  id: number
+  name: string
+  strain?: string | null
+  genotype?: string | null
+  mother_name?: string | null
+  father_name?: string | null
+  dob?: string | null
+  sex?: string | null
+  rfid?: number | null
+  lead_researcher_id?: number | null
+  arrival_date?: string | null
+  in_quarantine?: boolean | null
+  location?: string | null
+  holding_conditions?: string | null
+  group_type?: string | null
+  group_details?: string | null
+  notes?: string | null
+  weights: WeightRead[]
+  surgeries: SurgeryRead[]
+  projects: ProjectRead[]
 }
 
 // params dict on a step: everything including graduation, step_name, task_type

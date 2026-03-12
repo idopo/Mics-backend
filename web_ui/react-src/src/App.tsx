@@ -8,6 +8,11 @@ const Protocols = React.lazy(() => import('./pages/protocols/Protocols'))
 const ProtocolsCreate = React.lazy(() => import('./pages/protocols-create/ProtocolsCreate'))
 const SubjectSessions = React.lazy(() => import('./pages/subject-sessions/SubjectSessions'))
 const PilotSessions = React.lazy(() => import('./pages/pilot-sessions/PilotSessions'))
+const Projects = React.lazy(() => import('./pages/projects/Projects'))
+const ProjectDetail = React.lazy(() => import('./pages/projects/ProjectDetail'))
+const ExperimentDetail = React.lazy(() => import('./pages/experiments/ExperimentDetail'))
+const Researchers = React.lazy(() => import('./pages/researchers/Researchers'))
+const IACUC = React.lazy(() => import('./pages/researchers/IACUC'))
 
 export default function App() {
   return (
@@ -20,6 +25,11 @@ export default function App() {
           <Route path="protocols-create" element={<ProtocolsCreate />} />
           <Route path="subjects/:subject/sessions-ui" element={<SubjectSessions />} />
           <Route path="pilots/:pilot/sessions-ui" element={<PilotSessions />} />
+          <Route path="projects-ui" element={<Projects />} />
+          <Route path="projects/:projectId" element={<ProjectDetail />} />
+          <Route path="experiments/:experimentId" element={<ExperimentDetail />} />
+          <Route path="researchers-ui" element={<Researchers />} />
+          <Route path="iacuc-ui" element={<IACUC />} />
         </Route>
       </Routes>
     </BrowserRouter>

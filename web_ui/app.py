@@ -394,6 +394,25 @@ async def get_start_options(session_id: int, pilot_id: int):
         return resp.json()
 
 
+from fastapi import Response as FastAPIResponse
+
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def api_catch_all(path: str, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/{path}",
+            content=body or None,
+            params=dict(request.query_params),
+        )
+    return FastAPIResponse(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/json"),
+    )
+
+
 @app.get("/react/{path:path}")
 async def react_spa(request: Request, path: str = ""):
     return templates.TemplateResponse("react/index.html", {"request": request})

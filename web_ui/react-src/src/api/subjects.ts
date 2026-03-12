@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { Subject, SessionSummary } from '../types'
+import type { Subject, SubjectProtocolRunItem } from '../types'
 
 export const getSubjects = () => apiFetch<Subject[]>('/api/subjects')
 export const createSubject = (name: string) =>
@@ -8,4 +8,4 @@ export const createSubject = (name: string) =>
     body: JSON.stringify({ name }),
   })
 export const getSubjectSessions = (subject: string) =>
-  apiFetch<SessionSummary[]>(`/api/subjects/${encodeURIComponent(subject)}/sessions`)
+  apiFetch<SubjectProtocolRunItem[]>(`/api/subjects/${encodeURIComponent(subject)}/runs`)

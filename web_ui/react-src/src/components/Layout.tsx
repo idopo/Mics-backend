@@ -39,6 +39,39 @@ const NAV_LINKS = [
       </svg>
     ),
   },
+  {
+    to: '/projects-ui',
+    label: 'Projects',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 7a2 2 0 0 1 2-2h4l2 2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    to: '/researchers-ui',
+    label: 'Researchers',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="9" cy="7" r="4" />
+        <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        <path d="M21 21v-2a4 4 0 0 0-3-3.85" />
+      </svg>
+    ),
+  },
+  {
+    to: '/iacuc-ui',
+    label: 'IACUC',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+  },
 ]
 
 function BrandMark() {
@@ -63,7 +96,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ height: '100vh', minHeight: 0, overflow: 'hidden' }}>
       <aside className="sidebar">
         <Link to="/" className="sidebar-brand" aria-label="MICS home">
           <BrandMark />
@@ -91,11 +124,26 @@ export default function Layout() {
         </div>
       </aside>
 
-      <main className="main-content">
+      <main className="main-content" style={{ height: '100vh', minHeight: 0, overflowY: 'auto', boxSizing: 'border-box', padding: '2rem 3rem' }}>
         <Suspense fallback={<PageSkeleton />}>
           <Outlet />
         </Suspense>
       </main>
+
+      {/* Fixed powered-by strip — same height as .sidebar-footer (14px pad × 2 + ~17px line) */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 'var(--sidebar-w, 260px)', right: 0,
+        height: '46px',
+        padding: '0 24px',
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px',
+        background: 'var(--bg)',
+        zIndex: 50,
+        pointerEvents: 'none',
+      }}>
+        <span style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--subtext0)', opacity: 0.65 }}>powered by</span>
+        <img src="/static/yizhar-lab.jpg" alt="Yizhar Lab" style={{ height: '26px', width: 'auto', mixBlendMode: 'screen', opacity: 0.95 }} />
+        <span style={{ fontSize: '12px', letterSpacing: '0.05em', color: 'var(--subtext0)', opacity: 0.75, fontWeight: 600 }}>Yizhar Lab</span>
+      </div>
     </div>
   )
 }

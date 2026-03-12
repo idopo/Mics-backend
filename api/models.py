@@ -1,7 +1,7 @@
 # api/models.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Dict, Any, List
 
 import enum
@@ -39,6 +39,25 @@ class Subject(SQLModel, table=True):
     next_protocol_id: Optional[int] = Field(
         default=None, foreign_key="protocol_templates.id"
     )
+
+    # Biology
+    strain: Optional[str] = None
+    genotype: Optional[str] = None
+    mother_name: Optional[str] = None
+    father_name: Optional[str] = None
+    dob: Optional[date] = None
+    sex: Optional[str] = None
+    rfid: Optional[int] = None
+
+    # Administrative
+    lead_researcher_id: Optional[int] = None  # bare int — no FK constraint (no migration for existing DBs)
+    arrival_date: Optional[date] = None
+    in_quarantine: Optional[bool] = Field(default=False)
+    location: Optional[str] = None
+    holding_conditions: Optional[str] = None
+    group_type: Optional[str] = None
+    group_details: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class SubjectProtocolRun(SQLModel, table=True):
@@ -84,6 +103,80 @@ class ProtocolStepTemplate(SQLModel, table=True):
 
 
 # ============================================================
+# NEW SQLModel TABLES (Project / Experiment hierarchy)
+# ============================================================
+
+class Researcher(SQLModel, table=True):
+    __tablename__ = "researchers"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    email: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_hidden: bool = Field(default=False)
+
+
+class IACUCProtocol(SQLModel, table=True):
+    __tablename__ = "iacuc_protocols"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    number: str = Field(unique=True, index=True)
+    title: str
+    expires_at: Optional[date] = None
+    is_hidden: bool = Field(default=False)
+
+
+class Project(SQLModel, table=True):
+    __tablename__ = "projects"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    description: Optional[str] = None
+    iacuc_id: Optional[int] = Field(default=None, foreign_key="iacuc_protocols.id")
+    lead_researcher_id: Optional[int] = Field(default=None, foreign_key="researchers.id")
+    results_notes: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Experiment(SQLModel, table=True):
+    __tablename__ = "experiments"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    project_id: int = Field(foreign_key="projects.id")
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ExperimentProtocol(SQLModel, table=True):
+    __tablename__ = "experiment_protocols"
+    experiment_id: int = Field(foreign_key="experiments.id", primary_key=True)
+    protocol_id: int = Field(foreign_key="protocol_templates.id", primary_key=True)
+
+
+class SubjectProject(SQLModel, table=True):
+    __tablename__ = "subject_projects"
+    subject_id: int = Field(foreign_key="subjects.id", primary_key=True)
+    project_id: int = Field(foreign_key="projects.id", primary_key=True)
+
+
+class WeightMeasurement(SQLModel, table=True):
+    __tablename__ = "weight_measurements"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    subject_id: int = Field(foreign_key="subjects.id", index=True)
+    measured_at: date
+    weight_grams: float
+    notes: Optional[str] = None
+
+
+class SubjectSurgery(SQLModel, table=True):
+    __tablename__ = "subject_surgeries"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    subject_id: int = Field(foreign_key="subjects.id", index=True)
+    procedure_type: str
+    performed_at: Optional[date] = None
+    notes: Optional[str] = None
+
+
+# ============================================================
 # DTOs for API (Pydantic / SQLModel schemas)
 # ============================================================
 
@@ -96,6 +189,9 @@ class SubjectRead(SQLModel):
     name: str
     current_run_id: Optional[int] = None
     next_protocol_id: Optional[int] = None
+    strain: Optional[str] = None
+    sex: Optional[str] = None
+    group_type: Optional[str] = None
 
 
 class AssignProtocolPayload(SQLModel):
@@ -121,6 +217,144 @@ class ProtocolRead(SQLModel):
     description: Optional[str]
     created_at: datetime
     steps: List[ProtocolStepTemplate]
+
+
+# ============================================================
+# NEW DTOs (Project / Experiment / Subject extensions)
+# ============================================================
+
+class ResearcherCreate(SQLModel):
+    name: str
+    email: Optional[str] = None
+
+class ResearcherUpdate(SQLModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+
+class ResearcherRead(SQLModel):
+    id: int
+    name: str
+    email: Optional[str] = None
+
+
+class IACUCCreate(SQLModel):
+    number: str
+    title: str
+    expires_at: Optional[date] = None
+
+class IACUCRead(SQLModel):
+    id: int
+    number: str
+    title: str
+    expires_at: Optional[date] = None
+
+
+class WeightCreate(SQLModel):
+    measured_at: date
+    weight_grams: float
+    notes: Optional[str] = None
+
+class WeightRead(SQLModel):
+    id: int
+    subject_id: int
+    measured_at: date
+    weight_grams: float
+    notes: Optional[str] = None
+
+
+class SurgeryCreate(SQLModel):
+    procedure_type: str
+    performed_at: Optional[date] = None
+    notes: Optional[str] = None
+
+class SurgeryRead(SQLModel):
+    id: int
+    subject_id: int
+    procedure_type: str
+    performed_at: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class ProjectCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    iacuc_id: Optional[int] = None
+    lead_researcher_id: Optional[int] = None
+    results_notes: Optional[str] = None
+    notes: Optional[str] = None
+
+class ProjectRead(SQLModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    iacuc_id: Optional[int] = None
+    lead_researcher_id: Optional[int] = None
+    results_notes: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class ExperimentCreate(SQLModel):
+    name: str
+    project_id: int
+    description: Optional[str] = None
+    notes: Optional[str] = None
+
+class ExperimentRead(SQLModel):
+    id: int
+    name: str
+    project_id: int
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class SubjectUpdate(SQLModel):
+    strain: Optional[str] = None
+    genotype: Optional[str] = None
+    mother_name: Optional[str] = None
+    father_name: Optional[str] = None
+    dob: Optional[date] = None
+    sex: Optional[str] = None
+    rfid: Optional[int] = None
+    lead_researcher_id: Optional[int] = None
+    arrival_date: Optional[date] = None
+    in_quarantine: Optional[bool] = None
+    location: Optional[str] = None
+    holding_conditions: Optional[str] = None
+    group_type: Optional[str] = None
+    group_details: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# SubjectExtendedRead defined last so WeightRead/SurgeryRead/ProjectRead are in scope
+class SubjectExtendedRead(SQLModel):
+    id: int
+    name: str
+    current_run_id: Optional[int] = None
+    next_protocol_id: Optional[int] = None
+    strain: Optional[str] = None
+    genotype: Optional[str] = None
+    mother_name: Optional[str] = None
+    father_name: Optional[str] = None
+    dob: Optional[date] = None
+    sex: Optional[str] = None
+    rfid: Optional[int] = None
+    lead_researcher_id: Optional[int] = None
+    arrival_date: Optional[date] = None
+    in_quarantine: Optional[bool] = None
+    location: Optional[str] = None
+    holding_conditions: Optional[str] = None
+    group_type: Optional[str] = None
+    group_details: Optional[str] = None
+    notes: Optional[str] = None
+    weights: List[WeightRead] = []
+    surgeries: List[SurgeryRead] = []
+    projects: List[ProjectRead] = []
+
+
+# Resolve forward references (required for Pydantic v1 with nested schemas)
+SubjectExtendedRead.update_forward_refs()
 
 
 # ============================================================

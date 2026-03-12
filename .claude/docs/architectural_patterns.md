@@ -101,3 +101,51 @@ For each resource type (session detail, protocol, latest run), a plain-object or
 `SessionRunCreate.mode` accepts `"new"`, `"resume"`, or `"restart"`. `"new"` creates a fresh row at progress zero. `"resume"` reactivates the most recent STOPPED/ERROR row in place, preserving its progress. `"restart"` creates a new row but copies the `session_run_index`, recording a new attempt at the same logical position.
 
 **Why:** Hardware experiments fail mid-run. Resume continues from the stopped point. Restart records a fresh attempt without losing prior run history. New is unambiguous: no prior state consulted.
+
+---
+
+## 11. Pi task state machine (FDA + View + wait_for_condition)
+
+**Where:** `~/pi-mirror/autopilot/autopilot/utils/FiniteDeterministicAutomaton.py`, `autopilot/core/View.py`, `autopilot/tasks/mics_task.py`, `autopilot/tasks/task.py`
+
+Every Pi task (`mics_task` subclass) uses a `FiniteDeterministicAutomaton` as `self.stages`. States are task methods. Transitions are `(from, to, [lambda_list])` where all lambdas must be true to fire. Empty lambda list = unconditional. `wait_for_condition()` is a generator that keeps yielding until one of the current state's transitions fires; stage methods return it so `pilot.py`'s `run_task` loop blocks until the hardware condition is met.
+
+`self.view` is the observable state surface: `view.get_value(name)` reads hardware or tracker state. All FDA transition lambdas use `self.view`. Hardware objects and Trackers are both registered in `view.view[name]`.
+
+**Why:** Separates state machine structure (declared in `__init__`) from logic (state methods). Transition conditions are pure boolean expressions on view state, making the flow readable as a graph. `wait_for_condition()` lets stage methods block without spinning — the generator yields on each loop iteration until a transition guard is true.
+
+---
+
+## 12. Auto-logging via @log_action decorator
+
+**Where:** `~/pi-mirror/autopilot/autopilot/utils/logging_utils.py`, all `Hardware` and `Mics_Tracker` subclasses
+
+`@log_action` wraps any `Hardware` or `Tracker` method. For Hardware: computes new `hardware_state` → runs method → dispatches `Hardware_Event`. For Trackers: runs method → dispatches `Event`. All go through `Event_Dispatcher.dispatch_event()` → `node.send('T', 'CONTINUOUS', data)` → orchestrator's `on_data` handler → ElasticSearch.
+
+Every event envelope includes: `{pilot, subject, session, run_id, task_type, timestamp, continuous, session_progress_index, subjects, event: {event_type, event_data, [level]}}`. Timestamp is from `pi.ticks_to_timestamp(pi.get_current_tick())` — hardware-accurate pigpio ticks.
+
+`INC_TRIAL_COUNTER` is NOT sent automatically. Tasks must call `self.event_dispatcher.dispatch_event(event, key="INC_TRIAL_COUNTER")` explicitly. This triggers `_handle_inc_trial` in orchestrator → API trial increment → possible graduation/step advance.
+
+**Why:** Every hardware action is recorded in ES without task code needing explicit logging calls. The decorator pattern keeps task logic clean while ensuring full auditability of every valve open, lick, IR beam, timer, and tracker change.
+
+---
+
+## 13. HANDSHAKE task discovery
+
+**Where:** `~/pi-mirror/autopilot/autopilot/core/pilot.py:394-431` (`discover_tasks_metadata`, `handshake`), `orchestrator/orchestrator/orchestrator_station.py:69-95` (`on_handshake`), `api/main.py` (`upsert_pilot_tasks`)
+
+On startup (and reconnect), `Pilot.handshake()` scans all plugin classes via `autopilot.get_task()`, extracts `PARAMS` dict + `__init__` signature defaults, and sends the full list in the `HANDSHAKE` payload. The orchestrator forwards this to the API via `upsert_pilot_tasks()`, which populates the `task_definitions` table — powering the task palette in the web UI.
+
+Each task entry: `{task_name, base_class, module, params: {key: {tag, type, default}}, hardware, file_hash}`.
+
+**Why:** Task discovery is code-driven — adding a plugin file on the Pi automatically registers the task in the DB on next handshake. No manual registration needed.
+
+---
+
+## 14. Soft-delete via `is_hidden` flag
+
+**Where:** `api/models.py` (`Researcher.is_hidden`, `IACUCProtocol.is_hidden`), `api/main.py` (`GET /researchers`, `GET /iacuc`, `PATCH /researchers/{id}/hide`, `PATCH /iacuc/{id}/hide`), `api/db.py` (`run_lab_column_migrations`)
+
+Records are never hard-deleted from the DB. `PATCH /{resource}/{id}/hide` sets `is_hidden = True`. List endpoints filter `WHERE is_hidden = FALSE` by default; pass `?include_hidden=true` to see all. The column is added to existing DBs by `run_lab_column_migrations` (called at startup, `ALTER TABLE … ADD COLUMN IF NOT EXISTS … DEFAULT FALSE`).
+
+**Why:** Researchers and IACUC protocols may be foreign-keyed from subjects and projects. Hard deletion would break referential integrity. Soft-hiding removes them from UI dropdowns and lists while preserving the linked historical records. `DEFAULT FALSE` in the DDL ensures no backfill UPDATE is needed for pre-existing rows.

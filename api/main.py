@@ -1,8 +1,7 @@
 # api/main.py
-from typing import List
+from typing import List, Dict, Any, Optional
 
 from datetime import datetime
-from typing import Dict, Any
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session as OrmSession
@@ -11,7 +10,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from sqlalchemy import func
-from db import engine, get_session
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations
 from models import (
     Subject,
     SubjectCreate,
@@ -22,6 +21,15 @@ from models import (
     ProtocolStepTemplate,
     ProtocolCreate,
     ProtocolRead,
+    Researcher, ResearcherCreate, ResearcherRead, ResearcherUpdate,
+    IACUCProtocol, IACUCCreate, IACUCRead,
+    Project, ProjectCreate, ProjectRead,
+    Experiment, ExperimentCreate, ExperimentRead,
+    ExperimentProtocol,
+    SubjectProject,
+    WeightMeasurement, WeightCreate, WeightRead,
+    SubjectSurgery, SurgeryCreate, SurgeryRead,
+    SubjectUpdate, SubjectExtendedRead,
 
     TaskDefinition,
     TaskInheritance,
@@ -100,6 +108,9 @@ def startup():
     # And for pure SQLAlchemy side
     from models import Base
     Base.metadata.create_all(engine)
+    # Add new nullable columns to subjects (safe on existing DBs; no-op on fresh deploys)
+    run_subject_column_migrations(engine)
+    run_lab_column_migrations(engine)
 
 
 @app.get("/health")
@@ -183,6 +194,448 @@ def assign_protocol(
         "protocol_name": protocol.name,
         "note": "Run will be created only when a session starts.",
     }
+
+
+# ----------------------------------------------------------
+# RESEARCHERS
+# ----------------------------------------------------------
+
+@app.get("/researchers", response_model=List[ResearcherRead])
+def list_researchers(
+    include_hidden: bool = False,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    q = select(Researcher)
+    if not include_hidden:
+        q = q.where(Researcher.is_hidden == False)
+    return session.exec(q).all()
+
+
+@app.post("/researchers", response_model=ResearcherRead, status_code=201)
+def create_researcher(
+    payload: ResearcherCreate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if payload.email:
+        existing = session.exec(select(Researcher).where(Researcher.email == payload.email)).first()
+        if existing:
+            raise HTTPException(400, "A researcher with this email already exists")
+    researcher = Researcher(**payload.dict())
+    session.add(researcher)
+    session.commit()
+    session.refresh(researcher)
+    return researcher
+
+
+@app.patch("/researchers/{researcher_id}", response_model=ResearcherRead)
+def update_researcher(
+    researcher_id: int,
+    payload: ResearcherUpdate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    researcher = session.get(Researcher, researcher_id)
+    if not researcher:
+        raise HTTPException(404, "Researcher not found")
+    new_email = payload.dict(exclude_unset=True).get('email')
+    if new_email:
+        conflict = session.exec(
+            select(Researcher).where(Researcher.email == new_email, Researcher.id != researcher_id)
+        ).first()
+        if conflict:
+            raise HTTPException(400, "A researcher with this email already exists")
+    for key, value in payload.dict(exclude_unset=True).items():
+        setattr(researcher, key, value)
+    session.add(researcher)
+    session.commit()
+    session.refresh(researcher)
+    return researcher
+
+
+@app.patch("/researchers/{researcher_id}/hide", response_model=ResearcherRead)
+def hide_researcher(
+    researcher_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    researcher = session.get(Researcher, researcher_id)
+    if not researcher:
+        raise HTTPException(404, "Researcher not found")
+    researcher.is_hidden = True
+    session.add(researcher)
+    session.commit()
+    session.refresh(researcher)
+    return researcher
+
+
+# ----------------------------------------------------------
+# IACUC
+# ----------------------------------------------------------
+
+@app.get("/iacuc", response_model=List[IACUCRead])
+def list_iacuc(
+    include_hidden: bool = False,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    q = select(IACUCProtocol)
+    if not include_hidden:
+        q = q.where(IACUCProtocol.is_hidden == False)
+    return session.exec(q).all()
+
+
+@app.post("/iacuc", response_model=IACUCRead, status_code=201)
+def create_iacuc(
+    payload: IACUCCreate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    existing = session.exec(select(IACUCProtocol).where(IACUCProtocol.number == payload.number)).first()
+    if existing:
+        raise HTTPException(400, "IACUC number already exists")
+    iacuc = IACUCProtocol(**payload.dict())
+    session.add(iacuc)
+    session.commit()
+    session.refresh(iacuc)
+    return iacuc
+
+
+@app.patch("/iacuc/{iacuc_id}/hide", response_model=IACUCRead)
+def hide_iacuc(
+    iacuc_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    iacuc = session.get(IACUCProtocol, iacuc_id)
+    if not iacuc:
+        raise HTTPException(404, "IACUC protocol not found")
+    iacuc.is_hidden = True
+    session.add(iacuc)
+    session.commit()
+    session.refresh(iacuc)
+    return iacuc
+
+
+# ----------------------------------------------------------
+# PROJECTS
+# ----------------------------------------------------------
+
+@app.get("/projects", response_model=List[ProjectRead])
+def list_projects(
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    return session.exec(select(Project)).all()
+
+
+@app.post("/projects", response_model=ProjectRead, status_code=201)
+def create_project(
+    payload: ProjectCreate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    existing = session.exec(select(Project).where(Project.name == payload.name)).first()
+    if existing:
+        raise HTTPException(400, "Project name already exists")
+    project = Project(**payload.dict())
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    return project
+
+
+@app.get("/projects/{project_id}", response_model=ProjectRead)
+def get_project(
+    project_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    return project
+
+
+# ----------------------------------------------------------
+# EXPERIMENTS
+# ----------------------------------------------------------
+
+@app.get("/experiments", response_model=List[ExperimentRead])
+def list_experiments(
+    project_id: Optional[int] = None,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    q = select(Experiment)
+    if project_id is not None:
+        q = q.where(Experiment.project_id == project_id)
+    return session.exec(q).all()
+
+
+@app.post("/experiments", response_model=ExperimentRead, status_code=201)
+def create_experiment(
+    payload: ExperimentCreate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    project = session.get(Project, payload.project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    experiment = Experiment(**payload.dict())
+    session.add(experiment)
+    session.commit()
+    session.refresh(experiment)
+    return experiment
+
+
+@app.get("/experiments/{experiment_id}", response_model=ExperimentRead)
+def get_experiment(
+    experiment_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    experiment = session.get(Experiment, experiment_id)
+    if not experiment:
+        raise HTTPException(404, "Experiment not found")
+    return experiment
+
+
+@app.post("/experiments/{experiment_id}/protocols/{protocol_id}", status_code=201)
+def assign_protocol_to_experiment(
+    experiment_id: int,
+    protocol_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Experiment, experiment_id):
+        raise HTTPException(404, "Experiment not found")
+    if not session.get(ProtocolTemplate, protocol_id):
+        raise HTTPException(404, "Protocol not found")
+    existing = session.get(ExperimentProtocol, (experiment_id, protocol_id))
+    if existing:
+        raise HTTPException(400, "Protocol already assigned to this experiment")
+    link = ExperimentProtocol(experiment_id=experiment_id, protocol_id=protocol_id)
+    session.add(link)
+    session.commit()
+    return {"status": "assigned", "experiment_id": experiment_id, "protocol_id": protocol_id}
+
+
+@app.get("/experiments/{experiment_id}/protocols", response_model=List[ProtocolRead])
+def get_experiment_protocols(
+    experiment_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Experiment, experiment_id):
+        raise HTTPException(404, "Experiment not found")
+    links = session.exec(
+        select(ExperimentProtocol).where(ExperimentProtocol.experiment_id == experiment_id)
+    ).all()
+    result = []
+    for link in links:
+        protocol = session.get(ProtocolTemplate, link.protocol_id)
+        if protocol:
+            steps = session.exec(
+                select(ProtocolStepTemplate)
+                .where(ProtocolStepTemplate.protocol_id == protocol.id)
+                .order_by(ProtocolStepTemplate.order_index)
+            ).all()
+            result.append(ProtocolRead(
+                id=protocol.id,
+                name=protocol.name,
+                description=protocol.description,
+                created_at=protocol.created_at,
+                steps=list(steps),
+            ))
+    return result
+
+
+@app.delete("/experiments/{experiment_id}/protocols/{protocol_id}", status_code=200)
+def unassign_protocol_from_experiment(
+    experiment_id: int,
+    protocol_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    link = session.get(ExperimentProtocol, (experiment_id, protocol_id))
+    if not link:
+        raise HTTPException(404, "Assignment not found")
+    session.delete(link)
+    session.commit()
+    return {"status": "unassigned"}
+
+
+# ----------------------------------------------------------
+# SUBJECT EXTENSIONS (extended read, patch, weights, surgeries, projects)
+# ----------------------------------------------------------
+
+@app.get("/subjects/{subject_id}/detail", response_model=SubjectExtendedRead)
+def get_subject_detail(
+    subject_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    subject = session.get(Subject, subject_id)
+    if not subject:
+        raise HTTPException(404, "Subject not found")
+
+    weights = session.exec(
+        select(WeightMeasurement).where(WeightMeasurement.subject_id == subject_id)
+        .order_by(WeightMeasurement.measured_at.desc())
+    ).all()
+
+    surgeries = session.exec(
+        select(SubjectSurgery).where(SubjectSurgery.subject_id == subject_id)
+    ).all()
+
+    links = session.exec(
+        select(SubjectProject).where(SubjectProject.subject_id == subject_id)
+    ).all()
+    project_ids = [lnk.project_id for lnk in links]
+    projects = [session.get(Project, pid) for pid in project_ids if session.get(Project, pid)]
+
+    return SubjectExtendedRead(
+        **subject.dict(),
+        weights=[WeightRead.from_orm(w) for w in weights],
+        surgeries=[SurgeryRead.from_orm(s) for s in surgeries],
+        projects=[ProjectRead.from_orm(p) for p in projects],
+    )
+
+
+@app.patch("/subjects/{subject_id}/detail", response_model=SubjectExtendedRead)
+def patch_subject(
+    subject_id: int,
+    payload: SubjectUpdate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    subject = session.get(Subject, subject_id)
+    if not subject:
+        raise HTTPException(404, "Subject not found")
+
+    update_data = payload.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(subject, key, value)
+    session.add(subject)
+    session.commit()
+    session.refresh(subject)
+
+    # Return full extended read
+    weights = session.exec(
+        select(WeightMeasurement).where(WeightMeasurement.subject_id == subject_id)
+        .order_by(WeightMeasurement.measured_at.desc())
+    ).all()
+    surgeries = session.exec(
+        select(SubjectSurgery).where(SubjectSurgery.subject_id == subject_id)
+    ).all()
+    links = session.exec(
+        select(SubjectProject).where(SubjectProject.subject_id == subject_id)
+    ).all()
+    projects = [session.get(Project, lnk.project_id) for lnk in links]
+    projects = [p for p in projects if p]
+
+    return SubjectExtendedRead(
+        **subject.dict(),
+        weights=[WeightRead.from_orm(w) for w in weights],
+        surgeries=[SurgeryRead.from_orm(s) for s in surgeries],
+        projects=[ProjectRead.from_orm(p) for p in projects],
+    )
+
+
+@app.post("/subjects/{subject_id}/projects/{project_id}", status_code=201)
+def assign_subject_to_project(
+    subject_id: int,
+    project_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Subject, subject_id):
+        raise HTTPException(404, "Subject not found")
+    if not session.get(Project, project_id):
+        raise HTTPException(404, "Project not found")
+    existing = session.get(SubjectProject, (subject_id, project_id))
+    if existing:
+        raise HTTPException(400, "Subject already in this project")
+    link = SubjectProject(subject_id=subject_id, project_id=project_id)
+    session.add(link)
+    session.commit()
+    return {"status": "assigned"}
+
+
+@app.delete("/subjects/{subject_id}/projects/{project_id}")
+def remove_subject_from_project(
+    subject_id: int,
+    project_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    link = session.get(SubjectProject, (subject_id, project_id))
+    if not link:
+        raise HTTPException(404, "Assignment not found")
+    session.delete(link)
+    session.commit()
+    return {"status": "removed"}
+
+
+@app.get("/subjects/{subject_id}/weights", response_model=List[WeightRead])
+def list_weights(
+    subject_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Subject, subject_id):
+        raise HTTPException(404, "Subject not found")
+    return session.exec(
+        select(WeightMeasurement).where(WeightMeasurement.subject_id == subject_id)
+        .order_by(WeightMeasurement.measured_at.desc())
+    ).all()
+
+
+@app.post("/subjects/{subject_id}/weights", response_model=WeightRead, status_code=201)
+def add_weight(
+    subject_id: int,
+    payload: WeightCreate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Subject, subject_id):
+        raise HTTPException(404, "Subject not found")
+    w = WeightMeasurement(subject_id=subject_id, **payload.dict())
+    session.add(w)
+    session.commit()
+    session.refresh(w)
+    return w
+
+
+@app.get("/subjects/{subject_id}/surgeries", response_model=List[SurgeryRead])
+def list_surgeries(
+    subject_id: int,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Subject, subject_id):
+        raise HTTPException(404, "Subject not found")
+    return session.exec(
+        select(SubjectSurgery).where(SubjectSurgery.subject_id == subject_id)
+    ).all()
+
+
+@app.post("/subjects/{subject_id}/surgeries", response_model=SurgeryRead, status_code=201)
+def add_surgery(
+    subject_id: int,
+    payload: SurgeryCreate,
+    session: SQLModelSession = Depends(get_session),
+    _: dict = Depends(verify_token),
+):
+    if not session.get(Subject, subject_id):
+        raise HTTPException(404, "Subject not found")
+    s = SubjectSurgery(subject_id=subject_id, **payload.dict())
+    session.add(s)
+    session.commit()
+    session.refresh(s)
+    return s
 
 
 # ----------------------------------------------------------

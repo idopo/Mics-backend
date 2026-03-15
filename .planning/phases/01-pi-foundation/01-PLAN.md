@@ -1,8 +1,8 @@
 ---
 plan: 01
-wave: 1
+wave: 2
 title: "mics_task class attributes and __init__ hook"
-depends_on: []
+depends_on: [06]
 files_modified:
   - ~/pi-mirror/autopilot/autopilot/tasks/mics_task.py
 autonomous: true
@@ -105,7 +105,13 @@ Important: `load_fda_from_json` is defined in Plan 02. This call will raise `Att
 
 ## Verification
 
-1. SSH into Pi or run in the pi-mirror environment. Start any existing task (e.g. `AppetitveTaskReal`) without passing `state_machine` kwarg. Confirm it boots and runs identically to before — no `AttributeError`, no behavior change.
+**Before any Pi test — deploy to Pi:**
+```bash
+cd ~/pi-mirror && ./tools/deploy_pi.sh
+```
+This syncs `~/pi-mirror/autopilot/` to the Pi and restarts the pilot process. All on-Pi tests below require this step first. (Plan 06 must be complete before Plan 01 verification.)
+
+1. After deploying, start any existing task (e.g. `AppetitiveTaskReal`) without passing `state_machine` kwarg. Confirm it boots and runs identically to before — no `AttributeError`, no behavior change.
 
 2. Inspect the class:
    ```python

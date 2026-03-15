@@ -450,6 +450,12 @@ Notes on `_build_transition_lambda`:
 
 ## Verification
 
+**Before any Pi test — deploy to Pi:**
+```bash
+cd ~/pi-mirror && ./tools/deploy_pi.sh
+```
+Sync `~/pi-mirror/autopilot/` to the Pi and restart the pilot process before running any on-Pi test below. Steps 1–2 can be run locally in `~/pi-mirror/`; steps 3+ require the Pi.
+
 1. `python -m py_compile autopilot/autopilot/tasks/mics_task.py` exits 0.
 
 2. Existing task starts without `state_machine` kwarg — identical behavior, no errors.

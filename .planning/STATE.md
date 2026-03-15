@@ -23,10 +23,12 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 |---|---|---|
 | Hardware_Event logging is unconditional | 2026-03-15 | execute_trigger() always dispatches Hardware_Event; trigger_assignments only adds semantic layer |
 | FDA v2 JSON with entry_actions | 2026-03-15 | Declarative state bodies; no exec() or pickle needed |
-| SEMANTIC_HARDWARE in toolkit | 2026-03-15 | Decouples logic from physical wiring; same JSON on different rigs |
-| Hot-reload is next-entry safe | 2026-03-15 | Method refs replaced between next() calls; no state interruption |
+| SEMANTIC_HARDWARE defined in code by developer | 2026-03-15 | Friendly names are toolkit public API; developer writes them in Python, HANDSHAKE ships them to DB, GUI consumes them as read-only dropdowns; researchers cannot rename hardware from UI |
+| Three-layer abstraction: prefs.json → HARDWARE dict → SEMANTIC_HARDWARE → FDA JSON | 2026-03-15 | prefs.json changes (pins) never reach FDA JSON; HARDWARE key renames require one SEMANTIC_HARDWARE update; semantic name renames require DB migration — avoid |
+| Hot-reload scope: between task runs, not mid-execution | 2026-03-15 | Orchestrator includes latest fda_json from DB in every START payload; Pi calls load_fda_from_json() at task start; pilot process never restarts; mid-execution UPDATE_FDA deferred to v2 |
+| Three state modes: passthrough / GUI-built / hybrid | 2026-03-15 | Passthrough = existing Python method used as-is (no entry_actions); GUI-built = full entry_actions in JSON; hybrid = GUI-built state calling CALLABLE_METHODS as building blocks |
+| CALLABLE_METHODS is developer-defined, not UI-created | 2026-03-15 | Developer marks Python methods as callable from JSON by listing in CALLABLE_METHODS; GUI consumes from task_toolkits.callable_methods; researchers cannot create callable methods from UI |
 | Monaco + asyncssh for Pi editor | 2026-03-15 | Jupyter/code-server too heavy for Pi |
-| _state_method_registry keyed by name string | 2026-03-15 | Python bound method identity is fragile after rebuild |
 | Phase 5 independent of Phases 1-4 | 2026-03-15 | Pi editor viewer has no dependency on toolkit/FDA work |
 
 ---
@@ -45,6 +47,17 @@ None currently.
 
 ---
 
+## Pi Development Workflow
+
+All Pi code changes follow this sequence:
+1. **Edit** in `~/pi-mirror/autopilot/` (local mirror — never edit on Pi directly)
+2. **Local syntax check**: `python -m py_compile <file>` from `~/pi-mirror/`
+3. **Deploy to Pi**: `~/pi-mirror/tools/deploy_pi.sh` (rsync + pilot restart)
+4. **Test on Pi**: verify behavior via session start or SSH inspection
+
+Plan 06 (deploy scripts) must be completed before Pi testing of any other plan.
+Plan 01 depends on Plan 06 (`depends_on: [06]`, wave 2).
+
 ## Next Actions
 
 1. `/gsd:discuss-phase 1` — gather context before planning Phase 1 (Pi Foundation)
@@ -52,4 +65,4 @@ None currently.
 2. Phase 5 (Pi Editor: Viewer) can be planned and executed in parallel with Phase 1
 
 ---
-*Last updated: 2026-03-15 after GSD initialization*
+*Last updated: 2026-03-15 — corrections: hot-reload scope, SEMANTIC_HARDWARE naming source, FDA JSON persistence*

@@ -294,6 +294,12 @@ Critical invariant: `Hardware_Event` dispatch in `execute_trigger()` always fire
 
 ## Verification
 
+**Before any Pi test — deploy to Pi:**
+```bash
+cd ~/pi-mirror && ./tools/deploy_pi.sh
+```
+Steps 1–3 can be run locally in `~/pi-mirror/`. Steps 4+ (trigger callback and touch detector tests) require deploying to the Pi first and triggering real GPIO edges.
+
 1. `python -m py_compile autopilot/autopilot/tasks/mics_task.py` exits 0.
 
 2. Test `_build_transition_lambda` in isolation:

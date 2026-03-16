@@ -1,4 +1,19 @@
 ---
+phase: 01-pi-foundation
+type: execute
+must_haves:
+  truths:
+    - "load_fda_from_json() handles v1 and v2 FDA JSON formats"
+    - "Deprecated ref in SEMANTIC_HARDWARE_RENAMES resolves transparently with deprecation warning logged"
+    - "INC_TRIAL_COUNTER special action sends ZMQ message"
+    - "Passthrough states return original bound method"
+  artifacts:
+    - path: "~/pi-mirror/autopilot/autopilot/tasks/mics_task.py"
+      contains: "_resolve_renamed_hw_refs"
+  key_links:
+    - from: "load_fda_from_json"
+      to: "_resolve_renamed_hw_refs"
+      via: "per-state call before _build_state_method"
 plan: 02
 wave: 2
 title: "load_fda_from_json() and _build_state_method() with all three modes"
@@ -15,13 +30,14 @@ requirements:
   - FDA-07
   - FDA-10
   - FDA-11
+  - FDA-13
 ---
 
 # Plan 02: load_fda_from_json() and _build_state_method()
 
 ## Goal
 
-Implement `load_fda_from_json()` on `mics_task` that accepts a v1 or v2 FDA JSON dict, resolves semantic hardware references (v2 only), builds state methods for all three modes (passthrough / GUI-built / hybrid), sets up the `FiniteDeterministicAutomaton`, and registers transitions. Also implement `_resolve_arg()` and `_build_state_method()` as helpers.
+Implement `load_fda_from_json()` on `mics_task` that accepts a v1 or v2 FDA JSON dict, resolves semantic hardware references (v2 only) with transparent fallback via `SEMANTIC_HARDWARE_RENAMES`, builds state methods for all three modes (passthrough / GUI-built / hybrid), sets up the `FiniteDeterministicAutomaton`, and registers transitions. Also implement `_resolve_arg()` and `_build_state_method()` as helpers.
 
 ## Context
 
@@ -308,7 +324,7 @@ Key notes:
 - `INC_TRIAL_COUNTER` sends via `self.node` — `self.node` is available because `Task.__init__` sets `self.node = kwargs['node']`.
 </task>
 
-<task id="02-4" title="Implement load_fda_from_json()" depends_on="02-3">
+<task id="02-4" title="Implement load_fda_from_json() with SEMANTIC_HARDWARE_RENAMES fallback" depends_on="02-3">
 
 Add the following method to `mics_task`:
 
@@ -366,6 +382,9 @@ def load_fda_from_json(self, definition: dict):
     overrides = definition.get("semantic_hardware_overrides") or {}
     base_semantic.update(overrides)
 
+    # Build the rename map for transparent backward-compat resolution (FDA-13).
+    rename_map = dict(getattr(self.__class__, 'SEMANTIC_HARDWARE_RENAMES', {}))
+
     self._semantic_hw = {}
     for friendly_name, (group, hw_id) in base_semantic.items():
         try:
@@ -384,7 +403,10 @@ def load_fda_from_json(self, definition: dict):
 
     state_method_map = {}  # name → bound method, for transition lookup below
     for state_name, state_def in states_def.items():
-        method = self._build_state_method(state_name, state_def)
+        # Before building the state, resolve any deprecated hardware refs in entry_actions
+        # via SEMANTIC_HARDWARE_RENAMES so _build_state_method sees only current names.
+        resolved_state_def = self._resolve_renamed_hw_refs(state_def, rename_map)
+        method = self._build_state_method(state_name, resolved_state_def)
         self.stages.add_method(method)
         state_method_map[state_name] = method
 
@@ -438,6 +460,49 @@ def load_fda_from_json(self, definition: dict):
         f"load_fda_from_json: loaded {len(states_def)} states, "
         f"{len(definition.get('transitions', []))} transitions."
     )
+
+
+def _resolve_renamed_hw_refs(self, state_def: dict, rename_map: dict) -> dict:
+    """
+    Return a copy of state_def with deprecated hardware/timer ref names replaced by their
+    current names via rename_map (sourced from SEMANTIC_HARDWARE_RENAMES). Logs a
+    deprecation warning for each renamed ref encountered.
+
+    Only rewrites entry_actions items with type 'hardware' or 'timer'.
+    Returns state_def unchanged (by reference) if no renames are needed.
+    """
+    if not rename_map:
+        return state_def
+
+    entry_actions = state_def.get("entry_actions")
+    if not entry_actions:
+        return state_def
+
+    needs_rewrite = any(
+        action.get("type") in ("hardware", "timer")
+        and action.get("ref", "") in rename_map
+        for action in entry_actions
+    )
+    if not needs_rewrite:
+        return state_def
+
+    # Shallow copy — only rewrite the entry_actions list
+    new_actions = []
+    for action in entry_actions:
+        atype = action.get("type")
+        ref   = action.get("ref", "")
+        if atype in ("hardware", "timer") and ref in rename_map:
+            new_name = rename_map[ref]
+            self.logger.warning(
+                f"Semantic hardware ref '{ref}' is deprecated, use '{new_name}' instead"
+            )
+            action = dict(action)   # shallow copy of the action dict
+            action["ref"] = new_name
+        new_actions.append(action)
+
+    new_state_def = dict(state_def)
+    new_state_def["entry_actions"] = new_actions
+    return new_state_def
 ```
 
 Notes on the FDA reset (step 1):
@@ -446,6 +511,11 @@ Notes on the FDA reset (step 1):
 
 Notes on `_build_transition_lambda`:
 - Called here but defined in Plan 03. The call is inside the method body, so Python does not resolve it at class definition time — only at call time. Deploying this method before Plan 03 will cause an `AttributeError` only if `transitions` are non-empty AND `conditions` list is non-empty. Passthrough states with empty `conditions: []` will work. Full testing requires Plan 03.
+
+Notes on `_resolve_renamed_hw_refs` (FDA-13):
+- Called per-state before `_build_state_method`, so the validation inside `_build_state_method` always sees the resolved (current) ref name in `_semantic_hw` — not the deprecated name.
+- Deprecation warning is emitted once per action per `load_fda_from_json()` call (i.e. once per task start), not once per state execution.
+- Does not mutate the caller's definition dict — creates shallow copies only of dicts that need rewriting.
 </task>
 
 ## Verification
@@ -492,6 +562,17 @@ Sync `~/pi-mirror/autopilot/` to the Pi and restart the pilot process before run
 
 7. Verify `_resolve_arg({"param": "ITI_center"})` returns the correct value when `self.params` is set.
 
+8. Verify SEMANTIC_HARDWARE_RENAMES resolution (FDA-13):
+   Define a toolkit subclass with:
+   ```python
+   SEMANTIC_HARDWARE = {"water_delivery": ("GPIO", "SOLENOID1")}
+   SEMANTIC_HARDWARE_RENAMES = {"reward_port": "water_delivery"}
+   ```
+   Load a v2 FDA JSON with `"ref": "reward_port"` in an entry_action. Confirm:
+   - Task starts without `KeyError`
+   - A deprecation warning is logged: `"Semantic hardware ref 'reward_port' is deprecated, use 'water_delivery' instead"`
+   - The action dispatches to the correct `water_delivery` hardware object
+
 ## must_haves
 - [ ] Backward compat: tasks without `state_machine` kwarg are completely unaffected
 - [ ] `load_fda_from_json(definition)` handles version=1 (states as list) by normalizing to `{name: {}}` dict before processing
@@ -504,3 +585,5 @@ Sync `~/pi-mirror/autopilot/` to the Pi and restart the pilot process before run
 - [ ] `_semantic_hw` map built correctly from `SEMANTIC_HARDWARE` + overrides
 - [ ] All state methods registered via `stages.add_method()` before any `add_transition()` call
 - [ ] `INC_TRIAL_COUNTER` special action calls `self.node.send('T', 'INC_TRIAL_COUNTER', {})`
+- [ ] Deprecated ref in `SEMANTIC_HARDWARE_RENAMES` resolves transparently; deprecation warning logged; no error raised (FDA-13)
+- [ ] `_resolve_renamed_hw_refs` does not mutate the caller's definition dict

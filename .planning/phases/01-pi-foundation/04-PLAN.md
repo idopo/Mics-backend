@@ -1,4 +1,15 @@
 ---
+phase: 01-pi-foundation
+type: execute
+must_haves:
+  truths:
+    - "HANDSHAKE payload includes semantic_hardware_renames field"
+    - "All six new fields present even for tasks that do not define them"
+    - "No exception raised for old Task subclasses lacking new attrs"
+    - "pilot.py compiles without syntax errors"
+  artifacts:
+    - path: "~/pi-mirror/autopilot/autopilot/core/pilot.py"
+      contains: "semantic_hardware_renames"
 plan: 04
 wave: 1
 title: "pilot.py HANDSHAKE enrichment"
@@ -9,13 +20,14 @@ autonomous: true
 requirements:
   - HOT-02
   - FDA-12
+  - FDA-13
 ---
 
 # Plan 04: pilot.py HANDSHAKE enrichment
 
 ## Goal
 
-Extend `extract_task_metadata()` in `pilot.py` to include `flags`, `semantic_hardware`, `stage_names`, `callable_methods`, and `required_packages` from the task class's new class attributes. The enriched payload flows through `handshake()` → ZMQ HANDSHAKE message → orchestrator → Phase 2's `task_toolkits` table.
+Extend `extract_task_metadata()` in `pilot.py` to include `flags`, `semantic_hardware`, `semantic_hardware_renames`, `stage_names`, `callable_methods`, and `required_packages` from the task class's new class attributes. The enriched payload flows through `handshake()` → ZMQ HANDSHAKE message → orchestrator → Phase 2's `task_toolkits` table.
 
 ## Context
 
@@ -33,9 +45,10 @@ Extend `extract_task_metadata()` in `pilot.py` to include `flags`, `semantic_har
 
 The orchestrator's HANDSHAKE handler reads this array and upserts into the `task_definitions` table. In Phase 2, a new `task_toolkits` table will be populated with the enriched fields. For Phase 1, the task is simply to include the new fields in the payload — the orchestrator ignores unknown keys gracefully (it just doesn't store them until Phase 2).
 
-All five new fields come from class attributes added in Plan 01:
+The six new fields come from class attributes added in Plan 01:
 - `FLAGS` — already existed on `mics_task` and its subclasses
 - `SEMANTIC_HARDWARE` — new, added in Plan 01 (defaults to `{}`)
+- `SEMANTIC_HARDWARE_RENAMES` — new, added in Plan 01 (defaults to `{}`) — included so Phase 2 can detect stale refs in stored task_definitions (FDA-13)
 - `STAGE_NAMES` — already existed on `Task` base class (list of strings)
 - `CALLABLE_METHODS` — new, added in Plan 01 (defaults to `[]`)
 - `REQUIRED_PACKAGES` — new, added in Plan 01 (defaults to `[]`)
@@ -75,6 +88,15 @@ Serialized FLAGS format:
 {
   "reward_port": ["GPIO", "VALVE1"],
   "cue_audio":   ["Mixer", "AUDIO1"]
+}
+```
+
+### SEMANTIC_HARDWARE_RENAMES serialization
+
+`SEMANTIC_HARDWARE_RENAMES` maps `str → str` (old_name → new_name). Already JSON-serializable — include as-is:
+```json
+{
+  "reward_port": "water_delivery"
 }
 ```
 
@@ -134,7 +156,7 @@ def _serialize_semantic_hardware(self, semantic_hw: dict) -> dict:
 ```
 </task>
 
-<task id="04-3" title="Extend extract_task_metadata() to include enriched fields" depends_on="04-2">
+<task id="04-3" title="Extend extract_task_metadata() to include enriched fields including semantic_hardware_renames" depends_on="04-2">
 
 In `~/pi-mirror/autopilot/autopilot/core/pilot.py`, locate `extract_task_metadata()`. Find the `return` statement at the end of the method (currently around line 364-371):
 
@@ -170,6 +192,15 @@ Replace it with:
             self.logger.warning(f"Failed reading SEMANTIC_HARDWARE from {cls.__name__}")
     serialized_semantic_hw = self._serialize_semantic_hardware(semantic_hw_raw)
 
+    # SEMANTIC_HARDWARE_RENAMES: deprecated names → current name mapping (FDA-13)
+    # Included so Phase 2 can detect stale refs in stored task_definitions and warn operators.
+    semantic_hw_renames = {}
+    if hasattr(cls, "SEMANTIC_HARDWARE_RENAMES"):
+        try:
+            semantic_hw_renames = dict(cls.SEMANTIC_HARDWARE_RENAMES)
+        except Exception:
+            self.logger.warning(f"Failed reading SEMANTIC_HARDWARE_RENAMES from {cls.__name__}")
+
     # STAGE_NAMES: already a list of strings, safe to include directly
     stage_names = []
     if hasattr(cls, "STAGE_NAMES"):
@@ -201,9 +232,10 @@ Replace it with:
         "params": merged_params,
         "hardware": hardware,
         "file_hash": file_hash,
-        # Enriched toolkit fields (HOT-02, FDA-12):
+        # Enriched toolkit fields (HOT-02, FDA-12, FDA-13):
         "flags": serialized_flags,
         "semantic_hardware": serialized_semantic_hw,
+        "semantic_hardware_renames": semantic_hw_renames,
         "stage_names": stage_names,
         "callable_methods": callable_methods,
         "required_packages": required_packages,
@@ -224,17 +256,22 @@ Backward-compat note: the orchestrator's current HANDSHAKE handler (`upsert_pilo
        __name__ = "MockTask"
        FLAGS = {"hits": {"type": Tracker.Counter_Tracker, "name": "hits", "initial_value": 0}}
        SEMANTIC_HARDWARE = {"reward_port": ("GPIO", "VALVE1")}
+       SEMANTIC_HARDWARE_RENAMES = {"old_reward": "reward_port"}
        STAGE_NAMES = ["prepare_session", "trial_onset"]
        CALLABLE_METHODS = ["randomize_iti"]
        REQUIRED_PACKAGES = ["numpy>=1.21"]
        PARAMS = {}
        HARDWARE = {}
    ```
-   Confirm the returned dict has all seven expected keys, and that `flags["hits"]["type"]` is a dict (not a class), and `semantic_hardware["reward_port"]` is `["GPIO", "VALVE1"]` (list).
+   Confirm the returned dict has all eight expected keys, and that:
+   - `flags["hits"]["type"]` is a dict (not a class)
+   - `semantic_hardware["reward_port"]` is `["GPIO", "VALVE1"]` (list, not tuple)
+   - `semantic_hardware_renames["old_reward"]` is `"reward_port"` (string, JSON-serializable)
 
 3. Start the Pi pilot process and inspect the HANDSHAKE ZMQ message received by the orchestrator. Confirm tasks array contains the new fields for `AppetitveTaskReal`:
    - `flags` has keys `hits`, `misses`, `false_alarms`, etc.
    - `semantic_hardware` is `{}` (since `AppetitveTaskReal` does not yet define `SEMANTIC_HARDWARE`)
+   - `semantic_hardware_renames` is `{}` (since `AppetitveTaskReal` does not yet define `SEMANTIC_HARDWARE_RENAMES`)
    - `callable_methods` is `[]`
    - `required_packages` is `[]`
 
@@ -244,7 +281,8 @@ Backward-compat note: the orchestrator's current HANDSHAKE handler (`upsert_pilo
 - [ ] Backward compat: orchestrator HANDSHAKE handler ignores new keys gracefully
 - [ ] `FLAGS` dict serialized with class references as dicts (not Python class objects)
 - [ ] `SEMANTIC_HARDWARE` tuples serialized as lists
+- [ ] `SEMANTIC_HARDWARE_RENAMES` included in payload as plain `str → str` dict (FDA-13)
 - [ ] `STAGE_NAMES`, `CALLABLE_METHODS`, `REQUIRED_PACKAGES` serialized as plain lists
-- [ ] All five new fields present even if class does not define them (defaults to empty collections)
+- [ ] All six new fields present even if class does not define them (defaults to empty collections)
 - [ ] No exception raised for classes that don't inherit from `mics_task` (e.g. old `Task` subclasses that have none of the new attrs)
 - [ ] `pilot.py` compiles without syntax errors

@@ -1,7 +1,8 @@
 ---
+phase: 01-pi-foundation
 plan: 03
-wave: 3
-title: "_build_transition_lambda() and apply_trigger_assignments()"
+type: execute
+wave: 4
 depends_on: [02]
 files_modified:
   - ~/pi-mirror/autopilot/autopilot/tasks/mics_task.py
@@ -13,6 +14,24 @@ requirements:
   - TRIG-03
   - TRIG-04
   - TRIG-05
+must_haves:
+  truths:
+    - "_build_transition_lambda() is defined on mics_task and returns a callable lambda"
+    - "apply_trigger_assignments() wires touch_detector and digital_input handlers correctly"
+    - "All five TRIG-01–05 acceptance criteria can be manually verified on hardware"
+  artifacts:
+    - path: "~/pi-mirror/autopilot/autopilot/tasks/mics_task.py"
+      contains: "_build_transition_lambda"
+    - path: "~/pi-mirror/autopilot/autopilot/tasks/mics_task.py"
+      contains: "apply_trigger_assignments"
+  key_links:
+    - from: "load_fda_from_json"
+      to: "_build_transition_lambda"
+      via: "transitions loop in Plan 02 calls this helper per transition"
+    - from: "load_fda_from_json"
+      to: "apply_trigger_assignments"
+      via: "conditional call in Plan 02 after transitions loop"
+title: "_build_transition_lambda() and apply_trigger_assignments()"
 ---
 
 # Plan 03: _build_transition_lambda() and apply_trigger_assignments()
@@ -161,6 +180,8 @@ def apply_trigger_assignments(self, definition: dict):
 
     Args:
         definition: FDA JSON dict (the same dict passed to load_fda_from_json).
+                    Any deprecated config.hardware_ref names will have already been
+                    resolved by _resolve_renamed_trigger_refs before this is called.
     """
     assignments = definition.get("trigger_assignments")
     if not assignments:
@@ -207,6 +228,8 @@ def _build_touch_detector_callback(self, trigger_name: str, config: dict):
 
     config keys:
       hardware_ref (str):    Semantic name in self._semantic_hw — must be a Touch_Detector.
+                             Any deprecated name will have been resolved by
+                             _resolve_renamed_trigger_refs before this is called.
       emit_continuous (bool, optional): If True, dispatch a CONTINUOUS event after updating
                                          view. Default False.
 

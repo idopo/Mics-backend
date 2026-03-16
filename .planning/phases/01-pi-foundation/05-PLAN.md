@@ -7,13 +7,15 @@ must_haves:
     - "deprecated hardware ref emits WARNING not error; exit 0 if no errors"
     - "rename-hw-ref verifies new_name in SEMANTIC_HARDWARE before DB update"
     - "rename-hw-ref prints count of updated rows and exits 0 on success"
+    - "rename-hw-ref updates both entry_actions refs and trigger_assignments config.hardware_ref"
+    - "validate warns on deprecated names in trigger_assignments config.hardware_ref"
   artifacts:
     - path: "~/pi-mirror/tools/validate_fda.py"
       contains: "rename-hw-ref"
   key_links:
     - from: "rename-hw-ref"
       to: "task_definitions.fda_json"
-      via: "JSONB path update scoped to hardware/timer action types"
+      via: "JSONB path update scoped to hardware/timer action types AND trigger_assignments config.hardware_ref"
 plan: 05
 wave: 1
 title: "validate_fda.py CLI validation tool"
@@ -37,7 +39,11 @@ Create a standalone CLI tool at `~/pi-mirror/tools/validate_fda.py` that validat
 
 This tool is used by developers before deploying a new FDA JSON to detect structural errors without needing a running Pi. It imports the toolkit class directly, inspects its attributes, and checks the JSON for consistency. It does NOT instantiate the task (which would require hardware and pigpio).
 
-The `rename-hw-ref` subcommand enables zero-downtime cleanup after a semantic hardware key is renamed: it updates all `task_definitions.fda_json` rows in the database using PostgreSQL JSONB operations, replacing the old `ref` value with the new one inside `entry_actions` arrays. This is a prerequisite for safely removing an old name from `SEMANTIC_HARDWARE_RENAMES`.
+The `rename-hw-ref` subcommand enables zero-downtime cleanup after a semantic hardware key is renamed: it updates all `task_definitions.fda_json` rows in the database using PostgreSQL JSONB operations, replacing the old `ref` value with the new one. It covers **two locations** where a semantic name can appear:
+1. `entry_actions[*].ref` (for actions with `type` = `hardware` or `timer`)
+2. `trigger_assignments[*].config.hardware_ref`
+
+This ensures that after running `rename-hw-ref`, it is safe to remove the old name from `SEMANTIC_HARDWARE_RENAMES` without any runtime `KeyError` in either `_build_state_method` or `_build_touch_detector_callback`.
 
 The tool is independent of Plans 01–04 but benefits from understanding the attribute structure they define. It can be written and used in parallel.
 
@@ -58,6 +64,7 @@ The tool is independent of Plans 01–04 but benefits from understanding the att
 13. **return_data**: if `{"flag": key}`, `key` in `cls.FLAGS`; if `{"param": key}`, `key` in `cls.PARAMS`
 14. **Duplicate state names**: each state name should appear exactly once in `definition['states']` (JSON object keys are unique by spec but deserializing with `json.loads` deduplicates — warn if input has duplicates)
 15. **trigger_assignments**: each `trigger_name` must match a key in `cls.HARDWARE` group values (i.e. a hardware pin letter); `handler` must be in `["touch_detector", "digital_input", "log_only", "default"]`
+16. **trigger_assignments config.hardware_ref** (WARNING-4 fix): for entries with `handler: "touch_detector"`, check `config.hardware_ref`. If it is in `cls.SEMANTIC_HARDWARE_RENAMES` (deprecated), emit a WARNING. If it is not in `cls.SEMANTIC_HARDWARE` and not in `cls.SEMANTIC_HARDWARE_RENAMES`, emit an ERROR.
 
 ### rename-hw-ref subcommand (FDA-14)
 
@@ -68,15 +75,18 @@ python tools/validate_fda.py rename-hw-ref <old_name> <new_name> --toolkit <Clas
 Behavior:
 1. Loads the toolkit class to verify `new_name` exists in `SEMANTIC_HARDWARE` (validation guard).
 2. Connects to the database using `DATABASE_URL` env var (same DSN as `api/` service).
-3. Executes a JSONB path update on `task_definitions.fda_json` to replace `"ref": "<old_name>"` inside `entry_actions` arrays with `"ref": "<new_name>"`.
+3. Executes JSONB path updates on `task_definitions.fda_json` to replace `<old_name>` with `<new_name>` in **two locations**:
+   - `entry_actions[*].ref` (for `type` = `hardware` or `timer`)
+   - `trigger_assignments[*].config.hardware_ref`
 4. Prints `"Updated N task_definitions"` and exits 0 on success.
 5. Exits 1 with error message if `new_name` not in toolkit's `SEMANTIC_HARDWARE`.
 6. Exits 2 on usage error or database connection failure.
 
 ### JSONB UPDATE approach (FDA-14 implementation detail)
 
-PostgreSQL does not have a direct "replace value deep inside array of objects" function.
-The correct approach uses `jsonb_set` with a path traversal via a lateral subquery:
+Two UPDATE statements are run in the same transaction (or a single combined query).
+
+**Statement 1: entry_actions refs** (existing behavior, scoped to hardware/timer):
 
 ```sql
 -- Replace "ref": "<old>" → "ref": "<new>" inside all entry_actions arrays
@@ -86,38 +96,74 @@ SET fda_json = updated.new_fda_json
 FROM (
     SELECT
         td.id,
-        jsonb_object_agg(
-            state_key,
-            CASE
-                WHEN state_val ? 'entry_actions' THEN
-                    jsonb_set(
-                        state_val,
-                        '{entry_actions}',
-                        (
-                            SELECT jsonb_agg(
-                                CASE
-                                    WHEN action->>'ref' = '<old_name>'
-                                         AND action->>'type' IN ('hardware', 'timer')
-                                    THEN action || jsonb_build_object('ref', '<new_name>')
-                                    ELSE action
-                                END
+        jsonb_set(
+            td.fda_json,
+            '{states}',
+            (
+                SELECT jsonb_object_agg(
+                    state_key,
+                    CASE
+                        WHEN state_val ? 'entry_actions' THEN
+                            jsonb_set(
+                                state_val,
+                                '{entry_actions}',
+                                (
+                                    SELECT jsonb_agg(
+                                        CASE
+                                            WHEN (action->>'ref' = %s)
+                                                 AND (action->>'type' = 'hardware'
+                                                      OR action->>'type' = 'timer')
+                                            THEN action || jsonb_build_object('ref', %s)
+                                            ELSE action
+                                        END
+                                    )
+                                    FROM jsonb_array_elements(state_val->'entry_actions') AS action
+                                )
                             )
-                            FROM jsonb_array_elements(state_val->'entry_actions') AS action
-                        )
-                    )
-                ELSE state_val
-            END
+                        ELSE state_val
+                    END
+                )
+                FROM jsonb_each(td.fda_json->'states') AS states(state_key, state_val)
+            )
         ) AS new_fda_json
-    FROM task_definitions td,
-         jsonb_each(td.fda_json->'states') AS states(state_key, state_val)
+    FROM task_definitions td
     WHERE td.fda_json IS NOT NULL
-    GROUP BY td.id
+      AND td.fda_json::text LIKE %s
 ) AS updated
 WHERE task_definitions.id = updated.id
-  AND task_definitions.fda_json IS NOT NULL;
+RETURNING task_definitions.id;
 ```
 
-The Python code builds this query with `%s` placeholders for `old_name` and `new_name` using `psycopg2` (already a dependency of the api service; available in the environment). The `RETURNING id` clause is added to count affected rows.
+**Statement 2: trigger_assignments config.hardware_ref** (WARNING-4 fix):
+
+```sql
+-- Replace config.hardware_ref: "<old>" → "<new>" inside trigger_assignments array.
+UPDATE task_definitions
+SET fda_json = jsonb_set(
+    fda_json,
+    '{trigger_assignments}',
+    (
+        SELECT jsonb_agg(
+            CASE
+                WHEN (assignment->'config'->>'hardware_ref' = %s)
+                THEN jsonb_set(
+                    assignment,
+                    '{config,hardware_ref}',
+                    to_jsonb(%s::text)
+                )
+                ELSE assignment
+            END
+        )
+        FROM jsonb_array_elements(fda_json->'trigger_assignments') AS assignment
+    )
+)
+WHERE fda_json IS NOT NULL
+  AND fda_json ? 'trigger_assignments'
+  AND fda_json::text LIKE %s
+RETURNING id;
+```
+
+The Python code runs both statements in a single transaction using `psycopg2`. The affected-rows count is the union of rows touched by either statement (deduplicated by `id`). The `LIKE` guard (`%"hardware_ref": "old_name"%`) avoids scanning rows that cannot match.
 
 ### Error format
 
@@ -126,6 +172,7 @@ Print errors to stderr as:
 ERROR [state 'trial_onset' action[2]]: type:'method' ref 'nonexistent_method' not in CALLABLE_METHODS
 ERROR [transition 'state_wait_time_window' → 'state_unknown']: 'to' state not found in states dict
 WARNING [state 'trial_onset' action[0]]: type:'hardware' ref 'reward_port' is deprecated, use 'water_delivery' (in SEMANTIC_HARDWARE_RENAMES)
+WARNING [trigger_assignment[0] trigger='TOUCH_INT']: config.hardware_ref 'reward_port' is deprecated, use 'water_delivery' (in SEMANTIC_HARDWARE_RENAMES)
 ```
 
 Print summary: `Validation PASSED (N states, M transitions)` or `Validation FAILED (K errors, W warnings)`.
@@ -457,6 +504,7 @@ def validate_fda(cls, definition: dict) -> Tuple[List[str], List[str]]:
     for ta_idx, assignment in enumerate(trigger_asgn):
         trigger_name = assignment.get("trigger_name", "")
         handler_type = assignment.get("handler", "")
+        config       = assignment.get("config", {})
         loc = f"[trigger_assignment[{ta_idx}] trigger='{trigger_name}']"
 
         if handler_type not in VALID_HANDLERS:
@@ -470,6 +518,25 @@ def validate_fda(cls, definition: dict) -> Tuple[List[str], List[str]]:
                 f"{loc}: trigger_name '{trigger_name}' not found in any HARDWARE group. "
                 f"Available pin ids: {sorted(hw_pin_ids)}"
             )
+
+        # WARNING-4 fix: validate config.hardware_ref for touch_detector handlers
+        # (and any handler that uses hardware_ref — check if key is present)
+        hw_ref = config.get("hardware_ref", "")
+        if hw_ref:
+            if hw_ref in semantic_hw_keys:
+                pass  # Current name — OK
+            elif hw_ref in rename_map_keys:
+                # Deprecated name: warn, not error
+                rename_val = getattr(cls, "SEMANTIC_HARDWARE_RENAMES", {}).get(hw_ref, "?")
+                warnings.append(
+                    f"{loc}: config.hardware_ref '{hw_ref}' is deprecated, "
+                    f"use '{rename_val}' (in SEMANTIC_HARDWARE_RENAMES)"
+                )
+            else:
+                errors.append(
+                    f"{loc}: config.hardware_ref '{hw_ref}' not in SEMANTIC_HARDWARE. "
+                    f"Available: {sorted(semantic_hw_keys)}"
+                )
 
     return errors, warnings
 
@@ -500,9 +567,9 @@ def cmd_rename_hw_ref(old_name: str, new_name: str, toolkit_name: str):
     """
     Bulk-rename a semantic hardware ref in all task_definitions.fda_json rows.
 
-    Uses PostgreSQL JSONB operations to replace "ref": "<old_name>" with
-    "ref": "<new_name>" inside entry_actions arrays across all states in fda_json.
-    Only rewrites actions with type 'hardware' or 'timer'.
+    Updates two locations in each row:
+      1. entry_actions[*].ref  (for actions with type 'hardware' or 'timer')
+      2. trigger_assignments[*].config.hardware_ref
 
     Exits 1 if new_name is not in toolkit's SEMANTIC_HARDWARE.
     Exits 2 on DB connection failure.
@@ -544,14 +611,12 @@ def cmd_rename_hw_ref(old_name: str, new_name: str, toolkit_name: str):
         print(f"ERROR: Could not connect to database: {e}", file=sys.stderr)
         sys.exit(2)
 
-    # Step 3: run the JSONB UPDATE
-    # For each row in task_definitions with non-null fda_json, iterate over each state
-    # in fda_json->'states', and for each state's entry_actions array, replace any action
-    # where type is 'hardware' or 'timer' and ref matches old_name with ref = new_name.
-    #
-    # The lateral subquery approach reconstructs the states JSONB object action-by-action,
-    # which is correct and safe — it only touches the 'ref' field of matching actions.
-    UPDATE_SQL = """
+    # Step 3: run two JSONB UPDATEs in a single transaction.
+    # Statement 1: rename entry_actions[*].ref for hardware/timer action types.
+    # Statement 2: rename trigger_assignments[*].config.hardware_ref.
+    # Both statements use LIKE guards to avoid scanning rows that cannot match.
+
+    ENTRY_ACTIONS_SQL = """
 UPDATE task_definitions
 SET fda_json = updated.new_fda_json
 FROM (
@@ -594,13 +659,48 @@ FROM (
 WHERE task_definitions.id = updated.id
 RETURNING task_definitions.id;
 """
-    like_pattern = f'%"ref": "{old_name}"%'
+
+    TRIGGER_ASSIGNMENTS_SQL = """
+UPDATE task_definitions
+SET fda_json = jsonb_set(
+    fda_json,
+    '{trigger_assignments}',
+    (
+        SELECT jsonb_agg(
+            CASE
+                WHEN (assignment->'config'->>'hardware_ref' = %s)
+                THEN jsonb_set(
+                    assignment,
+                    '{config,hardware_ref}',
+                    to_jsonb(%s::text)
+                )
+                ELSE assignment
+            END
+        )
+        FROM jsonb_array_elements(fda_json->'trigger_assignments') AS assignment
+    )
+)
+WHERE fda_json IS NOT NULL
+  AND fda_json ? 'trigger_assignments'
+  AND fda_json::text LIKE %s
+RETURNING id;
+"""
+
+    like_pattern = f'%"{old_name}"%'
 
     try:
+        affected_ids = set()
         with conn:
             with conn.cursor() as cur:
-                cur.execute(UPDATE_SQL, (old_name, new_name, like_pattern))
-                affected_rows = cur.rowcount
+                # Statement 1: entry_actions refs
+                cur.execute(ENTRY_ACTIONS_SQL, (old_name, new_name, like_pattern))
+                for row in cur.fetchall():
+                    affected_ids.add(row[0])
+
+                # Statement 2: trigger_assignments config.hardware_ref
+                cur.execute(TRIGGER_ASSIGNMENTS_SQL, (old_name, new_name, like_pattern))
+                for row in cur.fetchall():
+                    affected_ids.add(row[0])
     except Exception as e:
         print(f"ERROR: Database update failed: {e}", file=sys.stderr)
         conn.close()
@@ -608,7 +708,7 @@ RETURNING task_definitions.id;
     finally:
         conn.close()
 
-    print(f"Updated {affected_rows} task_definitions")
+    print(f"Updated {len(affected_ids)} task_definitions")
     sys.exit(0)
 
 
@@ -621,6 +721,7 @@ def main():
             prog="validate_fda.py rename-hw-ref",
             description=(
                 "Bulk-rename a semantic hardware ref in all task_definitions.fda_json rows. "
+                "Updates both entry_actions[*].ref and trigger_assignments[*].config.hardware_ref. "
                 "Requires DATABASE_URL env var."
             ),
         )
@@ -760,23 +861,34 @@ if __name__ == "__main__":
    ```
    Expected: exit code 1, error mentioning `ref 'nonexistent_fn' not in CALLABLE_METHODS`.
 
-4. Verify deprecation warning (not error) for ref in `SEMANTIC_HARDWARE_RENAMES`:
+4. Verify deprecation warning (not error) for ref in `SEMANTIC_HARDWARE_RENAMES` in `entry_actions`:
    Use a toolkit with `SEMANTIC_HARDWARE = {"water_delivery": ...}` and `SEMANTIC_HARDWARE_RENAMES = {"reward_port": "water_delivery"}`.
    Create JSON with `"ref": "reward_port"` in an entry_action.
    Expected: exit code 0, `WARNING` printed to stderr mentioning `'reward_port' is deprecated, use 'water_delivery'`.
 
-5. Run with `--verbose` flag to confirm toolkit attrs including `SEMANTIC_HARDWARE_RENAMES` are printed.
+5. Verify deprecation warning (not error) for `config.hardware_ref` in `trigger_assignments` (WARNING-4 fix):
+   Using the same toolkit above, create a JSON with a `trigger_assignments` entry:
+   ```json
+   {"trigger_name": "TOUCH_INT", "handler": "touch_detector", "config": {"hardware_ref": "reward_port"}}
+   ```
+   Expected: exit code 0, `WARNING` printed to stderr mentioning `config.hardware_ref 'reward_port' is deprecated`.
 
-6. Run with a non-existent JSON file — expect exit code 2 with "File not found" message.
+6. Verify error (not warning) for unknown `config.hardware_ref` not in `SEMANTIC_HARDWARE` and not in `SEMANTIC_HARDWARE_RENAMES`:
+   Create JSON with `"hardware_ref": "completely_unknown"` in a `touch_detector` trigger_assignment.
+   Expected: exit code 1, error mentioning `config.hardware_ref 'completely_unknown' not in SEMANTIC_HARDWARE`.
 
-7. Test `rename-hw-ref` subcommand (requires `DATABASE_URL` set and Phase 2 DB migrated):
+7. Run with `--verbose` flag to confirm toolkit attrs including `SEMANTIC_HARDWARE_RENAMES` are printed.
+
+8. Run with a non-existent JSON file — expect exit code 2 with "File not found" message.
+
+9. Test `rename-hw-ref` subcommand (requires `DATABASE_URL` set and Phase 2 DB migrated):
    ```bash
    DATABASE_URL=postgresql://... python tools/validate_fda.py rename-hw-ref reward_port water_delivery --toolkit AppetitveTaskReal
    ```
-   Expected: prints `"Updated N task_definitions"`, exits 0. Confirm via database query that rows with `"ref": "reward_port"` now have `"ref": "water_delivery"`.
+   Expected: prints `"Updated N task_definitions"`, exits 0. Confirm via database query that rows with `"ref": "reward_port"` in `entry_actions` now have `"ref": "water_delivery"`, AND rows with `"hardware_ref": "reward_port"` in `trigger_assignments` config now have `"hardware_ref": "water_delivery"`.
 
-8. Test `rename-hw-ref` with a `new_name` not in `SEMANTIC_HARDWARE`:
-   Expected: exits 1 with error mentioning the toolkit's available semantic hardware keys.
+10. Test `rename-hw-ref` with a `new_name` not in `SEMANTIC_HARDWARE`:
+    Expected: exits 1 with error mentioning the toolkit's available semantic hardware keys.
 
 ## must_haves
 - [ ] Exit 0 on valid FDA JSON
@@ -786,9 +898,12 @@ if __name__ == "__main__":
 - [ ] `type: "method"` ref not in `CALLABLE_METHODS` raises error with state name and action index
 - [ ] Unknown transition `to`/`from` state names report state name and transition index
 - [ ] `type: "hardware"` or `type: "timer"` ref in `SEMANTIC_HARDWARE_RENAMES` emits WARNING, not error; exit code 0 if no errors (FDA-13)
+- [ ] `trigger_assignments config.hardware_ref` in `SEMANTIC_HARDWARE_RENAMES` emits WARNING, not error (WARNING-4 fix)
+- [ ] `trigger_assignments config.hardware_ref` not in SEMANTIC_HARDWARE and not in RENAMES emits ERROR (WARNING-4 fix)
 - [ ] Does not instantiate the task class (no hardware required)
 - [ ] Tool is executable as `python tools/validate_fda.py ClassName file.json`
 - [ ] `rename-hw-ref` subcommand verifies `new_name` exists in toolkit's `SEMANTIC_HARDWARE` before touching DB (FDA-14)
-- [ ] `rename-hw-ref` uses JSONB path update (not string replacement) scoped to `hardware` and `timer` action types only (FDA-14)
-- [ ] `rename-hw-ref` prints count of updated rows and exits 0 on success (FDA-14)
+- [ ] `rename-hw-ref` updates `entry_actions[*].ref` using JSONB path update scoped to `hardware` and `timer` action types (FDA-14)
+- [ ] `rename-hw-ref` also updates `trigger_assignments[*].config.hardware_ref` using JSONB path update (WARNING-4 fix)
+- [ ] `rename-hw-ref` prints count of updated rows (deduplicated by id) and exits 0 on success (FDA-14)
 - [ ] `rename-hw-ref` exits 1 if `new_name` not in SEMANTIC_HARDWARE; exits 2 on DB connection failure (FDA-14)

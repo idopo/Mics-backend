@@ -15,7 +15,7 @@ must_haves:
       to: "_resolve_renamed_hw_refs"
       via: "per-state call before _build_state_method"
 plan: 02
-wave: 2
+wave: 3
 title: "load_fda_from_json() and _build_state_method() with all three modes"
 depends_on: [01]
 files_modified:
@@ -468,8 +468,15 @@ def _resolve_renamed_hw_refs(self, state_def: dict, rename_map: dict) -> dict:
     current names via rename_map (sourced from SEMANTIC_HARDWARE_RENAMES). Logs a
     deprecation warning for each renamed ref encountered.
 
-    Only rewrites entry_actions items with type 'hardware' or 'timer'.
+    Rewrites:
+    - entry_actions items with type 'hardware' or 'timer'
+    - trigger_assignments items where config.hardware_ref appears in the rename map
+
     Returns state_def unchanged (by reference) if no renames are needed.
+
+    Note: trigger_assignments rewriting is done in load_fda_from_json (not per-state),
+    but this helper also accepts a full definition dict for that purpose — see
+    _resolve_renamed_trigger_refs for the trigger_assignments pass.
     """
     if not rename_map:
         return state_def
@@ -503,6 +510,64 @@ def _resolve_renamed_hw_refs(self, state_def: dict, rename_map: dict) -> dict:
     new_state_def = dict(state_def)
     new_state_def["entry_actions"] = new_actions
     return new_state_def
+
+
+def _resolve_renamed_trigger_refs(self, definition: dict, rename_map: dict) -> dict:
+    """
+    Return a copy of definition with deprecated hardware ref names in
+    trigger_assignments[*].config.hardware_ref replaced via rename_map.
+
+    This prevents _build_touch_detector_callback from raising KeyError at load time
+    when a trigger_assignment references a semantic name that has been renamed.
+    Logs a deprecation warning for each renamed ref encountered.
+
+    Returns definition unchanged (by reference) if no renames are needed.
+    """
+    if not rename_map:
+        return definition
+
+    assignments = definition.get("trigger_assignments")
+    if not assignments:
+        return definition
+
+    needs_rewrite = any(
+        assignment.get("config", {}).get("hardware_ref", "") in rename_map
+        for assignment in assignments
+    )
+    if not needs_rewrite:
+        return definition
+
+    new_assignments = []
+    for assignment in assignments:
+        config = assignment.get("config", {})
+        hw_ref = config.get("hardware_ref", "")
+        if hw_ref and hw_ref in rename_map:
+            new_name = rename_map[hw_ref]
+            self.logger.warning(
+                f"trigger_assignments config.hardware_ref '{hw_ref}' is deprecated, "
+                f"use '{new_name}' instead"
+            )
+            new_config = dict(config)
+            new_config["hardware_ref"] = new_name
+            assignment = dict(assignment)
+            assignment["config"] = new_config
+        new_assignments.append(assignment)
+
+    new_definition = dict(definition)
+    new_definition["trigger_assignments"] = new_assignments
+    return new_definition
+```
+
+After adding both methods, update `load_fda_from_json` step 6 to resolve renamed trigger refs before calling `apply_trigger_assignments`. Replace the step 6 block with:
+
+```python
+    # ── 6. Apply trigger assignments ────────────────────────────────────────────────
+    # Resolve deprecated hardware_ref names in trigger_assignments before wiring.
+    if rename_map and definition.get("trigger_assignments"):
+        definition = self._resolve_renamed_trigger_refs(definition, rename_map)
+    # Defined in Plan 03. Call is conditional so this method works before Plan 03 is deployed.
+    if hasattr(self, 'apply_trigger_assignments'):
+        self.apply_trigger_assignments(definition)
 ```
 
 Notes on the FDA reset (step 1):
@@ -516,6 +581,10 @@ Notes on `_resolve_renamed_hw_refs` (FDA-13):
 - Called per-state before `_build_state_method`, so the validation inside `_build_state_method` always sees the resolved (current) ref name in `_semantic_hw` — not the deprecated name.
 - Deprecation warning is emitted once per action per `load_fda_from_json()` call (i.e. once per task start), not once per state execution.
 - Does not mutate the caller's definition dict — creates shallow copies only of dicts that need rewriting.
+
+Notes on `_resolve_renamed_trigger_refs` (WARNING-4 fix):
+- Called in step 6 before `apply_trigger_assignments`, ensuring `_build_touch_detector_callback` never sees deprecated names in `config.hardware_ref`.
+- Only rewrites assignments whose `config.hardware_ref` appears in the rename map — all others pass through unchanged.
 </task>
 
 ## Verification
@@ -573,6 +642,13 @@ Sync `~/pi-mirror/autopilot/` to the Pi and restart the pilot process before run
    - A deprecation warning is logged: `"Semantic hardware ref 'reward_port' is deprecated, use 'water_delivery' instead"`
    - The action dispatches to the correct `water_delivery` hardware object
 
+9. Verify `_resolve_renamed_trigger_refs` (WARNING-4 fix):
+   Using the same toolkit above, load a v2 FDA JSON with a `trigger_assignments` entry where
+   `config.hardware_ref` is `"reward_port"`. Confirm:
+   - Task starts without `KeyError` in `_build_touch_detector_callback`
+   - A deprecation warning is logged for the trigger_assignments rename
+   - The callback resolves to the `water_delivery` hardware object
+
 ## must_haves
 - [ ] Backward compat: tasks without `state_machine` kwarg are completely unaffected
 - [ ] `load_fda_from_json(definition)` handles version=1 (states as list) by normalizing to `{name: {}}` dict before processing
@@ -587,3 +663,4 @@ Sync `~/pi-mirror/autopilot/` to the Pi and restart the pilot process before run
 - [ ] `INC_TRIAL_COUNTER` special action calls `self.node.send('T', 'INC_TRIAL_COUNTER', {})`
 - [ ] Deprecated ref in `SEMANTIC_HARDWARE_RENAMES` resolves transparently; deprecation warning logged; no error raised (FDA-13)
 - [ ] `_resolve_renamed_hw_refs` does not mutate the caller's definition dict
+- [ ] Deprecated `config.hardware_ref` in `trigger_assignments` resolves transparently before `apply_trigger_assignments` is called (WARNING-4 fix)

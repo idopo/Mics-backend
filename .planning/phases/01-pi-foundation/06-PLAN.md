@@ -1,5 +1,7 @@
 ---
+phase: 01-pi-foundation
 plan: 06
+type: execute
 wave: 1
 title: "sync_pi.sh and deploy_pi.sh scripts"
 depends_on: []
@@ -10,6 +12,15 @@ files_created:
 autonomous: true
 requirements:
   - FDA-09
+must_haves:
+  truths:
+    - "sync_pi.sh rsyncs autopilot/ to Pi and exits 0 on success"
+    - "deploy_pi.sh calls sync_pi.sh then restarts pilot process and exits 0"
+  artifacts:
+    - path: "~/pi-mirror/tools/sync_pi.sh"
+      contains: "rsync"
+    - path: "~/pi-mirror/tools/deploy_pi.sh"
+      contains: "sync_pi.sh"
 ---
 
 # Plan 06: sync_pi.sh and deploy_pi.sh

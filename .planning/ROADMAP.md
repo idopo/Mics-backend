@@ -2,7 +2,7 @@
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Status:** Planning complete — not started
-**Requirements:** 46 v1 requirements across 8 phases
+**Requirements:** 49 v1 requirements across 8 phases
 
 ---
 
@@ -10,10 +10,10 @@
 
 | # | Phase | Goal | Requirements | Status |
 |---|---|---|---|---|
-| 1 | Pi Foundation | JSON-driven FDA, semantic hardware, hot-reload, trigger assignments | FDA-01–09, TRIG-01–05, HOT-01–06 | ○ Pending |
-| 2 | DB + API | task_toolkits table, task_definitions with fda_json, push endpoint | DB-01–08 | ○ Pending |
-| 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–10 | ○ Pending |
-| 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–03 | ○ Pending |
+| 1 | Pi Foundation | JSON-driven FDA, semantic hardware, hot-reload, trigger assignments | FDA-01–14, TRIG-01–05, HOT-02 | ○ Pending |
+| 2 | DB + API | task_toolkits table, task_definitions with fda_json, push endpoint | DB-01–08, VAR-01–05 | ○ Pending |
+| 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–10, VAR-06 | ○ Pending |
+| 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–03, VAR-07 | ○ Pending |
 | 5 | Pi Editor: Viewer | Read-only file browser + Monaco + SSH status | EDIT-01–06 | ○ Pending |
 | 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
 | 7 | Pi Editor: Edit+Restart | PUT /api/pi/file, POST /api/pi/restart, Monaco edit mode | EDIT-11–14 | ○ Pending |
@@ -26,22 +26,22 @@
 ### Phase 1: Pi Foundation
 **Goal:** Pi can load and hot-reload a complete FDA state machine from JSON without restart
 
-**Requirements:** FDA-01 through FDA-09, TRIG-01 through TRIG-05, HOT-01 through HOT-06
+**Requirements:** FDA-01 through FDA-14, TRIG-01 through TRIG-05, HOT-02
 
 **Success criteria:**
 1. `AppetitiveTaskReal` started with `state_machine=<v2_json>` produces identical CONTINUOUS event stream in ES as hardcoded version
-2. `validate_fda.py AppetitiveTaskReal fda.json` exits 0 on valid JSON, exits 1 with specific error on unknown state name / unknown ref / unknown param
-3. While task is running, push `UPDATE_FDA` with modified `entry_actions` → new action fires on next state entry, old does not; Pi responds with `HOT_RELOAD_ACK`
-4. Touch detector `TOUCH_INT` wired via `trigger_assignments` with `touch_detector` handler → `view[LICKER{n}]` updated correctly; `Hardware_Event` still dispatched for all GPIO edges
-5. `tools/deploy_pi.sh` rsyncs autopilot/ to Pi and restarts pilot process; exit 0
+2. `validate_fda.py AppetitiveTaskReal fda.json` exits 0 on valid JSON, exits 1 with specific error on unknown state name / unknown ref / unknown param / unknown callable_method
+3. Toolkit has `SEMANTIC_HARDWARE_RENAMES = {"old_name": "new_name"}`; FDA JSON with `"ref": "old_name"` runs without error; `validate_fda.py` emits deprecation warning not error
+4. `validate_fda.py rename-hw-ref old_name new_name --toolkit AppetitiveTaskReal` prints "Updated N task_definitions" and exits 0; DB rows confirmed via postgres MCP
+5. Touch detector `TOUCH_INT` wired via `trigger_assignments` with `touch_detector` handler → `view[LICKER{n}]` updated correctly; `Hardware_Event` still dispatched for all GPIO edges
+6. `tools/deploy_pi.sh` rsyncs autopilot/ to Pi and restarts pilot process; exit 0
 
 **Pi files changed:**
-- `autopilot/autopilot/tasks/mics_task.py` — `load_fda_from_json`, `apply_trigger_assignments`, `hot_update_fda`, `_build_state_method`, `_resolve_arg`, `_build_transition_lambda`
-- `autopilot/autopilot/utils/FiniteDeterministicAutomaton.py` — `replace_method_ref`, `replace_transitions`
-- `autopilot/autopilot/core/pilot.py` — enriched HANDSHAKE payload (FLAGS, SEMANTIC_HARDWARE, REQUIRED_PACKAGES), `handle_update_fda`
+- `autopilot/autopilot/tasks/mics_task.py` — `load_fda_from_json`, `apply_trigger_assignments`, `_build_state_method`, `_resolve_arg`, `_build_transition_lambda`
+- `autopilot/autopilot/core/pilot.py` — enriched HANDSHAKE payload (FLAGS, SEMANTIC_HARDWARE, SEMANTIC_HARDWARE_RENAMES, STAGE_NAMES, CALLABLE_METHODS, REQUIRED_PACKAGES)
 
 **New files:**
-- `tools/validate_fda.py`
+- `tools/validate_fda.py` (includes `rename-hw-ref` subcommand)
 - `tools/sync_pi.sh`, `tools/deploy_pi.sh`
 
 **Dependencies:** None — can start today
@@ -51,7 +51,15 @@
 ### Phase 2: DB + API
 **Goal:** Toolkit metadata stored from HANDSHAKE; task definitions created/edited/pushed via REST API
 
-**Requirements:** DB-01 through DB-08
+**Requirements:** DB-01 through DB-08, VAR-01 through VAR-05
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — DB schema: task_toolkits, toolkit_pilot_origins, task_definitions extensions
+- [ ] 02-02-PLAN.md — HANDSHAKE processor: upsert toolkit metadata on enriched HANDSHAKE
+- [ ] 02-03-PLAN.md — Toolkit + TaskDefinition CRUD API endpoints
+- [ ] 02-04-PLAN.md — Push-to-pilot (UPDATE_FDA) and state_machine injection in START payload
 
 **Success criteria:**
 1. After Pi reconnects, `GET /api/toolkits` returns toolkit with states, flags, params_schema, semantic_hardware, required_packages — verified via postgres MCP
@@ -73,7 +81,7 @@
 ### Phase 3: Visual FDA Editor
 **Goal:** Non-technical researchers can build task state machines visually in the browser
 
-**Requirements:** UI-01 through UI-10
+**Requirements:** UI-01 through UI-10, VAR-06
 
 **Success criteria:**
 1. Open `/react/task-editor/:id` → canvas shows nodes and edges matching stored fda_json; no console errors
@@ -101,7 +109,7 @@
 ### Phase 4: Protocol Integration
 **Goal:** Protocol steps reference task definitions; FDA JSON flows end-to-end from DB to Pi
 
-**Requirements:** PROTO-01 through PROTO-03
+**Requirements:** PROTO-01 through PROTO-03, VAR-07
 
 **Success criteria:**
 1. Open `/react/protocols-create` → task palette shows named task definitions, not raw task_type strings
@@ -212,4 +220,4 @@ Phase 8 (Pi Editor: Packages)
 
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-03-15 after GSD initialization*
+*Last updated: 2026-03-16 — Phase 2 plans added (4 plans, 3 waves)*

@@ -11,7 +11,7 @@
 | # | Phase | Goal | Requirements | Status |
 |---|---|---|---|---|
 | 1 | 3/6 | In Progress|  | ○ Pending |
-| 2 | DB + API | task_toolkits table, task_definitions with fda_json, push endpoint | DB-01–08, VAR-01–05 | ○ Pending |
+| 2 | 1/4 | In Progress|  | ○ Pending |
 | 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–12, VAR-06 | ○ Pending |
 | 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–03, VAR-07 | ○ Pending |
 | 5 | Pi Editor: Viewer | Read-only file browser + Monaco + SSH status | EDIT-01–06 | ○ Pending |
@@ -53,7 +53,7 @@
 
 **Requirements:** DB-01 through DB-08, VAR-01 through VAR-05
 
-**Plans:** 3/6 plans executed
+**Plans:** 1/4 plans executed
 
 Plans:
 - [ ] 02-01-PLAN.md — DB schema: task_toolkits, toolkit_pilot_origins, task_definitions extensions

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, date
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 
 import enum
 
@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     ForeignKey,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -573,6 +574,92 @@ class PilotTaskHandshake(BaseModel):
 class StartOnPilotPayload(BaseModel):
     pilot_id: int
     mode: Optional[Literal["resume", "restart", "new"]] = None
-    overrides: Optional[Dict[str, Any]] = None 
+    overrides: Optional[Dict[str, Any]] = None
 
 
+# ============================================================
+# TOOLKIT TABLES (task_toolkits, toolkit_pilot_origins)
+# ============================================================
+
+class TaskToolkit(Base):
+    __tablename__ = "task_toolkits"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, index=True, nullable=False)           # Python class name e.g. "AppetitiveTaskReal"
+    hw_hash = Column(String, nullable=False)                    # SHA256 of sorted SEMANTIC_HARDWARE dict
+    states = Column(SAJSON, nullable=True)                      # list of state names from HANDSHAKE.STAGE_NAMES
+    flags = Column(SAJSON, nullable=True)                       # dict from HANDSHAKE.FLAGS
+    params_schema = Column(SAJSON, nullable=True)               # normalized params dict (same shape as TaskDefinition.params)
+    semantic_hardware = Column(SAJSON, nullable=True)           # dict: friendly_name -> [group, id]
+    callable_methods = Column(SAJSON, nullable=True)            # list of callable method names
+    required_packages = Column(SAJSON, nullable=True)           # list of pip package strings
+    file_hash = Column(String, nullable=True)                   # hash of toolkit source file
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("name", "hw_hash", name="uq_toolkit_name_hw_hash"),
+    )
+
+
+class ToolkitPilotOrigin(Base):
+    __tablename__ = "toolkit_pilot_origins"
+
+    id = Column(Integer, primary_key=True)
+    toolkit_id = Column(Integer, ForeignKey("task_toolkits.id"), nullable=False)
+    pilot_id = Column(Integer, ForeignKey("pilots.id"), nullable=False)
+    first_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("toolkit_id", "pilot_id", name="uq_origin_toolkit_pilot"),
+    )
+
+
+# ============================================================
+# TOOLKIT + TASK DEFINITION PYDANTIC SCHEMAS
+# ============================================================
+
+class TaskToolkitRead(BaseModel):
+    id: int
+    name: str
+    hw_hash: str
+    states: Optional[List[str]] = None
+    flags: Optional[Dict[str, Any]] = None
+    params_schema: Optional[Dict[str, Any]] = None
+    semantic_hardware: Optional[Dict[str, Any]] = None
+    callable_methods: Optional[List[str]] = None
+    required_packages: Optional[List[str]] = None
+    file_hash: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    pilot_origins: List[str] = []   # pilot names list populated by endpoint
+    fda_count: int = 0              # count of task_definitions referencing this toolkit
+
+    class Config:
+        orm_mode = True
+
+
+class TaskDefinitionCreate(BaseModel):
+    display_name: str
+    toolkit_name: str
+    fda_json: Dict[str, Any]
+
+
+class TaskDefinitionUpdate(BaseModel):
+    display_name: Optional[str] = None
+    fda_json: Optional[Dict[str, Any]] = None
+
+
+class TaskDefinitionRead(BaseModel):
+    id: int
+    task_name: str
+    display_name: Optional[str] = None
+    toolkit_name: Optional[str] = None
+    fda_json: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None
+    file_hash: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True

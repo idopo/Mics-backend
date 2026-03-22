@@ -1,4 +1,5 @@
 # api/main.py
+import hashlib
 from typing import List, Dict, Any, Optional
 
 from datetime import datetime
@@ -1076,6 +1077,89 @@ def upsert_pilot_tasks(
     finally:
         db.close()
 
+
+@app.post("/pilots/{pilot_id}/toolkits")
+def upsert_pilot_toolkit(
+    pilot_id: int,
+    payload: dict,
+    _: dict = Depends(verify_token),
+):
+    """
+    Upsert task_toolkits + toolkit_pilot_origins from enriched HANDSHAKE.
+    payload keys: task_name, hw_hash (pre-computed by caller), states, flags,
+                  params_schema, semantic_hardware, callable_methods,
+                  required_packages, file_hash
+    """
+    db: OrmSession = SA_SessionLocal()
+    try:
+        pilot = db.query(Pilot).get(pilot_id)
+        if not pilot:
+            raise HTTPException(404, "Pilot not found")
+
+        name = payload.get("task_name")
+        hw_hash = payload.get("hw_hash")
+        if not name or not hw_hash:
+            raise HTTPException(400, "task_name and hw_hash are required")
+
+        # Upsert toolkit — find by (name, hw_hash); create if not found
+        toolkit = (
+            db.query(TaskToolkit)
+            .filter(TaskToolkit.name == name, TaskToolkit.hw_hash == hw_hash)
+            .one_or_none()
+        )
+        now = datetime.utcnow()
+        if toolkit is None:
+            toolkit = TaskToolkit(
+                name=name,
+                hw_hash=hw_hash,
+                states=payload.get("states"),
+                flags=payload.get("flags"),
+                params_schema=payload.get("params_schema"),
+                semantic_hardware=payload.get("semantic_hardware"),
+                callable_methods=payload.get("callable_methods"),
+                required_packages=payload.get("required_packages"),
+                file_hash=payload.get("file_hash"),
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(toolkit)
+            db.flush()  # get toolkit.id
+        else:
+            # Update mutable fields; hw_hash stays the same (it's the key)
+            toolkit.states = payload.get("states", toolkit.states)
+            toolkit.flags = payload.get("flags", toolkit.flags)
+            toolkit.params_schema = payload.get("params_schema", toolkit.params_schema)
+            toolkit.semantic_hardware = payload.get("semantic_hardware", toolkit.semantic_hardware)
+            toolkit.callable_methods = payload.get("callable_methods", toolkit.callable_methods)
+            toolkit.required_packages = payload.get("required_packages", toolkit.required_packages)
+            toolkit.file_hash = payload.get("file_hash", toolkit.file_hash)
+            toolkit.updated_at = now
+
+        # Upsert toolkit_pilot_origins
+        origin = (
+            db.query(ToolkitPilotOrigin)
+            .filter(
+                ToolkitPilotOrigin.toolkit_id == toolkit.id,
+                ToolkitPilotOrigin.pilot_id == pilot.id,
+            )
+            .one_or_none()
+        )
+        if origin is None:
+            origin = ToolkitPilotOrigin(
+                toolkit_id=toolkit.id,
+                pilot_id=pilot.id,
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(origin)
+        else:
+            origin.last_seen_at = now
+
+        db.commit()
+        return {"status": "ok", "toolkit_id": toolkit.id}
+
+    finally:
+        db.close()
 
 
 # ----------------------------------------------------------

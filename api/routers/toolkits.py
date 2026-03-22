@@ -3,7 +3,7 @@ import json
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, text as sa_text
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session as OrmSession, sessionmaker
 
 # Imports from parent package (api/ is on sys.path in Docker)
@@ -66,12 +66,11 @@ def list_toolkits(_: dict = Depends(verify_token)):
         for origin, pilot in origins_rows:
             origins_map.setdefault(origin.toolkit_id, []).append(pilot.name)
 
-        fda_counts_rows = (
-            db.query(TaskDefinition.toolkit_name, func.count(TaskDefinition.id))
-            .filter(TaskDefinition.toolkit_name.isnot(None))
-            .group_by(TaskDefinition.toolkit_name)
-            .all()
-        )
+        # toolkit_name is a migrated column not in ORM class — use raw SQL
+        fda_counts_rows = db.execute(sa_text(
+            "SELECT toolkit_name, COUNT(id) FROM task_definitions "
+            "WHERE toolkit_name IS NOT NULL GROUP BY toolkit_name"
+        )).fetchall()
         fda_count_by_name: Dict[str, int] = {row[0]: row[1] for row in fda_counts_rows}
 
         return [
@@ -111,11 +110,10 @@ def get_toolkits_by_name(name: str, _: dict = Depends(verify_token)):
         for origin, pilot in origins_rows:
             origins_map.setdefault(origin.toolkit_id, []).append(pilot.name)
 
-        fda_count = (
-            db.query(func.count(TaskDefinition.id))
-            .filter(TaskDefinition.toolkit_name == name)
-            .scalar()
-        ) or 0
+        # toolkit_name is a migrated column — use raw SQL
+        fda_count = db.execute(sa_text(
+            "SELECT COUNT(id) FROM task_definitions WHERE toolkit_name = :name"
+        ), {"name": name}).scalar() or 0
 
         return [_build_toolkit_row(t, origins_map, fda_count) for t in toolkits]
     finally:
@@ -138,11 +136,10 @@ def get_toolkit(toolkit_id: int, _: dict = Depends(verify_token)):
         )
         pilot_names = sorted([pilot.name for _, pilot in origins_rows])
 
-        fda_count = (
-            db.query(func.count(TaskDefinition.id))
-            .filter(TaskDefinition.toolkit_name == toolkit.name)
-            .scalar()
-        ) or 0
+        # toolkit_name is a migrated column — use raw SQL
+        fda_count = db.execute(sa_text(
+            "SELECT COUNT(id) FROM task_definitions WHERE toolkit_name = :name"
+        ), {"name": toolkit.name}).scalar() or 0
 
         origins_map = {toolkit_id: pilot_names}
         return _build_toolkit_row(toolkit, origins_map, fda_count)

@@ -81,24 +81,33 @@ Plans:
 ### Phase 3: Visual FDA Editor
 **Goal:** Non-technical researchers can build task state machines visually in the browser
 
-**Requirements:** UI-01 through UI-12, VAR-06
+**Requirements:** UI-01 through UI-06, UI-05a, UI-08, UI-10, UI-12, VAR-06 (UI-07, UI-09, UI-11 deferred)
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Foundation: npm dep, types, API helpers, routing, nav link, task definitions list page (VAR-06)
+- [ ] 03-02-PLAN.md — FDA Canvas: react-flow canvas with StateNode, ConditionBuilder, read-only selection
+- [ ] 03-03-PLAN.md — State body editing: StateBodyPanel, ActionEditor, ArgInput, HwOverridesPanel, Save button
 
 **Success criteria:**
 1. Open `/react/task-editor/:id` → canvas shows nodes and edges matching stored fda_json; no console errors
-2. Drag a new state node → drag between handles → edge created → click edge → right panel shows condition builder → save → fda_json updated in DB
+2. Click edge → right panel shows ConditionBuilder with view/op/rhs fields pre-filled from transition condition; edits update local state
 3. Click state node → state body panel shows entry_actions → add a hardware action with param-ref arg → save → fda_json includes new action with `{"param": "..."}` form
-4. Trigger assignment panel shows all trigger hardware → change TOUCH_INT to `touch_detector` → save → fda_json.trigger_assignments updated
-5. "Push to Pilot" button enabled (pilot is running this task def) → click → toast appears → within 2s Pi logs show `HOT_RELOAD_ACK`
+4. Passthrough states (no entry_actions, backed by Python method) show lock icon and `{py}` badge; body panel is read-only
+5. Save button serializes canvas state to FDA JSON v2 and calls PUT /api/task-definitions/:id; "Saved ✓" shown on success
 
 **New files:**
-- `web_ui/react-src/src/pages/task-editor/index.tsx`
-- `web_ui/react-src/src/components/TaskEditorCanvas.tsx`
+- `web_ui/react-src/src/pages/task-definitions/TaskDefinitions.tsx`
+- `web_ui/react-src/src/pages/task-editor/TaskEditor.tsx`
+- `web_ui/react-src/src/components/StateNode.tsx`
+- `web_ui/react-src/src/components/ConditionBuilder.tsx`
 - `web_ui/react-src/src/components/StateBodyPanel.tsx`
-- `web_ui/react-src/src/components/TriggerAssignmentPanel.tsx`
 - `web_ui/react-src/src/components/ActionEditor.tsx`
 - `web_ui/react-src/src/components/ArgInput.tsx`
+- `web_ui/react-src/src/components/HwOverridesPanel.tsx`
 - `web_ui/react-src/src/api/toolkits.ts`
-- `web_ui/react-src/src/api/taskDefinitions.ts`
+- `web_ui/react-src/src/api/task-definitions.ts`
 
 **npm additions:** `@xyflow/react`
 
@@ -220,4 +229,4 @@ Phase 8 (Pi Editor: Packages)
 
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-03-16 — Phase 2 plans added (4 plans, 3 waves)*
+*Last updated: 2026-03-22 — Phase 3 plans added (3 plans, 3 waves); UI-07, UI-09, UI-11 deferred per user decision*

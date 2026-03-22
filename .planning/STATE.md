@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-22T15:08:23.615Z"
+last_updated: "2026-03-22T15:08:31.619Z"
 progress:
   total_phases: 8
   completed_phases: 0
@@ -48,6 +48,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ---
 - [Phase 01-pi-foundation]: nohup launch uses < /dev/null to prevent SSH stdin hang (required for pilot restart)
 - [Phase 01-pi-foundation]: Deploy scripts in ~/pi-mirror/tools/ (not mics-backend repo) — operational tools outside codebase
+- [Phase 01-pi-foundation]: serialize_flags and _serialize_semantic_hardware added as private Pilot helpers for testability; all six enriched fields default to empty collections for backward compat
 
 ## Blockers
 

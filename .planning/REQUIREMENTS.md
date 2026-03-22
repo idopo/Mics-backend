@@ -20,8 +20,8 @@
 - [x] **FDA-09**: `tools/sync_pi.sh` rsyncs autopilot/ to Pi; `tools/deploy_pi.sh` syncs and restarts pilot
 - [ ] **FDA-10**: A state with no `entry_actions` in JSON uses the existing Python toolkit method of that name as a passthrough; `_build_state_method` returns `getattr(self, name)` directly
 - [ ] **FDA-11**: `type: "method"` entry_action calls `getattr(self, ref)(*args)` where `ref` must be in toolkit's `CALLABLE_METHODS` list; raises descriptive error at load time if not
-- [ ] **FDA-12**: `CALLABLE_METHODS` class attr on toolkit declares Python methods usable as entry_action building blocks; included in HANDSHAKE payload and stored in `task_toolkits.callable_methods`
-- [ ] **FDA-13**: `SEMANTIC_HARDWARE_RENAMES` class attr maps deprecated semantic names to their current replacement; `load_fda_from_json()` resolves old refs transparently via this map; HANDSHAKE includes the map so Phase 2 can detect stale refs in stored task_definitions
+- [x] **FDA-12**: `CALLABLE_METHODS` class attr on toolkit declares Python methods usable as entry_action building blocks; included in HANDSHAKE payload and stored in `task_toolkits.callable_methods`
+- [x] **FDA-13**: `SEMANTIC_HARDWARE_RENAMES` class attr maps deprecated semantic names to their current replacement; `load_fda_from_json()` resolves old refs transparently via this map; HANDSHAKE includes the map so Phase 2 can detect stale refs in stored task_definitions
 - [ ] **FDA-14**: `validate_fda.py rename-hw-ref <old> <new> --toolkit <ClassName>` command performs a SQL UPDATE on all `task_definitions.fda_json` rows that reference old name, prints count of updated rows, exits 0 on success
 - [ ] **FDA-15**: `load_fda_from_json()` sets `self.<param_name> = resolved_value` for every param after resolution, so toolkit Python methods can use `self.open_duration` directly
 - [ ] **FDA-16**: `_build_state_method()` handles `type: "if"` action recursively — evaluates condition at state entry, executes `then` or `else` branch; `then`/`else` can themselves contain nested `if` actions
@@ -38,7 +38,7 @@
 ### Hot-Reload (Pi + Orchestrator)
 
 - [ ] **HOT-01**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's `fda_json` in every START payload (Phase 2); Pi calls `load_fda_from_json()` at task start — changes take effect on next run without Pi restart
-- [ ] **HOT-02**: HANDSHAKE payload from Pi includes FLAGS, SEMANTIC_HARDWARE, STAGE_NAMES, CALLABLE_METHODS, REQUIRED_PACKAGES in addition to existing fields; stored in `task_toolkits` table
+- [x] **HOT-02**: HANDSHAKE payload from Pi includes FLAGS, SEMANTIC_HARDWARE, STAGE_NAMES, CALLABLE_METHODS, REQUIRED_PACKAGES in addition to existing fields; stored in `task_toolkits` table
 
 ### Variant Tracking (VAR)
 

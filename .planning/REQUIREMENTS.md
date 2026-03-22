@@ -54,12 +54,12 @@
 
 ### DB + API (Backend)
 
-- [ ] **DB-01**: `task_toolkits` table created; HANDSHAKE handler writes toolkit metadata (states, flags, params_schema, semantic_hardware, callable_methods, required_packages, file_hash)
-- [ ] **DB-02**: `task_definitions` table extended with `toolkit_name`, `fda_json` (JSONB), `display_name` columns; migration uses IF NOT EXISTS
-- [ ] **DB-03**: `GET /api/toolkits` returns list of toolkits per pilot with all metadata needed by GUI
-- [ ] **DB-04**: `GET /api/toolkits/:name` returns full toolkit detail
-- [ ] **DB-05**: `POST /api/task-definitions` creates task definition from toolkit + FDA JSON + default_params
-- [ ] **DB-06**: `GET/PUT/DELETE /api/task-definitions/:id` CRUD with full fda_json
+- [x] **DB-01**: `task_toolkits` table created; HANDSHAKE handler writes toolkit metadata (states, flags, params_schema, semantic_hardware, callable_methods, required_packages, file_hash)
+- [x] **DB-02**: `task_definitions` table extended with `toolkit_name`, `fda_json` (JSONB), `display_name` columns; migration uses IF NOT EXISTS
+- [x] **DB-03**: `GET /api/toolkits` returns list of toolkits per pilot with all metadata needed by GUI
+- [x] **DB-04**: `GET /api/toolkits/:name` returns full toolkit detail
+- [x] **DB-05**: `POST /api/task-definitions` creates task definition from toolkit + FDA JSON + default_params
+- [x] **DB-06**: `GET/PUT/DELETE /api/task-definitions/:id` CRUD with full fda_json
 - [ ] **DB-07**: `POST /api/task-definitions/:id/push?pilot=name` forwards UPDATE_FDA to named pilot via orchestrator; returns HOT_RELOAD_ACK status
 - [ ] **DB-08**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's fda_json in START payload
 

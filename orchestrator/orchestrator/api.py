@@ -91,4 +91,22 @@ def create_api(state: OrchestratorState, station: OrchestratorStation):
                 detail=f"Run {run_id} stop partially failed: {e}",
             )
 
+    @app.post("/push-fda")
+    def push_fda(body: dict):
+        """
+        Push UPDATE_FDA ZMQ message to a named pilot.
+        body: {pilot_name: str, fda_json: dict}
+        """
+        pilot_name = body.get("pilot_name")
+        fda_json = body.get("fda_json")
+        if not pilot_name or fda_json is None:
+            raise HTTPException(400, "pilot_name and fda_json are required")
+        try:
+            station.push_hot_reload(pilot_name, fda_json)
+            return {"ok": True, "pilot": pilot_name}
+        except ValueError as e:
+            raise HTTPException(400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(500, detail=str(e))
+
     return app

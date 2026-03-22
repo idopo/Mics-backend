@@ -666,6 +666,23 @@ class OrchestratorStation:
         return task
 
 
+    def push_hot_reload(self, pilot_name: str, fda_json: dict):
+        """
+        Send UPDATE_FDA ZMQ message to the named pilot.
+        pilot_name is the DB-registered name (e.g. "T").
+        """
+        try:
+            pilot_key = self.state.resolve_pilot_key(
+                db_name=pilot_name,
+                ip=None,
+            )
+        except KeyError:
+            raise ValueError(f"Pilot '{pilot_name}' not found in orchestrator state (not connected?)")
+
+        logger.info("Pushing UPDATE_FDA to pilot %s (key=%s)", pilot_name, pilot_key)
+        self.gateway.send(pilot_key, "UPDATE_FDA", fda_json)
+        logger.info("UPDATE_FDA sent to pilot %s", pilot_name)
+
     def _run_watchdog(self):
         logger.info("Run watchdog started")
 

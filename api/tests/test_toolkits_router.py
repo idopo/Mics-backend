@@ -15,7 +15,7 @@ def auth_headers():
 
 
 def test_list_toolkits_returns_list(client):
-    with patch("routers.toolkits.SA_SessionLocal") as mock_db:
+    with patch("routers.toolkits._SA_SessionLocal") as mock_db:
         mock_db.return_value.__enter__ = MagicMock(return_value=MagicMock())
         resp = client.get("/api/toolkits", headers=auth_headers())
     assert resp.status_code in (200, 401, 422)  # route exists

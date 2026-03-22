@@ -61,6 +61,9 @@ SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 app = FastAPI(title="MICS Backend API")
 
+from routers.toolkits import router as toolkits_router
+app.include_router(toolkits_router, prefix="/api")
+
 
 # inside upsert_pilot_tasks (near top), define helper:
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-22T15:08:31.619Z"
+last_updated: "2026-03-22T15:10:12.504Z"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 11
-  completed_plans: 2
-  percent: 18
+  completed_plans: 3
+  percent: 27
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [██░░░░░░░░] 18%
+**Progress:** [███░░░░░░░] 27%
 
 ---
 
@@ -49,6 +49,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 01-pi-foundation]: nohup launch uses < /dev/null to prevent SSH stdin hang (required for pilot restart)
 - [Phase 01-pi-foundation]: Deploy scripts in ~/pi-mirror/tools/ (not mics-backend repo) — operational tools outside codebase
 - [Phase 01-pi-foundation]: serialize_flags and _serialize_semantic_hardware added as private Pilot helpers for testability; all six enriched fields default to empty collections for backward compat
+- [Phase 01-pi-foundation]: validate() takes (definition, cls) order — definition first, class second — consistent with test signatures
+- [Phase 01-pi-foundation]: if-action recursion shares _validate_actions_list() for state loop and then/else branches
 
 ## Blockers
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-22T15:55:43.145Z"
+last_updated: "2026-03-22T15:59:05.690Z"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 11
-  completed_plans: 7
-  percent: 64
+  completed_plans: 8
+  percent: 73
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [██████░░░░] 64%
+**Progress:** [███████░░░] 73%
 
 ---
 
@@ -53,6 +53,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 01-pi-foundation]: if-action recursion shares _validate_actions_list() for state loop and then/else branches
 - [Phase 02-db-api]: Toolkit schema in task_toolkits separate from task_definitions — multiple FDAs per toolkit possible
 - [Phase 02-db-api]: fda_json stored as JSONB in task_definitions, toolkit_name as FK ref by name
+- [Phase 02-db-api]: hw_hash pre-computed by orchestrator as SHA256(json.dumps(sem_hw, sort_keys=True)); API trusts caller hash
+- [Phase 02-db-api]: Enriched HANDSHAKE detected by key presence (SEMANTIC_HARDWARE or FLAGS), not schema version field
 
 ## Blockers
 

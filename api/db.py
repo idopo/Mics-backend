@@ -55,3 +55,18 @@ def run_lab_column_migrations(eng):
                 f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
             ))
         conn.commit()
+
+
+def run_toolkit_migrations(eng):
+    """Add toolkit columns to task_definitions; safe to run repeatedly (IF NOT EXISTS)."""
+    migrations = [
+        ("task_definitions", "toolkit_name",  "TEXT"),
+        ("task_definitions", "display_name",  "TEXT"),
+        ("task_definitions", "fda_json",      "JSONB"),
+    ]
+    with eng.connect() as conn:
+        for table, col_name, col_type in migrations:
+            conn.execute(text(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+            ))
+        conn.commit()

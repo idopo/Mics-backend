@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from sqlalchemy import func
-from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations
 from models import (
     Subject,
     SubjectCreate,
@@ -36,6 +36,12 @@ from models import (
     PilotTaskCapability,
     TaskDescriptor,
     PilotTaskHandshake,
+    TaskToolkit,
+    ToolkitPilotOrigin,
+    TaskDefinitionCreate,
+    TaskDefinitionUpdate,
+    TaskDefinitionRead,
+    TaskToolkitRead,
 
     Pilot,
     PilotCreate,
@@ -111,6 +117,7 @@ def startup():
     # Add new nullable columns to subjects (safe on existing DBs; no-op on fresh deploys)
     run_subject_column_migrations(engine)
     run_lab_column_migrations(engine)
+    run_toolkit_migrations(engine)
 
 
 @app.get("/health")

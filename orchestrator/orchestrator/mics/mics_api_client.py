@@ -212,6 +212,17 @@ class MicsApiClient:
         """
         return self._post(f"/pilots/{pilot_id}/toolkits", toolkit_payload)
 
+    def get_task_definition(self, defn_id: int) -> Optional[Dict[str, Any]]:
+        """
+        GET /task-definitions/{id}
+        Returns task definition with fda_json, or None if not found.
+        """
+        try:
+            return self._get(f"/task-definitions/{defn_id}")
+        except Exception as e:
+            self.logger.warning("Failed to get task_definition %s: %s", defn_id, e)
+            return None
+
         # -----------------------
     # SessionRun Endpoints
     # -----------------------

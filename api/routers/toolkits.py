@@ -1,5 +1,8 @@
 """Toolkit and task-definition CRUD endpoints (Plan 02-03)."""
 import json
+import os
+import urllib.error
+import urllib.request
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +25,8 @@ router = APIRouter(tags=["toolkits"])
 
 # Session factory shared with main.py (same engine, same DB)
 _SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+_ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://orchestrator:9000")
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +334,105 @@ def delete_task_definition(defn_id: int, _: dict = Depends(verify_token)):
         return {"status": "deleted", "id": defn_id}
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Push endpoint — delivers fda_json to a running pilot via orchestrator
+# ---------------------------------------------------------------------------
+
+# IMPORTANT: register before generic /{defn_id} routes to avoid ambiguity;
+# this path suffix is unique so order doesn't matter here, but be explicit.
+@router.post("/task-definitions/{defn_id}/push")
+def push_task_definition(
+    defn_id: int,
+    pilot: str,
+    _: dict = Depends(verify_token),
+):
+    """
+    Validate fda_json against toolkit (state names and entry_action hardware refs only),
+    then forward UPDATE_FDA to the named pilot via orchestrator POST /push-fda.
+    """
+    db: OrmSession = _SA_SessionLocal()
+    try:
+        row = db.execute(sa_text(
+            "SELECT id, task_name, toolkit_name, fda_json FROM task_definitions WHERE id = :id"
+        ), {"id": defn_id}).fetchone()
+        if not row:
+            raise HTTPException(404, "Task definition not found")
+
+        fda_json = json.loads(row.fda_json) if isinstance(row.fda_json, str) else row.fda_json
+        if fda_json is None:
+            raise HTTPException(400, "Task definition has no fda_json")
+
+        # Validate fda_json against toolkit (skip validation if toolkit missing)
+        validation_errors: List[str] = []
+        if row.toolkit_name:
+            toolkit = (
+                db.query(TaskToolkit)
+                .filter(TaskToolkit.name == row.toolkit_name)
+                .order_by(TaskToolkit.updated_at.desc())
+                .first()
+            )
+            if toolkit:
+                validation_errors = _validate_fda_against_toolkit(fda_json, toolkit)
+
+        if validation_errors:
+            raise HTTPException(422, detail={"errors": validation_errors})
+
+        # Forward to orchestrator /push-fda
+        try:
+            body_bytes = json.dumps({"pilot_name": pilot, "fda_json": fda_json}).encode()
+            req = urllib.request.Request(
+                f"{_ORCHESTRATOR_URL}/push-fda",
+                data=body_bytes,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5):
+                pass
+        except OSError:
+            # Covers ConnectionRefusedError, socket errors, etc.
+            raise HTTPException(503, "Orchestrator not reachable")
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"Orchestrator error: {e.read().decode()}")
+
+        return {"status": "pushed", "pilot": pilot, "task_definition_id": defn_id}
+
+    finally:
+        db.close()
+
+
+def _validate_fda_against_toolkit(fda_json: dict, toolkit: TaskToolkit) -> List[str]:
+    """
+    Returns list of error strings. Empty list = valid.
+
+    Validates ONLY:
+    - State name keys in fda_json["states"] exist in toolkit.states list
+    - hardware entry_action refs (action["type"]=="hardware") exist in toolkit.semantic_hardware keys
+
+    Does NOT validate: transition next_state values, condition refs, or any other fields.
+    """
+    errors: List[str] = []
+    known_states = set(toolkit.states or [])
+    known_hw = set((toolkit.semantic_hardware or {}).keys())
+
+    fda_states = fda_json.get("states", {})
+    if not isinstance(fda_states, dict):
+        return errors
+
+    for state_name in fda_states:
+        if known_states and state_name not in known_states:
+            errors.append(f"Unknown state: '{state_name}' not in toolkit states")
+
+    for state_name, state_body in fda_states.items():
+        if not isinstance(state_body, dict):
+            continue
+        for action in (state_body.get("entry_actions") or []):
+            if not isinstance(action, dict):
+                continue
+            ref = action.get("ref")
+            action_type = action.get("type")
+            if action_type == "hardware" and ref and known_hw and ref not in known_hw:
+                errors.append(f"State '{state_name}': unknown hardware ref '{ref}'")
+
+    return errors

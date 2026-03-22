@@ -610,6 +610,23 @@ class OrchestratorStation:
         task["run_id"] = run["id"]                 # ✅ ADD THIS (required)
         task["protocol_id"] = proto_run["protocol_id"]  # ✅ optional but useful
 
+        # Phase 2: if protocol step carries a task_definition_id, inject fda_json as state_machine
+        task_def_id = (step.get("params") or {}).get("task_definition_id")
+        if task_def_id:
+            try:
+                task_def = self.api.get_task_definition(int(task_def_id))
+                if task_def and task_def.get("fda_json"):
+                    task["state_machine"] = task_def["fda_json"]
+                    logger.info(
+                        "Injected state_machine from task_definition %s into START payload for run %s step %s",
+                        task_def_id, run.get("id"), step_idx,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to fetch task_definition %s for state_machine injection; proceeding without it",
+                    task_def_id,
+                )
+
         # Apply overrides last
         task = self._apply_overrides(task, run_meta=run, step_idx=step_idx)
 
@@ -650,6 +667,23 @@ class OrchestratorStation:
 
         task["run_id"] = run["id"]                 # ✅ ADD THIS
         task["protocol_id"] = proto_run["protocol_id"]  # ✅ optional
+
+        # Phase 2: if protocol step carries a task_definition_id, inject fda_json as state_machine
+        task_def_id = (step.get("params") or {}).get("task_definition_id")
+        if task_def_id:
+            try:
+                task_def = self.api.get_task_definition(int(task_def_id))
+                if task_def and task_def.get("fda_json"):
+                    task["state_machine"] = task_def["fda_json"]
+                    logger.info(
+                        "Injected state_machine from task_definition %s into START payload for run %s step %s",
+                        task_def_id, run.get("id"), step_idx,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to fetch task_definition %s for state_machine injection; proceeding without it",
+                    task_def_id,
+                )
 
         task = self._apply_overrides(task, run_meta=run, step_idx=step_idx)
 

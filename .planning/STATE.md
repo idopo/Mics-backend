@@ -1,3 +1,17 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-03-22T15:08:23.615Z"
+progress:
+  total_phases: 8
+  completed_phases: 0
+  total_plans: 11
+  completed_plans: 2
+  percent: 18
+---
+
 # STATE: MICS Backend
 
 ## Project Reference
@@ -13,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** ░░░░░░░░░░ 0%
+**Progress:** [██░░░░░░░░] 18%
 
 ---
 
@@ -32,6 +46,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 | Phase 5 independent of Phases 1-4 | 2026-03-15 | Pi editor viewer has no dependency on toolkit/FDA work |
 
 ---
+- [Phase 01-pi-foundation]: nohup launch uses < /dev/null to prevent SSH stdin hang (required for pilot restart)
+- [Phase 01-pi-foundation]: Deploy scripts in ~/pi-mirror/tools/ (not mics-backend repo) — operational tools outside codebase
 
 ## Blockers
 

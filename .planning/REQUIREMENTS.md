@@ -11,13 +11,21 @@
 
 - [ ] **FDA-01**: Pi can start a task with `state_machine` kwarg containing v2 FDA JSON, producing identical behavior to the hardcoded version
 - [ ] **FDA-02**: `load_fda_from_json()` in `mics_task` handles both v1 (states list) and v2 (states object with entry_actions) formats
-- [ ] **FDA-03**: State entry_actions are executed in order: hardware calls via semantic ref, flag updates, timer calls, special actions (INC_TRIAL_COUNTER)
+- [ ] **FDA-03**: State entry_actions are executed in order: hardware calls via semantic ref, flag updates, timer calls, special actions (INC_TRIAL_COUNTER), custom toolkit method calls
 - [ ] **FDA-04**: SEMANTIC_HARDWARE dict maps friendly names to (group, id) tuples; entry actions use `ref` not `hardware['group']['id']`
 - [ ] **FDA-05**: Arg values in entry_actions resolve correctly: literal, `{"param": "name"}`, and `{"flag": "name"}` forms
 - [ ] **FDA-06**: `blocking: "stage_block"` causes state to call `wait_for_condition()` (yield loop); `blocking: null` returns immediately
 - [ ] **FDA-07**: `return_data` dict is collected after entry_actions and sent as DATA event; supports flag/param/now() value forms
-- [ ] **FDA-08**: `validate_fda.py` CLI tool exits 0 on valid JSON, exits 1 with specific error for unknown state names / unknown refs / unknown params
-- [ ] **FDA-09**: `tools/sync_pi.sh` rsyncs autopilot/ to Pi; `tools/deploy_pi.sh` syncs and restarts pilot
+- [ ] **FDA-08**: `validate_fda.py` CLI tool exits 0 on valid JSON, exits 1 with specific error for unknown state names / unknown refs / unknown params / unknown callable_method refs
+- [x] **FDA-09**: `tools/sync_pi.sh` rsyncs autopilot/ to Pi; `tools/deploy_pi.sh` syncs and restarts pilot
+- [ ] **FDA-10**: A state with no `entry_actions` in JSON uses the existing Python toolkit method of that name as a passthrough; `_build_state_method` returns `getattr(self, name)` directly
+- [ ] **FDA-11**: `type: "method"` entry_action calls `getattr(self, ref)(*args)` where `ref` must be in toolkit's `CALLABLE_METHODS` list; raises descriptive error at load time if not
+- [ ] **FDA-12**: `CALLABLE_METHODS` class attr on toolkit declares Python methods usable as entry_action building blocks; included in HANDSHAKE payload and stored in `task_toolkits.callable_methods`
+- [ ] **FDA-13**: `SEMANTIC_HARDWARE_RENAMES` class attr maps deprecated semantic names to their current replacement; `load_fda_from_json()` resolves old refs transparently via this map; HANDSHAKE includes the map so Phase 2 can detect stale refs in stored task_definitions
+- [ ] **FDA-14**: `validate_fda.py rename-hw-ref <old> <new> --toolkit <ClassName>` command performs a SQL UPDATE on all `task_definitions.fda_json` rows that reference old name, prints count of updated rows, exits 0 on success
+- [ ] **FDA-15**: `load_fda_from_json()` sets `self.<param_name> = resolved_value` for every param after resolution, so toolkit Python methods can use `self.open_duration` directly
+- [ ] **FDA-16**: `_build_state_method()` handles `type: "if"` action recursively — evaluates condition at state entry, executes `then` or `else` branch; `then`/`else` can themselves contain nested `if` actions
+- [ ] **FDA-17**: `validate_fda.py` traverses `if` action blocks recursively; validates `condition.left` and `condition.right` refs against known FLAGS/PARAMS/SEMANTIC_HARDWARE; exits 1 with specific error for unknown ref
 
 ### Trigger Assignments (Pi)
 
@@ -29,16 +37,24 @@
 
 ### Hot-Reload (Pi + Orchestrator)
 
-- [ ] **HOT-01**: Pi handles `UPDATE_FDA` ZMQ message by calling `task.hot_update_fda(update)` and responding with `HOT_RELOAD_ACK`
-- [ ] **HOT-02**: `hot_update_fda()` replaces state method refs in FDA without interrupting the currently-executing state
-- [ ] **HOT-03**: `replace_method_ref()` on FDA updates methods list, transitions dict keys and values, and current_method if applicable
-- [ ] **HOT-04**: `replace_transitions()` on FDA replaces transition list for a given from_method; `wait_for_condition()` picks up new lambdas on next yield iteration
-- [ ] **HOT-05**: `_state_method_registry` keyed by state name string (not method object) is maintained for stable hot-reload references
-- [ ] **HOT-06**: HANDSHAKE payload from Pi includes FLAGS, SEMANTIC_HARDWARE, STAGE_NAMES, REQUIRED_PACKAGES in addition to existing fields
+- [ ] **HOT-01**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's `fda_json` in every START payload (Phase 2); Pi calls `load_fda_from_json()` at task start — changes take effect on next run without Pi restart
+- [ ] **HOT-02**: HANDSHAKE payload from Pi includes FLAGS, SEMANTIC_HARDWARE, STAGE_NAMES, CALLABLE_METHODS, REQUIRED_PACKAGES in addition to existing fields; stored in `task_toolkits` table
+
+### Variant Tracking (VAR)
+
+| ID | Requirement | Phase |
+|---|---|---|
+| VAR-01 | Toolkit identity is `(name, hw_hash)` — same name + same SEMANTIC_HARDWARE = same record; same name + different hardware = separate record | 2 |
+| VAR-02 | HANDSHAKE with a new hw_hash for an existing toolkit name creates a new `task_toolkits` row (never overwrites) | 2 |
+| VAR-03 | `toolkit_pilot_origins` table tracks `(toolkit_id, pilot_id, first_seen_at, last_seen_at)` — upserted on every HANDSHAKE | 2 |
+| VAR-04 | `GET /api/toolkits` returns toolkits grouped by name; each variant includes hw_hash, pilot_origins, fda_count | 2 |
+| VAR-05 | `GET /api/toolkits/{id}/diff/{other_id}` returns added/removed/changed keys in SEMANTIC_HARDWARE | 2 |
+| VAR-06 | FDA creation GUI shows explicit variant picker (with hw diff) when 2+ variants exist for a toolkit name | 3 |
+| VAR-07 | `PATCH /api/toolkits/{id}/set-canonical` marks one variant canonical; FDAs bound to others flagged `needs_migration=true` | 4 |
 
 ### DB + API (Backend)
 
-- [ ] **DB-01**: `task_toolkits` table created; HANDSHAKE handler writes toolkit metadata (states, flags, params_schema, semantic_hardware, required_packages, file_hash)
+- [ ] **DB-01**: `task_toolkits` table created; HANDSHAKE handler writes toolkit metadata (states, flags, params_schema, semantic_hardware, callable_methods, required_packages, file_hash)
 - [ ] **DB-02**: `task_definitions` table extended with `toolkit_name`, `fda_json` (JSONB), `display_name` columns; migration uses IF NOT EXISTS
 - [ ] **DB-03**: `GET /api/toolkits` returns list of toolkits per pilot with all metadata needed by GUI
 - [ ] **DB-04**: `GET /api/toolkits/:name` returns full toolkit detail
@@ -53,12 +69,15 @@
 - [ ] **UI-02**: react-flow canvas shows states as nodes, transitions as directed edges; drag-to-connect creates transitions
 - [ ] **UI-03**: Clicking a transition edge shows condition builder in right panel: view key dropdown + op dropdown + literal/param/flag value input
 - [ ] **UI-04**: Clicking a state node shows state body editor: entry_actions list with add/remove/reorder, blocking toggle, return_data list
-- [ ] **UI-05**: "Add action" picker: hardware (semantic ref dropdown + method + args), flag, timer, special (INC_TRIAL_COUNTER)
+- [ ] **UI-05**: "Add action" picker: hardware (semantic ref dropdown + method + args), flag, timer, special (INC_TRIAL_COUNTER), custom method (callable_methods dropdown + optional args)
+- [ ] **UI-05a**: Passthrough state nodes (no entry_actions, backed by Python method) shown with lock icon and `{py}` badge; state body panel is read-only for these
 - [ ] **UI-06**: Arg inputs are smart: toggle between literal / param-ref / flag-ref modes
 - [ ] **UI-07**: Trigger assignment panel (separate tab): shows all trigger hardware, dropdown for handler type (default/touch_detector/digital_input), config fields; note that logging is always automatic
 - [ ] **UI-08**: Semantic hardware overrides panel: optional per-task-definition overrides of toolkit's SEMANTIC_HARDWARE
 - [ ] **UI-09**: "Push to Pilot" button only enabled when a pilot is running this task definition; calls push endpoint; shows toast on success
 - [ ] **UI-10**: Save button serializes canvas + state body + trigger assignments to FDA JSON v2 and calls PUT /api/task-definitions/:id
+- [ ] **UI-11**: State body panel "Add action" picker includes "If Condition" option; creates an `if` block with empty `then`/`else` lanes; lanes accept any action type including nested ifs
+- [ ] **UI-12**: Condition builder widget: left-side dropdown (tracker/flag/param/hardware), op dropdown (`==` `!=` `>=` `<=` `>` `<`), right-side (literal input OR ref picker matching left types)
 
 ### Protocol Integration (Web UI + Backend)
 
@@ -139,11 +158,14 @@
 
 | Requirement | Phase | Status |
 |---|---|---|
-| FDA-01 through FDA-09 | Phase 1 (Pi Foundation) | Pending |
+| FDA-01 through FDA-17 | Phase 1 (Pi Foundation) | Pending |
 | TRIG-01 through TRIG-05 | Phase 1 (Pi Foundation) | Pending |
-| HOT-01 through HOT-06 | Phase 1 (Pi Foundation) | Pending |
+| HOT-01 through HOT-02 | Phase 1–2 (Pi Foundation + DB) | Pending |
+| VAR-01 through VAR-05 | Phase 2 (DB + API) | Pending |
+| VAR-06 | Phase 3 (Visual Editor) | Pending |
+| VAR-07 | Phase 4 (Protocol Integration) | Pending |
 | DB-01 through DB-08 | Phase 2 (DB + API) | Pending |
-| UI-01 through UI-10 | Phase 3 (Visual Editor) | Pending |
+| UI-01 through UI-12 | Phase 3 (Visual Editor) | Pending |
 | PROTO-01 through PROTO-03 | Phase 4 (Protocol Integration) | Pending |
 | EDIT-01 through EDIT-06 | Phase 5 (Pi Editor: Viewer) | Pending |
 | EDIT-07 through EDIT-10 | Phase 6 (Pi Editor: Terminal) | Pending |
@@ -151,8 +173,8 @@
 | EDIT-15 through EDIT-17 | Phase 8 (Pi Editor: Sync+Packages) | Pending |
 
 **Coverage:**
-- v1 requirements: 46 total
-- Mapped to phases: 46
+- v1 requirements: 61 total (HOT simplified; FDA-10–17 + UI-05a + UI-11–12 added for passthrough/callable_methods/rename/if-actions/params-as-props; VAR-01–07 added for toolkit variant tracking)
+- Mapped to phases: 61
 - Unmapped: 0 ✓
 
 ---

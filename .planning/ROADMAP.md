@@ -10,9 +10,9 @@
 
 | # | Phase | Goal | Requirements | Status |
 |---|---|---|---|---|
-| 1 | Pi Foundation | JSON-driven FDA, semantic hardware, hot-reload, trigger assignments | FDA-01–14, TRIG-01–05, HOT-02 | ○ Pending |
+| 1 | 2/6 | In Progress|  | ○ Pending |
 | 2 | DB + API | task_toolkits table, task_definitions with fda_json, push endpoint | DB-01–08, VAR-01–05 | ○ Pending |
-| 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–10, VAR-06 | ○ Pending |
+| 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–12, VAR-06 | ○ Pending |
 | 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–03, VAR-07 | ○ Pending |
 | 5 | Pi Editor: Viewer | Read-only file browser + Monaco + SSH status | EDIT-01–06 | ○ Pending |
 | 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
@@ -26,7 +26,7 @@
 ### Phase 1: Pi Foundation
 **Goal:** Pi can load and hot-reload a complete FDA state machine from JSON without restart
 
-**Requirements:** FDA-01 through FDA-14, TRIG-01 through TRIG-05, HOT-02
+**Requirements:** FDA-01 through FDA-17, TRIG-01 through TRIG-05, HOT-02
 
 **Success criteria:**
 1. `AppetitiveTaskReal` started with `state_machine=<v2_json>` produces identical CONTINUOUS event stream in ES as hardcoded version
@@ -53,7 +53,7 @@
 
 **Requirements:** DB-01 through DB-08, VAR-01 through VAR-05
 
-**Plans:** 4 plans
+**Plans:** 2/6 plans executed
 
 Plans:
 - [ ] 02-01-PLAN.md — DB schema: task_toolkits, toolkit_pilot_origins, task_definitions extensions
@@ -81,7 +81,7 @@ Plans:
 ### Phase 3: Visual FDA Editor
 **Goal:** Non-technical researchers can build task state machines visually in the browser
 
-**Requirements:** UI-01 through UI-10, VAR-06
+**Requirements:** UI-01 through UI-12, VAR-06
 
 **Success criteria:**
 1. Open `/react/task-editor/:id` → canvas shows nodes and edges matching stored fda_json; no console errors

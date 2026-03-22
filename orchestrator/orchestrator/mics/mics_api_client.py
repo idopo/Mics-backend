@@ -204,7 +204,13 @@ class MicsApiClient:
         payload = {"tasks": tasks}
         return self._post(f"/pilots/{pilot_id}/tasks", payload)
 
+    def upsert_pilot_toolkit(self, pilot_id: int, toolkit_payload: dict) -> dict:
+        """
+        POST /pilots/{pilot_id}/toolkits
 
+        Sends enriched toolkit metadata from HANDSHAKE to backend.
+        """
+        return self._post(f"/pilots/{pilot_id}/toolkits", toolkit_payload)
 
         # -----------------------
     # SessionRun Endpoints

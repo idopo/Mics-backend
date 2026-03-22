@@ -1,3 +1,4 @@
+import hashlib
 import time
 import threading
 import queue
@@ -72,7 +73,6 @@ class OrchestratorStation:
         tasks = payload.get("tasks")
         self._redis_touch(pilot)
 
-
         self.state.update_handshake(pilot, payload)
         logger.info("HANDSHAKE from %s", pilot)
 
@@ -83,13 +83,57 @@ class OrchestratorStation:
                 prefs=payload.get("prefs", {}) or {},
             )
 
-            
+            # Legacy path: upsert task capabilities (always run if tasks present)
             if tasks:
                 self.api.upsert_pilot_tasks(
                     pilot_id=pilot_obj["id"],
                     tasks=tasks,
                 )
 
+            # Phase 2 path: upsert toolkit metadata if enriched HANDSHAKE
+            # Detection: presence of SEMANTIC_HARDWARE or FLAGS key
+            if payload.get("SEMANTIC_HARDWARE") is not None or payload.get("FLAGS") is not None:
+                sem_hw = payload.get("SEMANTIC_HARDWARE") or {}
+                hw_hash = hashlib.sha256(
+                    json.dumps(sem_hw, sort_keys=True).encode()
+                ).hexdigest()
+
+                toolkit_payload = {
+                    "task_name": payload.get("task_name"),
+                    "hw_hash": hw_hash,
+                    "states": payload.get("STAGE_NAMES"),
+                    "flags": payload.get("FLAGS"),
+                    "params_schema": None,  # extracted from tasks list if present
+                    "semantic_hardware": sem_hw,
+                    "callable_methods": payload.get("CALLABLE_METHODS"),
+                    "required_packages": payload.get("REQUIRED_PACKAGES"),
+                    "file_hash": payload.get("file_hash"),
+                }
+
+                # Extract params_schema from tasks list (first task matching task_name)
+                task_name = payload.get("task_name")
+                if task_name and tasks:
+                    for t in tasks:
+                        if t.get("task_name") == task_name:
+                            toolkit_payload["params_schema"] = t.get("params")
+                            break
+
+                if toolkit_payload["task_name"]:
+                    self.api.upsert_pilot_toolkit(
+                        pilot_id=pilot_obj["id"],
+                        toolkit_payload=toolkit_payload,
+                    )
+                    logger.info(
+                        "Toolkit upserted for pilot %s: %s (hw_hash=%s)",
+                        pilot,
+                        toolkit_payload["task_name"],
+                        hw_hash[:8],
+                    )
+                else:
+                    logger.warning(
+                        "Enriched HANDSHAKE from %s missing task_name — skipping toolkit upsert",
+                        pilot,
+                    )
 
         except Exception as e:
             logger.error("Backend sync failed for pilot %s: %s", pilot, e)

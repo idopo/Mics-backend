@@ -30,3 +30,8 @@ def test_create_task_definition_returns_id(client):
     payload = {"display_name": "test", "toolkit_name": "AppetitiveTaskReal", "fda_json": {"states": {}}}
     resp = client.post("/api/task-definitions", json=payload, headers=auth_headers())
     assert resp.status_code in (201, 401, 422)  # endpoint exists, not 404
+
+
+def test_push_endpoint_exists(client):
+    resp = client.post("/api/task-definitions/1/push?pilot=T", headers=auth_headers())
+    assert resp.status_code != 404  # endpoint must exist (auth/validation errors ok)

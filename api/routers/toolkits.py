@@ -390,11 +390,11 @@ def push_task_definition(
             )
             with urllib.request.urlopen(req, timeout=5):
                 pass
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"Orchestrator error: {e.read().decode()}")
         except OSError:
             # Covers ConnectionRefusedError, socket errors, etc.
             raise HTTPException(503, "Orchestrator not reachable")
-        except urllib.error.HTTPError as e:
-            raise HTTPException(502, f"Orchestrator error: {e.read().decode()}")
 
         return {"status": "pushed", "pilot": pilot, "task_definition_id": defn_id}
 

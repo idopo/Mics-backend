@@ -18,12 +18,15 @@ services:
     build: ./api
     container_name: mics_api
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql+psycopg2://mics_user:change_me@db:5432/mics_db
       JWT_SECRET: pishoto
       JWT_ALGORITHM: HS256
       JWT_AUDIENCE: mics-clients
       JWT_ISSUER: mics-api
+      ORCHESTRATOR_URL: http://host.docker.internal:9000
     depends_on:
       - db
     ports:

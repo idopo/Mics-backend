@@ -31,6 +31,8 @@ requirements:
   - FDA-10
   - FDA-11
   - FDA-13
+  - FDA-15
+  - FDA-16
 ---
 
 # Plan 02: load_fda_from_json() and _build_state_method()
@@ -38,6 +40,21 @@ requirements:
 ## Goal
 
 Implement `load_fda_from_json()` on `mics_task` that accepts a v1 or v2 FDA JSON dict, resolves semantic hardware references (v2 only) with transparent fallback via `SEMANTIC_HARDWARE_RENAMES`, builds state methods for all three modes (passthrough / GUI-built / hybrid), sets up the `FiniteDeterministicAutomaton`, and registers transitions. Also implement `_resolve_arg()` and `_build_state_method()` as helpers.
+
+## TDD Requirement
+
+**Step 0 — Write failing tests before implementing.** Per `quality-guardrails.md`, no production code without a failing test first.
+
+Create `~/pi-mirror/tests/test_load_fda_from_json.py` covering:
+- `load_fda_from_json(v1_dict)` — v1 format passes through to legacy stages unchanged
+- `load_fda_from_json(v2_dict)` — states added to FDA, transitions registered
+- Deprecated `ref` in `SEMANTIC_HARDWARE_RENAMES` resolves transparently with logged warning
+- Unknown ref raises `ValueError` with descriptive message
+- Passthrough state (no `entry_actions`) returns original bound method
+
+Mock: `self.view`, `self.hardware`, `self.stages` (FDA), `self.flags`. Use `unittest.mock.MagicMock`.
+
+Run `python3 -m pytest -q tests/test_load_fda_from_json.py` and **confirm failure** before implementing.
 
 ## Context
 
@@ -324,7 +341,245 @@ Key notes:
 - `INC_TRIAL_COUNTER` sends via `self.node` — `self.node` is available because `Task.__init__` sets `self.node = kwargs['node']`.
 </task>
 
-<task id="02-4" title="Implement load_fda_from_json() with SEMANTIC_HARDWARE_RENAMES fallback" depends_on="02-3">
+<task id="02-4" title="params-as-props: set self.<param_name> after param resolution" depends_on="02-3">
+
+In `load_fda_from_json()`, after params have been resolved (the task receives `self.params` populated by `Task.__init__` from kwargs), add a loop that sets each param as a direct instance attribute:
+
+```python
+# ── After v1 normalization, before step 1 (FDA reset) ────────────────────────────────
+# FDA-15: expose resolved params as direct instance attrs so toolkit methods can use
+# self.open_duration instead of self._resolve_arg({"param": "open_duration"}).
+# Guard: only set attrs whose names are declared in self.PARAMS to avoid clobbering
+# existing instance attrs (e.g. self.stages, self.flags, self.hardware).
+params_declared = set(getattr(self.__class__, 'PARAMS', {}).keys())
+for param_name, value in (getattr(self, 'params', {}) or {}).items():
+    if param_name in params_declared:
+        setattr(self, param_name, value)
+```
+
+Place this block at the start of `load_fda_from_json()`, after the v1 normalization / version-check block and before step 1 (FDA reset).
+
+Notes:
+- `self.params` is the plain dict set by `Task.__init__`; it contains the resolved runtime values.
+- The guard `param_name in params_declared` ensures we never overwrite `self.flags`, `self.stages`, etc., even if a param happened to be named the same.
+- Toolkit methods that use `self.open_duration` directly will now find the value without calling `_resolve_arg`.
+</task>
+
+<task id="02-5" title="_build_if_action() and _build_action_callable() helpers" depends_on="02-4">
+
+Add three new methods to `mics_task` and update `_build_state_method()` to use them (FDA-16).
+
+### Step 1: add module-level `_COMPARE` dict
+
+Near the top of `mics_task.py`, after the imports (alongside `OP_MAP` if it exists, or near other module-level constants):
+
+```python
+import operator as _operator
+
+_COMPARE = {
+    "==": _operator.eq,
+    "!=": _operator.ne,
+    ">=": _operator.ge,
+    "<=": _operator.le,
+    ">":  _operator.gt,
+    "<":  _operator.lt,
+}
+```
+
+### Step 2: add `_build_condition_operand()` helper
+
+Add this method to `mics_task` after `_resolve_arg()`:
+
+```python
+def _build_condition_operand(self, operand) -> callable:
+    """
+    Return a zero-arg callable that evaluates one side of an if-action condition.
+
+    Supported forms:
+      {"tracker": "name"}  → self.flags["name"].value  (tracker/flag value)
+      {"flag": "name"}     → self.flags["name"].value  (alias for tracker)
+      {"param": "name"}    → self.params["name"]       (resolved param value)
+      {"hardware": "ref"}  → self._semantic_hw["ref"].value  (hardware state)
+      bare literal         → returns the literal directly (int/float/str/bool/None)
+    """
+    if not isinstance(operand, dict):
+        val = operand
+        return lambda: val
+
+    if "tracker" in operand or "flag" in operand:
+        key = operand.get("tracker") or operand.get("flag")
+        def _read_flag(_key=key):
+            return self.flags[_key].value
+        return _read_flag
+
+    if "param" in operand:
+        key = operand["param"]
+        def _read_param(_key=key):
+            return self.params[_key]
+        return _read_param
+
+    if "hardware" in operand:
+        ref = operand["hardware"]
+        hw  = self._semantic_hw[ref]
+        def _read_hw(_hw=hw):
+            return _hw.value
+        return _read_hw
+
+    raise ValueError(
+        f"_build_condition_operand: unrecognized operand form {operand!r}. "
+        f"Expected: {{tracker/flag/param/hardware: name}} or a bare literal."
+    )
+```
+
+### Step 3: add `_build_if_action()` helper
+
+```python
+def _build_if_action(self, action: dict) -> callable:
+    """
+    Build a zero-arg callable for a type:'if' action (FDA-16).
+
+    At runtime the callable:
+      1. Evaluates condition.left and condition.right
+      2. Applies condition.op
+      3. Executes 'then' branch if True, 'else' branch if False
+      4. Supports unlimited nesting: then/else arrays may contain type:'if' actions,
+         handled recursively via _build_action_callable.
+
+    Raises ValueError at load time if condition.op is unknown or a nested ref is invalid.
+    """
+    cond = action["condition"]
+    op_str = cond["op"]
+    if op_str not in _COMPARE:
+        raise ValueError(
+            f"_build_if_action: unknown condition op '{op_str}'. "
+            f"Allowed: {sorted(_COMPARE.keys())}"
+        )
+
+    left_fn  = self._build_condition_operand(cond["left"])
+    right_fn = self._build_condition_operand(cond["right"])
+    compare  = _COMPARE[op_str]
+
+    then_callables = [self._build_action_callable(a) for a in action.get("then", [])]
+    else_callables = [self._build_action_callable(a) for a in action.get("else", [])]
+
+    def _run_if(
+        _left_fn=left_fn,
+        _right_fn=right_fn,
+        _compare=compare,
+        _then=then_callables,
+        _else=else_callables,
+    ):
+        l, r = _left_fn(), _right_fn()
+        branch = _then if _compare(l, r) else _else
+        for fn in branch:
+            fn()
+
+    return _run_if
+```
+
+### Step 4: add `_build_action_callable()` dispatcher
+
+```python
+def _build_action_callable(self, action: dict) -> callable:
+    """
+    Dispatch a single entry_action dict to the appropriate builder.
+    Returns a zero-arg callable. Handles: hardware, flag, timer, special, method, if.
+    Raises ValueError at load time for unknown type or invalid ref.
+    """
+    atype = action.get("type")
+    if atype == "if":
+        return self._build_if_action(action)
+
+    ref    = action.get("ref", "")
+    method = action.get("method", "")
+
+    if atype in ("hardware", "timer"):
+        hw = self._semantic_hw[ref]
+        def _hw_call(_hw=hw, _method=method, _action=action):
+            args   = [self._resolve_arg(a) for a in _action.get("args", [])]
+            kwargs = {k: self._resolve_arg(v) for k, v in _action.get("kwargs", {}).items()}
+            getattr(_hw, _method)(*args, **kwargs)
+        return _hw_call
+
+    elif atype == "flag":
+        flag = self.flags[ref]
+        def _flag_call(_flag=flag, _method=method, _action=action):
+            args = [self._resolve_arg(a) for a in _action.get("args", [])]
+            getattr(_flag, _method)(*args)
+        return _flag_call
+
+    elif atype == "special":
+        if ref == "INC_TRIAL_COUNTER":
+            def _inc():
+                self.node.send('T', 'INC_TRIAL_COUNTER', {})
+            return _inc
+        raise ValueError(f"_build_action_callable: unknown special ref '{ref}'")
+
+    elif atype == "method":
+        def _method_call(_ref=ref, _action=action):
+            args = [self._resolve_arg(a) for a in _action.get("args", [])]
+            getattr(self, _ref)(*args)
+        return _method_call
+
+    raise ValueError(
+        f"_build_action_callable: unknown action type '{atype}'. "
+        f"Expected: hardware, flag, timer, special, method, if"
+    )
+```
+
+### Step 5: update `_build_state_method()` to use `_build_action_callable()`
+
+Replace the per-action dispatch inside the `_state_fn` closure with pre-built callables:
+
+```python
+# Pre-build all action callables at load time
+action_callables = [self._build_action_callable(a) for a in entry_actions]
+
+def _state_fn(
+    _callables=action_callables,
+    _blocking=blocking,
+    _return_data=return_data,
+    _name=name,
+):
+    for fn in _callables:
+        fn()
+
+    # Collect return_data (unchanged)
+    data = {}
+    for key, val_spec in _return_data.items():
+        if isinstance(val_spec, dict):
+            if "flag" in val_spec:
+                data[key] = self.flags[val_spec["flag"]].value
+            elif "param" in val_spec:
+                data[key] = self.params[val_spec["param"]]
+            elif "now" in val_spec:
+                data[key] = datetime.now(jerusalem_tz).isoformat()
+            else:
+                data[key] = val_spec
+        else:
+            data[key] = val_spec
+
+    if _blocking == "stage_block":
+        return self.wait_for_condition()
+    return data if data else None
+```
+
+Also update the load-time validation block: add `"if"` to the known types so the check doesn't reject it. Change:
+```python
+elif atype not in ("timer",):
+```
+to:
+```python
+elif atype not in ("timer", "if"):
+```
+
+Notes:
+- Pre-building callables at load time means `_build_if_action` validates all nested refs recursively when `load_fda_from_json()` is called — any unknown ref raises `ValueError` at load time, not lazily at runtime.
+- The `_COMPARE` dict is module-level to avoid recreating it on every `load_fda_from_json` call.
+- `_build_condition_operand` uses default-arg capture (`lambda: val`, `_key=key`) to avoid late-binding closure bugs.
+</task>
+
+<task id="02-6" title="Implement load_fda_from_json() with SEMANTIC_HARDWARE_RENAMES fallback" depends_on="02-5">
 
 Add the following method to `mics_task`:
 
@@ -664,3 +919,9 @@ Sync `~/pi-mirror/autopilot/` to the Pi and restart the pilot process before run
 - [ ] Deprecated ref in `SEMANTIC_HARDWARE_RENAMES` resolves transparently; deprecation warning logged; no error raised (FDA-13)
 - [ ] `_resolve_renamed_hw_refs` does not mutate the caller's definition dict
 - [ ] Deprecated `config.hardware_ref` in `trigger_assignments` resolves transparently before `apply_trigger_assignments` is called (WARNING-4 fix)
+- [ ] After `load_fda_from_json()`, `self.<param_name>` is set for every param declared in `PARAMS`; attrs not in `PARAMS` are not overwritten (FDA-15)
+- [ ] `type: "if"` action with `condition.op >= ` and `then` branch executes correctly when condition is true; `else` executes when false (FDA-16)
+- [ ] Nested `type: "if"` inside a `then` or `else` array executes correctly (recursive, FDA-16)
+- [ ] Unknown `condition.op` raises `ValueError` at load time with clear message (FDA-16)
+- [ ] `python3 -m pytest -q tests/test_load_fda_from_json.py` — all tests pass
+- [ ] `ruff check autopilot/autopilot/tasks/mics_task.py` — zero errors

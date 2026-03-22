@@ -27,6 +27,7 @@ autonomous: true
 requirements:
   - FDA-08
   - FDA-14
+  - FDA-17
 ---
 
 # Plan 05: validate_fda.py CLI validation tool
@@ -192,6 +193,95 @@ python tools/validate_fda.py rename-hw-ref reward_port water_delivery --toolkit 
 ```
 
 Toolkit lookup: try `autopilot.get_task(toolkit_name)` first (matches registered plugin class name). If that fails, try `importlib.import_module` on the full dotted path and `getattr` the last component.
+
+## TDD Requirement
+
+**Step 0 — Write failing tests before implementing.** Per `quality-guardrails.md`, no production code without a failing test first. TDD applies to the validation logic, not the CLI wrapper.
+
+Create `~/pi-mirror/tests/test_validate_fda.py` covering:
+
+```python
+"""Tests for validate_fda.py validation logic (Plan 05)."""
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+
+import pytest
+from unittest.mock import MagicMock
+
+
+def make_toolkit_cls(**overrides):
+    cls = MagicMock()
+    cls.SEMANTIC_HARDWARE = {"reward_port": ("GPIO", "VALVE1")}
+    cls.SEMANTIC_HARDWARE_RENAMES = {}
+    cls.CALLABLE_METHODS = ["randomize_iti"]
+    cls.FLAGS = {"hits": {}}
+    for k, v in overrides.items():
+        setattr(cls, k, v)
+    return cls
+
+
+VALID_V2 = {
+    "version": 2,
+    "initial_state": "iti",
+    "states": {
+        "iti": {},  # passthrough
+        "trial": {
+            "entry_actions": [{"type": "hardware", "ref": "reward_port", "method": "open", "args": []}]
+        },
+    },
+}
+
+
+def test_valid_fda_returns_no_errors():
+    from validate_fda import validate
+    cls = make_toolkit_cls()
+    cls.iti = lambda self: None  # passthrough method exists
+    errors, warnings = validate(VALID_V2, cls)
+    assert errors == []
+
+
+def test_wrong_version_is_error():
+    from validate_fda import validate
+    cls = make_toolkit_cls()
+    bad = {**VALID_V2, "version": 3}
+    errors, warnings = validate(bad, cls)
+    assert any("version" in e.lower() for e in errors)
+
+
+def test_unknown_initial_state_is_error():
+    from validate_fda import validate
+    cls = make_toolkit_cls()
+    bad = {**VALID_V2, "initial_state": "nonexistent"}
+    errors, warnings = validate(bad, cls)
+    assert any("initial_state" in e.lower() or "nonexistent" in e for e in errors)
+
+
+def test_unknown_hardware_ref_is_error():
+    from validate_fda import validate
+    cls = make_toolkit_cls()
+    bad_fda = {
+        **VALID_V2,
+        "states": {"iti": {"entry_actions": [{"type": "hardware", "ref": "bad_port", "method": "open", "args": []}]}}
+    }
+    errors, _ = validate(bad_fda, cls)
+    assert any("bad_port" in e for e in errors)
+
+
+def test_deprecated_hardware_ref_is_warning_not_error():
+    from validate_fda import validate
+    cls = make_toolkit_cls(SEMANTIC_HARDWARE_RENAMES={"old_port": "reward_port"})
+    fda = {
+        **VALID_V2,
+        "states": {"iti": {"entry_actions": [{"type": "hardware", "ref": "old_port", "method": "open", "args": []}]}}
+    }
+    errors, warnings = validate(fda, cls)
+    assert errors == []
+    assert any("old_port" in w for w in warnings)
+```
+
+Run `python3 -m pytest -q tests/test_validate_fda.py` and **confirm failure** before implementing. Proceed after seeing failures.
+
+**Note on `rename-hw-ref`:** This subcommand runs PostgreSQL SQL. Its integration test requires a live DB. Use `mcp__postgres__query` in conversation to verify the SQL updates correct rows after the command runs.
 
 ## Tasks
 
@@ -813,6 +903,70 @@ if __name__ == "__main__":
 ```
 </task>
 
+<task id="05-2" title="Validate if-action blocks recursively (FDA-17)" depends_on="05-1">
+
+Extend `validate_fda.py` to handle `type: "if"` actions in `entry_actions`. When the validator iterates a state's `entry_actions` list and encounters an action with `type: "if"`, it must:
+
+1. **Validate `condition.left` and `condition.right`** using a new helper `_validate_condition_operand()`:
+   - `{"tracker": x}` or `{"flag": x}` → `x` must be in `flag_keys`; error: `ERROR [condition.left]: unknown tracker "xyz"`
+   - `{"param": x}` → `x` must be in `params_keys`; error: `ERROR [condition.left]: unknown param "xyz"`
+   - `{"hardware": x}` → `x` must be in `semantic_hw_keys`; if in `rename_map_keys` instead, emit deprecation WARNING; error if in neither
+   - Bare literal (non-dict) → no validation needed (always valid on right side)
+
+2. **Validate `condition.op`** — must be one of `==`, `!=`, `>=`, `<=`, `>`, `<`; emit error if not.
+
+3. **Recursively validate `then` and `else` lists** — call the same action-validation logic on each item in `then` and `else`. Items may themselves be `type: "if"` actions (unlimited nesting depth).
+
+4. **Update `VALID_ACTIONS`** set at the top of the file to include `"if"`.
+
+### Implementation
+
+Add a helper `_validate_condition_operand(operand, loc, side, flag_keys, params_keys, semantic_hw_keys, rename_map_keys, cls, errors, warnings)`.
+
+Add a helper `_validate_actions_list(actions, state_name, depth_prefix, cls, flag_keys, params_keys, semantic_hw_keys, rename_map_keys, callable_methods, errors, warnings)` that contains the per-action validation loop. This lets the state-level loop and the recursive if-block loop share the same code.
+
+Refactor the existing action-validation loop inside `validate_fda()` to call `_validate_actions_list()`. Then for `type: "if"` actions:
+
+```python
+elif atype == "if":
+    cond = action.get("condition", {})
+    op_str = cond.get("op", "")
+    if op_str not in {"==", "!=", ">=", "<=", ">", "<"}:
+        errors.append(f"{loc}: condition.op '{op_str}' not in allowed set")
+
+    _validate_condition_operand(
+        cond.get("left"), loc + " condition.left",
+        flag_keys, params_keys, semantic_hw_keys, rename_map_keys, cls, errors, warnings
+    )
+    _validate_condition_operand(
+        cond.get("right"), loc + " condition.right",
+        flag_keys, params_keys, semantic_hw_keys, rename_map_keys, cls, errors, warnings
+    )
+
+    # Recurse into then/else branches
+    _validate_actions_list(
+        action.get("then", []), state_name,
+        loc + " then", cls, flag_keys, params_keys,
+        semantic_hw_keys, rename_map_keys, callable_methods, errors, warnings
+    )
+    _validate_actions_list(
+        action.get("else", []), state_name,
+        loc + " else", cls, flag_keys, params_keys,
+        semantic_hw_keys, rename_map_keys, callable_methods, errors, warnings
+    )
+```
+
+### Error format for if-action validation
+
+```
+ERROR [state 'trial_onset' action[0] condition.left]: unknown tracker "xyz"
+ERROR [state 'trial_onset' action[0] condition.right]: unknown param "open_dur"
+ERROR [state 'trial_onset' action[0]]: condition.op '??' not in allowed set
+ERROR [state 'trial_onset' action[0] then action[0]]: type:'hardware' ref 'bad_ref' not in SEMANTIC_HARDWARE
+ERROR [state 'trial_onset' action[0] then action[1] condition.left]: unknown tracker "abc"
+```
+</task>
+
 ## Verification
 
 1. Create a minimal valid v2 JSON file `test_valid.json`:
@@ -890,6 +1044,20 @@ if __name__ == "__main__":
 10. Test `rename-hw-ref` with a `new_name` not in `SEMANTIC_HARDWARE`:
     Expected: exits 1 with error mentioning the toolkit's available semantic hardware keys.
 
+11. Test `type: "if"` action validation — unknown tracker ref (FDA-17):
+    Create JSON with a state containing:
+    ```json
+    {"type": "if", "condition": {"left": {"tracker": "nonexistent"}, "op": ">=", "right": 5}, "then": [], "else": []}
+    ```
+    Expected: exit 1, `ERROR [condition.left]: unknown tracker "nonexistent"`.
+
+12. Test `type: "if"` action validation — nested if with bad ref in `then` (FDA-17):
+    Create JSON with a `then` branch containing `{"type": "hardware", "ref": "bad_hw", "method": "pulse"}`.
+    Expected: exit 1, error referencing the nested action's bad ref.
+
+13. Test valid `type: "if"` action with known tracker and known hardware in branches:
+    Expected: exit 0 (validation passes).
+
 ## must_haves
 - [ ] Exit 0 on valid FDA JSON
 - [ ] Exit 1 with specific per-error messages for all validation failures listed in the plan
@@ -907,3 +1075,11 @@ if __name__ == "__main__":
 - [ ] `rename-hw-ref` also updates `trigger_assignments[*].config.hardware_ref` using JSONB path update (WARNING-4 fix)
 - [ ] `rename-hw-ref` prints count of updated rows (deduplicated by id) and exits 0 on success (FDA-14)
 - [ ] `rename-hw-ref` exits 1 if `new_name` not in SEMANTIC_HARDWARE; exits 2 on DB connection failure (FDA-14)
+- [ ] `type: "if"` action with unknown tracker ref in `condition.left` exits 1 with `ERROR [condition.left]: unknown tracker "xyz"` (FDA-17)
+- [ ] `type: "if"` action with unknown param ref in `condition.right` exits 1 with `ERROR [condition.right]: unknown param "xyz"` (FDA-17)
+- [ ] `type: "if"` action with invalid `condition.op` exits 1 with specific error (FDA-17)
+- [ ] `python3 -m pytest -q tests/test_validate_fda.py` — all tests pass
+- [ ] `ruff check tools/validate_fda.py` — zero errors
+- [ ] `rename-hw-ref` DB update verified via `mcp__postgres__query` after run (check rows updated)
+- [ ] Nested `type: "if"` inside `then` or `else` validated recursively; unknown ref in nested block exits 1 (FDA-17)
+- [ ] `type: "if"` in `then`/`else` with deprecated hardware ref in condition emits WARNING not error (FDA-17)

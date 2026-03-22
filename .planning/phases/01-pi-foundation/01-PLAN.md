@@ -42,6 +42,75 @@ This plan establishes the foundation that all other Pi Foundation plans build on
 
 The four class attributes are developer-defined public API on each toolkit subclass. They are intentionally declared with empty defaults on `mics_task` so subclasses without them still function.
 
+## TDD Requirement
+
+**Step 0 — Write failing tests before implementing.** Per `quality-guardrails.md`, no production code without a failing test first.
+
+Create `~/pi-mirror/tests/test_mics_task_attrs.py`:
+
+```python
+"""Tests for mics_task class attributes and __init__ hook (Plan 01)."""
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from unittest.mock import MagicMock, patch
+
+def make_mock_mics_task():
+    """Return a minimal mics_task instance with all hardware/event mocked."""
+    with patch("autopilot.tasks.mics_task.FiniteDeterministicAutomaton"):
+        from autopilot.tasks.mics_task import mics_task
+        # Constructor needs event_queue and dispatcher; patch everything non-trivial
+        inst = object.__new__(mics_task)
+        inst.event_queue = MagicMock()
+        inst.event_dispatcher = MagicMock()
+        inst.stages = MagicMock()
+        return inst
+
+
+def test_semantic_hardware_class_attr():
+    from autopilot.tasks.mics_task import mics_task
+    assert hasattr(mics_task, "SEMANTIC_HARDWARE")
+    assert mics_task.SEMANTIC_HARDWARE == {}
+
+def test_semantic_hardware_renames_class_attr():
+    from autopilot.tasks.mics_task import mics_task
+    assert hasattr(mics_task, "SEMANTIC_HARDWARE_RENAMES")
+    assert mics_task.SEMANTIC_HARDWARE_RENAMES == {}
+
+def test_callable_methods_class_attr():
+    from autopilot.tasks.mics_task import mics_task
+    assert hasattr(mics_task, "CALLABLE_METHODS")
+    assert mics_task.CALLABLE_METHODS == []
+
+def test_required_packages_class_attr():
+    from autopilot.tasks.mics_task import mics_task
+    assert hasattr(mics_task, "REQUIRED_PACKAGES")
+    assert mics_task.REQUIRED_PACKAGES == []
+
+def test_no_load_fda_call_without_kwarg():
+    """load_fda_from_json must NOT be called when state_machine kwarg absent."""
+    task = make_mock_mics_task()
+    task.load_fda_from_json = MagicMock()
+    # Simulate __init__ hook logic without kwarg
+    kwargs = {}
+    sm = kwargs.get("state_machine")
+    if sm:
+        task.load_fda_from_json(sm)
+    task.load_fda_from_json.assert_not_called()
+
+def test_load_fda_called_with_state_machine_kwarg():
+    """load_fda_from_json IS called when state_machine kwarg present."""
+    task = make_mock_mics_task()
+    task.load_fda_from_json = MagicMock()
+    kwargs = {"state_machine": {"version": 2, "states": {}}}
+    sm = kwargs.get("state_machine")
+    if sm:
+        task.load_fda_from_json(sm)
+    task.load_fda_from_json.assert_called_once_with({"version": 2, "states": {}})
+```
+
+Run `python3 -m pytest -q tests/test_mics_task_attrs.py` and **confirm failure** (import errors expected until implementation). Then implement tasks below, then confirm all tests pass.
+
 ## Tasks
 
 <task id="01-1" title="Add SEMANTIC_HARDWARE, SEMANTIC_HARDWARE_RENAMES, CALLABLE_METHODS, REQUIRED_PACKAGES class attributes">
@@ -169,3 +238,5 @@ This syncs `~/pi-mirror/autopilot/` to the Pi and restarts the pilot process. Al
 - [ ] `load_fda_from_json()` is NOT called when `state_machine` kwarg is absent
 - [ ] `state_machine` kwarg presence (truthy dict) triggers `load_fda_from_json()` call
 - [ ] `mics_task.py` compiles without syntax errors
+- [ ] `python3 -m pytest -q tests/test_mics_task_attrs.py` — all tests pass
+- [ ] `ruff check autopilot/autopilot/tasks/mics_task.py` — zero errors

@@ -2,6 +2,18 @@
 
 Behavioral research experiment management system for running tasks on Raspberry Pi pilot devices (subjects are lab animals). Researchers configure protocols and sessions via the web UI; the orchestrator dispatches tasks to pilots over ZMQ and streams data to ElasticSearch.
 
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `docker compose up --build` | Start all services (api:8000, web_ui:8080, orchestrator:9000) |
+| `docker compose up --build api` | Rebuild and restart api only |
+| `docker compose up --build web_ui` | Rebuild and restart web_ui (React + proxy) |
+| `cd web_ui/react-src && npm run build` | Rebuild React SPA only (faster than full compose rebuild) |
+
+Health check: `GET http://localhost:8000/health`
+No automated test suite — verify manually by calling relevant endpoints after changes.
+
 ## Services
 
 | Service | Port | Responsibility |
@@ -11,17 +23,11 @@ Behavioral research experiment management system for running tasks on Raspberry 
 | `web_ui/` | 8080 | FastAPI proxy + React SPA (+ legacy Jinja2) |
 | `backup/` | — | supercronic: nightly pg_dump + ES snapshot to SMB share |
 
-```
-docker compose up --build
-```
-
-Health check: `GET http://localhost:8000/health`. No test suite.
-
 ## Key Directories
 
 ```
 api/
-  main.py          # all API routes (~1631 lines)
+  main.py          # all API routes (~2097 lines) — split before adding more
   models.py        # SQLModel (subjects/protocols) + SQLAlchemy (pilots/sessions/runs)
   auth.py          # JWT verification (HS256, audience/issuer enforced)
   db.py            # engine + session factories
@@ -82,6 +88,11 @@ Served at `/react/*`. Vite builds to `web_ui/static/react/`. FastAPI catchall: `
 - `/react/protocols-create` — task palette + protocol builder
 - `/react/pilots/:pilot/sessions-ui` — session cards, lazy hydration, filter, overrides
 - `/react/subjects/:subject/sessions-ui` — session list + pilot select + start
+- `/react/projects-ui` — projects list + create
+- `/react/projects/:projectId` — project detail + experiments
+- `/react/experiments/:experimentId` — experiment detail + protocol assign
+- `/react/researchers-ui` — researchers list + inline edit/remove
+- `/react/iacuc-ui` — IACUC protocols list + add/remove
 
 **API shapes (verified):**
 - `GET /api/sessions` → `{ session_id, started_at, n_runs }[]`
@@ -93,16 +104,7 @@ Served at `/react/*`. Vite builds to `web_ui/static/react/`. FastAPI catchall: `
 - `POST /api/session-runs/{run_id}/stop` — stop endpoint (not `/api/pilots/.../stop`)
 - `POST /api/assign-protocol` → `{ status, assigned, session: { status, session_id, runs_started } }`
 
-**CSS classes** (from `style.css` — use these, don't invent):
-Layout: `container`, `container split`, `card`, `grid`
-Lists: `scroll-list`, `skeleton-list`, `skeleton-row`, `fade-in-item`, `subject-item selected`
-Session: `sessions-scroll`, `session-card`, `session-card-grid`, `session-left`, `session-right`
-Params: `params-grid`, `params-grid-2col`, `param-field`, `param-name`
-Modal: `modal-overlay`, `modal`, `overrides-modal`, `modal-header`, `modal-title`, `modal-close`
-Tabs: `modal-tabs`, `modal-tab active`, `modal-body`, `modal-actions ov-actions`
-Filter: `filter-bar`, `chips`, `chip`, `filter-input-wrap`, `input-clear is-visible`, `typeahead`
-Badges: `badge status-{status}`, `meta-pill`, `meta-date`, `subject-tag`
-Buttons: `button-primary`, `button-secondary`, `button-danger`, `button-link`
+**CSS:** Use classes from `web_ui/react-src/src/style.css`. Do not invent new class names.
 
 ## Pi / Orchestrator Integration
 
@@ -117,10 +119,25 @@ SQLModel owns: `subjects`, `protocol_templates`, `protocol_step_templates`, `sub
 SQLAlchemy owns: `pilots`, `sessions`, `session_runs`, `run_progress`, `task_definitions`
 Both `metadata.create_all()` called at startup. Use matching session type per table.
 
+## Patterns to Follow
+
+- **New API endpoint**: See `api/main.py` lines 1-50 for imports/setup; follow existing endpoint structure. Use SQLModel session for subject-domain tables, SQLAlchemy session for pilot/session-domain tables.
+- **New React page**: Copy structure from `web_ui/react-src/src/pages/researchers/` (simplest page). Register route in `App.tsx`.
+- **ZMQ handler**: See `orchestrator/orchestrator/orchestrator_station.py` — add key→method mapping in `main.py` lines 71-80.
+- **Soft-delete**: Use `is_hidden: bool = False` pattern (see Researcher, IACUCProtocol models).
+
+## Avoid
+
+- **Don't add to `api/main.py` without checking size** — already at ~2097 lines (hard limit is 500 per coding standards). Extract to a new router module first.
+- **Don't use Jinja2 templates for new features** — legacy only. New UI goes in React SPA.
+- **Don't mix ORM session types** — SQLModel sessions for `subjects`/`protocol_templates`/`subject_protocol_runs`; SQLAlchemy sessions for everything else. Mixing causes silent failures.
+- **Don't hardcode ZMQ addresses/ports** — use `orchestrator/orchestrator/prefs.json`.
+
 ## Additional Documentation
 
 - `.claude/docs/architectural_patterns.md` — 13 recurring patterns with file:line references
-- `.claude/docs/toolkit_fda_plan.md` — ToolKit + FDA redesign plan (PLANNED, not started)
+- `.claude/docs/toolkit_fda_plan.md` — ToolKit + FDA redesign plan (PLANNED, not started); includes state body actions, trigger assignment, semantic hardware abstraction, hot-reload via ZMQ
+- `.claude/docs/pi_code_editor_plan.md` — Monaco Editor + SSH proxy for browsing/editing Pi code from browser (PLANNED, not started)
 - `.claude/docs/subject_project_experiment_plan.md` — subject/project/experiment hierarchy plan
 - `.claude/backlog/BACKLOG.md` — persistent task backlog
 
@@ -136,4 +153,7 @@ Custom skills live in `.claude/skills/`. Invoke with `/skill-name`.
 | `new-api-endpoint` | auto | Scaffold a new FastAPI endpoint |
 | `es-query` | auto | Query Elasticsearch for behavioral data |
 | `new-pi-task` | auto | Scaffold a new behavioral task for the Pi |
+| `pi-deploy` | auto | Sync pi-mirror → Pi and stop/start the pilot process |
 | `protocol-debug` | auto | Debug protocol graduation issues |
+| `/gsd-toolkit-fda` | manual | Plan any ToolKit/FDA feature via GSD (requirements → roadmap → plan-phase) |
+| `optoblueberry` | auto | OptoBlueBerry BLE optogenetics integration: Pi-native BlueHub replacement, stimulation param encoding, BLE debugging, MICS task wiring |

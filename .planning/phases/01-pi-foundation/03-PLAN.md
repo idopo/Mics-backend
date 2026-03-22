@@ -91,6 +91,66 @@ For `touch_detector`, the `Touch_Detector.detect_change()` method (line 831 of i
 
 `trigger_name` must match a key in `self.hardware[group][id]` — specifically the string used as the pin identifier in `self.triggers`. In the existing code, `pin_id` maps BCM→board→letter; `execute_trigger` is called with the letter key. Use the same letter as what appears in `self.triggers`.
 
+## TDD Requirement
+
+**Step 0 — Write failing tests before implementing.** Per `quality-guardrails.md`, no production code without a failing test first.
+
+Create `~/pi-mirror/tests/test_trigger_assignments.py` covering:
+
+```python
+"""Tests for _build_transition_lambda and apply_trigger_assignments (Plan 03)."""
+from unittest.mock import MagicMock, patch
+import pytest
+
+# Helper: create a minimal task-like object with mocked view/hardware/triggers
+def make_task():
+    task = MagicMock()
+    task.view = MagicMock()
+    task.hardware = {}
+    task.triggers = {}
+    task._semantic_hw = {}
+    return task
+
+
+def test_build_transition_lambda_eq_true():
+    from autopilot.tasks.mics_task import mics_task
+    task = make_task()
+    task.view.get_value.return_value = True
+    task._resolve_arg = lambda x: x
+    fn = mics_task._build_transition_lambda(task, {"view": "IR2", "op": "eq", "rhs": True})
+    assert fn() is True
+
+def test_build_transition_lambda_unknown_op_raises():
+    from autopilot.tasks.mics_task import mics_task
+    task = make_task()
+    with pytest.raises(ValueError, match="unknown op"):
+        mics_task._build_transition_lambda(task, {"view": "x", "op": "bad", "rhs": 1})
+
+def test_apply_trigger_assignments_no_assignments():
+    """Empty trigger_assignments leaves self.triggers unchanged."""
+    from autopilot.tasks.mics_task import mics_task
+    task = make_task()
+    mics_task.apply_trigger_assignments(task, {"trigger_assignments": []})
+    assert task.triggers == {}
+
+def test_apply_trigger_assignments_default_handler():
+    """handler=default registers no callback."""
+    from autopilot.tasks.mics_task import mics_task
+    task = make_task()
+    defn = {"trigger_assignments": [{"trigger_name": "IR2", "handler": "default", "config": {}}]}
+    mics_task.apply_trigger_assignments(task, defn)
+    assert "IR2" not in task.triggers
+
+def test_apply_trigger_assignments_unknown_handler_raises():
+    from autopilot.tasks.mics_task import mics_task
+    task = make_task()
+    defn = {"trigger_assignments": [{"trigger_name": "X", "handler": "unknown_type", "config": {}}]}
+    with pytest.raises(ValueError, match="unknown handler type"):
+        mics_task.apply_trigger_assignments(task, defn)
+```
+
+Run `python3 -m pytest -q tests/test_trigger_assignments.py` and **confirm failure** before implementing. Proceed only after seeing tests fail for the right reason (import or attribute errors — not logic errors in the test itself).
+
 ## Tasks
 
 <task id="03-1" title="Implement _build_transition_lambda()">
@@ -363,3 +423,5 @@ Steps 1–3 can be run locally in `~/pi-mirror/`. Steps 4+ (trigger callback and
 - [ ] `digital_input` handler updates `self.view.view[view_key]` with current hardware_state
 - [ ] `handler: "default"` and `handler: "log_only"` — no callback registered
 - [ ] Unknown handler type raises `ValueError` at assignment time with descriptive message
+- [ ] `python3 -m pytest -q tests/test_trigger_assignments.py` — all tests pass
+- [ ] `ruff check autopilot/autopilot/tasks/mics_task.py` — zero errors

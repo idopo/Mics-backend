@@ -90,35 +90,31 @@ class OrchestratorStation:
                     tasks=tasks,
                 )
 
-            # Phase 2 path: upsert toolkit metadata if enriched HANDSHAKE
-            # Detection: presence of SEMANTIC_HARDWARE or FLAGS key
-            if payload.get("SEMANTIC_HARDWARE") is not None or payload.get("FLAGS") is not None:
-                sem_hw = payload.get("SEMANTIC_HARDWARE") or {}
-                hw_hash = hashlib.sha256(
-                    json.dumps(sem_hw, sort_keys=True).encode()
-                ).hexdigest()
-
-                toolkit_payload = {
-                    "task_name": payload.get("task_name"),
-                    "hw_hash": hw_hash,
-                    "states": payload.get("STAGE_NAMES"),
-                    "flags": payload.get("FLAGS"),
-                    "params_schema": None,  # extracted from tasks list if present
-                    "semantic_hardware": sem_hw,
-                    "callable_methods": payload.get("CALLABLE_METHODS"),
-                    "required_packages": payload.get("REQUIRED_PACKAGES"),
-                    "file_hash": payload.get("file_hash"),
-                }
-
-                # Extract params_schema from tasks list (first task matching task_name)
-                task_name = payload.get("task_name")
-                if task_name and tasks:
-                    for t in tasks:
-                        if t.get("task_name") == task_name:
-                            toolkit_payload["params_schema"] = t.get("params")
-                            break
-
-                if toolkit_payload["task_name"]:
+            # Phase 2 path: upsert toolkit metadata for each enriched task entry.
+            # Enriched tasks (Phase 1) carry lowercase keys: semantic_hardware, flags,
+            # stage_names, callable_methods, required_packages — all inside tasks[].
+            if tasks:
+                for task in tasks:
+                    if task.get("semantic_hardware") is None and task.get("flags") is None:
+                        continue  # legacy task entry — no toolkit metadata
+                    task_name = task.get("task_name")
+                    if not task_name:
+                        continue
+                    sem_hw = task.get("semantic_hardware") or {}
+                    hw_hash = hashlib.sha256(
+                        json.dumps(sem_hw, sort_keys=True).encode()
+                    ).hexdigest()
+                    toolkit_payload = {
+                        "task_name": task_name,
+                        "hw_hash": hw_hash,
+                        "states": task.get("stage_names"),
+                        "flags": task.get("flags"),
+                        "params_schema": task.get("params"),
+                        "semantic_hardware": sem_hw,
+                        "callable_methods": task.get("callable_methods"),
+                        "required_packages": task.get("required_packages"),
+                        "file_hash": task.get("file_hash"),
+                    }
                     self.api.upsert_pilot_toolkit(
                         pilot_id=pilot_obj["id"],
                         toolkit_payload=toolkit_payload,
@@ -126,13 +122,8 @@ class OrchestratorStation:
                     logger.info(
                         "Toolkit upserted for pilot %s: %s (hw_hash=%s)",
                         pilot,
-                        toolkit_payload["task_name"],
+                        task_name,
                         hw_hash[:8],
-                    )
-                else:
-                    logger.warning(
-                        "Enriched HANDSHAKE from %s missing task_name — skipping toolkit upsert",
-                        pilot,
                     )
 
         except Exception as e:

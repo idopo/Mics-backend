@@ -37,7 +37,7 @@
 
 ### Hot-Reload (Pi + Orchestrator)
 
-- [ ] **HOT-01**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's `fda_json` in every START payload (Phase 2); Pi calls `load_fda_from_json()` at task start — changes take effect on next run without Pi restart
+- [x] **HOT-01**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's `fda_json` in every START payload (Phase 2); Pi calls `load_fda_from_json()` at task start — changes take effect on next run without Pi restart
 - [x] **HOT-02**: HANDSHAKE payload from Pi includes FLAGS, SEMANTIC_HARDWARE, STAGE_NAMES, CALLABLE_METHODS, REQUIRED_PACKAGES in addition to existing fields; stored in `task_toolkits` table
 
 ### Variant Tracking (VAR)
@@ -60,8 +60,8 @@
 - [x] **DB-04**: `GET /api/toolkits/:name` returns full toolkit detail
 - [x] **DB-05**: `POST /api/task-definitions` creates task definition from toolkit + FDA JSON + default_params
 - [x] **DB-06**: `GET/PUT/DELETE /api/task-definitions/:id` CRUD with full fda_json
-- [ ] **DB-07**: `POST /api/task-definitions/:id/push?pilot=name` forwards UPDATE_FDA to named pilot via orchestrator; returns HOT_RELOAD_ACK status
-- [ ] **DB-08**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's fda_json in START payload
+- [x] **DB-07**: `POST /api/task-definitions/:id/push?pilot=name` forwards UPDATE_FDA to named pilot via orchestrator; returns HOT_RELOAD_ACK status
+- [x] **DB-08**: Orchestrator `_build_step_task()` includes `state_machine` from task definition's fda_json in START payload
 
 ### Visual FDA Editor (Web UI)
 

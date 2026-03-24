@@ -101,6 +101,7 @@ class ProtocolStepTemplate(SQLModel, table=True):
     )
 
     protocol_id: int = Field(foreign_key="protocol_templates.id")
+    task_definition_id: Optional[int] = Field(default=None, foreign_key="task_definitions.id")
 
 
 # ============================================================
@@ -204,6 +205,7 @@ class ProtocolStepTemplateCreate(SQLModel):
     step_name: str
     task_type: str
     params: Optional[Dict[str, Any]] = None
+    task_definition_id: Optional[int] = None
 
 
 class ProtocolCreate(SQLModel):

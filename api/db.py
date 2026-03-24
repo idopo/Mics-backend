@@ -70,3 +70,14 @@ def run_toolkit_migrations(eng):
                 f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
             ))
         conn.commit()
+
+
+def run_protocol_migrations(eng):
+    """Add task_definition_id FK to protocol_step_templates; safe to run repeatedly."""
+    with eng.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE protocol_step_templates "
+            "ADD COLUMN IF NOT EXISTS task_definition_id INTEGER "
+            "REFERENCES task_definitions(id) ON DELETE SET NULL"
+        ))
+        conn.commit()

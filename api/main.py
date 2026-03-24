@@ -10,8 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
-from sqlalchemy import func
-from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations
+from sqlalchemy import func, text as sa_text
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations
 from models import (
     Subject,
     SubjectCreate,
@@ -122,6 +122,7 @@ def startup():
     run_subject_column_migrations(engine)
     run_lab_column_migrations(engine)
     run_toolkit_migrations(engine)
+    run_protocol_migrations(engine)
 
 
 @app.get("/health")
@@ -1157,6 +1158,12 @@ def upsert_pilot_toolkit(
             db.add(origin)
         else:
             origin.last_seen_at = now
+
+        # Link any task_definitions with matching task_name to this toolkit
+        db.execute(sa_text(
+            "UPDATE task_definitions SET toolkit_name = :name "
+            "WHERE task_name = :name AND toolkit_name IS NULL"
+        ), {"name": name})
 
         db.commit()
         return {"status": "ok", "toolkit_id": toolkit.id}

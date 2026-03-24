@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { getLeafTasks } from '../../api/tasks'
+import { getTaskDefinitions } from '../../api/task-definitions'
+import { getToolkits } from '../../api/toolkits'
 import { createProtocol } from '../../api/protocols'
+import type { TaskDefinitionFull } from '../../types'
 
 interface ParamSpec {
   tag?: string
@@ -13,6 +15,7 @@ interface ParamSpec {
 interface StepDraft {
   id: number
   task_type: string
+  task_definition_id: number | null
   paramSpec: Record<string, ParamSpec>
   rawValues: Record<string, string>   // displayed in inputs
   params: Record<string, unknown>     // parsed valid values for save
@@ -55,15 +58,33 @@ export default function ProtocolsCreate() {
   const [statusMsg, setStatusMsg] = useState('')
   const [statusError, setStatusError] = useState(false)
 
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: getLeafTasks,
+  const { data: taskDefs, isLoading } = useQuery({
+    queryKey: ['task-definitions'],
+    queryFn: getTaskDefinitions,
+    staleTime: Infinity,
+  })
+  const { data: toolkits } = useQuery({
+    queryKey: ['toolkits'],
+    queryFn: getToolkits,
     staleTime: Infinity,
   })
 
-  const tasksByName = useMemo(
-    () => new Map((tasks ?? []).map(t => [t.task_name, t])),
-    [tasks]
+  // Map toolkit_name → toolkit (for params_schema lookup)
+  const toolkitByName = useMemo(
+    () => new Map((toolkits ?? []).map(t => [t.name, t])),
+    [toolkits]
+  )
+
+  // Filter to definitions with fda_json, sorted by toolkit_name then display_name
+  const paletteItems = useMemo(
+    () => (taskDefs ?? [])
+      .filter(td => td.fda_json != null)
+      .sort((a, b) => {
+        const tk = (a.toolkit_name ?? '').localeCompare(b.toolkit_name ?? '')
+        if (tk !== 0) return tk
+        return (a.display_name ?? a.task_name).localeCompare(b.display_name ?? b.task_name)
+      }),
+    [taskDefs]
   )
 
   const mutation = useMutation({
@@ -80,6 +101,7 @@ export default function ProtocolsCreate() {
           return {
             order_index: idx,
             task_type: s.task_type,
+            task_definition_id: s.task_definition_id,
             step_name: `${idx + 1}. ${s.task_type}`,
             params,
           }
@@ -95,13 +117,14 @@ export default function ProtocolsCreate() {
     onError: (e: Error) => { setStatusError(true); setStatusMsg(`❌ Save failed: ${e.message}`) },
   })
 
-  const addStep = (taskName: string) => {
-    const task = tasksByName.get(taskName)
+  const addStep = (td: TaskDefinitionFull) => {
+    const toolkit = td.toolkit_name ? toolkitByName.get(td.toolkit_name) : undefined
     const paramSpec: Record<string, ParamSpec> =
-      (task as { default_params?: Record<string, ParamSpec> })?.default_params ?? {}
+      (toolkit?.params_schema as Record<string, ParamSpec> | null | undefined) ?? {}
     setSteps(prev => [...prev, {
       id: ++_id,
-      task_type: taskName,
+      task_type: td.toolkit_name ?? td.task_name,
+      task_definition_id: td.id,
       paramSpec,
       rawValues: {},
       params: {},
@@ -163,21 +186,24 @@ export default function ProtocolsCreate() {
       {/* LEFT: Task palette */}
       <section className="card">
         <h2>Available Tasks</h2>
-        <p className="muted">Leaf tasks only (executable)</p>
+        <p className="muted">Task definitions with FDA</p>
         {isLoading ? (
           <ul className="scroll-list skeleton-list">
             {[...Array(6)].map((_, i) => <li key={i} className="skeleton-row" />)}
           </ul>
         ) : (
           <ul id="tasks-list" className="scroll-list">
-            {tasks?.map((t, idx) => (
+            {paletteItems.map((td, idx) => (
               <li
-                key={t.task_name}
+                key={td.id}
                 className="task-item fade-in-item"
                 style={{ animationDelay: `${Math.min(idx * 18, 180)}ms` }}
-                onClick={() => addStep(t.task_name)}
+                onClick={() => addStep(td)}
               >
-                {t.task_name}
+                <div>{td.display_name ?? td.task_name}</div>
+                {td.toolkit_name && (
+                  <div style={{ fontSize: '11px', opacity: 0.6 }}>{td.toolkit_name}</div>
+                )}
               </li>
             ))}
           </ul>

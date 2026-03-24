@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getProtocol } from '../../api/protocols'
 import { getLeafTasks } from '../../api/tasks'
+import { getTaskDefinitions } from '../../api/task-definitions'
+import { getToolkits } from '../../api/toolkits'
 import { apiFetch } from '../../api/client'
 import type { Overrides, SessionRun } from '../../types'
 import ProtocolInfoContent from '../../components/ProtocolInfoContent'
@@ -87,10 +89,28 @@ export default function OverridesModal({ sessionId, protocolId, pilotId, overrid
     queryFn: getLeafTasks,
     staleTime: Infinity,
   })
+  const { data: taskDefs } = useQuery({
+    queryKey: ['task-definitions'],
+    queryFn: getTaskDefinitions,
+    staleTime: Infinity,
+  })
+  const { data: toolkits } = useQuery({
+    queryKey: ['toolkits'],
+    queryFn: getToolkits,
+    staleTime: Infinity,
+  })
 
   const tasksByName = useMemo(
     () => new Map((tasks ?? []).map(t => [norm(t.task_name), t])),
     [tasks]
+  )
+  const taskDefById = useMemo(
+    () => new Map((taskDefs ?? []).map(td => [td.id, td])),
+    [taskDefs]
+  )
+  const toolkitByName = useMemo(
+    () => new Map((toolkits ?? []).map(t => [t.name, t])),
+    [toolkits]
   )
 
   useEffect(() => {
@@ -241,9 +261,14 @@ export default function OverridesModal({ sessionId, protocolId, pilotId, overrid
             <div>
               {steps.length === 0 && <div className="muted">Loading…</div>}
               {steps.map((step, idx) => {
-                const task = tasksByName.get(norm(step.task_type))
+                // Prefer toolkit params_schema when step links to a task definition
+                const tdId = step.task_definition_id
+                const td = tdId != null ? taskDefById.get(tdId) : undefined
+                const toolkit = td?.toolkit_name ? toolkitByName.get(td.toolkit_name) : undefined
                 const spec: Record<string, { tag?: string; type?: string; value?: unknown; default?: unknown }> =
-                  (task as { default_params?: Record<string, { tag?: string; type?: string }> })?.default_params ?? {}
+                  toolkit?.params_schema != null
+                    ? (toolkit.params_schema as Record<string, { tag?: string; type?: string }>)
+                    : (tasksByName.get(norm(step.task_type)) as { default_params?: Record<string, { tag?: string; type?: string }> })?.default_params ?? {}
                 const protocolParams = step.params ?? {}
 
                 // Union: spec keys + protocol param keys, include graduation, exclude step_name/task_type

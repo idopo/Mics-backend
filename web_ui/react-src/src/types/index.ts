@@ -117,6 +117,7 @@ export interface ProtocolStep {
   step_name: string
   order_index?: number
   protocol_id?: number
+  task_definition_id?: number | null
   params: Record<string, unknown>
 }
 
@@ -208,4 +209,91 @@ export interface StartOptions {
 export interface Overrides {
   global?: Record<string, unknown>
   steps?: Record<string, Record<string, unknown>>
+}
+
+// --- FDA Editor types (Phase 3, v2 schema) ---
+
+export type FdaOperand =
+  | { view: string }
+  | { tracker: string }
+  | { flag: string }
+  | { param: string }
+  | { hardware: string }
+  | number | boolean | string | null
+
+export interface FdaCondition {
+  left: FdaOperand
+  op: '==' | '!=' | '>=' | '<=' | '>' | '<'
+  right: FdaOperand
+}
+
+export interface FdaAction {
+  type: 'hardware' | 'flag' | 'timer' | 'special' | 'method' | 'if'
+  ref?: string
+  method?: string
+  args?: unknown[]
+  action?: string
+  duration?: unknown
+  // if-action fields:
+  condition?: FdaCondition
+  then?: FdaAction[]
+  else?: FdaAction[]
+}
+
+export interface FdaState {
+  entry_actions?: FdaAction[]
+  wait_condition?: FdaCondition
+  return_data?: unknown[]
+  _passthrough?: boolean
+}
+
+export interface FdaTransition {
+  from: string
+  to: string
+  conditions: FdaCondition[]
+  description?: string
+}
+
+export interface FdaTriggerAssignment {
+  trigger_name: string   // hardware key that fires the interrupt, e.g. "TOUCH_INT"
+  handler: 'touch_detector' | 'digital_input' | 'default' | 'log_only'
+  config?: {
+    hardware_ref?: string  // semantic hw key; used by touch_detector to pick which device to read
+    view_key?: string      // view key to update; used by digital_input
+  }
+}
+
+export interface FdaJson {
+  version: 2
+  initial_state: string
+  states: Record<string, FdaState>
+  transitions: FdaTransition[]
+  trigger_assignments: FdaTriggerAssignment[]  // array — NOT a dict
+  hw_overrides?: Record<string, unknown>       // optional; legacy field — pass through unchanged, never write or display
+}
+
+export interface ToolkitRead {
+  id: number
+  name: string
+  hw_hash: string
+  states: string[] | null
+  flags: Record<string, unknown> | null
+  params_schema: Record<string, unknown> | null
+  semantic_hardware: Record<string, unknown> | null
+  callable_methods: string[] | null
+  required_packages: string[] | null
+  pilot_origins: string[]
+  fda_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TaskDefinitionFull {
+  id: number
+  task_name: string
+  display_name: string | null
+  toolkit_name: string | null
+  fda_json: FdaJson | null
+  file_hash: string
+  created_at: string
 }

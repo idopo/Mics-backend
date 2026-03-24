@@ -13,7 +13,7 @@
 | 1 | 3/6 | In Progress|  | ○ Pending |
 | 2 | 4/4 | Complete   | 2026-03-22 | ○ Pending |
 | 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–12, VAR-06 | ○ Pending |
-| 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–03, VAR-07 | ○ Pending |
+| 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–04, VAR-07 | ○ Pending |
 | 5 | Pi Editor: Viewer | Read-only file browser + Monaco + SSH status | EDIT-01–06 | ○ Pending |
 | 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
 | 7 | Pi Editor: Edit+Restart | PUT /api/pi/file, POST /api/pi/restart, Monaco edit mode | EDIT-11–14 | ○ Pending |
@@ -124,17 +124,27 @@ Plans:
 ### Phase 4: Protocol Integration
 **Goal:** Protocol steps reference task definitions; FDA JSON flows end-to-end from DB to Pi
 
-**Requirements:** PROTO-01 through PROTO-03, VAR-07
+**Requirements:** PROTO-01 through PROTO-04, VAR-07
 
 **Success criteria:**
 1. Open `/react/protocols-create` → task palette shows named task definitions, not raw task_type strings
 2. Create protocol with a task-definition step → start session → orchestrator logs show `state_machine` key in START; Pi runs JSON-driven FDA
 3. `GET /api/tasks/leaf` deprecated; `GET /api/task-definitions` returns equivalent data; no 404s on existing protocol UI flows
 
+**Plans:** 3 plans
+
+Plans:
+- [x] 04-01-PLAN.md — DB migration + API: task_definition_id FK column, model extension, round-trip
+- [ ] 04-02-PLAN.md — Frontend: protocols-create palette swap + overrides modal toolkit params
+- [ ] 04-03-PLAN.md — Orchestrator FDA injection: fix step field lookup + VAR-07 canonical variant
+
 **Files changed:**
-- `web_ui/react-src/src/pages/protocols-create/index.tsx`
-- `api/models.py` — `ProtocolStepTemplate.task_definition_id` field
-- `api/main.py` — `create_session_run()` resolves fda_json from task definition
+- `web_ui/react-src/src/pages/protocols-create/ProtocolsCreate.tsx`
+- `web_ui/react-src/src/pages/pilot-sessions/OverridesModal.tsx`
+- `api/models.py` — `ProtocolStepTemplate.task_definition_id` field; TaskToolkit.is_canonical; TaskDefinition.needs_migration
+- `api/db.py` — run_canonical_migrations()
+- `api/routers/toolkits.py` — PATCH /toolkits/{id}/set-canonical
+- `orchestrator/orchestrator/orchestrator_station.py` — fix task_definition_id lookup in _build_step_task/_build_first_step_task
 
 **Dependencies:** Phase 3 (task definitions exist in DB with valid fda_json)
 
@@ -235,4 +245,4 @@ Phase 8 (Pi Editor: Packages)
 
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-03-23 — Phase 3 replanned: 5 plans (00–04); Toolkits page added as 03-03; UI-07/UI-11 reinstated; UI-08 removed; 03-03/03-04 replace original 03-03*
+*Last updated: 2026-03-24 — Phase 4 replanned: 3 plans (01–03); 04-03 adds orchestrator FDA injection fix + VAR-07 canonical variant*

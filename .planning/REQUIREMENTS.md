@@ -81,9 +81,10 @@
 
 ### Protocol Integration (Web UI + Backend)
 
-- [ ] **PROTO-01**: Protocol step picker in `/react/protocols-create` shows named task definitions instead of raw task_type strings
+- [x] **PROTO-01**: Protocol step picker in `/react/protocols-create` shows named task definitions instead of raw task_type strings; params come from linked toolkit's `params_schema`
 - [ ] **PROTO-02**: Protocol step stores `task_definition_id`; session start resolves `fda_json` from that ID and includes it in START payload
-- [ ] **PROTO-03**: `GET /api/tasks/leaf` deprecated; `GET /api/task-definitions` used instead
+- [x] **PROTO-03**: `GET /api/tasks/leaf` deprecated; `GET /api/task-definitions` used instead
+- [ ] **PROTO-04**: Overrides modal in pilot sessions uses toolkit `params_schema` (via task definition) as param spec, falling back to existing `task.default_params` when `task_definition_id` is absent
 
 ### Pi Code Editor — Viewer (Phase A)
 
@@ -166,15 +167,15 @@
 | VAR-07 | Phase 4 (Protocol Integration) | Pending |
 | DB-01 through DB-08 | Phase 2 (DB + API) | Pending |
 | UI-01 through UI-12 | Phase 3 (Visual Editor) | Pending |
-| PROTO-01 through PROTO-03 | Phase 4 (Protocol Integration) | Pending |
+| PROTO-01 through PROTO-04 | Phase 4 (Protocol Integration) | Pending |
 | EDIT-01 through EDIT-06 | Phase 5 (Pi Editor: Viewer) | Pending |
 | EDIT-07 through EDIT-10 | Phase 6 (Pi Editor: Terminal) | Pending |
 | EDIT-11 through EDIT-14 | Phase 7 (Pi Editor: Edit+Restart) | Pending |
 | EDIT-15 through EDIT-17 | Phase 8 (Pi Editor: Sync+Packages) | Pending |
 
 **Coverage:**
-- v1 requirements: 61 total (HOT simplified; FDA-10–17 + UI-05a + UI-11–12 added for passthrough/callable_methods/rename/if-actions/params-as-props; VAR-01–07 added for toolkit variant tracking)
-- Mapped to phases: 61
+- v1 requirements: 62 total (HOT simplified; FDA-10–17 + UI-05a + UI-11–12 added for passthrough/callable_methods/rename/if-actions/params-as-props; VAR-01–07 added for toolkit variant tracking; PROTO-04 added for overrides modal toolkit param source)
+- Mapped to phases: 62
 - Unmapped: 0 ✓
 
 ---

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-22T16:21:12.437Z"
+last_updated: "2026-03-24T07:54:43.262Z"
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 11
-  completed_plans: 10
-  percent: 91
+  total_plans: 19
+  completed_plans: 15
+  percent: 79
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [█████████░] 91%
+**Progress:** [████████░░] 79%
 
 ---
 
@@ -59,6 +59,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 02-db-api]: Migrated columns (toolkit_name, display_name, fda_json) not in ORM class — use raw sa_text SQL for all queries touching them
 - [Phase 02-db-api]: Used stdlib urllib.request instead of requests in api push endpoint — requests not in api/requirements.txt
 - [Phase 02-db-api]: state_machine injection in _build_step_task is non-fatal — failure logs and continues without state_machine key
+- [Phase 04-protocol-integration]: task_definition_id uses bare Optional[int] (no SQLModel FK) in ProtocolStepTemplate — task_definitions is SQLAlchemy-owned; SQLModel FK resolution fails at startup. DB constraint enforced by run_protocol_migrations().
 
 ## Blockers
 

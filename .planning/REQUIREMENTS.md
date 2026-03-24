@@ -84,7 +84,7 @@
 - [x] **PROTO-01**: Protocol step picker in `/react/protocols-create` shows named task definitions instead of raw task_type strings; params come from linked toolkit's `params_schema`
 - [ ] **PROTO-02**: Protocol step stores `task_definition_id`; session start resolves `fda_json` from that ID and includes it in START payload
 - [x] **PROTO-03**: `GET /api/tasks/leaf` deprecated; `GET /api/task-definitions` used instead
-- [ ] **PROTO-04**: Overrides modal in pilot sessions uses toolkit `params_schema` (via task definition) as param spec, falling back to existing `task.default_params` when `task_definition_id` is absent
+- [x] **PROTO-04**: Overrides modal in pilot sessions uses toolkit `params_schema` (via task definition) as param spec, falling back to existing `task.default_params` when `task_definition_id` is absent
 
 ### Pi Code Editor — Viewer (Phase A)
 

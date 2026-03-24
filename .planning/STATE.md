@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-24T07:54:43.262Z"
+last_updated: "2026-03-24T07:58:05.092Z"
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 19
-  completed_plans: 15
-  percent: 79
+  completed_plans: 16
+  percent: 84
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [████████░░] 79%
+**Progress:** [████████░░] 84%
 
 ---
 
@@ -60,6 +60,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 02-db-api]: Used stdlib urllib.request instead of requests in api push endpoint — requests not in api/requirements.txt
 - [Phase 02-db-api]: state_machine injection in _build_step_task is non-fatal — failure logs and continues without state_machine key
 - [Phase 04-protocol-integration]: task_definition_id uses bare Optional[int] (no SQLModel FK) in ProtocolStepTemplate — task_definitions is SQLAlchemy-owned; SQLModel FK resolution fails at startup. DB constraint enforced by run_protocol_migrations().
+- [Phase 04-protocol-integration]: ProtocolStep type extended with task_definition_id; palette filtered to fda_json != null definitions; getLeafTasks kept as fallback in OverridesModal for legacy protocol backward compat
 
 ## Blockers
 

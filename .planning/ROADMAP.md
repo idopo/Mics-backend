@@ -13,7 +13,7 @@
 | 1 | 3/6 | In Progress|  | ○ Pending |
 | 2 | 4/4 | Complete   | 2026-03-22 | ○ Pending |
 | 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–12, VAR-06 | ○ Pending |
-| 4 | Protocol Integration | Protocol steps reference task definitions | PROTO-01–04, VAR-07 | ○ Pending |
+| 4 | 2/3 | In Progress|  | ○ Pending |
 | 5 | Pi Editor: Viewer | Read-only file browser + Monaco + SSH status | EDIT-01–06 | ○ Pending |
 | 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
 | 7 | Pi Editor: Edit+Restart | PUT /api/pi/file, POST /api/pi/restart, Monaco edit mode | EDIT-11–14 | ○ Pending |
@@ -131,7 +131,7 @@ Plans:
 2. Create protocol with a task-definition step → start session → orchestrator logs show `state_machine` key in START; Pi runs JSON-driven FDA
 3. `GET /api/tasks/leaf` deprecated; `GET /api/task-definitions` returns equivalent data; no 404s on existing protocol UI flows
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 04-01-PLAN.md — DB migration + API: task_definition_id FK column, model extension, round-trip

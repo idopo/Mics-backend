@@ -678,6 +678,7 @@ def create_protocol(
             task_type=s.task_type,
             params=s.params,
             protocol_id=prot.id,
+            task_definition_id=s.task_definition_id,
         )
         session.add(step)
 

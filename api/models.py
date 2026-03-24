@@ -101,7 +101,8 @@ class ProtocolStepTemplate(SQLModel, table=True):
     )
 
     protocol_id: int = Field(foreign_key="protocol_templates.id")
-    task_definition_id: Optional[int] = Field(default=None, foreign_key="task_definitions.id")
+    # bare int — no FK constraint at SQLModel level (task_definitions is SQLAlchemy-owned)
+    task_definition_id: Optional[int] = None
 
 
 # ============================================================

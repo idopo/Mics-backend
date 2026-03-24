@@ -602,7 +602,7 @@ class OrchestratorStation:
         task["protocol_id"] = proto_run["protocol_id"]  # ✅ optional but useful
 
         # Phase 2: if protocol step carries a task_definition_id, inject fda_json as state_machine
-        task_def_id = (step.get("params") or {}).get("task_definition_id")
+        task_def_id = step.get("task_definition_id")
         if task_def_id:
             try:
                 task_def = self.api.get_task_definition(int(task_def_id))
@@ -660,7 +660,7 @@ class OrchestratorStation:
         task["protocol_id"] = proto_run["protocol_id"]  # ✅ optional
 
         # Phase 2: if protocol step carries a task_definition_id, inject fda_json as state_machine
-        task_def_id = (step.get("params") or {}).get("task_definition_id")
+        task_def_id = step.get("task_definition_id")
         if task_def_id:
             try:
                 task_def = self.api.get_task_definition(int(task_def_id))

@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from sqlalchemy import func, text as sa_text
-from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations
 from models import (
     Subject,
     SubjectCreate,
@@ -123,6 +123,7 @@ def startup():
     run_lab_column_migrations(engine)
     run_toolkit_migrations(engine)
     run_protocol_migrations(engine)
+    run_canonical_migrations(engine)
 
 
 @app.get("/health")

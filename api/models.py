@@ -8,6 +8,7 @@ import enum
 
 from sqlalchemy import Column, JSON as SAJSON
 from sqlalchemy import (
+    Boolean,
     Integer,
     String,
     DateTime,
@@ -521,6 +522,7 @@ class TaskDefinition(Base):
     file_hash = Column(String, unique=True, index=True, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    needs_migration = Column(Boolean, nullable=False, server_default="false", default=False)
 
 
 class TaskInheritance(Base):
@@ -597,6 +599,7 @@ class TaskToolkit(Base):
     callable_methods = Column(SAJSON, nullable=True)            # list of callable method names
     required_packages = Column(SAJSON, nullable=True)           # list of pip package strings
     file_hash = Column(String, nullable=True)                   # hash of toolkit source file
+    is_canonical = Column(Boolean, nullable=False, server_default="false", default=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

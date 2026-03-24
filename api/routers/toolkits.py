@@ -51,6 +51,7 @@ def _build_toolkit_row(
         "file_hash": t.file_hash,
         "created_at": t.created_at,
         "updated_at": t.updated_at,
+        "is_canonical": t.is_canonical,
         "pilot_origins": sorted(origins_map.get(t.id, [])),
         "fda_count": fda_count,
     }
@@ -152,6 +153,58 @@ def get_toolkit(toolkit_id: int, _: dict = Depends(verify_token)):
         db.close()
 
 
+@router.patch("/toolkits/{toolkit_id}/set-canonical")
+def set_canonical_toolkit(toolkit_id: int, _: dict = Depends(verify_token)):
+    """
+    Mark this toolkit variant as the canonical one for its name.
+    All other variants with the same name become non-canonical.
+    All task definitions for this toolkit name are flagged needs_migration=True
+    (conservative: user must review which definitions are compatible with the canonical variant).
+    """
+    db: OrmSession = _SA_SessionLocal()
+    try:
+        target = db.query(TaskToolkit).filter(TaskToolkit.id == toolkit_id).one_or_none()
+        if not target:
+            raise HTTPException(404, "Toolkit not found")
+
+        toolkit_name = target.name
+
+        # Clear canonical on all variants with this name
+        db.query(TaskToolkit).filter(TaskToolkit.name == toolkit_name).update(
+            {"is_canonical": False}, synchronize_session=False
+        )
+        # Set canonical on the target
+        target.is_canonical = True
+
+        # Flag all task definitions for this toolkit name as needing migration review
+        db.execute(
+            sa_text(
+                "UPDATE task_definitions SET needs_migration = TRUE "
+                "WHERE toolkit_name = :name"
+            ),
+            {"name": toolkit_name},
+        )
+
+        db.commit()
+        db.refresh(target)
+
+        origins_rows = (
+            db.query(ToolkitPilotOrigin, Pilot)
+            .join(Pilot, ToolkitPilotOrigin.pilot_id == Pilot.id)
+            .filter(ToolkitPilotOrigin.toolkit_id == toolkit_id)
+            .all()
+        )
+        origins_map = {toolkit_id: [p.name for _, p in origins_rows]}
+        fda_count = db.execute(
+            sa_text("SELECT COUNT(id) FROM task_definitions WHERE toolkit_name = :name"),
+            {"name": toolkit_name},
+        ).scalar() or 0
+
+        return _build_toolkit_row(target, origins_map, fda_count)
+    finally:
+        db.close()
+
+
 @router.get("/toolkits/{toolkit_id}/diff/{other_id}")
 def diff_toolkits(toolkit_id: int, other_id: int, _: dict = Depends(verify_token)):
     db: OrmSession = _SA_SessionLocal()
@@ -197,7 +250,7 @@ def list_task_definitions(_: dict = Depends(verify_token)):
     db: OrmSession = _SA_SessionLocal()
     try:
         rows = db.execute(sa_text(
-            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at "
+            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, needs_migration "
             "FROM task_definitions ORDER BY created_at DESC"
         )).fetchall()
         return [
@@ -209,6 +262,7 @@ def list_task_definitions(_: dict = Depends(verify_token)):
                 "fda_json": json.loads(r.fda_json) if isinstance(r.fda_json, str) else r.fda_json,
                 "file_hash": r.file_hash,
                 "created_at": r.created_at,
+                "needs_migration": r.needs_migration,
             }
             for r in rows
         ]
@@ -225,12 +279,28 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
         fda_bytes = json.dumps(payload.fda_json, sort_keys=True).encode()
         fda_hash = _hl.sha256(fda_bytes).hexdigest()
 
+        # Return existing record if identical content already saved
+        existing = db.query(TaskDefinition).filter(TaskDefinition.file_hash == fda_hash).one_or_none()
+        if existing:
+            row = db.execute(sa_text(
+                "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at "
+                "FROM task_definitions WHERE id = :id"
+            ), {"id": existing.id}).fetchone()
+            return {
+                "id": row.id,
+                "task_name": row.task_name,
+                "display_name": row.display_name,
+                "toolkit_name": row.toolkit_name,
+                "fda_json": json.loads(row.fda_json) if isinstance(row.fda_json, str) else row.fda_json,
+                "file_hash": row.file_hash,
+                "created_at": row.created_at,
+            }
+
         # task_name = display_name + short content hash for uniqueness
         short_hash = fda_hash[:8]
         task_name = f"{payload.display_name}-{short_hash}"
 
-        existing = db.query(TaskDefinition).filter(TaskDefinition.task_name == task_name).one_or_none()
-        if existing:
+        if db.query(TaskDefinition).filter(TaskDefinition.task_name == task_name).one_or_none():
             task_name = f"{payload.display_name}-{fda_hash[:16]}"
 
         defn = TaskDefinition(

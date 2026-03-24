@@ -81,3 +81,17 @@ def run_protocol_migrations(eng):
             "REFERENCES task_definitions(id) ON DELETE SET NULL"
         ))
         conn.commit()
+
+
+def run_canonical_migrations(eng):
+    """Add is_canonical to task_toolkits and needs_migration to task_definitions; safe to run repeatedly."""
+    migrations = [
+        ("task_toolkits",    "is_canonical",    "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("task_definitions", "needs_migration", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]
+    with eng.connect() as conn:
+        for table, col_name, col_type in migrations:
+            conn.execute(text(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+            ))
+        conn.commit()

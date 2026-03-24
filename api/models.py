@@ -402,7 +402,7 @@ class PilotRead(PilotBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class Session(Base):
@@ -500,8 +500,7 @@ class SessionRunRead(BaseModel):
     overrides: Optional[Dict[str, Any]] = None 
 
     class Config:
-        orm_mode = True   # for Pydantic v1
-        # from_attributes = True  # if using Pydantic v2
+        from_attributes = True
 
 
 # ------------------ TASK DEFINITIONS ------------------------
@@ -643,7 +642,7 @@ class TaskToolkitRead(BaseModel):
     fda_count: int = 0              # count of task_definitions referencing this toolkit
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class TaskDefinitionCreate(BaseModel):
@@ -668,4 +667,4 @@ class TaskDefinitionRead(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True

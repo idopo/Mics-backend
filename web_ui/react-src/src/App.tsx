@@ -13,6 +13,9 @@ const ProjectDetail = React.lazy(() => import('./pages/projects/ProjectDetail'))
 const ExperimentDetail = React.lazy(() => import('./pages/experiments/ExperimentDetail'))
 const Researchers = React.lazy(() => import('./pages/researchers/Researchers'))
 const IACUC = React.lazy(() => import('./pages/researchers/IACUC'))
+const TaskDefinitions = React.lazy(() => import('./pages/task-definitions/TaskDefinitions'))
+const TaskEditor = React.lazy(() => import('./pages/task-editor/TaskEditor'))
+const Toolkits = React.lazy(() => import('./pages/toolkits/Toolkits'))
 
 export default function App() {
   return (
@@ -30,6 +33,9 @@ export default function App() {
           <Route path="experiments/:experimentId" element={<ExperimentDetail />} />
           <Route path="researchers-ui" element={<Researchers />} />
           <Route path="iacuc-ui" element={<IACUC />} />
+          <Route path="task-definitions-ui" element={<TaskDefinitions />} />
+          <Route path="task-editor/:id" element={<TaskEditor />} />
+          <Route path="toolkits-ui" element={<Toolkits />} />
         </Route>
       </Routes>
     </BrowserRouter>

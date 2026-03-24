@@ -5,6 +5,9 @@ const links = [
   { to: '/subjects-ui', label: 'Subjects' },
   { to: '/protocols-ui', label: 'Protocols' },
   { to: '/protocols-create', label: 'New Protocol' },
+  { to: '/task-definitions-ui', label: 'Tasks' },
+  { to: '/iacuc-ui', label: 'IACUC' },
+  { to: '/toolkits-ui', label: 'Toolkits' },
 ]
 
 export default function Nav() {

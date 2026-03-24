@@ -72,6 +72,31 @@ const NAV_LINKS = [
       </svg>
     ),
   },
+  {
+    to: '/task-definitions-ui',
+    label: 'Tasks',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 3v2M12 19v2M3 12h2M19 12h2" />
+        <path d="M6.34 6.34l1.42 1.42M16.24 16.24l1.42 1.42M6.34 17.66l1.42-1.42M16.24 7.76l1.42-1.42" />
+      </svg>
+    ),
+  },
+  {
+    to: '/toolkits-ui',
+    label: 'Toolkits',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="7" width="20" height="15" rx="2" />
+        <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+        <line x1="12" y1="12" x2="12" y2="17" />
+        <line x1="9.5" y1="14.5" x2="14.5" y2="14.5" />
+      </svg>
+    ),
+  },
 ]
 
 function BrandMark() {

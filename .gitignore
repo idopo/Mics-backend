@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Node
+web_ui/react-src/node_modules/
+web_ui/react-src/dist/
+web_ui/react-src/package-lock.json
+web_ui/react-src/tsconfig.tsbuildinfo
+
+# Static build output
+web_ui/static/react/
+
+# Logs
+*.log
+
+# Docker
+*.env.local

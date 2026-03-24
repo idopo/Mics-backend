@@ -141,6 +141,18 @@ Both `metadata.create_all()` called at startup. Use matching session type per ta
 - `.claude/docs/subject_project_experiment_plan.md` — subject/project/experiment hierarchy plan
 - `.claude/backlog/BACKLOG.md` — persistent task backlog
 
+## Planning Workflow
+
+**Always use GSD for planning** — never use built-in plan mode (EnterPlanMode) for feature work.
+
+| Situation | GSD Skill |
+|---|---|
+| New ToolKit / FDA feature | `gsd-toolkit-fda` |
+| New phase / general feature | `gsd:plan-phase` |
+| Add phase to roadmap | `gsd:add-phase` |
+| Quick atomic task | `gsd:quick` |
+| Check progress | `gsd:progress` |
+
 ## Skills (Slash Commands)
 
 Custom skills live in `.claude/skills/`. Invoke with `/skill-name`.

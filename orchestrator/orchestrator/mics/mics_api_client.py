@@ -218,7 +218,7 @@ class MicsApiClient:
         Returns task definition with fda_json, or None if not found.
         """
         try:
-            return self._get(f"/task-definitions/{defn_id}")
+            return self._get(f"/api/task-definitions/{defn_id}")
         except Exception as e:
             self.logger.warning("Failed to get task_definition %s: %s", defn_id, e)
             return None

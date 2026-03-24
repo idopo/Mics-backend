@@ -24,7 +24,8 @@ def backend_client():
         headers={
             "Authorization": f"Bearer {MICS_API_TOKEN}",
             "Content-Type": "application/json",
-        }
+        },
+        timeout=10.0,
     )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -32,7 +33,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/pilots")
@@ -104,7 +105,7 @@ class SubjectCreate(BaseModel):
 
 @app.get("/subjects-ui", response_class=HTMLResponse)
 def subjects_page(request: Request):
-    return templates.TemplateResponse("subjects.html", {"request": request})
+    return templates.TemplateResponse(request, "subjects.html")
 
 
 from pydantic import BaseModel
@@ -192,10 +193,7 @@ async def assign_protocol_ui(payload: dict):
 
 @app.get("/subjects/{subject}/sessions-ui", response_class=HTMLResponse)
 def subject_sessions_page(subject: str, request: Request):
-    return templates.TemplateResponse(
-        "subject_sessions.html",
-        {"request": request, "subject": subject},
-    )
+    return templates.TemplateResponse(request, "subject_sessions.html", {"subject": subject})
 
 
 @app.get("/api/subjects/{subject}/sessions")
@@ -224,10 +222,7 @@ async def get_protocol_ui(protocol_id: int):
 
 @app.get("/pilots/{pilot_name}/sessions-ui", response_class=HTMLResponse)
 def pilot_sessions_page(pilot_name: str, request: Request):
-    return templates.TemplateResponse(
-        "pilot_sessions.html",
-        {"request": request, "pilot": pilot_name},
-    )
+    return templates.TemplateResponse(request, "pilot_sessions.html", {"pilot": pilot_name})
 
 @app.get("/api/sessions/{session_id}/pilots/{pilot_id}/latest-run")
 async def latest_run_ui(session_id: int, pilot_id: int):
@@ -270,7 +265,7 @@ async def start_session_on_pilot(session_id: int, payload: dict):
 
         run_id = run_resp.json()["id"]
 
-    async with httpx.AsyncClient() as orch:
+    async with httpx.AsyncClient(timeout=30.0) as orch:
         orch_resp = await orch.post(f"{ORCHESTRATOR_URL}/runs/{run_id}/start")
 
         if orch_resp.status_code >= 400:
@@ -289,13 +284,7 @@ async def start_session_on_pilot(session_id: int, payload: dict):
 
 @app.get("/pilots/{pilot_name}/sessions-ui", response_class=HTMLResponse)
 def pilot_sessions_ui(pilot_name: str, request: Request):
-    return templates.TemplateResponse(
-        "pilot_sessions.html",
-        {
-            "request": request,
-            "pilot_name": pilot_name,
-        },
-    )
+    return templates.TemplateResponse(request, "pilot_sessions.html", {"pilot_name": pilot_name})
 
 @app.get("/api/backend/pilots")
 async def list_backend_pilots():
@@ -312,17 +301,11 @@ async def list_backend_pilots():
 
 @app.get("/protocols-ui", response_class=HTMLResponse)
 def protocols_ui(request: Request):
-    return templates.TemplateResponse(
-        "protocols.html",
-        {"request": request},
-    )
+    return templates.TemplateResponse(request, "protocols.html")
 
 @app.get("/protocols-create", response_class=HTMLResponse)
 def protocols_create_ui(request: Request):
-    return templates.TemplateResponse(
-        "protocols-create.html",
-        {"request": request},
-    )
+    return templates.TemplateResponse(request, "protocols-create.html")
 
 
 @app.get("/api/tasks/leaf")
@@ -360,7 +343,7 @@ async def list_runs_ui(session_id: int, pilot_id: int):
 @app.post("/api/session-runs/{run_id}/stop")
 async def stop_session_run_ui(run_id: int):
     # Only tell orchestrator. Orchestrator is authoritative and will mark backend STOPPED.
-    async with httpx.AsyncClient() as orch:
+    async with httpx.AsyncClient(timeout=30.0) as orch:
         orch_resp = await orch.post(f"{ORCHESTRATOR_URL}/runs/{run_id}/stop")
 
         if orch_resp.status_code >= 400:
@@ -396,6 +379,57 @@ async def get_start_options(session_id: int, pilot_id: int):
 
 from fastapi import Response as FastAPIResponse
 
+@app.get("/api/toolkits")
+async def proxy_toolkits(request: Request):
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/api/toolkits")
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.get("/api/toolkits/by-name/{name}")
+async def proxy_toolkits_by_name(name: str):
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/api/toolkits/by-name/{name}")
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.post("/api/task-definitions")
+async def proxy_task_definitions_create(request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.post(f"{API_URL}/api/task-definitions", content=body,
+                                 headers={"Content-Type": "application/json"})
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.get("/api/task-definitions")
+async def proxy_task_definitions_list():
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/api/task-definitions")
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.get("/api/task-definitions/{defn_id}")
+async def proxy_task_definition_get(defn_id: int):
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/api/task-definitions/{defn_id}")
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.put("/api/task-definitions/{defn_id}")
+async def proxy_task_definition_put(defn_id: int, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.put(f"{API_URL}/api/task-definitions/{defn_id}", content=body)
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def api_catch_all(path: str, request: Request):
     body = await request.body()
@@ -415,7 +449,7 @@ async def api_catch_all(path: str, request: Request):
 
 @app.get("/react/{path:path}")
 async def react_spa(request: Request, path: str = ""):
-    return templates.TemplateResponse("react/index.html", {"request": request})
+    return templates.TemplateResponse(request, "react/index.html")
 
 
 

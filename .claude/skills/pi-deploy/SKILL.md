@@ -12,6 +12,18 @@ description: >
 
 # Pi Deploy Skill
 
+## HARD RULES: No Git Operations on the Pi, No --delete in rsync, Never Start/Stop Pilot
+
+**Never run any git command on the Pi.** No `git commit`, `git merge`, `git checkout`, `git push`, `git add`, or any other git operation via SSH.
+
+**Never use `--delete` in rsync to the Pi.** The Pi's `~/Apps/mice_interactive_home_cage/` is a live git repo (remote: https://github.com/liorse/mice_interactive_home_cage). Using `--delete` removes files that exist on the Pi but not in pi-mirror, corrupting the Pi's git state. Only push files — never delete.
+
+The Pi receives code via rsync (push only). All version control for MICS backend happens in the `mics-backend` repo on this machine. Pi-side git history is managed independently via its own remote.
+
+**Never start or stop the pilot process.** This includes `run_pilot.sh`, `pkill -f pilot.py`, or any SSH command that starts/stops the pilot. Always tell the user "Please restart the pilot on the Pi." and wait for them to do it.
+
+---
+
 ## Connection Details
 
 | Item | Value |
@@ -87,8 +99,8 @@ ssh pi-mics 'ps aux | grep "pilot.py" | grep -v grep || echo "NOT_RUNNING"'
 ### Sync pi-mirror → Pi (push local changes)
 
 ```bash
-rsync -avz --delete \
-  -e "ssh" \
+rsync -avz \
+  -e "ssh -i ~/.ssh/pi_mics" \
   /home/ido/pi-mirror/ \
   pi@132.77.72.28:~/Apps/mice_interactive_home_cage/
 ```
@@ -154,8 +166,8 @@ Run these steps in order:
 
 ```bash
 # 1. Sync local changes to Pi
-rsync -avz --delete \
-  -e "ssh" \
+rsync -avz \
+  -e "ssh -i ~/.ssh/pi_mics" \
   /home/ido/pi-mirror/ \
   pi@132.77.72.28:~/Apps/mice_interactive_home_cage/
 
@@ -174,8 +186,8 @@ ssh pi-mics '(cd ~/Apps/mice_interactive_home_cage && nohup bash run_pilot.sh > 
 Use when the pilot is running a session and shouldn't be interrupted:
 
 ```bash
-rsync -avz --delete \
-  -e "ssh" \
+rsync -avz \
+  -e "ssh -i ~/.ssh/pi_mics" \
   /home/ido/pi-mirror/ \
   pi@132.77.72.28:~/Apps/mice_interactive_home_cage/
 ```

@@ -1,7 +1,8 @@
 # Phase 3: Visual FDA Editor — Context
 
 **Gathered:** 2026-03-22
-**Status:** Ready for planning
+**Revised:** 2026-03-23 (unified condition schema; from/to transitions; UI-11 in scope; SEMANTIC_HARDWARE fallback; elastic_test guard; added Plan 03-00 Pi wave)
+**Status:** Ready for execution (03-00 next)
 **Source:** Session continuation + codebase exploration
 
 <domain>
@@ -12,18 +13,20 @@ Deliver a visual FDA state machine editor at `/react/task-editor/:id`. Users can
 - Drag-to-connect nodes to create new transitions
 - Click a state node → state body editor panel (entry_actions list: add/remove/reorder)
 - Click a transition edge → condition builder panel
-- Add actions via picker: hardware / flag / special / method
+- Add actions via picker: hardware / flag / timer / special / method
 - Smart arg inputs with literal / param-ref / flag-ref toggle
+- Configure trigger assignments (which hardware interrupt fires which handler)
 - Save edited fda_json back to DB via `PUT /api/task-definitions/:id`
 
 Also deliver:
 - Task definitions list page at `/react/task-definitions-ui` (list, click → editor)
 - Passthrough state display: lock icon + `{py}` badge, state body panel read-only
-- Semantic hardware overrides panel (per-task-def hw overrides)
 - Variant picker when 2+ toolkit variants exist for same name (VAR-06)
 
 Phase 3 does NOT include:
-- Trigger assignment panel (UI-07) — deferred
+- Hardware semantic overrides panel (UI-08) — removed. Toolkit file is the source of
+  truth for hardware mapping; if you need to change hardware, edit the toolkit file and
+  re-HANDSHAKE. No per-task-definition override stored in fda_json.
 - Push-to-pilot button (UI-09) — deferred
 - If-condition blocks (UI-11) — deferred (complex nested structure)
 </domain>
@@ -32,10 +35,12 @@ Phase 3 does NOT include:
 ## Implementation Decisions
 
 ### Scope: Which Requirements Are In This Phase
-- **In:** UI-01, UI-02, UI-03, UI-04, UI-05, UI-05a, UI-06, UI-08, UI-10, UI-12, VAR-06
-- **Deferred:** UI-07 (trigger panel), UI-09 (push button), UI-11 (if-condition blocks)
-- **Rationale:** User explicitly deferred trigger panel and push button; UI-11 (if-blocks) is
-  complex nested UI that should come after core canvas works correctly.
+- **In:** UI-01, UI-02, UI-03, UI-04, UI-05, UI-05a, UI-06, UI-07, UI-10, UI-11, UI-12, VAR-06
+- **Removed:** UI-08 (hw overrides panel) — edit toolkit file directly instead
+- **Deferred:** UI-09 (push button)
+- **UI-11 reinstated:** if-condition blocks — Pi already implements `_build_if_action`.
+  Added to Plan 03-03 as `IfActionEditor` recursive component inside `ActionEditor`.
+- **UI-07 reinstated:** trigger panel — primary way to wire GPIO callbacks without Python.
 
 ### npm Dependency
 - Add `@xyflow/react` to `web_ui/react-src/package.json` (react-flow v12)
@@ -54,19 +59,35 @@ Phase 3 does NOT include:
 - Use existing `style.css` classes for list page and panel UI (not for canvas)
 
 ### TypeScript Types (append to `web_ui/react-src/src/types/index.ts`)
+
+**Canonical FDA condition format (unified — same for transitions AND if-actions):**
 ```ts
+// An operand in a condition. Each side of the comparison can be any of these.
+export type FdaOperand =
+  | { view: string }       // reads self.view.get_value(key) — hardware & flag states
+  | { tracker: string }    // alias for view; reads self.flags[key].value
+  | { flag: string }       // reads self.flags[key].value
+  | { param: string }      // reads self.params[key]
+  | { hardware: string }   // reads self._semantic_hw[key].value
+  | number | boolean | string | null  // bare literal
+
 export interface FdaCondition {
-  view: string
+  left: FdaOperand
   op: '==' | '!=' | '>=' | '<=' | '>' | '<'
-  rhs: unknown
+  right: FdaOperand
 }
 
 export interface FdaAction {
-  type: 'hardware' | 'flag' | 'special' | 'method'
+  type: 'hardware' | 'flag' | 'timer' | 'special' | 'method' | 'if'
   ref?: string          // semantic hw key / flag name / callable method name
   method?: string       // e.g. "set", "toggle", "increment", "reset"
   args?: unknown[]      // each arg: literal scalar | { param: string } | { flag: string }
   action?: string       // for type=special, e.g. "INC_TRIAL_COUNTER"
+  duration?: unknown    // for type=timer: literal ms value or { param: string }
+  // if-action fields (type='if' only):
+  condition?: FdaCondition
+  then?: FdaAction[]
+  else?: FdaAction[]
 }
 
 export interface FdaState {
@@ -77,18 +98,28 @@ export interface FdaState {
 }
 
 export interface FdaTransition {
-  from_state: string
-  condition: FdaCondition
-  next_state: string
+  from: string           // was from_state in old plan docs — now matches Pi code
+  to: string             // was next_state in old plan docs — now matches Pi code
+  conditions: FdaCondition[]   // plural array; all must be true (AND logic)
+  description?: string
+}
+
+export interface FdaTriggerAssignment {
+  trigger_name: string                                          // hardware key, e.g. "TOUCH_INT"
+  handler: 'touch_detector' | 'digital_input' | 'default' | 'log_only'
+  config?: {
+    hardware_ref?: string   // semantic hw key for touch_detector (which MPR121 to read)
+    view_key?: string       // view key to update on digital_input
+  }
 }
 
 export interface FdaJson {
   version: 2
   initial_state: string
   states: Record<string, FdaState>
-  transitions: FdaTransition[]
-  trigger_assignments: Record<string, unknown>
-  hw_overrides?: Record<string, unknown>  // per-def semantic hardware overrides (UI-08)
+  transitions: FdaTransition[]              // each uses {from, to, conditions[]}
+  trigger_assignments: FdaTriggerAssignment[]   // array, NOT a dict
+  hw_overrides?: Record<string, unknown>    // legacy field — pass through, never write/display
 }
 
 export interface ToolkitRead {
@@ -184,7 +215,7 @@ Append to the `links` array:
 - Click: parent sets `selectedState` (prop drilling or callback via data)
 
 ### Right Panel Logic
-- If nothing selected: placeholder ("Select a state or transition")
+- If nothing selected: placeholder ("Select a state or transition") + TriggerAssignmentPanel
 - If state selected: `StateBodyPanel` showing entry_actions
 - If edge selected: `ConditionBuilder` showing condition fields
 
@@ -193,19 +224,32 @@ Append to the `links` array:
 - Props: `{ stateName, state, toolkit, onChange }`
 - Renders entry_actions list; each row: `ActionEditor` + remove button
 - "Add action" button → appends `{ type: 'hardware', ref: '', method: 'set', args: [1] }`
-- wait_condition section: read-only display below actions (view/op/rhs as text badges)
+- wait_condition section: read-only display below actions (left/op/right as text badges)
 - return_data section: read-only display below wait_condition; shows items as comma-separated meta-pill, hidden if empty
 - `onChange` called with updated FdaState; parent updates fdaJson.states[stateName]
 
 ### ActionEditor component
 - File: `web_ui/react-src/src/components/ActionEditor.tsx`
 - Props: `{ action, toolkit, onChange }`
-- `type` select: hardware | flag | special | method
+- `type` select: hardware | flag | timer | special | method | if
 - Conditional fields by type:
   - hardware: `ref` select (toolkit.semantic_hardware keys), `method` select (set/toggle), `args[0]` via ArgInput
   - flag: `ref` select (toolkit.flags keys), `method` select (increment/reset/set)
+  - timer: `duration` via ArgInput (literal ms or param-ref)
   - special: `action` select (["INC_TRIAL_COUNTER"] or free text)
   - method: `ref` select (toolkit.callable_methods), optional args
+  - **if (UI-11):** renders `IfActionEditor` sub-component (see below)
+
+### IfActionEditor component (UI-11)
+- File: `web_ui/react-src/src/components/IfActionEditor.tsx`
+- Props: `{ action, toolkit, onChange }` where `action.type === 'if'`
+- Renders:
+  - `ConditionBuilder` for `action.condition` (reuses the same component as transition conditions)
+  - "then" section: collapsible list of `ActionEditor` rows (recursive — supports nested if-actions)
+  - "else" section: same, collapsible, hidden if empty (toggle to add)
+  - Add then/else action buttons append default `{type: 'hardware', ...}` to the branch
+- Visual nesting: indent each level by 12px with a left border in a lighter color; cap display at 3 levels (deeper levels collapsed by default)
+- `onChange` called with updated FdaAction (preserves all other fields, replaces condition/then/else)
 
 ### ArgInput component
 - File: `web_ui/react-src/src/components/ArgInput.tsx`
@@ -214,46 +258,54 @@ Append to the `links` array:
 - Toggle buttons: "Literal" | "Param" | "Flag"
 - Literal: number input; Param: select from toolkit.params_schema keys; Flag: select from toolkit.flags keys
 
-### ConditionBuilder component
+### ConditionBuilder component (manages FdaCondition — used for transitions AND if-actions)
 - File: `web_ui/react-src/src/components/ConditionBuilder.tsx`
 - Props: `{ condition, toolkit, onChange }`
-- Implements UI-12: left dropdown (tracker/flag/param/hw view keys), op dropdown, right input
-- Left side: combined list from toolkit.semantic_hardware keys + toolkit.flags keys + toolkit.params_schema keys
-- Op: == | != | >= | <= | > | <
-- Right side: literal input (for now; param/flag ref in later phase)
-- `onChange` updates the transition's condition in parent fdaJson
+- Implements UI-12: each side is an OperandEditor; op dropdown between them
+- **OperandEditor** — type selector (View / Flag / Param / Hardware / Literal) + type-specific input:
+  - View: free-text input for view key (most common — covers hardware and flag states)
+  - Flag: select from toolkit.flags keys → produces `{flag: name}`
+  - Param: select from toolkit.params_schema keys → produces `{param: name}`
+  - Hardware: select from toolkit.semantic_hardware keys → produces `{hardware: name}`
+  - Literal: number/text input → bare value
+- Op: `==` | `!=` | `>=` | `<=` | `>` | `<`
+- `onChange` called with updated FdaCondition; parent updates fdaJson accordingly
+- **Reused by IfActionEditor** (Plan 03-03) for if-action condition editing — same component, no duplication
 
-### HwOverridesPanel (UI-08)
-- File: `web_ui/react-src/src/components/HwOverridesPanel.tsx`
-- Shown as collapsible section in right panel when no state/edge selected
-- Lists toolkit.semantic_hardware keys; per key: optional override inputs for group+id
-- Saves to `fda_json.hw_overrides` dict
-
-### VAR-06: Variant Picker
-- On list page: if `getToolkits()` shows 2+ rows with same name (different hw_hash) → show
-  warning badge per task def row: "⚠ 2 toolkit variants"
-- On editor page: if toolkit has multiple variants → show dismissible banner with link to
-  diff view (just informational in this phase; binding to specific variant is Phase 4 scope)
+### TriggerAssignmentPanel component (UI-07)
+- File: `web_ui/react-src/src/components/TriggerAssignmentPanel.tsx`
+- Props: `{ assignments, toolkit, onChange }`
+- Shown in right panel when nothing is selected (below the placeholder text)
+- Renders current `fdaJson.trigger_assignments` array; each row:
+  - `trigger_name`: text input (free-form; the hardware key like "TOUCH_INT")
+  - `handler`: select from `['touch_detector', 'digital_input', 'default', 'log_only']`
+  - `config.hardware_ref` (optional): select from `toolkit.semantic_hardware` keys, shown only for `touch_detector` handler
+  - Remove button
+- "Add trigger" button appends `{ trigger_name: '', handler: 'touch_detector' }`
+- `onChange` called with updated `FdaTriggerAssignment[]`; parent updates `fdaJson.trigger_assignments`
+- Real-world example: TOUCH_INT → touch_detector with hardware_ref pointing to the MPR121
+  semantic key maps directly to `self.triggers['TOUCH_INT'] = [self.detectedLick]` in learning_cage.py
 
 ### Save Flow
-1. User edits actions / conditions / overrides in panel → local `fdaJson` updated via setFdaJson
+1. User edits actions / conditions / triggers in panel → local `fdaJson` updated via setFdaJson
 2. "Save" button (top right) → `mutation.mutate({ fda_json: fdaJson })`
 3. API: `PUT /api/task-definitions/:id` → `{ status: "ok", id }`
 4. On success: show "Saved ✓" for 2s then clear; invalidate `['task-definition', id]`
 5. On error: show error message in header area
 
-### No `blocking` field
-- FDA JSON v2 does NOT have a `blocking: "stage_block"` field anywhere
-- States optionally have `wait_condition` (same shape as transition condition)
-- The UI must never show or write a `blocking` field
-- StateBodyPanel shows wait_condition as read-only in this phase (edit in Phase 4)
+### No `blocking` field, no `hw_overrides` field
+- FDA JSON v2 does NOT have a `blocking` field anywhere
+- FDA JSON v2 does NOT have `hw_overrides` — to change hardware mapping, edit the toolkit
+  Python file directly and HANDSHAKE again
+- States optionally have `wait_condition`
+- The UI must never show or write `blocking` or `hw_overrides`
 
 ### Claude's Discretion
 - Node layout algorithm (simple grid vs dagre auto-layout — either acceptable)
 - Exact CSS for dark canvas area (inline styles on ReactFlow wrapper acceptable)
 - Whether to use ReactFlow's built-in edge label rendering or a custom EdgeLabel component
 - Toast/notification implementation (inline header message is fine, no external library)
-- Whether HwOverridesPanel is a separate tab or collapsible section
+- TriggerAssignmentPanel as collapsible or always-visible section
 </decisions>
 
 <specifics>
@@ -281,7 +333,15 @@ Append to the `links` array:
 - Badges: `badge`, `meta-pill`, `meta-date`
 - Params: `params-grid`, `param-field`, `param-name`
 
-### FDA JSON v2 schema (authoritative — no blocking field)
+### FDA JSON v2 schema (authoritative)
+Key rules:
+- No `blocking` field anywhere
+- No `hw_overrides` — pass through if present, never write or display
+- `trigger_assignments` is an array (not a dict)
+- Transitions use `from`/`to` (not from_state/next_state)
+- Conditions use unified `{left, op, right}` format with `>=` style operators
+- Each side of a condition is an FdaOperand: `{view/flag/param/hardware: key}` or literal
+
 ```json
 {
   "version": 2,
@@ -289,32 +349,65 @@ Append to the `links` array:
   "states": {
     "WAIT_FOR_LICK": {
       "entry_actions": [
-        { "type": "hardware", "ref": "led", "method": "set", "args": [1] }
+        { "type": "hardware", "ref": "led", "method": "set", "args": [1] },
+        {
+          "type": "if",
+          "condition": { "left": {"flag": "hit"}, "op": ">=", "right": 3 },
+          "then": [ { "type": "special", "ref": "INC_TRIAL_COUNTER" } ],
+          "else": []
+        }
       ],
-      "wait_condition": { "view": "licker1", "op": "==", "rhs": 1 }
-    }
+      "wait_condition": { "left": {"view": "licker1"}, "op": "==", "right": 1 }
+    },
+    "REWARD": {}
   },
   "transitions": [
-    { "from_state": "WAIT_FOR_LICK", "condition": { "view": "licker1", "op": "==", "rhs": 1 }, "next_state": "REWARD" }
+    {
+      "from": "WAIT_FOR_LICK",
+      "to": "REWARD",
+      "conditions": [
+        { "left": {"view": "licker1"}, "op": "==", "right": 1 }
+      ],
+      "description": "lick detected"
+    }
   ],
-  "trigger_assignments": {}
+  "trigger_assignments": [
+    {
+      "trigger_name": "TOUCH_INT",
+      "handler": "touch_detector",
+      "config": { "hardware_ref": "touch_sensor" }
+    }
+  ]
 }
 ```
+
+### Trigger assignment real-world mapping
+`learning_cage.py` wires: `self.triggers['TOUCH_INT'] = [self.detectedLick]`
+This is equivalent to a trigger_assignment: `{ trigger_name: "TOUCH_INT", handler: "touch_detector" }`
+The handler type determines the callback: touch_detector calls `hardware.detect_change()` then
+updates the view; digital_input simply sets `view[trigger_name] = level`.
 </specifics>
 
 <deferred>
 ## Deferred to Later Phases
 
-- **UI-07**: Trigger assignment panel (shows trigger hardware, handler type dropdowns)
+- **UI-08**: Hardware semantic overrides — removed entirely. Edit the toolkit file.
 - **UI-09**: Push-to-pilot button + hot-reload
-- **UI-11**: If-condition action blocks with then/else lanes (complex nested structure)
 - Editing wait_condition via UI (currently read-only display)
 - Binding task definition to a specific toolkit variant (VAR-06 partial)
-
-Note: The ROADMAP listed UI-07, UI-09 in Phase 3 but user explicitly deferred both.
-Planner should note this scope reduction and may suggest a Phase 3.1 insert for deferred items.
 </deferred>
+
+---
+## Plan Wave Order
+
+| Plan | Wave | Contents |
+|---|---|---|
+| 03-00 | 0 | Pi: unified condition eval, SEMANTIC_HARDWARE fallback, elastic_test guard |
+| 03-01 | 1 | React: npm dep, TypeScript types, API helpers, routing, TaskDefinitions list page |
+| 03-02 | 2 | React: react-flow canvas, StateNode, ConditionBuilder (OperandEditor), drag-connect |
+| 03-03 | 3 | React: StateBodyPanel, ActionEditor, IfActionEditor (UI-11), ArgInput, TriggerPanel, Save |
 
 ---
 *Phase: 03-visual-editor*
 *Context gathered: 2026-03-22 from session continuation + codebase exploration*
+*Revised: 2026-03-23 — unified condition schema (left/op/right, >= operators); from/to transitions; UI-11 in scope; SEMANTIC_HARDWARE Pi fallback; elastic_test guard; Plan 03-00 added*

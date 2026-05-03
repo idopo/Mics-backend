@@ -115,6 +115,55 @@
 - [ ] **EDIT-16**: `POST /api/pi/packages` installs package on Pi via pip; streams output
 - [ ] **EDIT-17**: Packages tab UI shows required-by-toolkits diff and manual install input
 
+### Hardware Libs (Backend)
+
+| ID | Requirement | Phase |
+|---|---|---|
+| HW-01 | `hardware_libs` table: `id, name, filename, source_code TEXT, ast_metadata JSONB, version INT, validated BOOL, created_at, updated_at`; `ast_metadata` shape: `{classes: [{name, methods: [{name, args: [{name, annotation, default}]}]}]}` | 9 |
+| HW-02 | `POST /api/hardware-libs` validates Python source via `ast.parse()` + `py_compile.compile()` server-side; rejects with 422 + error location if invalid; extracts AST metadata on success | 9 |
+| HW-03 | `GET /api/hardware-libs`, `GET /api/hardware-libs/{id}`, `PUT /api/hardware-libs/{id}`, `DELETE /api/hardware-libs/{id}` standard CRUD in `api/routers/hardware_libs.py` | 9 |
+| HW-04 | Orchestrator sends `LOAD_HARDWARE_LIBS` ZMQ message before `START` when toolkit has associated libs; payload: `{libs: [{filename, source_code}]}` | 9 |
+| HW-05 | Pi `receive_hardware_libs(libs)` in `mics_task.py`: writes each lib to `~/apps/hardware_overrides/`, prepends dir to `sys.path`, calls `importlib.reload()` if module already cached; backward compat: no-op if no message received | 9 |
+
+### Hardware Modules (Backend + UI)
+
+| ID | Requirement | Phase |
+|---|---|---|
+| HW-06 | `hardware_modules` table: `id, name, display_name, hardware_lib_id FK, class_name TEXT, description, created_at`; create/update validates `class_name` exists in linked lib's AST metadata | 10 |
+| HW-07 | Standard CRUD at `/api/hardware-modules`; `GET /api/hardware-modules/{id}/methods` returns method list from linked lib's AST for the specific `class_name` | 10 |
+| HW-08 | `pilot_hardware_config` table: `id, pilot_id FK, hardware_module_id FK, config JSONB`; `GET /api/pilots/{id}/hardware-config`, `PUT /api/pilots/{id}/hardware-config/{module_id}` | 10 |
+| HW-09 | HANDSHAKE handler reads prefs.json HARDWARE section from payload and POSTs to `/api/pilots/{id}/hardware-config/seed` if pilot has no config yet (one-time migration seeder) | 10 |
+| HW-10 | New React page `/react/hardware-modules-ui`: list modules with lib + class chip; create module form (name + pick lib + pick class from AST dropdown); nav entry in `Layout.tsx` | 10 |
+| HW-11 | Per-pilot hardware config editor (on pilot detail or new page): table of module | class | config fields; config fields are dynamic from class constructor args in AST metadata | 10 |
+
+### Toolkit Redesign (Backend-Authored)
+
+| ID | Requirement | Phase |
+|---|---|---|
+| HW-12 | `task_toolkits` extended with: `hardware_module_ids INT[]`, `locked_state_source TEXT`, `is_backend_authored BOOL DEFAULT FALSE`; existing HANDSHAKE-registered toolkits remain valid | 11 |
+| HW-13 | `available_locked_states` table: `id, pilot_id FK, task_filename TEXT, state_names TEXT[], updated_at`; populated by HANDSHAKE from `{tasks: [{filename, state_names}]}`; `GET /api/locked-states` returns state libraries grouped by task file | 11 |
+| HW-14 | `POST /api/toolkits` with `{name, locked_state_source, selected_states, hardware_module_ids, flags, params_schema}` validates states exist in `available_locked_states` and all hardware_module_ids exist; sets `is_backend_authored=TRUE` | 11 |
+| HW-15 | HANDSHAKE updated to accept new format `{tasks: [{filename, state_names}]}`; legacy format still accepted (old Pis continue to work) | 11 |
+| HW-16 | Toolkit page redesigned: 5-step authoring flow (name+task file, select locked states, add hardware modules, define flags, define params); existing auto-registered toolkits show with "legacy" badge | 11 |
+
+### Hardware-Aware FDA State Builder
+
+| ID | Requirement | Phase |
+|---|---|---|
+| HW-17 | State builder `StateBodyPanel`: when adding `type: hardware` entry action, dropdown shows hardware modules from toolkit's `hardware_module_ids`; on module select, methods fetched from `GET /api/hardware-modules/{id}/methods`; arg inputs pre-filled with type annotations and defaults | 12 |
+| HW-18 | `PUT /api/hardware-libs/{id}`: re-extracts AST, diffs methods vs previous version, scans all `task_definitions.fda_json` for references to removed/renamed methods, sets `validation_status='broken'` + `validation_message` on affected rows; returns diff summary | 12 |
+| HW-19 | `task_definitions` gains `validation_status TEXT DEFAULT 'ok'` and `validation_message TEXT` columns | 12 |
+| HW-20 | TaskDefinitions list: warning badge on broken definitions; TaskEditor: banner at top listing specific broken state + method name when `validation_status='broken'` | 12 |
+
+### Pre-Run Cross-Check + End-to-End
+
+| ID | Requirement | Phase |
+|---|---|---|
+| HW-21 | `POST /api/task-definitions/{id}/validate-for-pilot/{pilot_id}`: checks each hardware module in toolkit has pilot config, class matches, config complete; returns `{ok: bool, issues: [{module_name, issue, detail}]}` | 13 |
+| HW-22 | Session start UI calls validate-for-pilot before confirming START; if issues: modal lists problems with links to pilot hardware config editor; if ok: proceed | 13 |
+| HW-23 | Orchestrator sends resolved hardware config dict `{module_name: {class_name, pin, polarity, ...}}` to Pi before START; Pi `init_hardware()` uses received config if present, falls back to `self.HARDWARE` class constant if absent | 13 |
+| HW-24 | Pi `init_hardware()` accepts `received_hw_config` kwarg: dynamically imports `{lib_module}.{class_name}` from override dir, instantiates with config params, stores in `self.hardware` dict (same structure, no downstream breakage) | 13 |
+
 ---
 
 ## v2 Requirements
@@ -172,10 +221,15 @@
 | EDIT-07 through EDIT-10 | Phase 6 (Pi Editor: Terminal) | Pending |
 | EDIT-11 through EDIT-14 | Phase 7 (Pi Editor: Edit+Restart) | Pending |
 | EDIT-15 through EDIT-17 | Phase 8 (Pi Editor: Sync+Packages) | Pending |
+| HW-01 through HW-05 | Phase 9 (HardwareLib Storage + E2E Proof) | Pending |
+| HW-06 through HW-11 | Phase 10 (Hardware Modules + Pilot Config) | Pending |
+| HW-12 through HW-16 | Phase 11 (Toolkit Redesign: Backend-Authored) | Pending |
+| HW-17 through HW-20 | Phase 12 (Hardware-Aware FDA State Builder) | Pending |
+| HW-21 through HW-24 | Phase 13 (Pre-Run Cross-Check + End-to-End) | Pending |
 
 **Coverage:**
-- v1 requirements: 62 total (HOT simplified; FDA-10–17 + UI-05a + UI-11–12 added for passthrough/callable_methods/rename/if-actions/params-as-props; VAR-01–07 added for toolkit variant tracking; PROTO-04 added for overrides modal toolkit param source)
-- Mapped to phases: 62
+- v1 requirements: 86 total (HW-01–24 added for Hardware Libs Centralization + Hardware Modules + Toolkit Redesign)
+- Mapped to phases: 86
 - Unmapped: 0 ✓
 
 ---

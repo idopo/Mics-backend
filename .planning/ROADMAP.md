@@ -1,8 +1,8 @@
 # Roadmap: MICS Backend
 
-**Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Status:** Planning complete — not started
-**Requirements:** 49 v1 requirements across 8 phases
+**Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor + Hardware Centralization
+**Status:** Phases 1–8 planning complete; Phases 9–13 planned
+**Requirements:** 86 v1 requirements across 13 phases
 
 ---
 
@@ -18,6 +18,11 @@
 | 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
 | 7 | Pi Editor: Edit+Restart | PUT /api/pi/file, POST /api/pi/restart, Monaco edit mode | EDIT-11–14 | ○ Pending |
 | 8 | Pi Editor: Packages | Package diff, install endpoint, packages tab UI | EDIT-15–17 | ○ Pending |
+| 9 | HardwareLib Storage | hardware_libs DB + API, AST validation, Pi override dir, E2E proof with gpio.py | HW-01–05 | ○ Pending |
+| 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ○ Pending |
+| 11 | 1/1 | Complete   | 2026-05-03 | ○ Pending |
+| 12 | Hardware-Aware FDA Builder | hardware method picker in StateBodyPanel, lib-change validation, broken-definition warnings | HW-17–20 | ○ Pending |
+| 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
 
 ---
 
@@ -221,6 +226,121 @@ Plans:
 
 ---
 
+### Phase 9: HardwareLib Storage + End-to-End Proof
+**Goal:** Backend can store, validate, and serve hardware driver files. Pi receives them on task START, writes to override dir, and imports them. Does not break any running tasks.
+
+**Requirements:** HW-01 through HW-05
+
+**Success criteria:**
+1. `POST /api/hardware-libs` with gpio.py source → 200 + AST metadata in response (classes: Digital_Out, Solenoid, Pulse20Hz... with methods and args)
+2. `POST /api/hardware-libs` with intentionally broken Python → 422 with line number in error
+3. Start a test task on connected Pi → verify `~/apps/hardware_overrides/gpio.py` exists on Pi after START
+4. Existing tasks on Pi still run without change (backward compat: no lib override sent = Pi uses autopilot package)
+
+**New files:**
+- `api/routers/hardware_libs.py`
+
+**Files changed:**
+- `api/main.py` (register new router)
+- `orchestrator/orchestrator/orchestrator_station.py` (LOAD_HARDWARE_LIBS before START)
+- `orchestrator/orchestrator/main.py` (handler key mapping)
+- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (receive_hardware_libs)
+
+**Dependencies:** Independent — can start after Phase 4
+
+---
+
+### Phase 10: Hardware Modules + Pilot Hardware Config
+**Goal:** Global HardwareModule records exist in DB and UI. Per-pilot hardware config (pin bindings) stored in backend. prefs.json HARDWARE section migrated via HANDSHAKE seeder.
+
+**Requirements:** HW-06 through HW-11
+
+**Success criteria:**
+1. Create a hardware module `Left_LED → gpio.Digital_Out` via API → validated that `Digital_Out` exists in gpio.py AST
+2. `PUT /api/pilots/{id}/hardware-config/{module_id}` with `{pin: 7, polarity: 1}` → `GET /api/pilots/{id}/hardware-config` returns correct binding
+3. Boot Pi → HANDSHAKE → pilot_hardware_config seeded from prefs.json HARDWARE section (one-time)
+4. `/react/hardware-modules-ui` shows module list + create form; class dropdown populated from AST metadata
+5. Pilot hardware config editor shows modules with editable config fields derived from class constructor args
+
+**New files:**
+- `api/routers/hardware_modules.py`
+- `api/routers/pilot_hardware_config.py`
+- `web_ui/react-src/src/pages/hardware-modules/HardwareModules.tsx`
+
+**Files changed:**
+- `api/main.py` (register new routers)
+- `orchestrator/orchestrator/orchestrator_station.py` (HANDSHAKE: config seeder)
+
+**Dependencies:** Phase 9 (hardware_libs must exist for class validation)
+
+---
+
+### Phase 11: Toolkit Redesign (Backend-Authored)
+**Goal:** Toolkits are now fully backend-defined. HANDSHAKE populates available_locked_states per task file. User assembles a toolkit from locked states + hardware modules + flags + params via a 5-step UI.
+
+**Requirements:** HW-12 through HW-16
+
+**Success criteria:**
+1. Boot Pi → HANDSHAKE → `GET /api/locked-states` returns state names for that task file
+2. Create backend-authored toolkit in UI: pick states + modules + flags + params → `GET /api/toolkits` shows `is_backend_authored: true`
+3. Existing HANDSHAKE-auto-registered toolkits still appear and work; show "legacy" badge in UI
+4. `POST /api/toolkits` with unknown state name → 422 (validation: state must be in available_locked_states)
+5. `POST /api/toolkits` with unknown hardware_module_id → 422
+
+**New files:**
+- `web_ui/react-src/src/pages/toolkits/ToolkitsRedesign.tsx` (or extend Toolkits.tsx)
+
+**Files changed:**
+- `api/routers/toolkits.py` (extend with authoring endpoints)
+- `api/models.py` (task_toolkits extension, available_locked_states table)
+- `orchestrator/orchestrator/orchestrator_station.py` (HANDSHAKE: populate available_locked_states, accept new format)
+
+**Dependencies:** Phase 10 (hardware modules must exist for toolkit assembly)
+
+---
+
+### Phase 12: Hardware-Aware FDA State Builder
+**Goal:** FDA state builder knows hardware module methods via AST. Entry actions can pick a hardware module → method → args with type hints. Lib-change impact detection flags broken task definitions.
+
+**Requirements:** HW-17 through HW-20
+
+**Success criteria:**
+1. In task editor, add a hardware entry action → dropdown shows modules from toolkit's hardware_module_ids
+2. Select a module → method dropdown shows methods from that module's AST (via `GET /api/hardware-modules/{id}/methods`)
+3. Select a method → arg inputs appear with type annotations and defaults pre-filled
+4. Update gpio.py source (remove a method) → affected task definitions gain `validation_status: 'broken'`
+5. TaskDefinitions list shows warning badge on broken definitions; TaskEditor shows banner listing broken state + method
+
+**Files changed:**
+- `api/routers/hardware_libs.py` (lib-update: AST diff + task definition validation)
+- `web_ui/react-src/src/pages/task-editor/TaskEditor.tsx` (hardware method picker in StateBodyPanel)
+- `web_ui/react-src/src/pages/task-definitions/TaskDefinitions.tsx` (broken badge)
+
+**Dependencies:** Phase 11 (toolkits have hardware_module_ids; modules have AST-linked libs)
+
+---
+
+### Phase 13: Pre-Run Cross-Check + End-to-End
+**Goal:** Before starting a task, backend verifies pilot has all required hardware configured. Full end-to-end: toolkit authoring → task definition → start → Pi receives libs + config → runs using override hardware.
+
+**Requirements:** HW-21 through HW-24
+
+**Success criteria:**
+1. `POST /api/task-definitions/{id}/validate-for-pilot/{pilot_id}` with pilot missing required module → returns `{ok: false, issues: [{module_name, issue: 'missing', ...}]}`
+2. Session start UI with missing hardware → modal blocks with issue list and link to pilot hardware config editor
+3. Full end-to-end: backend-authored toolkit → task definition → start on pilot → Pi logs show `hardware_overrides/gpio.py` written, hardware instances created from received config → task runs
+4. Pilot with no backend hardware config → falls back to `self.HARDWARE` class constant; no crash; backward compat confirmed
+
+**Files changed:**
+- `api/routers/toolkits.py` (validate-for-pilot endpoint)
+- `web_ui/react-src/src/pages/subject-sessions/SubjectSessions.tsx` (pre-run check gate)
+- `orchestrator/orchestrator/orchestrator_station.py` (START handler: send hardware config dict to Pi)
+- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (dynamic init_hardware from received_hw_config)
+
+**Dependencies:** Phase 12 (task definitions have validation_status; hardware modules fully wired)
+
+---
+
 ## Dependency Graph
 
 ```
@@ -239,10 +359,20 @@ Phase 6 (Pi Editor: Terminal)
 Phase 7 (Pi Editor: Edit+Restart)
     ↓ exec infrastructure + Phase 2 (required_packages)
 Phase 8 (Pi Editor: Packages)
+
+Phase 9 (HardwareLib Storage)       ← independent, can start after Phase 4
+    ↓ hardware_libs table + AST metadata
+Phase 10 (Hardware Modules + Pilot Config)
+    ↓ hardware modules wired to libs
+Phase 11 (Toolkit Redesign: Backend-Authored)
+    ↓ toolkits with hardware_module_ids
+Phase 12 (Hardware-Aware FDA Builder)
+    ↓ task definitions validated against live AST
+Phase 13 (Pre-Run Cross-Check + End-to-End)
 ```
 
-**Phase 1 can start today.** Phase 5 can also start in parallel with Phase 1 — they are fully independent.
+**Phase 1 can start today.** Phase 5 can also start in parallel with Phase 1 — they are fully independent. **Phase 9 can start after Phase 4 is complete** — it is independent of Phases 5–8.
 
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-03-24 — Phase 4 replanned: 3 plans (01–03); 04-03 adds orchestrator FDA injection fix + VAR-07 canonical variant*
+*Last updated: 2026-04-20 — Phases 9–13 added: Hardware Libs Centralization + Hardware Modules + Toolkit Redesign (HW-01–24)*

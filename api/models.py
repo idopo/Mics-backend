@@ -755,6 +755,27 @@ class TaskToolkitRead(BaseModel):
         from_attributes = True
 
 
+class FlagDefinition(BaseModel):
+    name: str
+    tracker_type: str  # Counter_Tracker | Boolean_Tracker | Trial_Tracker | Tracker
+    initial_value: Any = 0
+
+
+class ParamDefinition(BaseModel):
+    name: str
+    type: str
+    default: Any = None
+
+
+class BackendToolkitCreate(BaseModel):
+    name: str
+    locked_state_source: str           # task filename e.g. "appetitive.py"
+    selected_states: List[str]         # subset of state_names for that file
+    hardware_module_ids: List[int] = []
+    flags: List[FlagDefinition] = []
+    params_schema: List[ParamDefinition] = []
+
+
 class TaskDefinitionCreate(BaseModel):
     display_name: str
     toolkit_name: str

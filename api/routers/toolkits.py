@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 from auth import verify_token
 from db import engine
 from models import (
+    BackendToolkitCreate,
+    HardwareModule,
     Pilot,
     TaskDefinition,
     TaskDefinitionCreate,
@@ -52,6 +54,9 @@ def _build_toolkit_row(
         "created_at": t.created_at,
         "updated_at": t.updated_at,
         "is_canonical": t.is_canonical,
+        "is_backend_authored": t.is_backend_authored or False,
+        "hardware_module_ids": t.hardware_module_ids or [],
+        "locked_state_source": t.locked_state_source,
         "pilot_origins": sorted(origins_map.get(t.id, [])),
         "fda_count": fda_count,
     }
@@ -242,6 +247,82 @@ def diff_toolkits(toolkit_id: int, other_id: int, _: dict = Depends(verify_token
 
 
 # ---------------------------------------------------------------------------
+# Backend-authored toolkit creation
+# ---------------------------------------------------------------------------
+
+@router.post("/toolkits", status_code=201)
+def create_backend_toolkit(payload: BackendToolkitCreate, _: dict = Depends(verify_token)):
+    """Create a backend-authored toolkit (validated against available_locked_states + hardware_modules)."""
+    import hashlib as _hl
+    import json as _json
+
+    db: OrmSession = _SA_SessionLocal()
+    try:
+        # Validate: selected_states must exist in available_locked_states for locked_state_source
+        available_row = db.execute(sa_text(
+            "SELECT state_names FROM available_locked_states WHERE task_filename = :fname LIMIT 1"
+        ), {"fname": payload.locked_state_source}).fetchone()
+        if not available_row:
+            raise HTTPException(422, f"No locked states found for file '{payload.locked_state_source}'. "
+                                     "Run a HANDSHAKE first.")
+        known_states = set(available_row.state_names)
+        missing_states = [s for s in payload.selected_states if s not in known_states]
+        if missing_states:
+            raise HTTPException(422, f"Unknown states for '{payload.locked_state_source}': {missing_states}")
+
+        # Validate: all hardware_module_ids must exist
+        if payload.hardware_module_ids:
+            existing_ids = {
+                row[0] for row in db.execute(
+                    sa_text("SELECT id FROM hardware_modules WHERE id = ANY(:ids)"),
+                    {"ids": payload.hardware_module_ids},
+                ).fetchall()
+            }
+            missing_hw = [i for i in payload.hardware_module_ids if i not in existing_ids]
+            if missing_hw:
+                raise HTTPException(422, f"Unknown hardware_module_ids: {missing_hw}")
+
+        # Build flags dict and params_schema dict from lists
+        flags_dict = {f.name: {"tracker_type": f.tracker_type, "initial_value": f.initial_value}
+                      for f in payload.flags}
+        params_dict = {p.name: {"type": p.type, "default": p.default} for p in payload.params_schema}
+
+        # hw_hash derived from hardware_module_ids (no semantic_hardware for backend-authored)
+        hw_hash_input = _json.dumps(sorted(payload.hardware_module_ids)).encode()
+        hw_hash = _hl.sha256(hw_hash_input).hexdigest()
+
+        toolkit = TaskToolkit(
+            name=payload.name,
+            hw_hash=hw_hash,
+            states=payload.selected_states,
+            flags=flags_dict,
+            params_schema=params_dict,
+            semantic_hardware=None,
+            callable_methods=None,
+            required_packages=None,
+            file_hash=None,
+        )
+        db.add(toolkit)
+        db.flush()
+
+        # Set backend-authored columns via raw SQL (migrated columns)
+        db.execute(sa_text(
+            "UPDATE task_toolkits SET hardware_module_ids = :hmids::jsonb, "
+            "locked_state_source = :lss, is_backend_authored = TRUE WHERE id = :id"
+        ), {
+            "hmids": _json.dumps(payload.hardware_module_ids),
+            "lss": payload.locked_state_source,
+            "id": toolkit.id,
+        })
+        db.commit()
+        db.refresh(toolkit)
+
+        return _build_toolkit_row(toolkit, {}, 0)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # Task-definition CRUD endpoints
 # ---------------------------------------------------------------------------
 
@@ -250,7 +331,7 @@ def list_task_definitions(_: dict = Depends(verify_token)):
     db: OrmSession = _SA_SessionLocal()
     try:
         rows = db.execute(sa_text(
-            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, needs_migration "
+            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, needs_migration, toolkit_id "
             "FROM task_definitions ORDER BY created_at DESC"
         )).fetchall()
         return [
@@ -263,6 +344,7 @@ def list_task_definitions(_: dict = Depends(verify_token)):
                 "file_hash": r.file_hash,
                 "created_at": r.created_at,
                 "needs_migration": r.needs_migration,
+                "toolkit_id": r.toolkit_id,
             }
             for r in rows
         ]
@@ -283,7 +365,7 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
         existing = db.query(TaskDefinition).filter(TaskDefinition.file_hash == fda_hash).one_or_none()
         if existing:
             row = db.execute(sa_text(
-                "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at "
+                "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, toolkit_id "
                 "FROM task_definitions WHERE id = :id"
             ), {"id": existing.id}).fetchone()
             return {
@@ -294,6 +376,7 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
                 "fda_json": json.loads(row.fda_json) if isinstance(row.fda_json, str) else row.fda_json,
                 "file_hash": row.file_hash,
                 "created_at": row.created_at,
+                "toolkit_id": row.toolkit_id,
             }
 
         # task_name = display_name + short content hash for uniqueness
@@ -314,14 +397,14 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
         db.add(defn)
         db.flush()  # get defn.id
 
-        # Set new columns (display_name, toolkit_name, fda_json) via raw SQL
-        # These columns were added by IF NOT EXISTS migration and are not declared in ORM class
+        # Set migrated columns via raw SQL (not declared in ORM class)
         db.execute(sa_text(
-            "UPDATE task_definitions SET display_name = :dn, toolkit_name = :tn, fda_json = :fj WHERE id = :id"
+            "UPDATE task_definitions SET display_name = :dn, toolkit_name = :tn, fda_json = :fj, toolkit_id = :tid WHERE id = :id"
         ), {
             "dn": payload.display_name,
             "tn": payload.toolkit_name,
             "fj": json.dumps(payload.fda_json),
+            "tid": payload.toolkit_id,
             "id": defn.id,
         })
         db.commit()
@@ -334,6 +417,7 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
             "fda_json": payload.fda_json,
             "file_hash": fda_hash,
             "created_at": defn.created_at,
+            "toolkit_id": payload.toolkit_id,
         }
     finally:
         db.close()
@@ -344,7 +428,7 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
     db: OrmSession = _SA_SessionLocal()
     try:
         row = db.execute(sa_text(
-            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at "
+            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, toolkit_id "
             "FROM task_definitions WHERE id = :id"
         ), {"id": defn_id}).fetchone()
         if not row:
@@ -357,6 +441,7 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
             "fda_json": json.loads(row.fda_json) if isinstance(row.fda_json, str) else row.fda_json,
             "file_hash": row.file_hash,
             "created_at": row.created_at,
+            "toolkit_id": row.toolkit_id,
         }
     finally:
         db.close()
@@ -380,6 +465,8 @@ def update_task_definition(defn_id: int, payload: TaskDefinitionUpdate, _: dict 
             updates["fda_json"] = json.dumps(payload.fda_json)
         if payload.display_name is not None:
             updates["display_name"] = payload.display_name
+        if payload.toolkit_id is not None:
+            updates["toolkit_id"] = payload.toolkit_id
 
         if updates:
             set_parts = ", ".join(f"{k} = :{k}" for k in updates)

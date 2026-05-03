@@ -115,6 +115,11 @@ class OrchestratorStation:
                         "required_packages": task.get("required_packages"),
                         "file_hash": task.get("file_hash"),
                     }
+                    if task_name == "elastic_test":
+                        logger.info(
+                            "DEBUG elastic_test stage_names from Pi: %s",
+                            task.get("stage_names"),
+                        )
                     self.api.upsert_pilot_toolkit(
                         pilot_id=pilot_obj["id"],
                         toolkit_payload=toolkit_payload,
@@ -125,6 +130,44 @@ class OrchestratorStation:
                         task_name,
                         hw_hash[:8],
                     )
+
+            hardware_section = payload.get("prefs", {}).get("HARDWARE", {})
+            if hardware_section:
+                self.api.seed_pilot_hardware_config(pilot_obj["id"], hardware_section)
+
+            # Phase 11: populate available_locked_states
+            # New format: payload["task_files"] = [{"filename": "appetitive.py", "state_names": [...]}]
+            # Legacy format: payload["STAGE_NAMES"] + payload["task_type"] (per-task key from HANDSHAKE)
+            task_files = payload.get("task_files")
+            if task_files and isinstance(task_files, list):
+                # New Pi format: explicit filename + state_names per task file
+                for entry in task_files:
+                    fname = entry.get("filename")
+                    snames = entry.get("state_names")
+                    if fname and isinstance(snames, list):
+                        try:
+                            self.api.upsert_locked_states(pilot_obj["id"], fname, snames)
+                            logger.info("Locked states upserted for pilot %s: %s (%d states)",
+                                        pilot, fname, len(snames))
+                        except Exception as ls_err:
+                            logger.warning("Failed to upsert locked states for %s/%s: %s",
+                                           pilot, fname, ls_err)
+            elif tasks:
+                # Legacy format: reconstruct filename from task_type class name.
+                # NOTE: this produces "AppetitiveTaskReal.py", NOT the actual Pi source filename.
+                # The is_legacy_filename flag is set on PUT to warn UI consumers.
+                for task in tasks:
+                    task_type = task.get("task_type") or task.get("task_name")
+                    stage_names = task.get("STAGE_NAMES") or task.get("stage_names")
+                    if task_type and isinstance(stage_names, list) and stage_names:
+                        legacy_filename = f"{task_type}.py"
+                        try:
+                            self.api.upsert_locked_states(pilot_obj["id"], legacy_filename, stage_names)
+                            logger.info("Locked states upserted (legacy) for pilot %s: %s (%d states)",
+                                        pilot, legacy_filename, len(stage_names))
+                        except Exception as ls_err:
+                            logger.warning("Failed to upsert legacy locked states for %s/%s: %s",
+                                           pilot, legacy_filename, ls_err)
 
         except Exception as e:
             logger.error("Backend sync failed for pilot %s: %s", pilot, e)
@@ -275,7 +318,21 @@ class OrchestratorStation:
         task["subjects"] = task.get("subjects") or []
         task["session_progress_index"] = task.get("session_progress_index")
 
-        # 6️⃣ Send START to Pi
+        # 6️⃣ Resolve toolkit_id and send hardware libs before START
+        task_def_id = task.get("task_definition_id")
+        toolkit_id = None
+        if task_def_id:
+            try:
+                task_def_full = self.api.get_task_definition(int(task_def_id))
+                toolkit_id = (task_def_full or {}).get("toolkit_id")
+            except Exception:
+                logger.exception("Failed to fetch task_definition %s for toolkit_id resolution", task_def_id)
+        try:
+            self._send_hardware_libs_if_needed(pilot_key, toolkit_id, task_def_id=task_def_id)
+        except Exception:
+            logger.exception("Failed to send LOAD_HARDWARE_LIBS to %s; continuing with START", pilot_key)
+
+        # 7️⃣ Send START to Pi
         try:
             self.gateway.send(pilot_key, "START", task)
             logger.info("START sent to pilot %s for run %s", pilot_key, run_id)
@@ -290,20 +347,22 @@ class OrchestratorStation:
             self._redis_set_active_run(pilot_key, None)
             raise
 
-        # 7️⃣ Now mark backend RUNNING
+        # 8️⃣ Now mark backend RUNNING
         try:
             self.api.mark_run_running(run_id)
             logger.info("Marked run %s RUNNING in backend", run_id)
         except Exception:
             logger.exception("Failed to mark run %s as RUNNING in backend after sending START", run_id)
 
-        # 8️⃣ Update local state & mirror to Redis
+        # 9️⃣ Update local state & mirror to Redis
         active_run = {
             "id": run_meta["id"],
             "session_id": run_meta["session_id"],
             "subject_key": run_meta["subject_key"],
             "started_at": datetime.now(timezone.utc).isoformat(),
             "status": "running",
+            "toolkit_id": toolkit_id,    # None for legacy tasks
+            "task_def_id": task_def_id,  # for pin resolution on future steps
         }
         self.state.set_active_run(pilot_key, active_run)
 
@@ -618,6 +677,8 @@ class OrchestratorStation:
                     task_def_id,
                 )
 
+        task["task_definition_id"] = task_def_id  # surface for start_run() hardware-lib lookup
+
         # Apply overrides last
         task = self._apply_overrides(task, run_meta=run, step_idx=step_idx)
 
@@ -676,6 +737,8 @@ class OrchestratorStation:
                     task_def_id,
                 )
 
+        task["task_definition_id"] = task_def_id  # surface for start_run() hardware-lib lookup
+
         task = self._apply_overrides(task, run_meta=run, step_idx=step_idx)
 
         # ✅ recommended protection
@@ -690,6 +753,75 @@ class OrchestratorStation:
 
         return task
 
+
+    def _send_hardware_libs_if_needed(
+        self, pilot_key: str, toolkit_id: int | None, task_def_id: int | None = None
+    ):
+        """Send LOAD_HARDWARE_LIBS to the Pi before START, using pinned version when set."""
+        if toolkit_id is None:
+            return
+
+        libs = self.api.get_toolkit_hardware_libs(toolkit_id)
+        if not libs:
+            return
+
+        # Resolve per-lib pinned versions if task_def_id is known
+        pins = {}
+        if task_def_id:
+            pin_list = self.api.get_hw_lib_pins(task_def_id)
+            pins = {
+                p["hardware_lib_id"]: p["pinned_version_id"]
+                for p in pin_list
+                if p.get("pinned_version_id")
+            }
+
+        deployable = []
+        for lib in libs:
+            version_id = pins.get(lib["id"])
+            if version_id:
+                version = self.api.get_hw_lib_version(lib["id"], version_id)
+                if version.get("state") in ("beta", "stable"):
+                    deployable.append({
+                        "filename": lib["filename"],
+                        "source_code": version["source_code"],
+                    })
+                else:
+                    logger.warning(
+                        "Pinned version %s of %s is unvalidated — skipping",
+                        version_id, lib["filename"],
+                    )
+            else:
+                if lib.get("active_state") in ("beta", "stable"):
+                    deployable.append({
+                        "filename": lib["filename"],
+                        "source_code": lib["source_code"],
+                    })
+                else:
+                    logger.warning(
+                        "Skipping unvalidated hw lib %s (state=%s)",
+                        lib["filename"], lib.get("active_state"),
+                    )
+
+        if not deployable:
+            return
+
+        logger.info(
+            "Sending LOAD_HARDWARE_LIBS to %s: %s",
+            pilot_key, [d["filename"] for d in deployable],
+        )
+        self.gateway.send(pilot_key, "LOAD_HARDWARE_LIBS", {"libs": deployable})
+
+    def handle_hardware_lib_test_result(self, msg: Message):
+        data = msg.value or {}
+        version_id = data.get("version_id")
+        ok = data.get("ok", False)
+        error = data.get("error")
+        if version_id:
+            self.api.patch_hardware_lib_version(version_id, ok=ok, error=error, pilot=msg.sender)
+        logger.info(
+            "HARDWARE_LIB_TEST_RESULT from %s: version_id=%s ok=%s error=%s",
+            msg.sender, version_id, ok, error,
+        )
 
     def push_hot_reload(self, pilot_name: str, fda_json: dict):
         """

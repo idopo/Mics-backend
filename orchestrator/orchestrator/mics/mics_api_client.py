@@ -46,6 +46,13 @@ class MicsApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    def _put(self, path: str, body: dict):
+        url = f"{self.base_url}{path}"
+        self.logger.debug(f"PUT {url} -> {body}")
+        resp = requests.put(url, headers=self.headers, json=body)
+        resp.raise_for_status()
+        return resp.json()
+
     def _delete(self, path: str):
         url = f"{self.base_url}{path}"
         self.logger.debug(f"DELETE {url}")
@@ -310,6 +317,61 @@ class MicsApiClient:
 
     def get_run_with_progress(self, run_id: int):
         return self._get(f"/session-runs/{run_id}/with-progress")
+
+    # -----------------------
+    # Locked States Endpoints
+    # -----------------------
+
+    def upsert_locked_states(self, pilot_id: int, task_filename: str, state_names: list[str]):
+        """PUT /api/locked-states/{pilot_id}/{task_filename} — upsert state list for a Pi task file."""
+        self._put(f"/api/locked-states/{pilot_id}/{task_filename}", {"state_names": state_names})
+
+    # -----------------------
+    # Hardware Lib Endpoints
+    # -----------------------
+
+    def get_toolkit_hardware_libs(self, toolkit_id: int) -> list[dict]:
+        resp = self._get(f"/api/toolkits/{toolkit_id}/hardware-libs")
+        return resp.get("libs", []) if isinstance(resp, dict) else []
+
+    def get_hw_lib_pins(self, task_def_id: int) -> list[dict]:
+        try:
+            resp = self._get(f"/api/task-definitions/{task_def_id}/hw-lib-pins")
+            return resp if isinstance(resp, list) else []
+        except Exception as e:
+            self.logger.warning("Failed to get hw_lib_pins for task_def %s: %s", task_def_id, e)
+            return []
+
+    def get_hw_lib_version(self, lib_id: int, version_id: int) -> dict:
+        """Fetch a specific version by scanning the versions list."""
+        try:
+            versions = self._get(f"/api/hardware-libs/{lib_id}/versions")
+            versions = versions if isinstance(versions, list) else []
+            return next((v for v in versions if v["id"] == version_id), {})
+        except Exception as e:
+            self.logger.warning("Failed to get hw_lib version %s for lib %s: %s", version_id, lib_id, e)
+            return {}
+
+    def patch_hardware_lib_version(self, version_id: int, ok: bool, error: str | None, pilot: str):
+        self._patch(
+            f"/api/hardware-libs/versions/{version_id}/validate",
+            {"ok": ok, "error": error, "pilot": pilot},
+        )
+
+    def seed_pilot_hardware_config(self, pilot_id: int, hardware: dict):
+        self._post(f"/api/pilots/{pilot_id}/hardware-config/seed", {"hardware": hardware})
+
+    def promote_active_hw_libs_to_stable(self, toolkit_id: int, pilot_name: str):
+        libs = self.get_toolkit_hardware_libs(toolkit_id)
+        for lib in libs:
+            if lib.get("active_state") == "beta":
+                try:
+                    self._patch(
+                        f"/api/hardware-libs/{lib['id']}/mark-stable",
+                        {"reason": "protocol_run", "pilot": pilot_name},
+                    )
+                except Exception as e:
+                    self.logger.warning("Failed to promote hw lib %s to stable: %s", lib.get("id"), e)
 
 
 

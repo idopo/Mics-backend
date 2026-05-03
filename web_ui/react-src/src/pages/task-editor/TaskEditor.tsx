@@ -18,11 +18,13 @@ import '@xyflow/react/dist/style.css'
 
 import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definitions'
 import { getToolkitsByName } from '../../api/toolkits'
-import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead } from '../../types'
+import { getHwLibPins } from '../../api/hardware_libs'
+import type { FdaJson, FdaTransition, FdaCondition, FdaState, HwLibPin, ToolkitRead } from '../../types'
 import StateNode from '../../components/StateNode'
 import ConditionBuilder, { operandLabel } from '../../components/ConditionBuilder'
 import StateBodyPanel from '../../components/StateBodyPanel'
 import TriggerAssignmentPanel from '../../components/TriggerAssignmentPanel'
+import HwLibVersionModal from './HwLibVersionModal'
 
 const nodeTypes = { stateNode: StateNode }
 
@@ -104,11 +106,18 @@ export default function TaskEditor() {
   const toolkit = toolkits?.[0] ?? null
   const hasMultipleVariants = (toolkits?.length ?? 0) > 1
 
+  const { data: hwLibPins = [], refetch: refetchPins } = useQuery({
+    queryKey: ['hw-lib-pins', taskDef?.id],
+    queryFn: () => getHwLibPins(taskDef!.id),
+    enabled: !!taskDef?.id && !!toolkit,
+  })
+
   const [fdaJson, setFdaJson] = useState<FdaJson | null>(null)
   const [selectedState, setSelectedState] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [savedMsg, setSavedMsg] = useState('')
+  const [versionModalLib, setVersionModalLib] = useState<HwLibPin | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -135,17 +144,40 @@ export default function TaskEditor() {
     setEdges(fdaToEdges(fdaJson))
   }, [fdaJson?.transitions])
 
-  // Re-sync nodes when state bodies change (so action count updates)
+  // Re-sync nodes when state bodies change (so action count updates).
+  // Also add any toolkit states missing from the current node set (e.g. new states added to toolkit after FDA was created).
   useEffect(() => {
     if (!fdaJson || !canvasInited) return
-    setNodes(prev => prev.map(n => ({
-      ...n,
-      data: {
-        ...n.data,
-        state: fdaJson.states[n.id] ?? n.data.state,
-        toolkit,
-      },
-    })))
+    setNodes(prev => {
+      const updated = prev.map(n => ({
+        ...n,
+        data: {
+          ...n.data,
+          state: fdaJson.states[n.id] ?? n.data.state,
+          toolkit,
+        },
+      }))
+      if (!toolkit?.states) return updated
+      const existingIds = new Set(prev.map(n => n.id))
+      const missing = toolkit.states.filter(s => !existingIds.has(s))
+      if (missing.length === 0) return updated
+      // Patch fdaJson.states so missing states get included on save
+      setFdaJson(f => f ? {
+        ...f,
+        states: { ...f.states, ...Object.fromEntries(missing.map(s => [s, {}])) },
+      } : f)
+      const offset = prev.length
+      missing.forEach((s, i) => {
+        updated.push({
+          id: s,
+          type: 'stateNode',
+          position: { x: ((offset + i) % 4) * 270, y: Math.floor((offset + i) / 4) * 170 },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          data: { name: s, state: {} as any, isInitial: false, toolkit } as any,
+        })
+      })
+      return updated
+    })
   }, [fdaJson?.states, toolkit])
 
   const saveMutation = useMutation({
@@ -261,6 +293,29 @@ export default function TaskEditor() {
         {taskDef?.toolkit_name && (
           <span className="badge" style={{ fontSize: '11px', flexShrink: 0 }}>{taskDef.toolkit_name}</span>
         )}
+        {hwLibPins.length > 0 && (
+          <div style={{ display: 'flex', gap: '4px', flexShrink: 0, flexWrap: 'wrap' }}>
+            {hwLibPins.map(pin => (
+              <button
+                key={pin.hardware_lib_id}
+                className={`meta-pill${pin.pinned_version_id ? ' pinned' : ''}`}
+                onClick={() => setVersionModalLib(pin)}
+                title={pin.pinned_version_id
+                  ? `Pinned to v${pin.pinned_version_number} (${pin.pinned_version_state})`
+                  : `Active: v${pin.active_version_number ?? '?'} (${pin.active_version_state ?? 'none'})`}
+                style={{ cursor: 'pointer', border: '1px solid var(--border)', background: pin.pinned_version_id ? 'rgba(129,140,248,0.12)' : undefined }}
+              >
+                {pin.lib_filename}
+                {pin.pinned_version_id ? ` v${pin.pinned_version_number}` : ' active'}
+                {(pin.pinned_version_state ?? pin.active_version_state) && (
+                  <span className={`badge status-${pin.pinned_version_state ?? pin.active_version_state}`} style={{ marginLeft: 4, fontSize: '10px' }}>
+                    {pin.pinned_version_state ?? pin.active_version_state}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         {savedMsg && (
           <span style={{ fontSize: '12px', color: savedMsg.startsWith('Error') ? 'var(--error)' : 'var(--green)', flexShrink: 0 }}>
             {savedMsg}
@@ -274,6 +329,16 @@ export default function TaskEditor() {
         >
           {saveMutation.isPending ? 'Saving…' : 'Save'}
         </button>
+        {versionModalLib && (
+          <HwLibVersionModal
+            taskDefId={numId}
+            pin={versionModalLib}
+            fdaJson={fdaJson}
+            toolkit={toolkit}
+            onClose={() => setVersionModalLib(null)}
+            onSaved={() => { refetchPins(); setVersionModalLib(null) }}
+          />
+        )}
       </div>
 
       {hasMultipleVariants && (

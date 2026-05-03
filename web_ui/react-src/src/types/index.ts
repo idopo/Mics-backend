@@ -405,3 +405,33 @@ export interface PilotHardwareConfigRow {
   hardware_module_id: number
   config: Record<string, unknown>
 }
+
+// --- Hw Lib Pins (Phase 9 / Phase 11 TaskEditor) ---
+
+export interface HwLibPin {
+  hardware_lib_id: number
+  lib_name: string
+  lib_filename: string
+  pinned_version_id: number | null
+  pinned_version_number: number | null
+  pinned_version_state: string | null
+  active_version_id: number | null
+  active_version_number: number | null
+  active_version_state: string | null
+}
+
+export interface HwLibDiffItem {
+  class_name: string
+  method_name: string
+}
+
+export interface HwLibDiffChangedItem extends HwLibDiffItem {
+  old_args: unknown[]
+  new_args: unknown[]
+}
+
+export interface HwLibDiff {
+  removed_methods: HwLibDiffItem[]
+  changed_signatures: HwLibDiffChangedItem[]
+  added_methods: HwLibDiffItem[]
+}

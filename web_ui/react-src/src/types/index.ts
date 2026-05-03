@@ -284,8 +284,46 @@ export interface ToolkitRead {
   required_packages: string[] | null
   pilot_origins: string[]
   fda_count: number
+  is_backend_authored: boolean
+  hardware_module_ids: number[]
+  locked_state_source: string | null
   created_at: string
   updated_at: string
+}
+
+// Locked states (Phase 11)
+export interface LockedStateEntry {
+  state_names: string[]
+  pilots: string[]
+  pilot_ids: number[]
+  is_legacy_filename: boolean
+  updated_at: string
+}
+
+export interface LockedStatesResponse {
+  by_file: Record<string, LockedStateEntry>
+}
+
+// Toolkit creation payload types
+export interface FlagDefinition {
+  name: string
+  tracker_type: string
+  initial_value: unknown
+}
+
+export interface ParamDefinition {
+  name: string
+  type: string
+  default: unknown
+}
+
+export interface BackendToolkitCreatePayload {
+  name: string
+  locked_state_source: string
+  selected_states: string[]
+  hardware_module_ids: number[]
+  flags: FlagDefinition[]
+  params_schema: ParamDefinition[]
 }
 
 export interface TaskDefinitionFull {
@@ -296,4 +334,74 @@ export interface TaskDefinitionFull {
   fda_json: FdaJson | null
   file_hash: string
   created_at: string
+}
+
+// --- Hardware Libs (Phase 9) ---
+
+export type LibState = 'unvalidated' | 'beta' | 'stable'
+
+export interface HardwareLib {
+  id: number
+  name: string
+  filename: string
+  ast_metadata: Record<string, unknown> | null
+  active_version_id: number | null
+  stable_version_id: number | null
+  active_state: LibState | null
+  source_code: string | null
+  validation_error: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+export interface HardwareLibVersion {
+  id: number
+  hardware_lib_id: number
+  version_number: number
+  source_code: string
+  sha256_hash: string
+  state: LibState
+  ast_metadata: Record<string, unknown> | null
+  created_at: string
+  stable_at: string | null
+  stable_reason: string | null
+  stable_pilot: string | null
+  validation_error: string | null
+}
+
+// --- Hardware Modules (Phase 10) ---
+
+export interface AstMethodArg {
+  name: string
+  annotation: string | null
+  default?: string
+}
+
+export interface AstMethod {
+  name: string
+  args: AstMethodArg[]
+}
+
+export interface HardwareModule {
+  id: number
+  name: string
+  display_name: string | null
+  hardware_lib_id: number
+  class_name: string
+  description: string | null
+  created_at: string
+}
+
+export interface HardwareModuleMethods {
+  module_id: number
+  module_name: string
+  class_name: string
+  methods: AstMethod[]
+}
+
+export interface PilotHardwareConfigRow {
+  id: number
+  pilot_id: number
+  hardware_module_id: number
+  config: Record<string, unknown>
 }

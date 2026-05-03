@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from sqlalchemy import func, text as sa_text
-from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations, run_task_definition_toolkit_id_migration, run_hw_lib_pin_migrations, run_toolkit_backend_authored_migrations
 from models import (
     Subject,
     SubjectCreate,
@@ -39,6 +39,10 @@ from models import (
     PilotTaskHandshake,
     TaskToolkit,
     ToolkitPilotOrigin,
+    HardwareLib,
+    HardwareLibVersion,
+    ToolkitHardwareLib,
+    TaskDefinitionHwLibPin,
     TaskDefinitionCreate,
     TaskDefinitionUpdate,
     TaskDefinitionRead,
@@ -62,7 +66,15 @@ SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 app = FastAPI(title="MICS Backend API")
 
 from routers.toolkits import router as toolkits_router
+from routers.hardware_libs import router as hardware_libs_router
+from routers.hardware_modules import router as hardware_modules_router
+from routers.pilot_hardware_config import router as pilot_hardware_config_router
+from routers.locked_states import router as locked_states_router
 app.include_router(toolkits_router, prefix="/api")
+app.include_router(hardware_libs_router, prefix="/api")
+app.include_router(hardware_modules_router)
+app.include_router(pilot_hardware_config_router)
+app.include_router(locked_states_router, prefix="/api")
 
 
 # inside upsert_pilot_tasks (near top), define helper:
@@ -122,8 +134,11 @@ def startup():
     run_subject_column_migrations(engine)
     run_lab_column_migrations(engine)
     run_toolkit_migrations(engine)
+    run_task_definition_toolkit_id_migration(engine)
     run_protocol_migrations(engine)
     run_canonical_migrations(engine)
+    run_hw_lib_pin_migrations(engine)
+    run_toolkit_backend_authored_migrations(engine)
 
 
 @app.get("/health")
@@ -969,6 +984,18 @@ def get_pilot(
         if not pilot:
             raise HTTPException(status_code=404, detail="Pilot not found")
         return pilot
+    finally:
+        db.close()
+
+
+@app.get("/pilots/by-name/{name}")
+def get_pilot_by_name(name: str, _: dict = Depends(verify_token)):
+    db: OrmSession = SA_SessionLocal()
+    try:
+        pilot = db.query(Pilot).filter(Pilot.name == name).first()
+        if not pilot:
+            raise HTTPException(status_code=404, detail="Pilot not found")
+        return {"id": pilot.id, "name": pilot.name}
     finally:
         db.close()
 

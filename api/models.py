@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     Integer,
     String,
+    Text,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
@@ -522,6 +523,7 @@ class TaskDefinition(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     needs_migration = Column(Boolean, nullable=False, server_default="false", default=False)
+    toolkit_id = Column(Integer, ForeignKey("task_toolkits.id"), nullable=True)
 
 
 class TaskInheritance(Base):
@@ -599,6 +601,10 @@ class TaskToolkit(Base):
     required_packages = Column(SAJSON, nullable=True)           # list of pip package strings
     file_hash = Column(String, nullable=True)                   # hash of toolkit source file
     is_canonical = Column(Boolean, nullable=False, server_default="false", default=False)
+    # Phase 11: backend-authored toolkit columns (added via run_toolkit_backend_authored_migrations)
+    hardware_module_ids = Column(SAJSON, default=list)          # list of HardwareModule IDs
+    locked_state_source = Column(String, nullable=True)         # task filename on Pi e.g. "appetitive.py"
+    is_backend_authored = Column(Boolean, default=False)        # True = created via UI, False = from HANDSHAKE
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -619,6 +625,110 @@ class ToolkitPilotOrigin(Base):
     __table_args__ = (
         UniqueConstraint("toolkit_id", "pilot_id", name="uq_origin_toolkit_pilot"),
     )
+
+
+# ============================================================
+# HARDWARE LIBS (Phase 09)
+# HardwareLibVersion declared before HardwareLib to satisfy FK ordering.
+# active_version_id / stable_version_id use use_alter=True to break the
+# circular dependency: hardware_libs ↔ hardware_lib_versions.
+# ============================================================
+
+class HardwareLibVersion(Base):
+    __tablename__ = "hardware_lib_versions"
+
+    id = Column(Integer, primary_key=True)
+    hardware_lib_id = Column(Integer, ForeignKey("hardware_libs.id"), nullable=False)
+    version_number = Column(Integer, nullable=False)
+    source_code = Column(Text, nullable=False)
+    sha256_hash = Column(String, nullable=False)
+    state = Column(String, default="unvalidated")  # unvalidated | beta | stable
+    ast_metadata = Column(SAJSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    stable_at = Column(DateTime, nullable=True)
+    stable_reason = Column(String, nullable=True)   # 'user' | 'protocol_run'
+    stable_pilot = Column(String, nullable=True)
+    validation_error = Column(Text, nullable=True)
+
+
+class HardwareLib(Base):
+    __tablename__ = "hardware_libs"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    filename = Column(String, nullable=False)
+    ast_metadata = Column(SAJSON, nullable=True)
+    active_version_id = Column(
+        Integer,
+        ForeignKey("hardware_lib_versions.id", use_alter=True, name="fk_hw_lib_active_version"),
+        nullable=True,
+    )
+    stable_version_id = Column(
+        Integer,
+        ForeignKey("hardware_lib_versions.id", use_alter=True, name="fk_hw_lib_stable_version"),
+        nullable=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ToolkitHardwareLib(Base):
+    __tablename__ = "toolkit_hardware_libs"
+
+    toolkit_id = Column(Integer, ForeignKey("task_toolkits.id"), primary_key=True)
+    hardware_lib_id = Column(Integer, ForeignKey("hardware_libs.id"), primary_key=True)
+
+
+class TaskDefinitionHwLibPin(Base):
+    __tablename__ = "task_definition_hw_lib_pins"
+
+    task_def_id = Column(Integer, ForeignKey("task_definitions.id"), primary_key=True)
+    hardware_lib_id = Column(Integer, ForeignKey("hardware_libs.id"), primary_key=True)
+    pinned_version_id = Column(Integer, ForeignKey("hardware_lib_versions.id"), nullable=False)
+
+
+# ============================================================
+# HARDWARE MODULES + PILOT HARDWARE CONFIG (Phase 10)
+# ============================================================
+
+class HardwareModule(Base):
+    __tablename__ = "hardware_modules"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+    display_name = Column(String, nullable=True)
+    hardware_lib_id = Column(Integer, ForeignKey("hardware_libs.id"), nullable=False)
+    class_name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PilotHardwareConfig(Base):
+    __tablename__ = "pilot_hardware_config"
+
+    id = Column(Integer, primary_key=True)
+    pilot_id = Column(Integer, ForeignKey("pilots.id"), nullable=False)
+    hardware_module_id = Column(Integer, ForeignKey("hardware_modules.id"), nullable=False)
+    config = Column(SAJSON, nullable=False)
+    __table_args__ = (UniqueConstraint("pilot_id", "hardware_module_id"),)
+
+
+# ============================================================
+# AVAILABLE LOCKED STATES (Phase 11)
+# Populated by HANDSHAKE; used in backend-authored toolkit creation.
+# ============================================================
+
+class AvailableLockedState(Base):
+    __tablename__ = "available_locked_states"
+
+    id = Column(Integer, primary_key=True)
+    pilot_id = Column(Integer, ForeignKey("pilots.id"), nullable=False)
+    task_filename = Column(String, nullable=False)          # e.g. "appetitive.py" (or reconstructed class name for legacy)
+    state_names = Column(SAJSON, nullable=False)            # list of method name strings
+    is_legacy_filename = Column(Boolean, default=False)     # True if filename is class-name-derived (AppetitiveTaskReal.py)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("pilot_id", "task_filename"),)
 
 
 # ============================================================
@@ -649,11 +759,13 @@ class TaskDefinitionCreate(BaseModel):
     display_name: str
     toolkit_name: str
     fda_json: Dict[str, Any]
+    toolkit_id: Optional[int] = None
 
 
 class TaskDefinitionUpdate(BaseModel):
     display_name: Optional[str] = None
     fda_json: Optional[Dict[str, Any]] = None
+    toolkit_id: Optional[int] = None
 
 
 class TaskDefinitionRead(BaseModel):

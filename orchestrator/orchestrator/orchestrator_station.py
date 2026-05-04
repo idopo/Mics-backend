@@ -690,6 +690,8 @@ class OrchestratorStation:
         task = dict(step.get("params") or {})
         task["task_type"] = step["task_type"]
         task["step_name"] = step["step_name"]
+        if step.get("task_definition_id"):
+            task["task_definition_id"] = step["task_definition_id"]
 
         pilot = self.api.get_pilot(run["pilot_id"])
         task["pilot"] = pilot["name"]
@@ -750,6 +752,8 @@ class OrchestratorStation:
         task = dict(step.get("params") or {})
         task["task_type"] = step["task_type"]
         task["step_name"] = step["step_name"]
+        if step.get("task_definition_id"):
+            task["task_definition_id"] = step["task_definition_id"]
 
         pilot = self.api.get_pilot(run["pilot_id"])
         task["pilot"] = pilot["name"]
@@ -809,8 +813,11 @@ class OrchestratorStation:
                 return
             task["HARDWARE"] = spec["hardware"]
             task["PREFS_HARDWARE"] = spec["prefs_hardware"]
-            task["FLAGS"] = spec["flags"]
-            task["PARAMS"] = spec["params_schema"]
+            # FLAGS tracker types are sent as strings ("Counter_Tracker" etc.); Pi resolves them.
+            if spec.get("flags"):
+                task["FLAGS"] = spec["flags"]
+            if spec.get("params_schema"):
+                task["PARAMS"] = spec["params_schema"]
             logger.info(
                 "Injected backend toolkit spec for toolkit %s pilot %s",
                 toolkit_id, pilot_db_id,

@@ -19,6 +19,7 @@ import '@xyflow/react/dist/style.css'
 import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definitions'
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibPins } from '../../api/hardware_libs'
+import { getHardwareModule } from '../../api/hardware_modules'
 import type { FdaJson, FdaTransition, FdaCondition, FdaState, HwLibPin, ToolkitRead } from '../../types'
 import StateNode from '../../components/StateNode'
 import ConditionBuilder, { operandLabel } from '../../components/ConditionBuilder'
@@ -111,6 +112,14 @@ export default function TaskEditor() {
     queryFn: () => getHwLibPins(taskDef!.id),
     enabled: !!taskDef?.id && !!toolkit,
   })
+
+  const hwModuleIds: number[] = toolkit?.hardware_module_ids ?? []
+  const { data: hwModules = [] } = useQuery({
+    queryKey: ['hw-modules-for-toolkit', hwModuleIds],
+    queryFn: () => Promise.all(hwModuleIds.map(id => getHardwareModule(id))),
+    enabled: hwModuleIds.length > 0,
+  })
+  const hwModuleNames = hwModules.map(m => m.name)
 
   const [fdaJson, setFdaJson] = useState<FdaJson | null>(null)
   const [selectedState, setSelectedState] = useState<string | null>(null)
@@ -443,6 +452,7 @@ export default function TaskEditor() {
               <ConditionBuilder
                 condition={selectedTransition.conditions?.[0] ?? EMPTY_CONDITION}
                 toolkit={toolkit}
+                hwModuleNames={hwModuleNames}
                 onChange={updated => updateTransitionCondition(selectedEdgeId!, updated)}
               />
             </div>

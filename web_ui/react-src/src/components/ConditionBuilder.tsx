@@ -47,10 +47,11 @@ export function operandLabel(op: FdaOperand): string {
 interface OperandEditorProps {
   operand: FdaOperand
   toolkit: ToolkitRead | null
+  hwModuleNames?: string[]
   onChange: (updated: FdaOperand) => void
 }
 
-function OperandEditor({ operand, toolkit, onChange }: OperandEditorProps) {
+function OperandEditor({ operand, toolkit, hwModuleNames, onChange }: OperandEditorProps) {
   const type = getOperandType(operand)
   const key = getOperandKey(operand)
 
@@ -59,7 +60,7 @@ function OperandEditor({ operand, toolkit, onChange }: OperandEditorProps) {
 
   const ss: React.CSSProperties = { width: '100%', fontSize: '12px', padding: '4px 7px' }
 
-  const hwOpts = Object.keys(toolkit?.semantic_hardware ?? {})
+  const hwOpts = [...Object.keys(toolkit?.semantic_hardware ?? {}), ...(hwModuleNames ?? [])]
   const flagOpts = Object.keys(toolkit?.flags ?? {})
   const paramOpts = Object.keys(toolkit?.params_schema ?? {})
   const viewOpts = [...new Set([...hwOpts, ...flagOpts])]
@@ -124,15 +125,16 @@ function OperandEditor({ operand, toolkit, onChange }: OperandEditorProps) {
 interface Props {
   condition: FdaCondition
   toolkit: ToolkitRead | null
+  hwModuleNames?: string[]
   onChange: (updated: FdaCondition) => void
 }
 
-export default function ConditionBuilder({ condition, toolkit, onChange }: Props) {
+export default function ConditionBuilder({ condition, toolkit, hwModuleNames, onChange }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div>
         <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Left</div>
-        <OperandEditor operand={condition.left} toolkit={toolkit} onChange={left => onChange({ ...condition, left })} />
+        <OperandEditor operand={condition.left} toolkit={toolkit} hwModuleNames={hwModuleNames} onChange={left => onChange({ ...condition, left })} />
       </div>
       <div>
         <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Op</div>
@@ -146,7 +148,7 @@ export default function ConditionBuilder({ condition, toolkit, onChange }: Props
       </div>
       <div>
         <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Right</div>
-        <OperandEditor operand={condition.right} toolkit={toolkit} onChange={right => onChange({ ...condition, right })} />
+        <OperandEditor operand={condition.right} toolkit={toolkit} hwModuleNames={hwModuleNames} onChange={right => onChange({ ...condition, right })} />
       </div>
     </div>
   )

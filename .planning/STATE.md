@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-03T13:13:58.071Z"
+last_updated: "2026-05-04T07:51:34.021Z"
 progress:
   total_phases: 13
-  completed_phases: 3
-  total_plans: 26
-  completed_plans: 18
-  percent: 69
+  completed_phases: 2
+  total_plans: 28
+  completed_plans: 19
+  percent: 68
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [███████░░░] 69%
+**Progress:** [███████░░░] 68%
 
 ---
 
@@ -64,6 +64,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 04-protocol-integration]: set-canonical conservatively flags all task_definitions for toolkit name as needs_migration=True — no toolkit_id FK on task_definitions so cannot distinguish per-variant
 - [Phase 11]: Legacy HANDSHAKE filename reconstructed from task class name (AppetitiveTaskReal.py) with is_legacy_filename=True; detected by uppercase in stem
 - [Phase 11]: HwLibVersionModal scans all hw/timer FDA refs (not filtered per-lib) since module→lib resolution would need extra API calls
+- [Phase 11-02]: class_name stored in available_locked_states; new HANDSHAKE format carries it per-entry, legacy format derives it from task_type
+- [Phase 11-02]: Dispatch endpoint in api/routers/toolkit_dispatch.py (toolkits.py already >500 lines — router-per-domain split)
+- [Phase 11-02]: task_type override placed after _build_*_task in start_run and _advance_run_step to respect re-assertion at lines 686/745
 
 ## Blockers
 

@@ -331,6 +331,12 @@ class MicsApiClient:
             payload["class_name"] = class_name
         self._put(f"/api/locked-states/{pilot_id}/{task_filename}", payload)
 
+    def get_toolkit_dispatch_class(self, toolkit_id: int) -> dict:
+        """GET /api/toolkits/{id}/dispatch-class — returns class_name + is_backend_authored."""
+        r = self.session.get(f"{self.base_url}/api/toolkits/{toolkit_id}/dispatch-class")
+        r.raise_for_status()
+        return r.json()
+
     # -----------------------
     # Hardware Lib Endpoints
     # -----------------------

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-04T08:06:57.099Z"
+last_updated: "2026-05-04T11:56:37.144Z"
 progress:
   total_phases: 13
-  completed_phases: 3
-  total_plans: 28
-  completed_plans: 20
-  percent: 71
+  completed_phases: 2
+  total_plans: 30
+  completed_plans: 21
+  percent: 70
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [███████░░░] 71%
+**Progress:** [███████░░░] 70%
 
 ---
 
@@ -69,6 +69,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 11-02]: task_type override placed after _build_*_task in start_run and _advance_run_step to respect re-assertion at lines 686/745
 - [Phase 11-03]: task_type left to dispatch-class override — _inject_backend_toolkit_spec does not set task_type
 - [Phase 11-03]: pilot_hardware_config table name is singular (plan had wrong plural name)
+- [Phase 11-04]: _resolve_flags() reads 'tracker_type' key (DB format) with 'type' fallback; pops key and sets 'type' = Tracker class for init_flags() compatibility
 
 ## Blockers
 

@@ -331,6 +331,21 @@ class OrchestratorStation:
                 toolkit_id = (task_def_full or {}).get("toolkit_id")
             except Exception:
                 logger.exception("Failed to fetch task_definition %s for toolkit_id resolution", task_def_id)
+        # Override task_type for backend-authored toolkits (after _build_*_task which re-asserts it)
+        if toolkit_id:
+            try:
+                dispatch = self.api.get_toolkit_dispatch_class(toolkit_id)
+                if dispatch.get("is_backend_authored"):
+                    task["task_type"] = dispatch["class_name"]
+                    logger.info(
+                        "Overriding task_type to %s for backend toolkit %s",
+                        dispatch["class_name"], toolkit_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to get dispatch class for toolkit %s; using protocol task_type", toolkit_id
+                )
+
         try:
             self._send_hardware_libs_if_needed(pilot_key, toolkit_id, task_def_id=task_def_id)
         except Exception:
@@ -604,6 +619,25 @@ class OrchestratorStation:
                 run["session_id"],
             )
             proto_runs = None
+
+        # Resolve toolkit_id for the next step and override task_type if backend-authored
+        next_task_def_id = next_task.get("task_definition_id")
+        if next_task_def_id:
+            try:
+                task_def = self.api.get_task_definition(int(next_task_def_id))
+                next_toolkit_id = (task_def or {}).get("toolkit_id")
+                if next_toolkit_id:
+                    dispatch = self.api.get_toolkit_dispatch_class(next_toolkit_id)
+                    if dispatch.get("is_backend_authored"):
+                        next_task["task_type"] = dispatch["class_name"]
+                        logger.info(
+                            "Overriding task_type to %s for backend toolkit %s in _advance_run_step",
+                            dispatch["class_name"], next_toolkit_id,
+                        )
+            except Exception:
+                logger.exception(
+                    "Failed dispatch class lookup in _advance_run_step for task_def %s", next_task_def_id
+                )
 
         self._attach_session_context(
             next_task,

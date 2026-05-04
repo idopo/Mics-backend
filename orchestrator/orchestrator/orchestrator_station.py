@@ -345,6 +345,9 @@ class OrchestratorStation:
                 logger.exception(
                     "Failed to get dispatch class for toolkit %s; using protocol task_type", toolkit_id
                 )
+            # Inject HARDWARE/FLAGS/PARAMS/PREFS_HARDWARE for backend-authored toolkits
+            pilot_db_id = run_meta["pilot_id"]
+            self._inject_backend_toolkit_spec(task, toolkit_id, pilot_db_id)
 
         try:
             self._send_hardware_libs_if_needed(pilot_key, toolkit_id, task_def_id=task_def_id)
@@ -634,6 +637,7 @@ class OrchestratorStation:
                             "Overriding task_type to %s for backend toolkit %s in _advance_run_step",
                             dispatch["class_name"], next_toolkit_id,
                         )
+                    self._inject_backend_toolkit_spec(next_task, next_toolkit_id, run["pilot_id"])
             except Exception:
                 logger.exception(
                     "Failed dispatch class lookup in _advance_run_step for task_def %s", next_task_def_id
@@ -791,6 +795,31 @@ class OrchestratorStation:
 
         return task
 
+
+    def _inject_backend_toolkit_spec(self, task: dict, toolkit_id: int, pilot_db_id: int) -> None:
+        """Inject HARDWARE, PREFS_HARDWARE, FLAGS, PARAMS into task for backend-authored toolkits.
+
+        Called after _build_*_task() and after task_type override — must not reassign task_type
+        (the dispatch-class override in start_run / _advance_run_step owns that).
+        Non-fatal: logs and returns if the API call fails.
+        """
+        try:
+            spec = self.api.get_toolkit_dispatch_spec(toolkit_id, pilot_db_id)
+            if not spec.get("is_backend_authored"):
+                return
+            task["HARDWARE"] = spec["hardware"]
+            task["PREFS_HARDWARE"] = spec["prefs_hardware"]
+            task["FLAGS"] = spec["flags"]
+            task["PARAMS"] = spec["params_schema"]
+            logger.info(
+                "Injected backend toolkit spec for toolkit %s pilot %s",
+                toolkit_id, pilot_db_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to inject backend toolkit spec for toolkit %s; proceeding without it",
+                toolkit_id,
+            )
 
     def _send_hardware_libs_if_needed(
         self, pilot_key: str, toolkit_id: int | None, task_def_id: int | None = None

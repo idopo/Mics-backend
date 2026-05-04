@@ -166,3 +166,7 @@ def run_toolkit_backend_authored_migrations(eng):
                 UNIQUE (pilot_id, task_filename)
             )
         """))
+        # Phase 11-02: add class_name to available_locked_states
+        conn.execute(text(
+            "ALTER TABLE available_locked_states ADD COLUMN IF NOT EXISTS class_name VARCHAR"
+        ))

@@ -20,6 +20,7 @@ _SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 class LockedStateUpsertPayload(BaseModel):
     state_names: List[str]
+    class_name: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -118,15 +119,16 @@ def upsert_locked_state(
         if existing:
             db.execute(sa_text(
                 "UPDATE available_locked_states "
-                "SET state_names = :sn::jsonb, is_legacy_filename = :legacy, updated_at = NOW() "
+                "SET state_names = :sn::jsonb, is_legacy_filename = :legacy, "
+                "    class_name = :cn, updated_at = NOW() "
                 "WHERE id = :id"
-            ), {"sn": state_names_json, "legacy": is_legacy, "id": existing.id})
+            ), {"sn": state_names_json, "legacy": is_legacy, "cn": payload.class_name, "id": existing.id})
         else:
             db.execute(sa_text(
                 "INSERT INTO available_locked_states "
-                "(pilot_id, task_filename, state_names, is_legacy_filename, updated_at) "
-                "VALUES (:pid, :fname, :sn::jsonb, :legacy, NOW())"
-            ), {"pid": pilot_id, "fname": task_filename, "sn": state_names_json, "legacy": is_legacy})
+                "(pilot_id, task_filename, state_names, is_legacy_filename, class_name, updated_at) "
+                "VALUES (:pid, :fname, :sn::jsonb, :legacy, :cn, NOW())"
+            ), {"pid": pilot_id, "fname": task_filename, "sn": state_names_json, "legacy": is_legacy, "cn": payload.class_name})
 
         db.commit()
         return {"status": "ok", "pilot_id": pilot_id, "task_filename": task_filename,

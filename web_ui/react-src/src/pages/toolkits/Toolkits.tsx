@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { getToolkits, getLockedStates, createBackendToolkit } from '../../api/toolkits'
 import { getTaskDefinitions, createTaskDefinition } from '../../api/task-definitions'
 import { listHardwareModules } from '../../api/hardware_modules'
+import { EditModal } from './EditModal'
 import type {
   ToolkitRead, TaskDefinitionFull, FlagDefinition, ParamDefinition, BackendToolkitCreatePayload,
 } from '../../types'
@@ -83,12 +84,13 @@ function LegacyToolkitRow({ toolkit }: { toolkit: ToolkitRead }) {
 // Backend-authored toolkit card
 // ---------------------------------------------------------------------------
 
-function BackendToolkitCard({ toolkit, definitions, onNewDefinition, onOpenDefinition, creating }: {
+function BackendToolkitCard({ toolkit, definitions, onNewDefinition, onOpenDefinition, creating, onEdit }: {
   toolkit: ToolkitRead
   definitions: TaskDefinitionFull[]
   onNewDefinition: (tk: ToolkitRead) => void
   onOpenDefinition: (id: number) => void
   creating: boolean
+  onEdit: (tk: ToolkitRead) => void
 }) {
   const stateNames = toolkit.states ?? []
   const flagKeys = Object.keys(toolkit.flags ?? {})
@@ -128,9 +130,14 @@ function BackendToolkitCard({ toolkit, definitions, onNewDefinition, onOpenDefin
           <ul style={{ margin: 0, padding: 0 }}>{definitions.map(def => <DefinitionRow key={def.id} def={def} onClick={() => onOpenDefinition(def.id)} />)}</ul>
         )}
       </div>
-      <button className="button-primary" style={{ alignSelf: 'flex-start', fontSize: '13px' }} disabled={creating} onClick={() => onNewDefinition(toolkit)}>
-        {creating ? 'Creating…' : '+ New Task Definition'}
-      </button>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button className="button-primary" style={{ fontSize: '13px' }} disabled={creating} onClick={() => onNewDefinition(toolkit)}>
+          {creating ? 'Creating…' : '+ New Task Definition'}
+        </button>
+        <button className="button-secondary" style={{ fontSize: '13px' }} onClick={() => onEdit(toolkit)}>
+          Edit
+        </button>
+      </div>
     </div>
   )
 }
@@ -195,12 +202,12 @@ function CreationModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     })
   }
 
-  const canNext1 = name.trim().length > 0 && selectedFile.length > 0
-  const canCreate = selectedStates.length > 0
+  const canNext1 = name.trim().length > 0
+  const canCreate = true
 
   return (
     <div className="modal-overlay" style={{ alignItems: 'flex-start', paddingTop: '10vh' }}>
-      <div className="modal" style={{ width: '520px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="modal" style={{ width: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-header">
           <span className="modal-title">New Backend Toolkit — Step {step} of 5</span>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -211,9 +218,9 @@ function CreationModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               <label style={{ fontSize: '13px' }}>Toolkit name
                 <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. AppetitiveV2" style={{ display: 'block', width: '100%', marginTop: '4px' }} />
               </label>
-              <label style={{ fontSize: '13px' }}>Task source file
+              <label style={{ fontSize: '13px' }}>Task source file <span style={{ fontSize: '11px', color: 'var(--muted)' }}>(optional — populated from Pi HANDSHAKE)</span>
                 <select value={selectedFile} onChange={e => handleFileSelect(e.target.value)} style={{ display: 'block', width: '100%', marginTop: '4px' }}>
-                  <option value="">— select file —</option>
+                  <option value="">— none (base mics_task) —</option>
                   {fileOptions.map(f => {
                     const entry = lockedStates!.by_file[f]
                     return <option key={f} value={f}>{f}{entry.is_legacy_filename ? ' (legacy filename)' : ''} — {entry.pilots.join(', ')}</option>
@@ -229,27 +236,35 @@ function CreationModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           )}
           {step === 2 && (
             <div>
-              <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Select states from {selectedFile}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {availableStates.map(s => (
-                  <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '4px 6px', borderRadius: '4px', background: selectedStates.includes(s) ? 'rgba(129,140,248,0.1)' : 'transparent' }}>
-                    <input type="checkbox" checked={selectedStates.includes(s)} onChange={() => toggleState(s)} />
-                    <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{s}</span>
-                  </label>
-                ))}
-              </div>
+              {!selectedFile ? (
+                <p style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                  No task source file selected — toolkit will run the base <code>mics_task</code> class with no locked states.
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Select states from {selectedFile}</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {availableStates.map(s => (
+                      <label key={s} style={{ display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '6px 8px', borderRadius: '4px', background: selectedStates.includes(s) ? 'rgba(129,140,248,0.1)' : 'transparent', border: '1px solid transparent', transition: 'background 0.1s', borderColor: selectedStates.includes(s) ? 'rgba(129,140,248,0.25)' : 'transparent' }}>
+                        <input type="checkbox" checked={selectedStates.includes(s)} onChange={() => toggleState(s)} style={{ margin: 0 }} />
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{s}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
           {step === 3 && (
             <div>
               <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Select hardware modules to include</p>
               {hwModules.length === 0 ? <p className="muted" style={{ fontStyle: 'italic', fontSize: '12px' }}>No hardware modules defined yet.</p> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   {hwModules.map(m => (
-                    <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '4px 6px', borderRadius: '4px', background: selectedModuleIds.includes(m.id) ? 'rgba(129,140,248,0.1)' : 'transparent' }}>
-                      <input type="checkbox" checked={selectedModuleIds.includes(m.id)} onChange={() => toggleModule(m.id)} />
-                      <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{m.name}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{m.class_name}</span>
+                    <label key={m.id} style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '6px 8px', borderRadius: '4px', background: selectedModuleIds.includes(m.id) ? 'rgba(129,140,248,0.1)' : 'transparent', border: '1px solid transparent', transition: 'background 0.1s', borderColor: selectedModuleIds.includes(m.id) ? 'rgba(129,140,248,0.25)' : 'transparent' }}>
+                      <input type="checkbox" checked={selectedModuleIds.includes(m.id)} onChange={() => toggleModule(m.id)} style={{ margin: 0 }} />
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{m.name}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)', fontFamily: "'IBM Plex Mono', monospace" }}>{m.class_name}</span>
                     </label>
                   ))}
                 </div>
@@ -259,17 +274,35 @@ function CreationModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           {step === 4 && (
             <div>
               <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Define flags (optional)</p>
+              {flags.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 80px 28px', gap: '4px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', paddingLeft: '4px' }}>Name</span>
+                  <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tracker type</span>
+                  <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Init</span>
+                  <span />
+                </div>
+              )}
               {flags.map((f, i) => (
-                <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
-                  <input value={f.name} onChange={e => updateFlag(i, { name: e.target.value })} placeholder="name" style={{ flex: 1 }} />
-                  <select value={f.tracker_type} onChange={e => updateFlag(i, { tracker_type: e.target.value })}>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 180px 80px 28px', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
+                  <input value={f.name} onChange={e => updateFlag(i, { name: e.target.value })} placeholder="flag_name" style={{ fontSize: '12px', fontFamily: "'IBM Plex Mono', monospace" }} />
+                  <select value={f.tracker_type} onChange={e => {
+                    const t = e.target.value
+                    updateFlag(i, { tracker_type: t, initial_value: t === 'Boolean_Tracker' ? false : 0 })
+                  }} style={{ fontSize: '12px' }}>
                     {TRACKER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
-                  <input value={String(f.initial_value)} onChange={e => updateFlag(i, { initial_value: f.tracker_type === 'Boolean_Tracker' ? e.target.value === 'true' : Number(e.target.value) || 0 })} placeholder="init" style={{ width: '60px' }} />
-                  <button className="button-danger" style={{ fontSize: '11px', padding: '2px 8px' }} onClick={() => removeFlag(i)}>✕</button>
+                  {f.tracker_type === 'Boolean_Tracker' ? (
+                    <select value={String(f.initial_value)} onChange={e => updateFlag(i, { initial_value: e.target.value === 'true' })} style={{ fontSize: '12px' }}>
+                      <option value="false">False</option>
+                      <option value="true">True</option>
+                    </select>
+                  ) : (
+                    <input type="number" value={Number(f.initial_value)} onChange={e => updateFlag(i, { initial_value: Number(e.target.value) || 0 })} placeholder="0" style={{ fontSize: '12px', fontFamily: "'IBM Plex Mono', monospace" }} />
+                  )}
+                  <button className="button-danger" style={{ fontSize: '11px', padding: '2px 6px', height: '28px' }} onClick={() => removeFlag(i)}>✕</button>
                 </div>
               ))}
-              <button className="button-secondary" style={{ fontSize: '12px' }} onClick={addFlag}>+ Add Flag</button>
+              <button className="button-secondary" style={{ fontSize: '12px', marginTop: '4px' }} onClick={addFlag}>+ Add Flag</button>
             </div>
           )}
           {step === 5 && (
@@ -306,6 +339,7 @@ export default function Toolkits() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [showCreationModal, setShowCreationModal] = useState(false)
+  const [editingToolkit, setEditingToolkit] = useState<ToolkitRead | null>(null)
 
   const { data: toolkits, isLoading: loadingToolkits, isError: errorToolkits } = useQuery({
     queryKey: ['toolkits'], queryFn: getToolkits,
@@ -375,6 +409,7 @@ export default function Toolkits() {
                       onNewDefinition={handleNewDefinition}
                       onOpenDefinition={id => navigate(`/task-editor/${id}`)}
                       creating={createMutation.isPending}
+                      onEdit={setEditingToolkit}
                     />
                   )
                 })}
@@ -401,6 +436,13 @@ export default function Toolkits() {
             setShowCreationModal(false)
             qc.invalidateQueries({ queryKey: ['toolkits'] })
           }}
+        />
+      )}
+      {editingToolkit && (
+        <EditModal
+          toolkit={editingToolkit}
+          onClose={() => setEditingToolkit(null)}
+          onSaved={() => setEditingToolkit(null)}
         />
       )}
     </div>

@@ -333,9 +333,11 @@ class MicsApiClient:
 
     def get_toolkit_dispatch_class(self, toolkit_id: int) -> dict:
         """GET /api/toolkits/{id}/dispatch-class — returns class_name + is_backend_authored."""
-        r = self.session.get(f"{self.base_url}/api/toolkits/{toolkit_id}/dispatch-class")
-        r.raise_for_status()
-        return r.json()
+        return self._get(f"/api/toolkits/{toolkit_id}/dispatch-class")
+
+    def get_toolkit_dispatch_spec(self, toolkit_id: int, pilot_id: int) -> dict:
+        """GET /api/toolkits/{id}/dispatch-spec — returns hardware, prefs_hardware, flags, params_schema."""
+        return self._get(f"/api/toolkits/{toolkit_id}/dispatch-spec?pilot_id={pilot_id}")
 
     # -----------------------
     # Hardware Lib Endpoints

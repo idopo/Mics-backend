@@ -144,9 +144,10 @@ class OrchestratorStation:
                 for entry in task_files:
                     fname = entry.get("filename")
                     snames = entry.get("state_names")
+                    class_name = entry.get("class_name")
                     if fname and isinstance(snames, list):
                         try:
-                            self.api.upsert_locked_states(pilot_obj["id"], fname, snames)
+                            self.api.upsert_locked_states(pilot_obj["id"], fname, snames, class_name=class_name)
                             logger.info("Locked states upserted for pilot %s: %s (%d states)",
                                         pilot, fname, len(snames))
                         except Exception as ls_err:
@@ -156,13 +157,16 @@ class OrchestratorStation:
                 # Legacy format: reconstruct filename from task_type class name.
                 # NOTE: this produces "AppetitiveTaskReal.py", NOT the actual Pi source filename.
                 # The is_legacy_filename flag is set on PUT to warn UI consumers.
+                # In legacy format, task_type IS the class name.
                 for task in tasks:
                     task_type = task.get("task_type") or task.get("task_name")
                     stage_names = task.get("STAGE_NAMES") or task.get("stage_names")
                     if task_type and isinstance(stage_names, list) and stage_names:
                         legacy_filename = f"{task_type}.py"
                         try:
-                            self.api.upsert_locked_states(pilot_obj["id"], legacy_filename, stage_names)
+                            self.api.upsert_locked_states(
+                                pilot_obj["id"], legacy_filename, stage_names, class_name=task_type
+                            )
                             logger.info("Locked states upserted (legacy) for pilot %s: %s (%d states)",
                                         pilot, legacy_filename, len(stage_names))
                         except Exception as ls_err:

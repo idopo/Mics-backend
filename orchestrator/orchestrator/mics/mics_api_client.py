@@ -322,9 +322,14 @@ class MicsApiClient:
     # Locked States Endpoints
     # -----------------------
 
-    def upsert_locked_states(self, pilot_id: int, task_filename: str, state_names: list[str]):
+    def upsert_locked_states(
+        self, pilot_id: int, task_filename: str, state_names: list[str], class_name: str | None = None
+    ):
         """PUT /api/locked-states/{pilot_id}/{task_filename} — upsert state list for a Pi task file."""
-        self._put(f"/api/locked-states/{pilot_id}/{task_filename}", {"state_names": state_names})
+        payload: dict = {"state_names": state_names}
+        if class_name is not None:
+            payload["class_name"] = class_name
+        self._put(f"/api/locked-states/{pilot_id}/{task_filename}", payload)
 
     # -----------------------
     # Hardware Lib Endpoints

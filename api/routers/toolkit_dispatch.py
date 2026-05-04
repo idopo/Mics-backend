@@ -23,6 +23,79 @@ def get_sa_session():
         db.close()
 
 
+@router.get("/toolkits/{toolkit_id}/dispatch-spec")
+def get_dispatch_spec(
+    toolkit_id: int,
+    pilot_id: int,
+    _: dict = Depends(verify_token),
+    db: OrmSession = Depends(get_sa_session),
+):
+    """Return hardware dict, pin config, flags, and params schema for a backend-authored toolkit.
+
+    Used by the orchestrator to inject spec into the START payload before sending to Pi.
+    """
+    toolkit = db.execute(
+        text(
+            "SELECT id, hardware_module_ids, flags, params_schema, is_backend_authored"
+            " FROM task_toolkits WHERE id = :id"
+        ),
+        {"id": toolkit_id},
+    ).fetchone()
+    if not toolkit:
+        raise HTTPException(status_code=404, detail="Toolkit not found")
+
+    hardware: dict = {}
+    prefs_hardware: dict = {}
+
+    for module_id in (toolkit.hardware_module_ids or []):
+        module = db.execute(
+            text("SELECT id, name, class_name, hardware_lib_id FROM hardware_modules WHERE id = :id"),
+            {"id": module_id},
+        ).fetchone()
+        if not module:
+            continue
+
+        # Two explicit queries — no ORM relationship between HardwareModule and HardwareLib
+        lib = db.execute(
+            text("SELECT active_version_id FROM hardware_libs WHERE id = :id"),
+            {"id": module.hardware_lib_id},
+        ).fetchone()
+        if not lib or not lib.active_version_id:
+            continue
+
+        version = db.execute(
+            text("SELECT source_code FROM hardware_lib_versions WHERE id = :id"),
+            {"id": lib.active_version_id},
+        ).fetchone()
+        if not version:
+            continue
+
+        hardware.setdefault("Modules", {})[module.name] = {
+            module.name: {
+                "class_name": module.class_name,
+                "source_code": version.source_code,
+            }
+        }
+
+        cfg = db.execute(
+            text(
+                "SELECT config FROM pilot_hardware_config"
+                " WHERE pilot_id = :pid AND hardware_module_id = :mid"
+            ),
+            {"pid": pilot_id, "mid": module_id},
+        ).fetchone()
+        if cfg:
+            prefs_hardware.setdefault("Modules", {})[module.name] = cfg.config
+
+    return {
+        "hardware": hardware,
+        "prefs_hardware": prefs_hardware,
+        "flags": toolkit.flags or {},
+        "params_schema": toolkit.params_schema or {},
+        "is_backend_authored": bool(toolkit.is_backend_authored),
+    }
+
+
 @router.get("/toolkits/{toolkit_id}/dispatch-class")
 def get_dispatch_class(
     toolkit_id: int,

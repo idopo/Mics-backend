@@ -14,6 +14,7 @@ from auth import verify_token
 from db import engine
 from models import (
     BackendToolkitCreate,
+    BackendToolkitPatch,
     HardwareModule,
     Pilot,
     TaskDefinition,
@@ -307,7 +308,7 @@ def create_backend_toolkit(payload: BackendToolkitCreate, _: dict = Depends(veri
 
         # Set backend-authored columns via raw SQL (migrated columns)
         db.execute(sa_text(
-            "UPDATE task_toolkits SET hardware_module_ids = :hmids::jsonb, "
+            "UPDATE task_toolkits SET hardware_module_ids = CAST(:hmids AS jsonb), "
             "locked_state_source = :lss, is_backend_authored = TRUE WHERE id = :id"
         ), {
             "hmids": _json.dumps(payload.hardware_module_ids),
@@ -320,6 +321,72 @@ def create_backend_toolkit(payload: BackendToolkitCreate, _: dict = Depends(veri
         return _build_toolkit_row(toolkit, {}, 0)
     finally:
         db.close()
+
+
+@router.patch("/toolkits/{toolkit_id}", status_code=200)
+def patch_backend_toolkit(
+    toolkit_id: int,
+    payload: BackendToolkitPatch,
+    _: dict = Depends(verify_token),
+):
+    """Update hardware_module_ids, flags, and/or params_schema on a backend-authored toolkit."""
+    import hashlib as _hl
+    import json as _json
+
+    _db: OrmSession = _SA_SessionLocal()
+    try:
+        toolkit = _db.query(TaskToolkit).filter(TaskToolkit.id == toolkit_id).one_or_none()
+        if not toolkit:
+            raise HTTPException(404, "Toolkit not found")
+        if not toolkit.is_backend_authored:
+            raise HTTPException(400, "Only backend-authored toolkits can be patched via this endpoint")
+
+        if payload.hardware_module_ids is not None:
+            existing_ids = {
+                row[0] for row in _db.execute(
+                    sa_text("SELECT id FROM hardware_modules WHERE id = ANY(:ids)"),
+                    {"ids": payload.hardware_module_ids},
+                ).fetchall()
+            }
+            missing_hw = [i for i in payload.hardware_module_ids if i not in existing_ids]
+            if missing_hw:
+                raise HTTPException(422, f"Unknown hardware_module_ids: {missing_hw}")
+
+            hw_hash = _hl.sha256(
+                _json.dumps(sorted(payload.hardware_module_ids)).encode()
+            ).hexdigest()
+            _db.execute(sa_text(
+                "UPDATE task_toolkits SET hardware_module_ids = CAST(:hmids AS jsonb), hw_hash = :hw_hash WHERE id = :id"
+            ), {"hmids": _json.dumps(payload.hardware_module_ids), "hw_hash": hw_hash, "id": toolkit_id})
+            toolkit.hw_hash = hw_hash
+
+        if payload.flags is not None:
+            flags_dict = {f.name: {"tracker_type": f.tracker_type, "initial_value": f.initial_value}
+                          for f in payload.flags}
+            toolkit.flags = flags_dict
+
+        if payload.params_schema is not None:
+            params_dict = {p.name: {"type": p.type, "default": p.default} for p in payload.params_schema}
+            toolkit.params_schema = params_dict
+
+        _db.commit()
+        _db.refresh(toolkit)
+
+        origins_rows = (
+            _db.query(ToolkitPilotOrigin, Pilot)
+            .join(Pilot, ToolkitPilotOrigin.pilot_id == Pilot.id)
+            .filter(ToolkitPilotOrigin.toolkit_id == toolkit_id)
+            .all()
+        )
+        origins_map = {toolkit_id: sorted([p.name for _, p in origins_rows])}
+        fda_count = _db.execute(
+            sa_text("SELECT COUNT(id) FROM task_definitions WHERE toolkit_name = :name"),
+            {"name": toolkit.name},
+        ).scalar() or 0
+
+        return _build_toolkit_row(toolkit, origins_map, fda_count)
+    finally:
+        _db.close()
 
 
 # ---------------------------------------------------------------------------

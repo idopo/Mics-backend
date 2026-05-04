@@ -776,6 +776,12 @@ class BackendToolkitCreate(BaseModel):
     params_schema: List[ParamDefinition] = []
 
 
+class BackendToolkitPatch(BaseModel):
+    hardware_module_ids: Optional[List[int]] = None
+    flags: Optional[List[FlagDefinition]] = None
+    params_schema: Optional[List[ParamDefinition]] = None
+
+
 class TaskDefinitionCreate(BaseModel):
     display_name: str
     toolkit_name: str

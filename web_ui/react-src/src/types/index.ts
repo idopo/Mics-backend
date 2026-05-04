@@ -326,6 +326,12 @@ export interface BackendToolkitCreatePayload {
   params_schema: ParamDefinition[]
 }
 
+export interface BackendToolkitPatchPayload {
+  hardware_module_ids?: number[]
+  flags?: FlagDefinition[]
+  params_schema?: ParamDefinition[]
+}
+
 export interface TaskDefinitionFull {
   id: number
   task_name: string

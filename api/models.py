@@ -524,6 +524,8 @@ class TaskDefinition(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     needs_migration = Column(Boolean, nullable=False, server_default="false", default=False)
     toolkit_id = Column(Integer, ForeignKey("task_toolkits.id"), nullable=True)
+    validation_status = Column(String, default="ok")        # "ok" | "broken"
+    validation_message = Column(Text, nullable=True)
 
 
 class TaskInheritance(Base):

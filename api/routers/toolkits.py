@@ -418,7 +418,8 @@ def list_task_definitions(_: dict = Depends(verify_token)):
     db: OrmSession = _SA_SessionLocal()
     try:
         rows = db.execute(sa_text(
-            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, needs_migration, toolkit_id "
+            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, needs_migration, toolkit_id, "
+            "validation_status, validation_message "
             "FROM task_definitions ORDER BY created_at DESC"
         )).fetchall()
         return [
@@ -432,6 +433,8 @@ def list_task_definitions(_: dict = Depends(verify_token)):
                 "created_at": r.created_at,
                 "needs_migration": r.needs_migration,
                 "toolkit_id": r.toolkit_id,
+                "validation_status": r.validation_status or "ok",
+                "validation_message": r.validation_message,
             }
             for r in rows
         ]
@@ -515,7 +518,8 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
     db: OrmSession = _SA_SessionLocal()
     try:
         row = db.execute(sa_text(
-            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, toolkit_id "
+            "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, toolkit_id, "
+            "validation_status, validation_message "
             "FROM task_definitions WHERE id = :id"
         ), {"id": defn_id}).fetchone()
         if not row:
@@ -529,6 +533,8 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
             "file_hash": row.file_hash,
             "created_at": row.created_at,
             "toolkit_id": row.toolkit_id,
+            "validation_status": row.validation_status or "ok",
+            "validation_message": row.validation_message,
         }
     finally:
         db.close()

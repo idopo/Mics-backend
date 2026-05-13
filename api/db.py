@@ -170,3 +170,16 @@ def run_toolkit_backend_authored_migrations(eng):
         conn.execute(text(
             "ALTER TABLE available_locked_states ADD COLUMN IF NOT EXISTS class_name VARCHAR"
         ))
+
+
+def run_task_definition_validation_migrations(eng):
+    """Phase 12-02: add validation_status and validation_message to task_definitions.
+    Safe to run repeatedly (IF NOT EXISTS)."""
+    with eng.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE task_definitions ADD COLUMN IF NOT EXISTS validation_status VARCHAR DEFAULT 'ok'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE task_definitions ADD COLUMN IF NOT EXISTS validation_message TEXT"
+        ))
+        conn.commit()

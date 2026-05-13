@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from sqlalchemy import func, text as sa_text
-from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations, run_task_definition_toolkit_id_migration, run_hw_lib_pin_migrations, run_toolkit_backend_authored_migrations
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations, run_task_definition_toolkit_id_migration, run_hw_lib_pin_migrations, run_toolkit_backend_authored_migrations, run_task_definition_validation_migrations
 from models import (
     Subject,
     SubjectCreate,
@@ -141,6 +141,7 @@ def startup():
     run_canonical_migrations(engine)
     run_hw_lib_pin_migrations(engine)
     run_toolkit_backend_authored_migrations(engine)
+    run_task_definition_validation_migrations(engine)
 
 
 @app.get("/health")

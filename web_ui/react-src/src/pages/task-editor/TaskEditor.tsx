@@ -128,6 +128,8 @@ export default function TaskEditor() {
   const [savedMsg, setSavedMsg] = useState('')
   const [versionModalLib, setVersionModalLib] = useState<HwLibPin | null>(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [addingState, setAddingState] = useState(false)
+  const [newStateName, setNewStateName] = useState('')
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -265,6 +267,23 @@ export default function TaskEditor() {
     setCanvasInited(false)
   }
 
+  const addState = () => {
+    const name = newStateName.trim()
+    if (!name || !fdaJson) return
+    if (fdaJson.states[name]) { setNewStateName(''); setAddingState(false); return }
+    const existingCount = Object.keys(fdaJson.states).length
+    setFdaJson(prev => prev ? { ...prev, states: { ...prev.states, [name]: {} } } : prev)
+    setNodes(prev => [...prev, {
+      id: name,
+      type: 'stateNode',
+      position: { x: (existingCount % 4) * 270, y: Math.floor(existingCount / 4) * 170 },
+      data: { name, state: {}, isInitial: false, toolkit },
+    }])
+    setNewStateName('')
+    setAddingState(false)
+    setSelectedState(name)
+  }
+
   const PANEL = 'var(--panel)'
   const BORDER = 'var(--border)'
   const MUTED = 'var(--muted)'
@@ -380,7 +399,43 @@ export default function TaskEditor() {
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Canvas */}
-        <div style={{ flex: 1, background: '#0d1117', position: 'relative' }}>
+        <div style={{ flex: 1, background: '#0d1117', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+          {fdaJson && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '6px 12px', background: 'rgba(255,255,255,0.03)',
+              borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
+            }}>
+              {addingState ? (
+                <>
+                  <input
+                    autoFocus
+                    value={newStateName}
+                    onChange={e => setNewStateName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addState(); if (e.key === 'Escape') { setAddingState(false); setNewStateName('') } }}
+                    placeholder="State name…"
+                    style={{
+                      fontFamily: "'IBM Plex Mono', monospace", fontSize: '12px',
+                      background: 'var(--input-bg)', border: `1px solid ${BORDER}`,
+                      borderRadius: '4px', color: 'var(--text)', padding: '3px 8px', width: '180px',
+                    }}
+                  />
+                  <button className="button-primary" style={{ fontSize: '11px', padding: '3px 10px' }} onClick={addState}>Add</button>
+                  <button className="button-secondary" style={{ fontSize: '11px', padding: '3px 10px' }} onClick={() => { setAddingState(false); setNewStateName('') }}>Cancel</button>
+                </>
+              ) : (
+                <button
+                  className="button-secondary"
+                  style={{ fontSize: '11px', padding: '3px 10px' }}
+                  onClick={() => setAddingState(true)}
+                  title="Add a new custom state to the FDA"
+                >
+                  + Add State
+                </button>
+              )}
+            </div>
+          )}
+          <div style={{ flex: 1, position: 'relative' }}>
           {isLoading ? (
             <div style={{ color: MUTED, padding: '2rem', fontSize: '14px' }}>Loading…</div>
           ) : !fdaJson ? (
@@ -433,6 +488,7 @@ export default function TaskEditor() {
               <MiniMap nodeColor={() => '#2563eb'} style={{ background: '#1e2130' }} />
             </ReactFlow>
           )}
+          </div>
         </div>
 
         {/* Right panel */}

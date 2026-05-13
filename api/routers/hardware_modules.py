@@ -46,22 +46,29 @@ def _validate_class_name(session, hardware_lib_id: int, class_name: str) -> None
         )
 
 
+def _module_row(module: HardwareModule, lib: HardwareLib | None) -> dict:
+    return {
+        "id": module.id,
+        "name": module.name,
+        "display_name": module.display_name,
+        "hardware_lib_id": module.hardware_lib_id,
+        "class_name": module.class_name,
+        "description": module.description,
+        "created_at": module.created_at,
+        "lib_filename": lib.filename if lib else None,
+    }
+
+
 @router.get("/api/hardware-modules")
 def list_hardware_modules(token=Depends(verify_token)):
     with _SA_SessionLocal() as session:
-        rows = session.query(HardwareModule).order_by(HardwareModule.id).all()
-        return [
-            {
-                "id": r.id,
-                "name": r.name,
-                "display_name": r.display_name,
-                "hardware_lib_id": r.hardware_lib_id,
-                "class_name": r.class_name,
-                "description": r.description,
-                "created_at": r.created_at,
-            }
-            for r in rows
-        ]
+        rows = (
+            session.query(HardwareModule, HardwareLib)
+            .join(HardwareLib, HardwareModule.hardware_lib_id == HardwareLib.id)
+            .order_by(HardwareModule.id)
+            .all()
+        )
+        return [_module_row(m, lib) for m, lib in rows]
 
 
 @router.post("/api/hardware-modules")
@@ -90,15 +97,8 @@ def get_hardware_module(module_id: int, token=Depends(verify_token)):
         module = session.get(HardwareModule, module_id)
         if not module:
             raise HTTPException(status_code=404, detail="not found")
-        return {
-            "id": module.id,
-            "name": module.name,
-            "display_name": module.display_name,
-            "hardware_lib_id": module.hardware_lib_id,
-            "class_name": module.class_name,
-            "description": module.description,
-            "created_at": module.created_at,
-        }
+        lib = session.get(HardwareLib, module.hardware_lib_id)
+        return _module_row(module, lib)
 
 
 @router.put("/api/hardware-modules/{module_id}")

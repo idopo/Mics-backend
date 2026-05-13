@@ -403,6 +403,7 @@ export interface HardwareModule {
   class_name: string
   description: string | null
   created_at: string
+  lib_filename: string | null
 }
 
 export interface HardwareModuleMethods {

@@ -11,20 +11,20 @@ const METHOD_CACHE: Record<number, AstMethod[]> = {}
 
 const TYPE_COLORS: Record<string, string> = {
   hardware: '#3b82f6',
-  flag: '#f59e0b',
-  timer: '#14b8a6',
-  method: '#a78bfa',
-  if: '#22c55e',
-  special: '#94a3b8',
+  trial:    '#0ea5e9',   // sky blue — distinct from flag amber
+  flag:     '#f59e0b',
+  method:   '#a78bfa',
+  if:       '#22c55e',
+  special:  '#94a3b8',
 }
 
 const TYPE_LABELS: Record<string, string> = {
   hardware: 'HARDWARE',
-  flag: 'FLAG',
-  timer: 'TIMER',
-  method: 'METHOD',
-  if: 'IF',
-  special: 'SPECIAL',
+  trial:    'TRIAL CTR',
+  flag:     'FLAG',
+  method:   'METHOD',
+  if:       'IF',
+  special:  'SPECIAL',
 }
 
 // ── Tracker method tables ────────────────────────────────────────────────────
@@ -39,40 +39,36 @@ const TRACKER_METHODS: Record<string, TrackerMethod[]> = {
   Counter_Tracker: [
     { name: 'increment', hasArg: false, description: 'Add 1 to this counter' },
     { name: 'decrement', hasArg: false, description: 'Subtract 1 from this counter' },
-    { name: 'reset', hasArg: false, description: 'Reset to its starting value' },
-    { name: 'set', hasArg: true, description: 'Set to an exact value' },
+    { name: 'reset',     hasArg: false, description: 'Reset to its starting value' },
+    { name: 'set',       hasArg: true,  description: 'Set to an exact value' },
   ],
   Boolean_Tracker: [
-    { name: 'set', hasArg: true, description: 'Set to an exact value' },
+    { name: 'set',    hasArg: true,  description: 'Set to an exact value' },
     { name: 'toggle', hasArg: false, description: 'Flip between true and false' },
   ],
   Trial_Tracker: [
-    { name: 'increment', hasArg: false, description: 'Add 1 (dispatches INC_TRIAL_COUNTER to orchestrator)' },
-    { name: 'set', hasArg: true, description: 'Set to an exact value' },
+    { name: 'increment', hasArg: false, description: 'Increment trial count (dispatches INC_TRIAL_COUNTER to orchestrator)' },
+    { name: 'set',       hasArg: true,  description: 'Set trial count to an exact value' },
   ],
   Tracker: [
-    { name: 'increment', hasArg: false, description: 'Add 1 to this counter' },
-    { name: 'set', hasArg: true, description: 'Set to an exact value' },
+    { name: 'increment', hasArg: false, description: 'Add 1 to this tracker' },
+    { name: 'set',       hasArg: true,  description: 'Set to any value' },
   ],
 }
 
-const TIMER_METHOD_DESC: Record<string, string> = {
-  start: 'Start counting down with the given duration',
-  stop: 'Stop the timer (does not reset)',
-  reset: 'Reset the timer to zero',
-  set: 'Set the duration without starting',
-}
+const TIMER_METHODS: TrackerMethod[] = [
+  { name: 'start', hasArg: true,  description: 'Start counting down with the given duration' },
+  { name: 'stop',  hasArg: false, description: 'Stop the timer (does not reset)' },
+  { name: 'reset', hasArg: false, description: 'Reset the timer to zero' },
+  { name: 'set',   hasArg: true,  description: 'Set the duration without starting' },
+]
 
 function getTrackerMethods(trackerType: string): TrackerMethod[] {
   return TRACKER_METHODS[trackerType] ?? TRACKER_METHODS['Tracker']
 }
 
 function isTimerModule(mod: HardwareModule): boolean {
-  // Primary signal: lib filename "timer.py" is not available here,
-  // but class_name is a reasonable heuristic for now.
-  // The plan says: class_name in ["Timer", "CountdownTimer"] OR lib filename == "timer.py"
-  // Since we only have class_name here, use that as the signal.
-  return mod.class_name === 'Timer' || mod.class_name === 'CountdownTimer'
+  return mod.lib_filename === 'timer.py'
 }
 
 // ── Style helpers ────────────────────────────────────────────────────────────
@@ -136,27 +132,30 @@ interface Props {
 export default function ActionEditor({ action, toolkit, hwModules, onChange }: Props) {
   const isBackendAuthored = toolkit?.is_backend_authored ?? false
 
-  // Hardware module state (for backend-authored toolkits)
   const [methods, setMethods] = useState<AstMethod[]>([])
   const [methodsLoading, setMethodsLoading] = useState(false)
 
   const flagKeys = Object.keys(toolkit?.flags ?? {})
+  // Split flags: trial counter flags vs regular flags
+  const trialFlagKeys  = flagKeys.filter(k => toolkit?.flags?.[k]?.tracker_type === 'Trial_Tracker')
+  const regularFlagKeys = flagKeys.filter(k => toolkit?.flags?.[k]?.tracker_type !== 'Trial_Tracker')
   const callableMethods = toolkit?.callable_methods ?? []
 
-  // Filter toolkit modules (those in toolkit.hardware_module_ids)
   const toolkitModules = hwModules.filter(m => toolkit?.hardware_module_ids?.includes(m.id))
-  const timerModules = toolkitModules.filter(isTimerModule)
-  const hwOnlyModules = toolkitModules.filter(m => !isTimerModule(m))
-
-  // Legacy path: semantic hardware keys
-  const semanticKeys = Object.keys(toolkit?.semantic_hardware ?? {})
 
   const update = (patch: Partial<FdaAction>) => onChange({ ...action, ...patch })
 
-  // Fetch methods for the currently selected hardware module
-  function selectedModule(ref: string): HardwareModule | undefined {
-    return toolkitModules.find(m => m.name === ref)
+  // ── Normalise stored FDA types for display ───────────────────────────────
+  // type:timer in FDA → show as hardware (timer is a hw module sub-type)
+  // type:flag with Trial_Tracker ref → show as trial
+  function effectiveUiType(): string {
+    if (action.type === 'timer') return 'hardware'
+    if (action.type === 'flag' && trialFlagKeys.includes(action.ref ?? '')) return 'trial'
+    return action.type
   }
+  const uiType = effectiveUiType()
+
+  // ── Method fetching ──────────────────────────────────────────────────────
 
   async function fetchMethods(moduleId: number): Promise<void> {
     if (METHOD_CACHE[moduleId]) {
@@ -166,7 +165,6 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
     setMethodsLoading(true)
     try {
       const res = await getHardwareModuleMethods(moduleId)
-      // Filter out __init__ and private methods
       const pub = res.methods.filter(m => !m.name.startsWith('_'))
       METHOD_CACHE[moduleId] = pub
       setMethods(pub)
@@ -177,69 +175,91 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
     }
   }
 
-  // Load methods when a hardware action's ref changes or component mounts with a ref
+  function selectedHwModule(): HardwareModule | undefined {
+    return toolkitModules.find(m => m.name === (action.ref ?? ''))
+  }
+
+  // Re-fetch when ref or hwModules change (hwModules may not be loaded on first render)
   useEffect(() => {
-    if (action.type !== 'hardware' || !isBackendAuthored) return
-    const mod = selectedModule(action.ref ?? '')
-    if (mod) fetchMethods(mod.id)
+    if ((action.type !== 'hardware' && action.type !== 'timer') || !isBackendAuthored) return
+    const mod = selectedHwModule()
+    if (mod && !isTimerModule(mod)) fetchMethods(mod.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [action.type, action.ref, isBackendAuthored])
+  }, [action.type, action.ref, isBackendAuthored, hwModules])
 
-  // Type change handler
-  function handleTypeChange(t: string) {
-    const newType = t as FdaAction['type']
-    if (newType === 'hardware') {
-      const firstMod = isBackendAuthored ? (hwOnlyModules[0]?.name ?? '') : (semanticKeys[0] ?? '')
-      onChange({ type: newType, ref: firstMod, method: '', args: [] })
-    } else if (newType === 'flag') {
-      const firstFlag = flagKeys[0] ?? ''
-      const trackerType = toolkit?.flags?.[firstFlag]?.tracker_type ?? 'Counter_Tracker'
-      const firstMethod = getTrackerMethods(trackerType)[0]?.name ?? 'increment'
-      onChange({ type: newType, ref: firstFlag, method: firstMethod, args: [] })
-    } else if (newType === 'timer') {
-      const firstTimer = timerModules[0]?.name ?? ''
-      onChange({ type: newType, ref: firstTimer, method: 'start', args: [] })
-    } else if (newType === 'if') {
-      onChange({ type: newType, condition: undefined, then: [], else: undefined })
-    } else if (newType === 'method') {
-      onChange({ type: newType, ref: callableMethods[0] ?? '', args: [] })
-    } else {
-      onChange({ type: newType, ref: '', args: [] })
-    }
-  }
-
-  // Handle module selection change for hardware actions
-  function handleModuleChange(modName: string) {
-    const mod = toolkitModules.find(m => m.name === modName)
-    update({ ref: modName, method: '', args: [] })
-    setMethods([])
-    if (mod) fetchMethods(mod.id)
-  }
-
-  // Handle flag change — auto-update method to first valid for tracker type
-  function handleFlagChange(flagName: string) {
-    const trackerType = toolkit?.flags?.[flagName]?.tracker_type ?? 'Counter_Tracker'
-    const firstMethod = getTrackerMethods(trackerType)[0]?.name ?? 'increment'
-    update({ ref: flagName, method: firstMethod, args: [] })
-  }
-
-  // Current method args from AST (for hardware actions)
-  function currentMethodArgs(): AstMethod['args'] {
-    if (!methods.length || !action.method) return []
-    const m = methods.find(m => m.name === action.method)
-    return m?.args ?? []
-  }
-
-  // Auto-select first method when methods load
+  // Auto-select first method after methods load
   useEffect(() => {
-    if (action.type !== 'hardware' || !isBackendAuthored || !methods.length) return
+    if ((action.type !== 'hardware' && action.type !== 'timer') || !isBackendAuthored || !methods.length) return
     if (!action.method || !methods.find(m => m.name === action.method)) {
       update({ method: methods[0]?.name ?? '', args: [] })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [methods])
 
-  // ── Legacy special action read-only chip ──────────────────────────────────
+  // ── Type change handler ──────────────────────────────────────────────────
+
+  function handleTypeChange(t: string) {
+    if (t === 'hardware') {
+      const firstMod = isBackendAuthored ? (toolkitModules[0]?.name ?? '') : (Object.keys(toolkit?.semantic_hardware ?? {})[0] ?? '')
+      const isTimer = toolkitModules[0] ? isTimerModule(toolkitModules[0]) : false
+      onChange({ type: isTimer ? 'timer' : 'hardware', ref: firstMod, method: isTimer ? 'start' : '', args: [] })
+    } else if (t === 'trial') {
+      onChange({ type: 'flag', ref: trialFlagKeys[0] ?? '', method: 'increment', args: [] })
+    } else if (t === 'flag') {
+      const firstFlag = regularFlagKeys[0] ?? ''
+      const trackerType = toolkit?.flags?.[firstFlag]?.tracker_type ?? 'Counter_Tracker'
+      const firstMethod = getTrackerMethods(trackerType)[0]?.name ?? 'increment'
+      onChange({ type: 'flag', ref: firstFlag, method: firstMethod, args: [] })
+    } else if (t === 'if') {
+      onChange({ type: 'if', condition: undefined, then: [], else: undefined })
+    } else if (t === 'method') {
+      onChange({ type: 'method', ref: callableMethods[0] ?? '', args: [] })
+    } else {
+      onChange({ type: t as FdaAction['type'], ref: '', args: [] })
+    }
+  }
+
+  function handleModuleChange(modName: string) {
+    const mod = toolkitModules.find(m => m.name === modName)
+    const isTimer = mod ? isTimerModule(mod) : false
+    update({ ref: modName, type: isTimer ? 'timer' : 'hardware', method: isTimer ? 'start' : '', args: [] })
+    setMethods([])
+    if (mod && !isTimer) fetchMethods(mod.id)
+  }
+
+  function handleFlagChange(flagName: string) {
+    const trackerType = toolkit?.flags?.[flagName]?.tracker_type ?? 'Counter_Tracker'
+    const firstMethod = getTrackerMethods(trackerType)[0]?.name ?? 'increment'
+    update({ ref: flagName, method: firstMethod, args: [] })
+  }
+
+  function currentMethodArgs(): AstMethod['args'] {
+    if (!methods.length || !action.method) return []
+    return methods.find(m => m.name === action.method)?.args ?? []
+  }
+
+  // Legacy semantic hardware keys
+  const semanticKeys = Object.keys(toolkit?.semantic_hardware ?? {})
+
+  // Determine if the current hardware module is a timer
+  const currentMod = selectedHwModule()
+  const currentIsTimer = currentMod ? isTimerModule(currentMod) : (action.type === 'timer')
+
+  const argList = currentMethodArgs()
+
+  // Current timer method meta
+  const timerMethodDef = TIMER_METHODS.find(m => m.name === (action.method ?? 'start'))
+  const timerNeedsArg = timerMethodDef?.hasArg ?? false
+
+  // Current flag method meta (for regular flags)
+  const flagTrackerType = action.type === 'flag'
+    ? (toolkit?.flags?.[action.ref ?? '']?.tracker_type ?? 'Counter_Tracker')
+    : 'Counter_Tracker'
+  const flagMethodDefs = getTrackerMethods(flagTrackerType)
+  const currentFlagMethodDef = flagMethodDefs.find(m => m.name === action.method)
+  const flagMethodNeedsArg = currentFlagMethodDef?.hasArg ?? false
+
+  // ── Legacy special action ────────────────────────────────────────────────
   if (action.type === 'special') {
     return (
       <div style={{ ...cardStyle('special'), flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
@@ -251,147 +271,99 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
     )
   }
 
-  const flagTrackerType = action.type === 'flag' && action.ref
-    ? (toolkit?.flags?.[action.ref]?.tracker_type ?? 'Counter_Tracker')
-    : 'Counter_Tracker'
-  const flagMethodDefs = getTrackerMethods(flagTrackerType)
-  const currentFlagMethodDef = flagMethodDefs.find(m => m.name === action.method)
-  const flagMethodNeedsArg = currentFlagMethodDef?.hasArg ?? false
-
-  const argList = currentMethodArgs()
-
   return (
-    <div style={cardStyle(action.type)}>
-      {/* Header row: colored chip + type selector */}
+    <div style={cardStyle(uiType)}>
+      {/* Header: colored chip + type selector */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span
-          style={typeChipStyle(action.type)}
-          title="What kind of action executes when this state is entered?"
-        >
-          {TYPE_LABELS[action.type] ?? action.type.toUpperCase()}
+        <span style={typeChipStyle(uiType)} title="What kind of action executes when this state is entered?">
+          {TYPE_LABELS[uiType] ?? uiType.toUpperCase()}
         </span>
         <select
-          value={action.type}
+          value={uiType}
           onChange={e => handleTypeChange(e.target.value)}
           style={{ fontSize: '11px', flex: 1 }}
           title="What kind of action executes when this state is entered?"
         >
           <option value="hardware">hardware</option>
+          <option value="trial">trial counter</option>
           <option value="flag">flag</option>
-          <option value="timer">timer</option>
           <option value="method">method</option>
           <option value="if">if</option>
-          {/* Render special option only if current action is special (legacy read-only handled above) */}
         </select>
       </div>
 
-      {/* ── Hardware action ─────────────────────────────────────────────── */}
-      {action.type === 'hardware' && (
+      {/* ── Hardware action (includes timer modules) ─────────────────────── */}
+      {(action.type === 'hardware' || action.type === 'timer') && (
         <>
           {isBackendAuthored ? (
-            /* Backend-authored: module picker from toolkit.hardware_module_ids */
             <div>
-              <label
-                style={labelStyle}
-                title="Which physical device should respond? Devices come from the toolkit's hardware module list."
-              >
-                Device ⓘ
-              </label>
-              {hwOnlyModules.length > 0 ? (
+              <label style={labelStyle} title="Which physical device should respond?">Device ⓘ</label>
+              {toolkitModules.length > 0 ? (
                 <select
                   value={action.ref ?? ''}
                   onChange={e => handleModuleChange(e.target.value)}
                   style={{ width: '100%' }}
                 >
-                  {!hwOnlyModules.find(m => m.name === action.ref) && action.ref && (
+                  {!toolkitModules.find(m => m.name === action.ref) && action.ref && (
                     <option value={action.ref}>{action.ref}</option>
                   )}
-                  {hwOnlyModules.map(m => (
-                    <option key={m.id} value={m.name}>{m.display_name ?? m.name}</option>
+                  {toolkitModules.map(m => (
+                    <option key={m.id} value={m.name}>
+                      {m.display_name ?? m.name}{m.lib_filename === 'timer.py' ? ' (timer)' : ''}
+                    </option>
                   ))}
                 </select>
               ) : (
-                <input
-                  type="text"
-                  value={action.ref ?? ''}
-                  onChange={e => update({ ref: e.target.value })}
-                  placeholder="module name"
-                  style={{ width: '100%' }}
-                />
+                <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} placeholder="module name" style={{ width: '100%' }} />
               )}
             </div>
           ) : (
-            /* Legacy: semantic_hardware dropdown */
             <div>
-              <label
-                style={labelStyle}
-                title="Which physical device should respond? Devices come from the toolkit's semantic hardware list."
-              >
-                Hardware ref ⓘ
-              </label>
+              <label style={labelStyle} title="Hardware ref from toolkit semantic_hardware.">Hardware ref ⓘ</label>
               {semanticKeys.length > 0 ? (
-                <select
-                  value={action.ref ?? ''}
-                  onChange={e => update({ ref: e.target.value })}
-                  style={{ width: '100%' }}
-                >
-                  {!semanticKeys.includes(action.ref ?? '') && (
-                    <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>
-                  )}
+                <select value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} style={{ width: '100%' }}>
+                  {!semanticKeys.includes(action.ref ?? '') && <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>}
                   {semanticKeys.map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
               ) : (
-                <input
-                  type="text"
-                  value={action.ref ?? ''}
-                  onChange={e => update({ ref: e.target.value })}
-                  style={{ width: '100%' }}
-                />
+                <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} style={{ width: '100%' }} />
               )}
             </div>
           )}
 
+          {/* Method dropdown */}
           <div>
-            <label
-              style={labelStyle}
-              title="What the device should do. Options come from the hardware library's Python class methods."
-            >
-              Action ⓘ
-            </label>
-            {isBackendAuthored ? (
+            <label style={labelStyle} title="What the device should do.">Action ⓘ</label>
+            {currentIsTimer ? (
+              /* Timer: fixed method list */
+              <select value={action.method ?? 'start'} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
+                {TIMER_METHODS.map(m => <option key={m.name} value={m.name} title={m.description}>{m.name}</option>)}
+              </select>
+            ) : isBackendAuthored ? (
               methodsLoading ? (
-                <select disabled style={{ width: '100%' }}>
-                  <option>Loading…</option>
-                </select>
+                <select disabled style={{ width: '100%' }}><option>Loading…</option></select>
               ) : methods.length > 0 ? (
-                <select
-                  value={action.method ?? ''}
-                  onChange={e => update({ method: e.target.value, args: [] })}
-                  style={{ width: '100%' }}
-                >
+                <select value={action.method ?? ''} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
                   {methods.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
                 </select>
               ) : (
-                <input
-                  type="text"
-                  value={action.method ?? ''}
-                  onChange={e => update({ method: e.target.value })}
-                  placeholder="method name"
-                  style={{ width: '100%' }}
-                />
+                <input type="text" value={action.method ?? ''} onChange={e => update({ method: e.target.value })} placeholder="method name" style={{ width: '100%' }} />
               )
             ) : (
-              <input
-                type="text"
-                value={action.method ?? ''}
-                onChange={e => update({ method: e.target.value })}
-                style={{ width: '100%' }}
-              />
+              <input type="text" value={action.method ?? ''} onChange={e => update({ method: e.target.value })} style={{ width: '100%' }} />
             )}
           </div>
 
-          {/* Args from AST (backend-authored only) */}
-          {isBackendAuthored && argList.map((arg, i) => (
+          {/* Timer duration arg */}
+          {currentIsTimer && timerNeedsArg && (
+            <div>
+              <label style={labelStyle}>Duration</label>
+              <ArgInput value={(action.args ?? [])[0] ?? 500} toolkit={toolkit} annotation="float" onChange={v => update({ args: [v] })} />
+            </div>
+          )}
+
+          {/* AST args (non-timer backend-authored) */}
+          {isBackendAuthored && !currentIsTimer && argList.map((arg, i) => (
             <div key={i}>
               <label
                 style={labelStyle}
@@ -412,155 +384,74 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
             </div>
           ))}
 
-          {/* Legacy path: single arg input */}
-          {!isBackendAuthored && (
+          {/* Legacy: single arg */}
+          {!isBackendAuthored && !currentIsTimer && (
             <div>
               <label style={labelStyle}>Arg</label>
-              <ArgInput
-                value={(action.args ?? [])[0] ?? 1}
-                toolkit={toolkit}
-                annotation={null}
-                onChange={v => update({ args: [v] })}
-              />
+              <ArgInput value={(action.args ?? [])[0] ?? 1} toolkit={toolkit} annotation={null} onChange={v => update({ args: [v] })} />
             </div>
           )}
         </>
       )}
 
-      {/* ── Flag action ─────────────────────────────────────────────────── */}
-      {action.type === 'flag' && (
+      {/* ── Trial counter action ─────────────────────────────────────────── */}
+      {action.type === 'flag' && uiType === 'trial' && (
         <>
           <div>
-            <label
-              style={labelStyle}
-              title="Which counter, boolean, or trial marker to update?"
-            >
-              Flag ⓘ
+            <label style={labelStyle} title="Which Trial_Tracker flag to update? increment dispatches INC_TRIAL_COUNTER to the orchestrator.">
+              Trial counter ⓘ
             </label>
-            {flagKeys.length > 0 ? (
-              <select
-                value={action.ref ?? ''}
-                onChange={e => handleFlagChange(e.target.value)}
-                style={{ width: '100%' }}
-              >
-                {!flagKeys.includes(action.ref ?? '') && (
-                  <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>
-                )}
-                {flagKeys.map(k => (
-                  <option key={k} value={k}>
-                    {k} ({toolkit?.flags?.[k]?.tracker_type ?? 'Tracker'})
-                  </option>
-                ))}
+            {trialFlagKeys.length > 0 ? (
+              <select value={action.ref ?? ''} onChange={e => update({ ref: e.target.value, method: 'increment', args: [] })} style={{ width: '100%' }}>
+                {trialFlagKeys.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             ) : (
-              <input
-                type="text"
-                value={action.ref ?? ''}
-                onChange={e => update({ ref: e.target.value })}
-                style={{ width: '100%' }}
-              />
+              <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} placeholder="trial flag name" style={{ width: '100%' }} />
             )}
           </div>
-
           <div>
-            <label style={labelStyle} title={currentFlagMethodDef?.description ?? ''}>
-              Operation ⓘ
-            </label>
-            <select
-              value={action.method ?? flagMethodDefs[0]?.name ?? ''}
-              onChange={e => update({ method: e.target.value, args: [] })}
-              style={{ width: '100%' }}
-            >
-              {flagMethodDefs.map(m => (
-                <option key={m.name} value={m.name} title={m.description}>
-                  {m.name}
-                </option>
+            <label style={labelStyle}>Operation</label>
+            <select value={action.method ?? 'increment'} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
+              {TRACKER_METHODS['Trial_Tracker'].map(m => (
+                <option key={m.name} value={m.name} title={m.description}>{m.name}</option>
               ))}
             </select>
           </div>
+          {action.method === 'set' && (
+            <div>
+              <label style={labelStyle}>Value</label>
+              <ArgInput value={(action.args ?? [])[0] ?? 0} toolkit={toolkit} annotation="int" onChange={v => update({ args: [v] })} />
+            </div>
+          )}
+        </>
+      )}
 
+      {/* ── Flag action (Counter / Boolean / base Tracker — not Trial) ────── */}
+      {action.type === 'flag' && uiType === 'flag' && (
+        <>
+          <div>
+            <label style={labelStyle} title="Which counter, boolean, or value tracker to update?">Flag ⓘ</label>
+            {regularFlagKeys.length > 0 ? (
+              <select value={action.ref ?? ''} onChange={e => handleFlagChange(e.target.value)} style={{ width: '100%' }}>
+                {!regularFlagKeys.includes(action.ref ?? '') && <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>}
+                {regularFlagKeys.map(k => (
+                  <option key={k} value={k}>{k} ({toolkit?.flags?.[k]?.tracker_type ?? 'Tracker'})</option>
+                ))}
+              </select>
+            ) : (
+              <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} style={{ width: '100%' }} />
+            )}
+          </div>
+          <div>
+            <label style={labelStyle} title={currentFlagMethodDef?.description ?? ''}>Operation ⓘ</label>
+            <select value={action.method ?? flagMethodDefs[0]?.name ?? ''} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
+              {flagMethodDefs.map(m => <option key={m.name} value={m.name} title={m.description}>{m.name}</option>)}
+            </select>
+          </div>
           {flagMethodNeedsArg && (
             <div>
               <label style={labelStyle}>Value</label>
-              <ArgInput
-                value={(action.args ?? [])[0] ?? 0}
-                toolkit={toolkit}
-                annotation={null}
-                onChange={v => update({ args: [v] })}
-              />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── Timer action ─────────────────────────────────────────────────── */}
-      {action.type === 'timer' && (
-        <>
-          <div>
-            <label style={labelStyle} title="Which timer device to control?">
-              Timer ⓘ
-            </label>
-            {timerModules.length > 0 ? (
-              <select
-                value={action.ref ?? ''}
-                onChange={e => update({ ref: e.target.value })}
-                style={{ width: '100%' }}
-              >
-                {!timerModules.find(m => m.name === action.ref) && action.ref && (
-                  <option value={action.ref}>{action.ref}</option>
-                )}
-                {timerModules.map(m => (
-                  <option key={m.id} value={m.name}>{m.display_name ?? m.name}</option>
-                ))}
-              </select>
-            ) : toolkitModules.length > 0 ? (
-              <select
-                value={action.ref ?? ''}
-                onChange={e => update({ ref: e.target.value })}
-                style={{ width: '100%' }}
-              >
-                {toolkitModules.map(m => (
-                  <option key={m.id} value={m.name}>{m.display_name ?? m.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={action.ref ?? ''}
-                onChange={e => update({ ref: e.target.value })}
-                placeholder="timer module name"
-                style={{ width: '100%' }}
-              />
-            )}
-          </div>
-
-          <div>
-            <label
-              style={labelStyle}
-              title={TIMER_METHOD_DESC[action.method ?? ''] ?? 'Timer operation'}
-            >
-              Operation ⓘ
-            </label>
-            <select
-              value={action.method ?? 'start'}
-              onChange={e => update({ method: e.target.value, args: [] })}
-              style={{ width: '100%' }}
-            >
-              {Object.entries(TIMER_METHOD_DESC).map(([m, desc]) => (
-                <option key={m} value={m} title={desc}>{m}</option>
-              ))}
-            </select>
-          </div>
-
-          {(action.method === 'start' || action.method === 'set' || !action.method) && (
-            <div>
-              <label style={labelStyle}>Duration</label>
-              <ArgInput
-                value={(action.args ?? [])[0] ?? 500}
-                toolkit={toolkit}
-                annotation="float"
-                onChange={v => update({ args: [v] })}
-              />
+              <ArgInput value={(action.args ?? [])[0] ?? 0} toolkit={toolkit} annotation={null} onChange={v => update({ args: [v] })} />
             </div>
           )}
         </>
@@ -572,39 +463,22 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
           <div>
             <label style={labelStyle}>Method name</label>
             {callableMethods.length > 0 ? (
-              <select
-                value={action.ref ?? ''}
-                onChange={e => update({ ref: e.target.value })}
-                style={{ width: '100%' }}
-              >
-                {!callableMethods.includes(action.ref ?? '') && (
-                  <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>
-                )}
+              <select value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} style={{ width: '100%' }}>
+                {!callableMethods.includes(action.ref ?? '') && <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>}
                 {callableMethods.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             ) : (
-              <input
-                type="text"
-                value={action.ref ?? ''}
-                onChange={e => update({ ref: e.target.value })}
-                placeholder="method name"
-                style={{ width: '100%' }}
-              />
+              <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} placeholder="method name" style={{ width: '100%' }} />
             )}
           </div>
           {(action.args ?? []).map((arg, i) => (
             <div key={i}>
               <label style={labelStyle}>Arg {i + 1}</label>
-              <ArgInput
-                value={arg}
-                toolkit={toolkit}
-                annotation={null}
-                onChange={v => {
-                  const newArgs = [...(action.args ?? [])]
-                  newArgs[i] = v
-                  update({ args: newArgs })
-                }}
-              />
+              <ArgInput value={arg} toolkit={toolkit} annotation={null} onChange={v => {
+                const newArgs = [...(action.args ?? [])]
+                newArgs[i] = v
+                update({ args: newArgs })
+              }} />
             </div>
           ))}
         </>
@@ -612,12 +486,7 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
 
       {/* ── If action ─────────────────────────────────────────────────────── */}
       {action.type === 'if' && (
-        <IfActionEditor
-          action={action}
-          toolkit={toolkit}
-          hwModules={hwModules}
-          onChange={onChange}
-        />
+        <IfActionEditor action={action} toolkit={toolkit} hwModules={hwModules} onChange={onChange} />
       )}
     </div>
   )

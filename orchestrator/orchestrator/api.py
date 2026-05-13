@@ -91,6 +91,25 @@ def create_api(state: OrchestratorState, station: OrchestratorStation):
                 detail=f"Run {run_id} stop partially failed: {e}",
             )
 
+    @app.post("/test-hw-lib")
+    def test_hw_lib(body: dict):
+        """
+        Trigger a Pi import test for a specific hw lib version.
+        Sends LOAD_HARDWARE_LIBS with test_import=True to TEST_PILOT (from prefs.json).
+        No-op if TEST_PILOT is not configured.
+        body: {lib_id, version_id, filename, source_code}
+        """
+        pilot = station.config.get("TEST_PILOT")
+        if not pilot:
+            return {"skipped": True, "reason": "TEST_PILOT not configured"}
+        payload = {
+            "libs": [{"filename": body["filename"], "source_code": body["source_code"]}],
+            "test_import": True,
+            "version_id": body["version_id"],
+        }
+        station.gateway.send(pilot, "LOAD_HARDWARE_LIBS", payload)
+        return {"ok": True, "pilot": pilot}
+
     @app.post("/push-fda")
     def push_fda(body: dict):
         """

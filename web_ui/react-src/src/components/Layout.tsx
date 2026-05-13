@@ -97,6 +97,31 @@ const NAV_LINKS = [
       </svg>
     ),
   },
+  {
+    to: '/hardware-libs-ui',
+    label: 'Hardware Libs',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="6" y="6" width="12" height="12" rx="1" />
+        <path d="M9 6V3M15 6V3M9 21v-3M15 21v-3M3 9h3M3 15h3M18 9h3M18 15h3" />
+        <rect x="10" y="10" width="4" height="4" />
+      </svg>
+    ),
+  },
+  {
+    to: '/hardware-modules-ui',
+    label: 'HW Modules',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="2" width="9" height="9" rx="1.5" />
+        <rect x="13" y="2" width="9" height="9" rx="1.5" />
+        <rect x="2" y="13" width="9" height="9" rx="1.5" />
+        <path d="M17.5 13v9M13 17.5h9" />
+      </svg>
+    ),
+  },
 ]
 
 function BrandMark() {

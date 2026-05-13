@@ -33,18 +33,26 @@ function formatDate(iso: string): string {
   })
 }
 
-// Group by task_name, keep highest id per group as the representative row
+// Named definitions (has display_name) are always shown individually.
+// Anonymous ones (no display_name) are grouped by task_name — highest id wins.
 function dedupeTaskDefs(defs: TaskDefinitionFull[]): Array<{ def: TaskDefinitionFull; revisions: number }> {
-  const groups = new Map<string, TaskDefinitionFull[]>()
+  const named: Array<{ def: TaskDefinitionFull; revisions: number }> = []
+  const anonymous: TaskDefinitionFull[] = []
   for (const d of defs) {
+    if (d.display_name) named.push({ def: d, revisions: 1 })
+    else anonymous.push(d)
+  }
+  const groups = new Map<string, TaskDefinitionFull[]>()
+  for (const d of anonymous) {
     const g = groups.get(d.task_name) ?? []
     g.push(d)
     groups.set(d.task_name, g)
   }
-  return Array.from(groups.values()).map(g => ({
+  const dedupedAnon = Array.from(groups.values()).map(g => ({
     def: g.reduce((best, d) => (d.id > best.id ? d : best)),
     revisions: g.length,
   }))
+  return [...named, ...dedupedAnon].sort((a, b) => b.def.id - a.def.id)
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────

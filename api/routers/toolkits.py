@@ -259,17 +259,18 @@ def create_backend_toolkit(payload: BackendToolkitCreate, _: dict = Depends(veri
 
     db: OrmSession = _SA_SessionLocal()
     try:
-        # Validate: selected_states must exist in available_locked_states for locked_state_source
-        available_row = db.execute(sa_text(
-            "SELECT state_names FROM available_locked_states WHERE task_filename = :fname LIMIT 1"
-        ), {"fname": payload.locked_state_source}).fetchone()
-        if not available_row:
-            raise HTTPException(422, f"No locked states found for file '{payload.locked_state_source}'. "
-                                     "Run a HANDSHAKE first.")
-        known_states = set(available_row.state_names)
-        missing_states = [s for s in payload.selected_states if s not in known_states]
-        if missing_states:
-            raise HTTPException(422, f"Unknown states for '{payload.locked_state_source}': {missing_states}")
+        # Validate selected_states against available_locked_states (skip when no source file chosen)
+        if payload.locked_state_source:
+            available_row = db.execute(sa_text(
+                "SELECT state_names FROM available_locked_states WHERE task_filename = :fname LIMIT 1"
+            ), {"fname": payload.locked_state_source}).fetchone()
+            if not available_row:
+                raise HTTPException(422, f"No locked states found for file '{payload.locked_state_source}'. "
+                                         "Run a HANDSHAKE first.")
+            known_states = set(available_row.state_names)
+            missing_states = [s for s in payload.selected_states if s not in known_states]
+            if missing_states:
+                raise HTTPException(422, f"Unknown states for '{payload.locked_state_source}': {missing_states}")
 
         # Validate: all hardware_module_ids must exist
         if payload.hardware_module_ids:

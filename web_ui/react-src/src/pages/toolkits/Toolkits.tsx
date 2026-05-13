@@ -194,7 +194,7 @@ function CreationModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     setError('')
     createMutation.mutate({
       name: name.trim(),
-      locked_state_source: selectedFile,
+      locked_state_source: selectedFile || null,
       selected_states: selectedStates,
       hardware_module_ids: selectedModuleIds,
       flags,

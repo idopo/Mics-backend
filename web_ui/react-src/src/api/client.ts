@@ -1,6 +1,8 @@
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const defaultHeaders: Record<string, string> =
+    init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { ...defaultHeaders, ...(init?.headers ?? {}) },
     ...init,
   })
   if (!res.ok) {

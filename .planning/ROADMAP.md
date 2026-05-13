@@ -18,9 +18,9 @@
 | 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
 | 7 | Pi Editor: Edit+Restart | PUT /api/pi/file, POST /api/pi/restart, Monaco edit mode | EDIT-11–14 | ○ Pending |
 | 8 | Pi Editor: Packages | Package diff, install endpoint, packages tab UI | EDIT-15–17 | ○ Pending |
-| 9 | HardwareLib Storage | hardware_libs DB + API, AST validation, Pi override dir, E2E proof with gpio.py | HW-01–05 | ○ Pending |
-| 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ○ Pending |
-| 11 | 5/5 | Complete   | 2026-05-04 | ○ Pending |
+| 9 | HardwareLib Storage | hardware_libs DB + API, AST validation, Pi override dir, E2E proof with gpio.py | HW-01–05 | ✓ Complete |
+| 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ✓ Complete |
+| 11 | Toolkit Redesign (Backend-Authored) | available_locked_states, 5-step toolkit UI, HANDSHAKE new format, legacy badge | HW-12–16 | ✓ Complete 2026-05-04 |
 | 12 | Hardware-Aware FDA Builder | hardware method picker in StateBodyPanel, lib-change validation, broken-definition warnings | HW-17–20 | ○ Pending |
 | 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
 
@@ -330,11 +330,14 @@ Plans:
 2. Session start UI with missing hardware → modal blocks with issue list and link to pilot hardware config editor
 3. Full end-to-end: backend-authored toolkit → task definition → start on pilot → Pi logs show `hardware_overrides/gpio.py` written, hardware instances created from received config → task runs
 4. Pilot with no backend hardware config → falls back to `self.HARDWARE` class constant; no crash; backward compat confirmed
+5. HANDSHAKE from a backend-authored toolkit → orchestrator overwrites `task_definitions.default_params` with the toolkit's `params_schema` instead of the Pi-sent PARAMS dict → protocol builder UI shows backend-defined params without requiring Pi-side `PARAMS` declaration
+   - **Until this is implemented:** Pi-side `PARAMS` class declaration must not be removed from backend-authored tasks — removing it causes `task_definitions` to register empty params, breaking protocol step configuration in the UI
+   - Legacy (non-backend-authored) toolkits: HANDSHAKE registration unchanged (Pi PARAMS used as-is)
 
 **Files changed:**
 - `api/routers/toolkits.py` (validate-for-pilot endpoint)
 - `web_ui/react-src/src/pages/subject-sessions/SubjectSessions.tsx` (pre-run check gate)
-- `orchestrator/orchestrator/orchestrator_station.py` (START handler: send hardware config dict to Pi)
+- `orchestrator/orchestrator/orchestrator_station.py` (START handler: send hardware config dict to Pi; HANDSHAKE processor: override task_definitions.default_params from toolkit params_schema when is_backend_authored)
 - `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (dynamic init_hardware from received_hw_config)
 
 **Dependencies:** Phase 12 (task definitions have validation_status; hardware modules fully wired)

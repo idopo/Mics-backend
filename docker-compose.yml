@@ -13,6 +13,12 @@ services:
       - db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mics_user -d mics_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   api:
     build: ./api
@@ -28,7 +34,8 @@ services:
       JWT_ISSUER: mics-api
       ORCHESTRATOR_URL: http://host.docker.internal:9000
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "8000:8000"
     

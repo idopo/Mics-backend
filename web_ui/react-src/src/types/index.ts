@@ -319,7 +319,7 @@ export interface ParamDefinition {
 
 export interface BackendToolkitCreatePayload {
   name: string
-  locked_state_source: string
+  locked_state_source: string | null
   selected_states: string[]
   hardware_module_ids: number[]
   flags: FlagDefinition[]

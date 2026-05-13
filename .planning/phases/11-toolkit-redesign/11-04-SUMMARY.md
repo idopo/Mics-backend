@@ -61,7 +61,7 @@ if "PARAMS" in kwargs:
 
 New static method `_resolve_flags()` added after `_coerce_hw_value()`:
 - Reads `tracker_type` key (DB storage format) with `type` as fallback
-- Maps string names to `Tracker.Counter_Tracker`, `Tracker.Boolean_Tracker`, `Tracker.Trial_Tracker`
+- Maps string names to `Counter_Tracker`, `Boolean_Tracker`, `Trial_Tracker` (imported directly at module level)
 - Unknown type strings fall back to `Counter_Tracker` with `logger.warning`
 - Removes `tracker_type` key and sets `type` = the actual class (what `init_flags()` expects)
 
@@ -93,9 +93,23 @@ If `FLAGS`/`PARAMS` are absent from kwargs (non-backend-authored toolkit), class
 
 ---
 
+## Post-Deploy Bug Fix (discovered during human testing, 2026-05-04)
+
+**Bug:** `_resolve_flags()` TYPE_MAP referenced `Tracker.Counter_Tracker`, `Tracker.Boolean_Tracker`, `Tracker.Trial_Tracker` — but `mics_task.py` imports `Tracker` as the **class** (`from autopilot.utils.Tracker import Tracker`), not the module. Those subclasses are module-level definitions in `Tracker.py`, not class attributes, so the reference raised `AttributeError: type object 'Tracker' has no attribute 'Counter_Tracker'` on the first run.
+
+Note: `elastic_test.py` uses `from autopilot.utils import Tracker` (imports the **module**), so `Tracker.Counter_Tracker` works there — the bug was specific to `mics_task.py`'s import style.
+
+**Fix:** Updated `mics_task.py` import to `from autopilot.utils.Tracker import Tracker, Counter_Tracker, Boolean_Tracker, Trial_Tracker` and updated TYPE_MAP to reference the classes directly (no `Tracker.` prefix).
+
+- **File:** `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py`
+- **Deployed:** rsync + md5 verified (`37d401bba8a28af84968bb50ed7aa992`)
+
+---
+
 ## Self-Check: PASSED
 
 - [x] `orchestrator/orchestrator/orchestrator_station.py` — modified, committed cfb267b
-- [x] `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` — modified, committed 3657a64, deployed to Pi
+- [x] `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` — modified, committed 3657a64, deployed to Pi; post-deploy import fix deployed (md5: 37d401bba8a28af84968bb50ed7aa992)
 - [x] MD5 sums match between local mirror and Pi
 - [x] Both files pass `python3 -m py_compile` syntax check
+- [x] Human-verified: backend-authored toolkit with flag runs successfully on Pi

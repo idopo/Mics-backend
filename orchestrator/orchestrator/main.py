@@ -77,6 +77,7 @@ gateway.listens.update({
     "STREAM": station.on_data,
     "INC_TRIAL_COUNTER": station.on_inc_trial,
     "TASK_ERROR": station.on_task_error,
+    "HARDWARE_LIB_TEST_RESULT": station.handle_hardware_lib_test_result,
 })
 
 # ---- Start ZMQ ----

@@ -86,6 +86,28 @@ metrics:
 - **Issue:** Plan pseudocode used `hashlib.md5` but the existing `create_backend_toolkit` endpoint uses `sha256` — using md5 would create an inconsistency
 - **Fix:** Used sha256 to match existing POST behavior
 
+---
+
+## Post-Deploy Bug Fix (discovered during human testing, 2026-05-04)
+
+**Bug:** `web_ui/app.py` had no proxy route for `PATCH /api/toolkits/{id}`. The web UI proxies API calls through FastAPI on port 8080 using explicit per-route handlers. `GET /api/toolkits` and `POST /api/toolkits` were proxied, but PATCH was not, so EditModal save requests returned 404 (the catchall returned Not Found).
+
+**Fix:** Added proxy route to `web_ui/app.py`:
+```python
+@app.patch("/api/toolkits/{toolkit_id}")
+async def proxy_toolkits_patch(toolkit_id: int, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.patch(f"{API_URL}/api/toolkits/{toolkit_id}", content=body,
+                                  headers={"Content-Type": "application/json"})
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+```
+
+- **File:** `web_ui/app.py`
+- **Lesson:** Every new HTTP method on an API route needs a matching proxy entry in `web_ui/app.py`. This is easy to miss since the API and proxy are separate services.
+
 ## Self-Check: PASSED
 
 All files created/modified exist on disk. All commits (3da9d32, 5a84cab, 21610f5) verified in git log. Key symbols (patch_backend_toolkit, BackendToolkitPatch, patchToolkit, BackendToolkitPatchPayload) verified in source files. Build succeeded (npm run build exit 0).
+- [x] Human-verified: Edit modal saves, card re-renders with updated flags, dispatch-spec reflects changes.

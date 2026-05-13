@@ -769,8 +769,8 @@ class ParamDefinition(BaseModel):
 
 class BackendToolkitCreate(BaseModel):
     name: str
-    locked_state_source: str           # task filename e.g. "appetitive.py"
-    selected_states: List[str]         # subset of state_names for that file
+    locked_state_source: Optional[str] = None  # task filename e.g. "appetitive.py"; None = base mics_task
+    selected_states: List[str] = []    # subset of state_names for that file
     hardware_module_ids: List[int] = []
     flags: List[FlagDefinition] = []
     params_schema: List[ParamDefinition] = []

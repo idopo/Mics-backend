@@ -1,0 +1,251 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 910 480"
+     font-family="'Helvetica Neue', Arial, sans-serif">
+<defs>
+  <marker id="aw" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+    <path d="M0,0.5 L0,5.5 L6.5,3z" fill="#3D5FA0"/>
+  </marker>
+  <marker id="ae" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+    <path d="M0,0.5 L0,5.5 L6.5,3z" fill="#9B7020"/>
+  </marker>
+  <marker id="sm" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+    <path d="M0,0.3 L0,3.7 L4.5,2z" fill="#3D5FA0"/>
+  </marker>
+</defs>
+
+<rect width="910" height="480" fill="white"/>
+
+<!-- ═══════════════════════════════════════════════
+     MICS-Portal outer container
+════════════════════════════════════════════════ -->
+<rect x="10" y="12" width="672" height="192" rx="7"
+      fill="#EEF3FA" stroke="#3D5FA0" stroke-width="1.5"/>
+<text x="346" y="27" text-anchor="middle"
+      font-size="11" font-weight="bold" fill="#1A3060" letter-spacing="0.5">MICS-Portal</text>
+
+<!-- ─── UI (web interface) ─── -->
+<rect x="22" y="33" width="258" height="162" rx="5"
+      fill="white" stroke="#86A4CC" stroke-width="1"/>
+<text x="151" y="47" text-anchor="middle"
+      font-size="9.5" font-weight="bold" fill="#1A3060">UI</text>
+
+<!-- col 1 – Hardware -->
+<rect x="29" y="51" width="77" height="134" rx="4"
+      fill="#F3F7FD" stroke="#C4D5ED" stroke-width="0.8"/>
+<!-- IC / chip icon: body + 3 pins per side -->
+<rect x="53" y="70" width="28" height="20" rx="2"
+      fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<circle cx="67" cy="80" r="3" fill="#3D5FA0" opacity="0.55"/>
+<line x1="46" y1="74" x2="53" y2="74" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="46" y1="80" x2="53" y2="80" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="46" y1="86" x2="53" y2="86" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="81" y1="74" x2="88" y2="74" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="81" y1="80" x2="88" y2="80" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="81" y1="86" x2="88" y2="86" stroke="#3D5FA0" stroke-width="1.2"/>
+<text x="67" y="100" text-anchor="middle" font-size="8" font-weight="bold" fill="#2E4A80">Hardware</text>
+<text x="67" y="111" text-anchor="middle" font-size="7" fill="#5A6880">Modules</text>
+<text x="67" y="121" text-anchor="middle" font-size="7" fill="#5A6880">Config</text>
+<text x="67" y="131" text-anchor="middle" font-size="7" fill="#5A6880">Params · Flags</text>
+
+<!-- col 2 – Task Logic -->
+<rect x="112" y="51" width="77" height="134" rx="4"
+      fill="#F3F7FD" stroke="#C4D5ED" stroke-width="0.8"/>
+<!-- state machine: 3-node cycle -->
+<circle cx="139" cy="75" r="5.5" fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<circle cx="160" cy="75" r="5.5" fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<circle cx="150" cy="90" r="5.5" fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="145" y1="75" x2="154" y2="75" stroke="#3D5FA0" stroke-width="1.1" marker-end="url(#sm)"/>
+<line x1="157" y1="79" x2="155" y2="86" stroke="#3D5FA0" stroke-width="1.1" marker-end="url(#sm)"/>
+<line x1="145" y1="86" x2="143" y2="79" stroke="#3D5FA0" stroke-width="1.1" marker-end="url(#sm)"/>
+<text x="150" y="105" text-anchor="middle" font-size="8" font-weight="bold" fill="#2E4A80">Task Logic</text>
+<text x="150" y="116" text-anchor="middle" font-size="7" fill="#5A6880">States</text>
+<text x="150" y="126" text-anchor="middle" font-size="7" fill="#5A6880">Transitions</text>
+<text x="150" y="136" text-anchor="middle" font-size="7" fill="#5A6880">Blueprint</text>
+
+<!-- col 3 – Verify & Deploy -->
+<rect x="196" y="51" width="76" height="134" rx="4"
+      fill="#F3F7FD" stroke="#C4D5ED" stroke-width="0.8"/>
+<!-- checkmark -->
+<polyline points="207,81 216,91 237,70"
+          fill="none" stroke="#3D5FA0" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+<text x="234" y="105" text-anchor="middle" font-size="8" font-weight="bold" fill="#2E4A80">Verify</text>
+<text x="234" y="115" text-anchor="middle" font-size="8" font-weight="bold" fill="#2E4A80">&amp; Deploy</text>
+<text x="234" y="127" text-anchor="middle" font-size="7" fill="#5A6880">Compatibility</text>
+<text x="234" y="137" text-anchor="middle" font-size="7" fill="#5A6880">Send task</text>
+
+<!-- ─── Orchestrator ─── -->
+<rect x="294" y="33" width="174" height="162" rx="5"
+      fill="white" stroke="#86A4CC" stroke-width="1"/>
+<text x="381" y="47" text-anchor="middle"
+      font-size="9.5" font-weight="bold" fill="#1A3060">Orchestrator</text>
+<!-- server rack: 3 stacked units -->
+<rect x="360" y="62" width="42" height="11" rx="2" fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<circle cx="395" cy="67.5" r="2.5" fill="#3D5FA0"/>
+<rect x="360" y="77" width="42" height="11" rx="2" fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<circle cx="395" cy="82.5" r="2.5" fill="#3D5FA0"/>
+<rect x="360" y="92" width="42" height="11" rx="2" fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<circle cx="395" cy="97.5" r="2.5" fill="#3D5FA0"/>
+<text x="381" y="117" text-anchor="middle" font-size="7.5" fill="#5A6880">Run control</text>
+<text x="381" y="128" text-anchor="middle" font-size="7.5" fill="#5A6880">ZMQ gateway</text>
+<text x="381" y="139" text-anchor="middle" font-size="7.5" fill="#5A6880">Redis</text>
+
+<!-- ─── Task Manager ─── -->
+<rect x="482" y="33" width="184" height="162" rx="5"
+      fill="white" stroke="#86A4CC" stroke-width="1"/>
+<text x="574" y="47" text-anchor="middle"
+      font-size="9.5" font-weight="bold" fill="#1A3060">Task Manager</text>
+<!-- document / list icon -->
+<rect x="555" y="60" width="38" height="48" rx="3"
+      fill="none" stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="563" y1="71"  x2="586" y2="71"  stroke="#3D5FA0" stroke-width="1"/>
+<line x1="563" y1="79"  x2="586" y2="79"  stroke="#3D5FA0" stroke-width="1"/>
+<line x1="563" y1="87"  x2="582" y2="87"  stroke="#3D5FA0" stroke-width="1"/>
+<line x1="563" y1="95"  x2="584" y2="95"  stroke="#3D5FA0" stroke-width="1"/>
+<text x="574" y="120" text-anchor="middle" font-size="7.5" fill="#5A6880">Event streaming</text>
+<text x="574" y="131" text-anchor="middle" font-size="7.5" fill="#5A6880">Task history</text>
+
+<!-- ═══════════════════════════════════════════════
+     ElasticSearch  (right column, full routing height)
+════════════════════════════════════════════════ -->
+<rect x="698" y="12" width="202" height="244" rx="7"
+      fill="#FAF3E8" stroke="#9B7020" stroke-width="1.5"/>
+<text x="799" y="28" text-anchor="middle"
+      font-size="11" font-weight="bold" fill="#5C3E0A" letter-spacing="0.3">ElasticSearch</text>
+<!-- magnifying glass icon -->
+<circle cx="793" cy="84" r="20" fill="none" stroke="#9B7020" stroke-width="1.8"/>
+<line x1="808" y1="99" x2="823" y2="114" stroke="#9B7020" stroke-width="2.5" stroke-linecap="round"/>
+<text x="799" y="124" text-anchor="middle" font-size="7.5" fill="#7A5618">Data ingestion</text>
+<text x="799" y="135" text-anchor="middle" font-size="7.5" fill="#7A5618">Analytics</text>
+<text x="799" y="146" text-anchor="middle" font-size="7.5" fill="#7A5618">Remote monitoring</text>
+
+<!-- legend inside elastic -->
+<line x1="708" y1="157" x2="890" y2="157" stroke="#ECD9B8" stroke-width="0.8"/>
+<text x="799" y="170" text-anchor="middle" font-size="8" font-weight="bold" fill="#7A5618">Legend</text>
+
+<rect x="708" y="178" width="11" height="9" rx="2" fill="#EEF3FA" stroke="#3D5FA0" stroke-width="1"/>
+<text x="725" y="186" font-size="7" fill="#444">Software</text>
+<rect x="708" y="192" width="11" height="9" rx="2" fill="#E8F6EE" stroke="#2A875A" stroke-width="1"/>
+<text x="725" y="200" font-size="7" fill="#444">Hardware (Pi)</text>
+<rect x="708" y="206" width="11" height="9" rx="2" fill="#F0EAFC" stroke="#6A4AAE" stroke-width="1"/>
+<text x="725" y="214" font-size="7" fill="#444">Simulation</text>
+
+<line x1="708" y1="224" x2="720" y2="224" stroke="#3D5FA0" stroke-width="1.2" marker-end="url(#aw)"/>
+<text x="725" y="228" font-size="7" fill="#444">ZMQ ↕ (control + data)</text>
+<line x1="708" y1="238" x2="720" y2="238" stroke="#9B7020" stroke-width="1.2" marker-end="url(#ae)"/>
+<text x="725" y="242" font-size="7" fill="#444">ES ingestion</text>
+
+<!-- ═══════════════════════════════════════════════
+     ROUTING ARROWS  (204 – 258 corridor)
+════════════════════════════════════════════════ -->
+
+<!-- ES ingestion: exits portal between Orch & TaskMgr, routes below portal to Elastic -->
+<path d="M 477,204 L 477,220 L 694,220"
+      stroke="#9B7020" stroke-width="1.2" fill="none" marker-end="url(#ae)"/>
+<rect x="537" y="210" width="76" height="13" rx="3" fill="white"/>
+<text x="575" y="220" text-anchor="middle" font-size="7" fill="#9B7020">ES ingestion</text>
+
+<!-- ZMQ spine: Orchestrator → all stations -->
+<line x1="381" y1="195" x2="381" y2="238"
+      stroke="#3D5FA0" stroke-width="1.2"/>
+<line x1="90"  y1="238" x2="569" y2="238"
+      stroke="#3D5FA0" stroke-width="1.2"/>
+<!-- drops to each station -->
+<line x1="90"  y1="238" x2="90"  y2="256" stroke="#3D5FA0" stroke-width="1.2" marker-end="url(#aw)"/>
+<line x1="260" y1="238" x2="260" y2="256" stroke="#3D5FA0" stroke-width="1.2" marker-end="url(#aw)"/>
+<line x1="400" y1="238" x2="400" y2="256" stroke="#3D5FA0" stroke-width="1.2" marker-end="url(#aw)"/>
+<line x1="569" y1="238" x2="569" y2="256" stroke="#3D5FA0" stroke-width="1.2" marker-end="url(#aw)"/>
+<!-- label -->
+<rect x="330" y="229" width="44" height="13" rx="3" fill="white"/>
+<text x="352" y="239" text-anchor="middle" font-size="7" fill="#3D5FA0">ZMQ ↕</text>
+
+<!-- ═══════════════════════════════════════════════
+     STATION ROW
+════════════════════════════════════════════════ -->
+
+<!-- ─── Exp. Station 1 ─── -->
+<rect x="10" y="258" width="160" height="210" rx="7"
+      fill="#E8F6EE" stroke="#2A875A" stroke-width="1.5"/>
+<text x="90" y="274" text-anchor="middle"
+      font-size="9.5" font-weight="bold" fill="#1A4D34">Exp. Station 1</text>
+<!-- Pi badge -->
+<circle cx="90" cy="306" r="17" fill="white" stroke="#2A875A" stroke-width="1.2"/>
+<text x="90" y="311" text-anchor="middle" font-size="14" fill="#1A4D34" font-weight="bold">π</text>
+<!-- hardware icons row -->
+<!-- Lick: vertical tube -->
+<rect x="38" y="336" width="7" height="18" rx="3.5"
+      fill="none" stroke="#2A875A" stroke-width="1.3"/>
+<text x="41" y="364" text-anchor="middle" font-size="6.5" fill="#2E5A40">Lick</text>
+<!-- Opto: filled circle + 5 rays -->
+<circle cx="90" cy="344" r="5.5" fill="#2A875A" opacity="0.35"/>
+<line x1="90" y1="336" x2="90" y2="333" stroke="#2A875A" stroke-width="1.2"/>
+<line x1="96" y1="338" x2="98" y2="336" stroke="#2A875A" stroke-width="1.2"/>
+<line x1="99" y1="344" x2="102" y2="344" stroke="#2A875A" stroke-width="1.2"/>
+<line x1="84" y1="338" x2="82" y2="336" stroke="#2A875A" stroke-width="1.2"/>
+<line x1="81" y1="344" x2="78" y2="344" stroke="#2A875A" stroke-width="1.2"/>
+<text x="90" y="364" text-anchor="middle" font-size="6.5" fill="#2E5A40">Opto</text>
+<!-- Sensor: antenna -->
+<line x1="139" y1="356" x2="139" y2="338" stroke="#2A875A" stroke-width="1.4"/>
+<path d="M131,344 Q139,336 147,344" fill="none" stroke="#2A875A" stroke-width="1.1"/>
+<path d="M134,340 Q139,336 144,340" fill="none" stroke="#2A875A" stroke-width="1.1"/>
+<text x="139" y="364" text-anchor="middle" font-size="6.5" fill="#2E5A40">Sensors</text>
+<line x1="18"  y1="374" x2="162" y2="374" stroke="#C0E2D0" stroke-width="0.8"/>
+<text x="90" y="385" text-anchor="middle" font-size="7" fill="#5A7A66">Analysis · External I/O</text>
+
+<!-- ─── Exp. Station 2 ─── -->
+<rect x="180" y="258" width="160" height="210" rx="7"
+      fill="#E8F6EE" stroke="#2A875A" stroke-width="1.5"/>
+<text x="260" y="274" text-anchor="middle"
+      font-size="9.5" font-weight="bold" fill="#1A4D34">Exp. Station 2</text>
+<!-- Pi badge -->
+<circle cx="260" cy="306" r="17" fill="white" stroke="#2A875A" stroke-width="1.2"/>
+<text x="260" y="311" text-anchor="middle" font-size="14" fill="#1A4D34" font-weight="bold">π</text>
+<!-- Camera -->
+<rect x="215" y="336" width="22" height="16" rx="2"
+      fill="none" stroke="#2A875A" stroke-width="1.3"/>
+<circle cx="226" cy="344" r="4.5" fill="none" stroke="#2A875A" stroke-width="1.1"/>
+<circle cx="226" cy="344" r="1.8" fill="#2A875A" opacity="0.4"/>
+<text x="226" y="364" text-anchor="middle" font-size="6.5" fill="#2E5A40">Video</text>
+<!-- Eye: pupillometry -->
+<ellipse cx="260" cy="344" rx="12" ry="7.5"
+         fill="none" stroke="#2A875A" stroke-width="1.3"/>
+<circle cx="260" cy="344" r="4" fill="#2A875A" opacity="0.35"/>
+<text x="260" y="364" text-anchor="middle" font-size="6.5" fill="#2E5A40">Pupillometry</text>
+<!-- Sensor -->
+<line x1="305" y1="356" x2="305" y2="338" stroke="#2A875A" stroke-width="1.4"/>
+<path d="M297,344 Q305,336 313,344" fill="none" stroke="#2A875A" stroke-width="1.1"/>
+<path d="M300,340 Q305,336 310,340" fill="none" stroke="#2A875A" stroke-width="1.1"/>
+<text x="305" y="364" text-anchor="middle" font-size="6.5" fill="#2E5A40">Sensors</text>
+<line x1="188" y1="374" x2="332" y2="374" stroke="#C0E2D0" stroke-width="0.8"/>
+<text x="260" y="385" text-anchor="middle" font-size="7" fill="#5A7A66">Analysis · External I/O</text>
+
+<!-- ─── ×N stations ─── -->
+<rect x="350" y="258" width="100" height="210" rx="7"
+      fill="#E8F6EE" stroke="#2A875A" stroke-width="1.5"/>
+<!-- faded π -->
+<circle cx="400" cy="330" r="17" fill="white" stroke="#2A875A" stroke-width="1.2" opacity="0.5"/>
+<text x="400" y="335" text-anchor="middle" font-size="14" fill="#2A875A" font-weight="bold" opacity="0.4">π</text>
+<text x="400" y="370" text-anchor="middle" font-size="18" fill="#2A875A" font-weight="bold">×N</text>
+
+<!-- ─── Virtual MICS ─── -->
+<rect x="460" y="258" width="218" height="210" rx="7"
+      fill="#F0EAFC" stroke="#6A4AAE" stroke-width="1.5"/>
+<text x="569" y="274" text-anchor="middle"
+      font-size="9.5" font-weight="bold" fill="#3D1F7A">Virtual MICS</text>
+<!-- monitor icon -->
+<rect x="546" y="288" width="46" height="34" rx="3"
+      fill="none" stroke="#6A4AAE" stroke-width="1.3"/>
+<!-- screen fill -->
+<rect x="550" y="292" width="38" height="26" rx="1" fill="#E6DCFA"/>
+<text x="569" y="309" text-anchor="middle" font-size="16" fill="#6A4AAE" font-weight="bold">U</text>
+<!-- monitor stand -->
+<line x1="569" y1="322" x2="569" y2="332" stroke="#6A4AAE" stroke-width="1.3"/>
+<line x1="562" y1="332" x2="576" y2="332" stroke="#6A4AAE" stroke-width="1.3"/>
+<text x="569" y="352" text-anchor="middle" font-size="7.5" fill="#5A3A9A">MICS-Core</text>
+<text x="569" y="363" text-anchor="middle" font-size="7.5" fill="#5A3A9A">Unreal Engine</text>
+<text x="569" y="374" text-anchor="middle" font-size="7" fill="#7A5AB0">Simulation</text>
+
+<!-- figure caption -->
+<text x="455" y="472" text-anchor="middle" font-size="9" fill="#666">
+  Figure 1: MICS Functional Overview
+</text>
+</svg>

@@ -78,6 +78,10 @@ class OrchestratorState:
             cur = self._pilots.get(pilot, {})
             cur["active_run"] = run
             self._pilots[pilot] = cur
+
+    def get_active_run(self, pilot: str) -> dict | None:
+        with self._lock:
+            return self._pilots.get(pilot, {}).get("active_run")
     def resolve_pilot_key(self, *, db_name: str | None = None, ip: str | None = None) -> str:
         """
         Resolve the ZMQ/orchestrator pilot key (e.g. 'pilot_raspberry_lior')

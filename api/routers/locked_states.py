@@ -119,7 +119,7 @@ def upsert_locked_state(
         if existing:
             db.execute(sa_text(
                 "UPDATE available_locked_states "
-                "SET state_names = :sn::jsonb, is_legacy_filename = :legacy, "
+                "SET state_names = CAST(:sn AS jsonb), is_legacy_filename = :legacy, "
                 "    class_name = :cn, updated_at = NOW() "
                 "WHERE id = :id"
             ), {"sn": state_names_json, "legacy": is_legacy, "cn": payload.class_name, "id": existing.id})
@@ -127,7 +127,7 @@ def upsert_locked_state(
             db.execute(sa_text(
                 "INSERT INTO available_locked_states "
                 "(pilot_id, task_filename, state_names, is_legacy_filename, class_name, updated_at) "
-                "VALUES (:pid, :fname, :sn::jsonb, :legacy, :cn, NOW())"
+                "VALUES (:pid, :fname, CAST(:sn AS jsonb), :legacy, :cn, NOW())"
             ), {"pid": pilot_id, "fname": task_filename, "sn": state_names_json, "legacy": is_legacy, "cn": payload.class_name})
 
         db.commit()

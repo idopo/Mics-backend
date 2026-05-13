@@ -294,6 +294,14 @@ async def list_backend_pilots():
         return resp.json()
 
 
+@app.get("/api/pilots/by-name/{name}")
+async def get_pilot_by_name(name: str):
+    async with backend_client() as client:
+        resp = await client.get(f"{API_URL}/pilots/by-name/{name}")
+        resp.raise_for_status()
+        return resp.json()
+
+
 
 # --------------------------------------------------
 # PROTOCOLS
@@ -387,10 +395,43 @@ async def proxy_toolkits(request: Request):
                            media_type=resp.headers.get("content-type", "application/json"))
 
 
+@app.post("/api/toolkits")
+async def proxy_toolkits_create(request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.post(f"{API_URL}/api/toolkits", content=body,
+                                 headers={"Content-Type": "application/json"})
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.patch("/api/toolkits/{toolkit_id}")
+async def proxy_toolkits_patch(toolkit_id: int, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.patch(f"{API_URL}/api/toolkits/{toolkit_id}", content=body,
+                                  headers={"Content-Type": "application/json"})
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
 @app.get("/api/toolkits/by-name/{name}")
 async def proxy_toolkits_by_name(name: str):
     async with backend_client() as client:
         resp = await client.get(f"{API_URL}/api/toolkits/by-name/{name}")
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/locked-states", methods=["GET"])
+@app.api_route("/api/locked-states/{path:path}", methods=["GET", "PUT"])
+async def proxy_locked_states(request: Request, path: str = ""):
+    body = await request.body()
+    url = f"{API_URL}/api/locked-states/{path}" if path else f"{API_URL}/api/locked-states"
+    async with backend_client() as client:
+        resp = await client.request(method=request.method, url=url,
+                                    content=body or None,
+                                    headers={"Content-Type": "application/json"})
     return FastAPIResponse(content=resp.content, status_code=resp.status_code,
                            media_type=resp.headers.get("content-type", "application/json"))
 
@@ -426,6 +467,112 @@ async def proxy_task_definition_put(defn_id: int, request: Request):
     body = await request.body()
     async with backend_client() as client:
         resp = await client.put(f"{API_URL}/api/task-definitions/{defn_id}", content=body)
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/task-definitions/{defn_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_task_definition_subpath(defn_id: int, path: str, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/task-definitions/{defn_id}/{path}",
+            content=body or None,
+            params=dict(request.query_params),
+            headers={"Content-Type": "application/json"},
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/hardware-libs", methods=["GET", "POST"])
+async def proxy_hardware_libs_root(request: Request):
+    body = await request.body()
+    ct = request.headers.get("content-type", "")
+    extra_headers = {"Content-Type": ct} if ct and "application/json" not in ct else {}
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/hardware-libs",
+            content=body or None,
+            params=dict(request.query_params),
+            headers=extra_headers,
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/hardware-libs/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def proxy_hardware_libs(path: str, request: Request):
+    body = await request.body()
+    ct = request.headers.get("content-type", "")
+    extra_headers = {"Content-Type": ct} if ct and "application/json" not in ct else {}
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/hardware-libs/{path}",
+            content=body or None,
+            params=dict(request.query_params),
+            headers=extra_headers,
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/hardware-modules", methods=["GET", "POST"])
+async def proxy_hardware_modules_root(request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/hardware-modules",
+            content=body or None,
+            headers={"Content-Type": "application/json"},
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/hardware-modules/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def proxy_hardware_modules(path: str, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/hardware-modules/{path}",
+            content=body or None,
+            params=dict(request.query_params),
+            headers={"Content-Type": "application/json"},
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/pilots/{pilot_id}/hardware-config", methods=["GET", "POST"])
+async def proxy_pilot_hw_config_root(pilot_id: int, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/pilots/{pilot_id}/hardware-config",
+            content=body or None,
+            headers={"Content-Type": "application/json"},
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/pilots/{pilot_id}/hardware-config/{path:path}", methods=["GET", "PUT", "DELETE"])
+async def proxy_pilot_hw_config(pilot_id: int, path: str, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/pilots/{pilot_id}/hardware-config/{path}",
+            content=body or None,
+            headers={"Content-Type": "application/json"},
+        )
     return FastAPIResponse(content=resp.content, status_code=resp.status_code,
                            media_type=resp.headers.get("content-type", "application/json"))
 

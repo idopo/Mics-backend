@@ -16,6 +16,10 @@ const IACUC = React.lazy(() => import('./pages/researchers/IACUC'))
 const TaskDefinitions = React.lazy(() => import('./pages/task-definitions/TaskDefinitions'))
 const TaskEditor = React.lazy(() => import('./pages/task-editor/TaskEditor'))
 const Toolkits = React.lazy(() => import('./pages/toolkits/Toolkits'))
+const HardwareLibs = React.lazy(() => import('./pages/hardware-libs/HardwareLibs'))
+const HardwareLibDetail = React.lazy(() => import('./pages/hardware-libs/HardwareLibDetail'))
+const HardwareModules = React.lazy(() => import('./pages/hardware-modules/HardwareModules'))
+const PilotHardwareConfig = React.lazy(() => import('./pages/hardware-modules/PilotHardwareConfig'))
 
 export default function App() {
   return (
@@ -36,6 +40,10 @@ export default function App() {
           <Route path="task-definitions-ui" element={<TaskDefinitions />} />
           <Route path="task-editor/:id" element={<TaskEditor />} />
           <Route path="toolkits-ui" element={<Toolkits />} />
+          <Route path="hardware-libs-ui" element={<HardwareLibs />} />
+          <Route path="hardware-libs/:id" element={<HardwareLibDetail />} />
+          <Route path="hardware-modules-ui" element={<HardwareModules />} />
+          <Route path="pilots/:pilotName/hardware-config" element={<PilotHardwareConfig />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-13T11:26:06.410Z"
+last_updated: "2026-05-13T12:45:47.657Z"
 progress:
   total_phases: 13
   completed_phases: 3
-  total_plans: 30
-  completed_plans: 23
+  total_plans: 31
+  completed_plans: 24
   percent: 77
 ---
 
@@ -74,6 +74,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 12-hardware-fda-builder]: Direct-ref format uses 'group' key as discriminator for hardware actions in Pi — backward compat, no version bump
 - [Phase 12-hardware-fda-builder]: GUI-built states unconditionally call wait_for_condition() — entry_actions present is sufficient signal, blocking field ignored
 - [Phase 12-hardware-fda-builder]: Trial_Tracker.increment() dispatches INC_TRIAL_COUNTER (was DATA) — orchestrator now counts trials from flag-based actions
+- [Phase 12-hardware-fda-builder]: trial_counter injection is server-side in _normalize_flags() — every toolkit GET response always has it, UI never needs to handle 0-trial-flags case
+- [Phase 12-hardware-fda-builder]: auto-save depends on fdaJson only (not editName) — name changes excluded from debounce since user may still be typing
 
 ## Blockers
 

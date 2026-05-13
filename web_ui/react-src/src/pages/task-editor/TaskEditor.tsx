@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -205,6 +205,19 @@ export default function TaskEditor() {
     },
     onError: (e: Error) => setSavedMsg(`Error: ${e.message}`),
   })
+
+  // Debounced auto-save: triggers 1500ms after fdaJson changes (only after initial canvas load)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!fdaJson || !canvasInited) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    setSavedMsg('Unsaved…')
+    autoSaveTimerRef.current = setTimeout(() => saveMutation.mutate(), 1500)
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fdaJson])
 
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
     onEdgesChange(changes)

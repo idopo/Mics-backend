@@ -115,7 +115,7 @@ export default function ArgInput({ value, toolkit, annotation, onChange }: Props
 
       {mode === 'literal' && inputKind === 'bool' && (
         <select
-          value={String(value)}
+          value={value ? 'true' : 'false'}
           onChange={e => onChange(e.target.value === 'true')}
           style={{ width: '100%' }}
         >

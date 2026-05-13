@@ -16,10 +16,9 @@ export function EditModal({ toolkit, onClose, onSaved }: {
 
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>(toolkit.hardware_module_ids ?? [])
   const [flags, setFlags] = useState<FlagDefinition[]>(() =>
-    Object.entries(toolkit.flags ?? {}).map(([name, v]) => {
-      const val = v as Record<string, unknown>
-      return { name, tracker_type: String(val.tracker_type ?? 'Counter_Tracker'), initial_value: val.initial_value ?? 0 }
-    })
+    Object.entries(toolkit.flags ?? {}).map(([name, v]) =>
+      ({ name, tracker_type: v.tracker_type ?? 'Counter_Tracker', initial_value: v.initial_value ?? 0 })
+    )
   )
   const [params, setParams] = useState<ParamDefinition[]>(() =>
     Object.entries(toolkit.params_schema ?? {}).map(([name, v]) => {

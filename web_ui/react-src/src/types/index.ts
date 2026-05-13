@@ -272,12 +272,17 @@ export interface FdaJson {
   hw_overrides?: Record<string, unknown>       // optional; legacy field — pass through unchanged, never write or display
 }
 
+export interface ToolkitFlag {
+  tracker_type: string    // "Counter_Tracker" | "Boolean_Tracker" | "Trial_Tracker" | "Tracker"
+  initial_value: number | boolean
+}
+
 export interface ToolkitRead {
   id: number
   name: string
   hw_hash: string
   states: string[] | null
-  flags: Record<string, unknown> | null
+  flags: Record<string, ToolkitFlag>
   params_schema: Record<string, unknown> | null
   semantic_hardware: Record<string, unknown> | null
   callable_methods: string[] | null
@@ -340,6 +345,8 @@ export interface TaskDefinitionFull {
   fda_json: FdaJson | null
   file_hash: string
   created_at: string
+  validation_status: "ok" | "broken"
+  validation_message: string | null
 }
 
 // --- Hardware Libs (Phase 9) ---

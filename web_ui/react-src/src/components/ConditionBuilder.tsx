@@ -1,4 +1,5 @@
 import type { FdaCondition, FdaOperand, ToolkitRead } from '../types'
+import { getParamKeys } from './ArgInput'
 
 const OPS = ['==', '!=', '>=', '<=', '>', '<'] as const
 type OperandType = 'view' | 'literal' | 'param' | 'flag' | 'hardware'
@@ -62,7 +63,7 @@ function OperandEditor({ operand, toolkit, hwModuleNames, onChange }: OperandEdi
 
   const hwOpts = [...Object.keys(toolkit?.semantic_hardware ?? {}), ...(hwModuleNames ?? [])]
   const flagOpts = Object.keys(toolkit?.flags ?? {})
-  const paramOpts = Object.keys(toolkit?.params_schema ?? {})
+  const paramOpts = getParamKeys(toolkit)
   const viewOpts = [...new Set([...hwOpts, ...flagOpts])]
 
   const allTypes: OperandType[] = toolkit

@@ -1,17 +1,56 @@
-import type { FdaState, FdaAction, ToolkitRead } from '../types'
+import type { FdaState, FdaAction, ToolkitRead, HardwareModule } from '../types'
 import ActionEditor from './ActionEditor'
 import { operandLabel } from './ConditionBuilder'
 
 const DEFAULT_ACTION: FdaAction = { type: 'hardware', ref: '', method: 'set', args: [1] }
 
+// ── Action type color chips ──────────────────────────────────────────────────
+
+const TYPE_COLORS: Record<string, string> = {
+  hardware: '#3b82f6',
+  flag: '#f59e0b',
+  timer: '#14b8a6',
+  method: '#a78bfa',
+  if: '#22c55e',
+  special: '#94a3b8',
+}
+
+function typeChipStyle(type: string): React.CSSProperties {
+  const color = TYPE_COLORS[type] ?? '#94a3b8'
+  return {
+    display: 'inline-block',
+    padding: '1px 6px',
+    borderRadius: '3px',
+    fontSize: '9px',
+    fontWeight: 700,
+    fontFamily: "'IBM Plex Mono', monospace",
+    letterSpacing: '0.08em',
+    background: `${color}22`,
+    color,
+    border: `1px solid ${color}44`,
+    flexShrink: 0,
+  }
+}
+
+function actionSummary(action: FdaAction): string {
+  if (action.type === 'hardware') return action.ref ? `${action.ref}.${action.method ?? ''}` : 'hardware'
+  if (action.type === 'flag') return action.ref ? `${action.ref}.${action.method ?? ''}` : 'flag'
+  if (action.type === 'timer') return action.ref ? `${action.ref}.${action.method ?? ''}` : 'timer'
+  if (action.type === 'method') return action.ref ?? 'method'
+  if (action.type === 'if') return 'if (…)'
+  if (action.type === 'special') return `special: ${action.action ?? ''}`
+  return action.type
+}
+
 interface Props {
   stateName: string
   state: FdaState
   toolkit: ToolkitRead | null
+  hwModules: HardwareModule[]
   onChange: (updated: FdaState) => void
 }
 
-export default function StateBodyPanel({ stateName, state, toolkit, onChange }: Props) {
+export default function StateBodyPanel({ stateName, state, toolkit, hwModules, onChange }: Props) {
   const isPassthrough = !state.entry_actions?.length && (toolkit?.states?.includes(stateName) ?? false)
   const actions = state.entry_actions ?? []
 
@@ -23,6 +62,14 @@ export default function StateBodyPanel({ stateName, state, toolkit, onChange }: 
 
   const addAction = () =>
     onChange({ ...state, entry_actions: [...actions, { ...DEFAULT_ACTION }] })
+
+  const moveAction = (i: number, direction: 'up' | 'down') => {
+    const j = direction === 'up' ? i - 1 : i + 1
+    if (j < 0 || j >= actions.length) return
+    const next = [...actions]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange({ ...state, entry_actions: next })
+  }
 
   return (
     <div>
@@ -52,7 +99,35 @@ export default function StateBodyPanel({ stateName, state, toolkit, onChange }: 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
               {actions.map((action, i) => (
                 <div key={i}>
-                  <ActionEditor action={action} toolkit={toolkit} onChange={updated => updateAction(i, updated)} />
+                  {/* Row header: type chip + summary + reorder buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <span style={typeChipStyle(action.type)}>{action.type.toUpperCase()}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {actionSummary(action)}
+                    </span>
+                    <button
+                      onClick={() => moveAction(i, 'up')}
+                      disabled={i === 0}
+                      title="Move action up"
+                      style={{ background: 'none', border: 'none', cursor: i === 0 ? 'default' : 'pointer', color: i === 0 ? 'var(--border)' : 'var(--muted)', padding: '0 2px', fontSize: '12px' }}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveAction(i, 'down')}
+                      disabled={i === actions.length - 1}
+                      title="Move action down"
+                      style={{ background: 'none', border: 'none', cursor: i === actions.length - 1 ? 'default' : 'pointer', color: i === actions.length - 1 ? 'var(--border)' : 'var(--muted)', padding: '0 2px', fontSize: '12px' }}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <ActionEditor
+                    action={action}
+                    toolkit={toolkit}
+                    hwModules={hwModules}
+                    onChange={updated => updateAction(i, updated)}
+                  />
                   <button
                     className="button-danger"
                     style={{ fontSize: '11px', padding: '2px 6px', marginTop: '4px' }}

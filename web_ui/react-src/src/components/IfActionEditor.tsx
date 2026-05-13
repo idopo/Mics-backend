@@ -1,10 +1,11 @@
-import type { FdaAction, FdaCondition, ToolkitRead } from '../types'
+import type { FdaAction, FdaCondition, ToolkitRead, HardwareModule } from '../types'
 import ConditionBuilder from './ConditionBuilder'
 import ActionEditor from './ActionEditor'
 
 interface Props {
   action: FdaAction // action.type === 'if'
   toolkit: ToolkitRead | null
+  hwModules: HardwareModule[]
   onChange: (updated: FdaAction) => void
 }
 
@@ -21,7 +22,7 @@ const branchLabel: React.CSSProperties = {
   display: 'block',
 }
 
-export default function IfActionEditor({ action, toolkit, onChange }: Props) {
+export default function IfActionEditor({ action, toolkit, hwModules, onChange }: Props) {
   const thenActions: FdaAction[] = action.then ?? []
   const elseActions: FdaAction[] | undefined = action.else
 
@@ -93,6 +94,7 @@ export default function IfActionEditor({ action, toolkit, onChange }: Props) {
                 <ActionEditor
                   action={a}
                   toolkit={toolkit}
+                  hwModules={hwModules}
                   onChange={upd => updateThen(i, upd)}
                 />
                 <button
@@ -162,6 +164,7 @@ export default function IfActionEditor({ action, toolkit, onChange }: Props) {
                     <ActionEditor
                       action={a}
                       toolkit={toolkit}
+                      hwModules={hwModules}
                       onChange={upd => updateElse(i, upd)}
                     />
                     <button

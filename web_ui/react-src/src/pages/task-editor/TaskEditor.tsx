@@ -20,7 +20,7 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibPins } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaState, HwLibPin, ToolkitRead } from '../../types'
+import type { FdaJson, FdaTransition, FdaCondition, FdaState, HwLibPin, ToolkitRead, HardwareModule } from '../../types'
 import StateNode from '../../components/StateNode'
 import ConditionBuilder, { operandLabel } from '../../components/ConditionBuilder'
 import StateBodyPanel from '../../components/StateBodyPanel'
@@ -114,7 +114,7 @@ export default function TaskEditor() {
   })
 
   const hwModuleIds: number[] = toolkit?.hardware_module_ids ?? []
-  const { data: hwModules = [] } = useQuery({
+  const { data: hwModules = [] } = useQuery<HardwareModule[]>({
     queryKey: ['hw-modules-for-toolkit', hwModuleIds],
     queryFn: () => Promise.all(hwModuleIds.map(id => getHardwareModule(id))),
     enabled: hwModuleIds.length > 0,
@@ -127,6 +127,7 @@ export default function TaskEditor() {
   const [editName, setEditName] = useState('')
   const [savedMsg, setSavedMsg] = useState('')
   const [versionModalLib, setVersionModalLib] = useState<HwLibPin | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -359,6 +360,24 @@ export default function TaskEditor() {
         </div>
       )}
 
+      {taskDef?.validation_status === 'broken' && !bannerDismissed && (
+        <div style={{
+          background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.25)',
+          padding: '6px 16px', fontSize: '12px', color: '#ef4444', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <span style={{ fontWeight: 600 }}>⚠ Broken references:</span>
+          <span style={{ flex: 1 }}>{taskDef.validation_message ?? 'This task definition has broken hardware references.'}</span>
+          <button
+            onClick={() => setBannerDismissed(true)}
+            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0 4px', lineHeight: 1 }}
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Canvas */}
         <div style={{ flex: 1, background: '#0d1117', position: 'relative' }}>
@@ -418,7 +437,7 @@ export default function TaskEditor() {
 
         {/* Right panel */}
         <div style={{
-          width: '300px', flexShrink: 0, background: PANEL,
+          width: '380px', flexShrink: 0, background: PANEL,
           borderLeft: `1px solid ${BORDER}`, padding: '14px',
           overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
@@ -461,6 +480,7 @@ export default function TaskEditor() {
               stateName={selectedState}
               state={fdaJson.states[selectedState] ?? {}}
               toolkit={toolkit}
+              hwModules={hwModules}
               onChange={updated => updateStateBody(selectedState, updated)}
             />
           ) : (

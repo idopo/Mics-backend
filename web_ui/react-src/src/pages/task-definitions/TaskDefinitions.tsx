@@ -324,7 +324,23 @@ export default function TaskDefinitions() {
                 >
                   {/* Name column */}
                   <div>
-                    <div className="tdreg-name">{def.display_name ?? def.task_name}</div>
+                    <div className="tdreg-name" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {def.display_name ?? def.task_name}
+                      {def.validation_status === 'broken' && (
+                        <span
+                          title={def.validation_message ?? 'Broken hardware references'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: '16px', height: '16px', borderRadius: '50%',
+                            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+                            color: '#ef4444', fontSize: '10px', fontWeight: 700, lineHeight: 1,
+                            flexShrink: 0, cursor: 'default',
+                          }}
+                        >
+                          !
+                        </span>
+                      )}
+                    </div>
                     {def.display_name && (
                       <div className="tdreg-task-id">{def.task_name}</div>
                     )}

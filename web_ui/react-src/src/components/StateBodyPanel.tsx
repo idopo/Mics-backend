@@ -2,8 +2,6 @@ import type { FdaState, FdaAction, ToolkitRead, HardwareModule } from '../types'
 import ActionEditor from './ActionEditor'
 import { operandLabel } from './ConditionBuilder'
 
-const DEFAULT_ACTION: FdaAction = { type: 'hardware', ref: '', method: 'set', args: [1] }
-
 // ── Action type color chips ──────────────────────────────────────────────────
 
 const TYPE_COLORS: Record<string, string> = {
@@ -60,8 +58,15 @@ export default function StateBodyPanel({ stateName, state, toolkit, hwModules, o
   const removeAction = (i: number) =>
     onChange({ ...state, entry_actions: actions.filter((_, idx) => idx !== i) })
 
-  const addAction = () =>
-    onChange({ ...state, entry_actions: [...actions, { ...DEFAULT_ACTION }] })
+  const addAction = () => {
+    const toolkitModules = hwModules.filter(m => toolkit?.hardware_module_ids?.includes(m.id))
+    const firstMod = toolkit?.is_backend_authored ? toolkitModules[0] : undefined
+    const isTimer = firstMod?.lib_filename === 'timer.py'
+    const initial: FdaAction = firstMod
+      ? { type: isTimer ? 'timer' : 'hardware', ref: firstMod.name, method: '', args: [] }
+      : { type: 'hardware', ref: '', method: '', args: [] }
+    onChange({ ...state, entry_actions: [...actions, initial] })
+  }
 
   const moveAction = (i: number, direction: 'up' | 'down') => {
     const j = direction === 'up' ? i - 1 : i + 1

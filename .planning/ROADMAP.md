@@ -21,7 +21,7 @@
 | 9 | HardwareLib Storage | hardware_libs DB + API, AST validation, Pi override dir, E2E proof with gpio.py | HW-01–05 | ✓ Complete |
 | 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ✓ Complete |
 | 11 | Toolkit Redesign (Backend-Authored) | available_locked_states, 5-step toolkit UI, HANDSHAKE new format, legacy badge | HW-12–16 | ✓ Complete 2026-05-04 |
-| 12 | Hardware-Aware FDA Builder | hardware method picker in StateBodyPanel, lib-change validation, broken-definition warnings | HW-17–20 | ○ Pending |
+| 12 | 1/2 | In Progress|  | ○ Pending |
 | 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
 
 ---

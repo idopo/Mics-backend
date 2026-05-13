@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-04T12:44:15.976Z"
+last_updated: "2026-05-13T11:26:06.410Z"
 progress:
   total_phases: 13
-  completed_phases: 6
+  completed_phases: 3
   total_plans: 30
-  completed_plans: 22
-  percent: 73
+  completed_plans: 23
+  percent: 77
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [███████░░░] 73%
+**Progress:** [████████░░] 77%
 
 ---
 
@@ -71,6 +71,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 11-03]: pilot_hardware_config table name is singular (plan had wrong plural name)
 - [Phase 11-04]: _resolve_flags() reads 'tracker_type' key (DB format) with 'type' fallback; pops key and sets 'type' = Tracker class for init_flags() compatibility
 - [Phase 11-05]: EditModal extracted to separate file to keep Toolkits.tsx under 500-line limit
+- [Phase 12-hardware-fda-builder]: Direct-ref format uses 'group' key as discriminator for hardware actions in Pi — backward compat, no version bump
+- [Phase 12-hardware-fda-builder]: GUI-built states unconditionally call wait_for_condition() — entry_actions present is sufficient signal, blocking field ignored
+- [Phase 12-hardware-fda-builder]: Trial_Tracker.increment() dispatches INC_TRIAL_COUNTER (was DATA) — orchestrator now counts trials from flag-based actions
 
 ## Blockers
 

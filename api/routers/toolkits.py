@@ -36,6 +36,25 @@ _ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://orchestrator:9000")
 # Toolkit endpoints
 # ---------------------------------------------------------------------------
 
+def _normalize_flags(flags: dict | None) -> dict:
+    """Normalize flags to {flag_name: {tracker_type, initial_value}} regardless of origin.
+
+    HANDSHAKE-origin stores type as a nested dict with class_name; backend-authored
+    stores tracker_type directly. Both shapes are normalized to the flat form here.
+    """
+    if not flags:
+        return {}
+    normalized = {}
+    for name, info in flags.items():
+        if "tracker_type" in info:
+            tracker_type = info["tracker_type"]
+        else:
+            type_field = info.get("type", {})
+            tracker_type = type_field.get("class_name", "Counter_Tracker") if isinstance(type_field, dict) else "Counter_Tracker"
+        normalized[name] = {"tracker_type": tracker_type, "initial_value": info.get("initial_value", 0)}
+    return normalized
+
+
 def _build_toolkit_row(
     t: TaskToolkit,
     origins_map: Dict[int, List[str]],
@@ -46,7 +65,7 @@ def _build_toolkit_row(
         "name": t.name,
         "hw_hash": t.hw_hash,
         "states": t.states,
-        "flags": t.flags,
+        "flags": _normalize_flags(t.flags),
         "params_schema": t.params_schema,
         "semantic_hardware": t.semantic_hardware,
         "callable_methods": t.callable_methods,

@@ -52,6 +52,9 @@ def _normalize_flags(flags: dict | None) -> dict:
             type_field = info.get("type", {})
             tracker_type = type_field.get("class_name", "Counter_Tracker") if isinstance(type_field, dict) else "Counter_Tracker"
         normalized[name] = {"tracker_type": tracker_type, "initial_value": info.get("initial_value", 0)}
+    has_trial = any(v.get("tracker_type") == "Trial_Tracker" for v in normalized.values())
+    if not has_trial:
+        normalized["trial_counter"] = {"tracker_type": "Trial_Tracker", "initial_value": 0}
     return normalized
 
 

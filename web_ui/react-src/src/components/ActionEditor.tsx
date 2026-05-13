@@ -401,8 +401,12 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
             <label style={labelStyle} title="Which Trial_Tracker flag to update? increment dispatches INC_TRIAL_COUNTER to the orchestrator.">
               Trial counter ⓘ
             </label>
-            {trialFlagKeys.length > 0 ? (
-              <select value={action.ref ?? ''} onChange={e => update({ ref: e.target.value, method: 'increment', args: [] })} style={{ width: '100%' }}>
+            {trialFlagKeys.length === 1 ? (
+              <div style={{ fontSize: '12px', fontFamily: 'monospace', color: 'var(--text)' }}>
+                {trialFlagKeys[0]}
+              </div>
+            ) : trialFlagKeys.length > 1 ? (
+              <select value={action.ref || trialFlagKeys[0]} onChange={e => update({ ref: e.target.value, method: 'increment', args: [] })} style={{ width: '100%' }}>
                 {trialFlagKeys.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             ) : (

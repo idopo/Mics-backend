@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { FdaAction, ToolkitRead, HardwareModule, AstMethod } from '../types'
 import { getHardwareModuleMethods } from '../api/hardware_modules'
-import ArgInput, { getParamKeys } from './ArgInput'
+import ArgInput from './ArgInput'
 import IfActionEditor from './IfActionEditor'
 
 // Module-level method cache: avoids re-fetching within the same session

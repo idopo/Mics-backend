@@ -183,3 +183,13 @@ def run_task_definition_validation_migrations(eng):
             "ALTER TABLE task_definitions ADD COLUMN IF NOT EXISTS validation_message TEXT"
         ))
         conn.commit()
+
+
+def run_toolkit_hw_lib_version_migration(eng):
+    """Phase 11-06: add default_version_id to toolkit_hardware_libs. Idempotent."""
+    with eng.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE toolkit_hardware_libs "
+            "ADD COLUMN IF NOT EXISTS default_version_id INTEGER "
+            "REFERENCES hardware_lib_versions(id)"
+        ))

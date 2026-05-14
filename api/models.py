@@ -679,6 +679,11 @@ class ToolkitHardwareLib(Base):
 
     toolkit_id = Column(Integer, ForeignKey("task_toolkits.id"), primary_key=True)
     hardware_lib_id = Column(Integer, ForeignKey("hardware_libs.id"), primary_key=True)
+    default_version_id = Column(
+        Integer,
+        ForeignKey("hardware_lib_versions.id"),
+        nullable=True,
+    )
 
 
 class TaskDefinitionHwLibPin(Base):

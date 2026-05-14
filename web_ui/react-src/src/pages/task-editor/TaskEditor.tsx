@@ -130,6 +130,7 @@ export default function TaskEditor() {
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [addingState, setAddingState] = useState(false)
   const [newStateName, setNewStateName] = useState('')
+  const [ctxMenu, setCtxMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -285,21 +286,64 @@ export default function TaskEditor() {
     if (!name || !fdaJson) return
     if (fdaJson.states[name]) { setNewStateName(''); setAddingState(false); return }
     const existingCount = Object.keys(fdaJson.states).length
-    setFdaJson(prev => prev ? { ...prev, states: { ...prev.states, [name]: {} } } : prev)
-    setNodes(prev => [...prev, {
-      id: name,
-      type: 'stateNode',
-      position: { x: (existingCount % 4) * 270, y: Math.floor(existingCount / 4) * 170 },
-      data: { name, state: {}, isInitial: false, toolkit },
-    }])
+    const isFirst = existingCount === 0 || !fdaJson.initial_state
+    setFdaJson(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        states: { ...prev.states, [name]: {} },
+        initial_state: isFirst ? name : prev.initial_state,
+      }
+    })
+    setNodes(prev => [
+      ...prev.map(n => isFirst ? { ...n, data: { ...n.data, isInitial: false } } : n),
+      {
+        id: name,
+        type: 'stateNode',
+        position: { x: (existingCount % 4) * 270, y: Math.floor(existingCount / 4) * 170 },
+        data: { name, state: {}, isInitial: isFirst, toolkit },
+      },
+    ])
     setNewStateName('')
     setAddingState(false)
     setSelectedState(name)
   }
 
+  const setInitialState = (stateName: string) => {
+    setFdaJson(prev => prev ? { ...prev, initial_state: stateName } : prev)
+    setNodes(prev => prev.map(n => ({
+      ...n,
+      data: { ...n.data, isInitial: n.id === stateName },
+    })))
+  }
+
+  const deleteState = (stateName: string) => {
+    setFdaJson(prev => {
+      if (!prev) return prev
+      const { [stateName]: _dropped, ...remainingStates } = prev.states
+      return {
+        ...prev,
+        states: remainingStates,
+        initial_state: prev.initial_state === stateName ? '' : prev.initial_state,
+        transitions: prev.transitions.filter(t => t.from !== stateName && t.to !== stateName),
+      }
+    })
+    setNodes(prev => prev.filter(n => n.id !== stateName))
+    setEdges(prev => prev.filter(e => e.source !== stateName && e.target !== stateName))
+    if (selectedState === stateName) setSelectedState(null)
+  }
+
   const PANEL = 'var(--panel)'
   const BORDER = 'var(--border)'
   const MUTED = 'var(--muted)'
+
+  const hasStates = Object.keys(fdaJson?.states ?? {}).length > 0
+  const missingInitial = hasStates && !fdaJson?.initial_state
+
+  const handleSave = () => {
+    if (missingInitial) return
+    saveMutation.mutate()
+  }
 
   // Derive selected transition from edge id
   const selectedTransition = selectedEdgeId && fdaJson
@@ -363,11 +407,16 @@ export default function TaskEditor() {
             {savedMsg}
           </span>
         )}
+        {missingInitial && (
+          <span style={{ color: '#f87171', fontSize: 12, marginRight: 8, flexShrink: 0 }}>
+            No initial state set — right-click a state to set one
+          </span>
+        )}
         <button
           className="button-primary"
           style={{ fontSize: '12px', padding: '4px 14px', flexShrink: 0 }}
-          disabled={saveMutation.isPending || !fdaJson}
-          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || !fdaJson || missingInitial}
+          onClick={handleSave}
         >
           {saveMutation.isPending ? 'Saving…' : 'Save'}
         </button>
@@ -474,6 +523,7 @@ export default function TaskEditor() {
               ) : 'Visual editor requires v2 format.'}
             </div>
           ) : (
+            <>
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -493,6 +543,11 @@ export default function TaskEditor() {
               onPaneClick={() => {
                 setSelectedEdgeId(null)
                 setSelectedState(null)
+                setCtxMenu(null)
+              }}
+              onNodeContextMenu={(e, node) => {
+                e.preventDefault()
+                setCtxMenu({ nodeId: node.id, x: e.clientX, y: e.clientY })
               }}
               fitView
             >
@@ -500,6 +555,39 @@ export default function TaskEditor() {
               <Controls />
               <MiniMap nodeColor={() => '#2563eb'} style={{ background: '#1e2130' }} />
             </ReactFlow>
+            {ctxMenu && (
+              <div
+                style={{
+                  position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
+                  background: 'var(--panel)', border: '1px solid var(--border)',
+                  borderRadius: 6, padding: '4px 0', zIndex: 1000,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                }}
+                onMouseLeave={() => setCtxMenu(null)}
+              >
+                <button
+                  style={{
+                    display: 'block', width: '100%', padding: '6px 14px',
+                    background: 'none', border: 'none', color: 'var(--text)',
+                    cursor: 'pointer', textAlign: 'left', fontSize: 13,
+                  }}
+                  onClick={() => { setInitialState(ctxMenu.nodeId); setCtxMenu(null) }}
+                >
+                  Set as Initial State
+                </button>
+                <button
+                  style={{
+                    display: 'block', width: '100%', padding: '6px 14px',
+                    background: 'none', border: 'none', color: '#f87171',
+                    cursor: 'pointer', textAlign: 'left', fontSize: 13,
+                  }}
+                  onClick={() => { deleteState(ctxMenu.nodeId); setCtxMenu(null) }}
+                >
+                  Delete State
+                </button>
+              </div>
+            )}
+            </>
           )}
           </div>
         </div>

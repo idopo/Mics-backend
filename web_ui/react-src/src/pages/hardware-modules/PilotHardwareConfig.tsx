@@ -6,6 +6,7 @@ import {
   getHardwareModuleMethods,
   listPilotHardwareConfig,
   upsertPilotHardwareConfig,
+  deletePilotHardwareConfig,
 } from '../../api/hardware_modules'
 import { apiFetch } from '../../api/client'
 import type { AstMethodArg } from '../../types'
@@ -53,6 +54,14 @@ export default function PilotHardwareConfig(): JSX.Element {
   })
 
   const configByModuleId = Object.fromEntries(configs.map(c => [c.hardware_module_id, c]))
+
+  const removeMutation = useMutation({
+    mutationFn: (moduleId: number) => deletePilotHardwareConfig(pid, moduleId),
+    onSuccess: (_data, moduleId) => {
+      qc.invalidateQueries({ queryKey: ['pilot-hardware-config', pid] })
+      setRowState(s => { const next = { ...s }; delete next[moduleId]; return next })
+    },
+  })
 
   const saveMutation = useMutation({
     mutationFn: ({ moduleId, config }: { moduleId: number; config: Record<string, unknown> }) =>
@@ -228,7 +237,16 @@ export default function PilotHardwareConfig(): JSX.Element {
                         <button className="button-secondary" onClick={() => setRowState(s => ({ ...s, [m.id]: { ...s[m.id], editing: false, extra: '' } }))}>Cancel</button>
                       </div>
                     ) : (
-                      <button className="button-secondary" onClick={() => startEdit(m.id)}>Edit</button>
+                      <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                        <button className="button-secondary" onClick={() => startEdit(m.id)}>Edit</button>
+                        {configByModuleId[m.id] && (
+                          <button
+                            className="button-danger"
+                            onClick={() => removeMutation.mutate(m.id)}
+                            disabled={removeMutation.isPending}
+                          >Remove</button>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>

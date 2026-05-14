@@ -455,7 +455,12 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
           {flagMethodNeedsArg && (
             <div>
               <label style={labelStyle}>Value</label>
-              <ArgInput value={(action.args ?? [])[0] ?? 0} toolkit={toolkit} annotation={null} onChange={v => update({ args: [v] })} />
+              <ArgInput
+                value={(action.args ?? [])[0] ?? (flagTrackerType === 'Boolean_Tracker' ? false : 0)}
+                toolkit={toolkit}
+                annotation={flagTrackerType === 'Boolean_Tracker' ? 'bool' : null}
+                onChange={v => update({ args: [v] })}
+              />
             </div>
           )}
         </>

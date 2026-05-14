@@ -102,6 +102,7 @@ class RollbackBody(BaseModel):
 
 class LinkLibBody(BaseModel):
     hardware_lib_id: int
+    version_id: Optional[int] = None
 
 
 class PinBody(BaseModel):
@@ -423,7 +424,9 @@ def list_toolkit_hardware_libs(toolkit_id: int, _: dict = Depends(verify_token))
             lib = db.get(HardwareLib, link.hardware_lib_id)
             if lib:
                 av = db.get(HardwareLibVersion, lib.active_version_id) if lib.active_version_id else None
-                result.append(_lib_dict(lib, av))
+                entry = _lib_dict(lib, av)
+                entry["default_version_id"] = link.default_version_id
+                result.append(entry)
         return {"libs": result}
     finally:
         db.close()
@@ -442,8 +445,15 @@ def link_hardware_lib(toolkit_id: int, body: LinkLibBody, _: dict = Depends(veri
             ToolkitHardwareLib.hardware_lib_id == body.hardware_lib_id,
         ).first()
         if existing:
+            if body.version_id is not None:
+                existing.default_version_id = body.version_id
+                db.commit()
             return {"toolkit_id": toolkit_id, "hardware_lib_id": body.hardware_lib_id}
-        link = ToolkitHardwareLib(toolkit_id=toolkit_id, hardware_lib_id=body.hardware_lib_id)
+        link = ToolkitHardwareLib(
+            toolkit_id=toolkit_id,
+            hardware_lib_id=body.hardware_lib_id,
+            default_version_id=body.version_id,
+        )
         db.add(link)
         db.commit()
         return {"toolkit_id": toolkit_id, "hardware_lib_id": body.hardware_lib_id}

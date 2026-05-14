@@ -57,3 +57,10 @@ export async function deleteHwLibPin(taskDefId: number, libId: number): Promise<
 export async function getHwLibVersionDiff(libId: number, fromVersionId: number, toVersionId: number): Promise<HwLibDiff> {
   return apiFetch(`/api/hardware-libs/${libId}/versions/diff?from=${fromVersionId}&to=${toVersionId}`)
 }
+
+export async function linkLib(toolkitId: number, libId: number, versionId: number | null): Promise<void> {
+  return apiFetch(`/api/toolkits/${toolkitId}/hardware-libs`, {
+    method: 'POST',
+    body: JSON.stringify({ hardware_lib_id: libId, version_id: versionId }),
+  })
+}

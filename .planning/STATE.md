@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-13T12:45:47.657Z"
+last_updated: "2026-05-14T07:27:30.458Z"
 progress:
   total_phases: 13
   completed_phases: 3
-  total_plans: 31
-  completed_plans: 24
-  percent: 77
+  total_plans: 32
+  completed_plans: 25
+  percent: 78
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [████████░░] 77%
+**Progress:** [████████░░] 78%
 
 ---
 
@@ -76,6 +76,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 12-hardware-fda-builder]: Trial_Tracker.increment() dispatches INC_TRIAL_COUNTER (was DATA) — orchestrator now counts trials from flag-based actions
 - [Phase 12-hardware-fda-builder]: trial_counter injection is server-side in _normalize_flags() — every toolkit GET response always has it, UI never needs to handle 0-trial-flags case
 - [Phase 12-hardware-fda-builder]: auto-save depends on fdaJson only (not editName) — name changes excluded from debounce since user may still be typing
+- [Phase 12]: Context menu renders as fixed-positioned div outside ReactFlow canvas — avoids transform coordinate issues
 
 ## Blockers
 

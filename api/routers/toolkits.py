@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 # Imports from parent package (api/ is on sys.path in Docker)
 from auth import verify_token
 from db import engine
+from fda_utils import scan_fda_for_refs
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
@@ -346,6 +347,59 @@ def create_backend_toolkit(payload: BackendToolkitCreate, _: dict = Depends(veri
         db.close()
 
 
+def _flag_broken_defs_for_toolkit(
+    db: OrmSession,
+    toolkit_id: int,
+    removed_flag_names: set[str],
+    removed_module_names: set[str],
+) -> list[int]:
+    """Scan task definitions linked to toolkit_id for broken flag/hardware refs.
+
+    Flags broken definitions in the DB and returns their IDs.
+    """
+    if not removed_flag_names and not removed_module_names:
+        return []
+
+    task_defs = db.query(TaskDefinition).filter(
+        TaskDefinition.toolkit_id == toolkit_id
+    ).all()
+
+    affected_ids: list[int] = []
+    for task_def in task_defs:
+        row = db.execute(
+            sa_text("SELECT fda_json FROM task_definitions WHERE id = :id"),
+            {"id": task_def.id},
+        ).fetchone()
+        if not row or not row.fda_json:
+            continue
+
+        fda = row.fda_json if isinstance(row.fda_json, dict) else json.loads(row.fda_json)
+        refs = scan_fda_for_refs(fda)
+
+        broken_msg: str | None = None
+        for ref_entry in refs:
+            action_type = ref_entry["action_type"]
+            ref = ref_entry.get("ref")
+            state = ref_entry["state_name"]
+
+            if action_type == "flag" and ref in removed_flag_names:
+                broken_msg = f"State '{state}': flag '{ref}' removed from toolkit"
+                break
+            if action_type in ("hardware", "timer") and ref in removed_module_names:
+                broken_msg = f"State '{state}': hardware module '{ref}' removed from toolkit"
+                break
+
+        if broken_msg:
+            db.execute(sa_text(
+                "UPDATE task_definitions "
+                "SET validation_status = 'broken', validation_message = :msg "
+                "WHERE id = :id"
+            ), {"msg": broken_msg, "id": task_def.id})
+            affected_ids.append(task_def.id)
+
+    return affected_ids
+
+
 @router.patch("/toolkits/{toolkit_id}", status_code=200)
 def patch_backend_toolkit(
     toolkit_id: int,
@@ -363,6 +417,10 @@ def patch_backend_toolkit(
             raise HTTPException(404, "Toolkit not found")
         if not toolkit.is_backend_authored:
             raise HTTPException(400, "Only backend-authored toolkits can be patched via this endpoint")
+
+        # Capture current state before changes for impact detection
+        old_module_ids: list[int] = list(toolkit.hardware_module_ids or [])
+        old_flag_names: set[str] = set((toolkit.flags or {}).keys())
 
         if payload.hardware_module_ids is not None:
             existing_ids = {
@@ -395,6 +453,30 @@ def patch_backend_toolkit(
         _db.commit()
         _db.refresh(toolkit)
 
+        # Compute removed flags and hardware modules, then scan for broken task definitions
+        removed_flag_names: set[str] = set()
+        removed_module_names: set[str] = set()
+
+        if payload.flags is not None:
+            new_flag_names = {f.name for f in payload.flags}
+            removed_flag_names = old_flag_names - new_flag_names
+
+        if payload.hardware_module_ids is not None:
+            new_module_ids = set(payload.hardware_module_ids)
+            removed_module_ids = set(old_module_ids) - new_module_ids
+            if removed_module_ids:
+                name_rows = _db.execute(
+                    sa_text("SELECT name FROM hardware_modules WHERE id = ANY(:ids)"),
+                    {"ids": list(removed_module_ids)},
+                ).fetchall()
+                removed_module_names = {row.name for row in name_rows}
+
+        affected_ids = _flag_broken_defs_for_toolkit(
+            _db, toolkit_id, removed_flag_names, removed_module_names
+        )
+        if affected_ids:
+            _db.commit()
+
         origins_rows = (
             _db.query(ToolkitPilotOrigin, Pilot)
             .join(Pilot, ToolkitPilotOrigin.pilot_id == Pilot.id)
@@ -407,7 +489,13 @@ def patch_backend_toolkit(
             {"name": toolkit.name},
         ).scalar() or 0
 
-        return _build_toolkit_row(toolkit, origins_map, fda_count)
+        result = _build_toolkit_row(toolkit, origins_map, fda_count)
+        result["impact"] = {
+            "removed_flags": sorted(removed_flag_names),
+            "removed_modules": sorted(removed_module_names),
+            "affected_definition_ids": affected_ids,
+        }
+        return result
     finally:
         _db.close()
 
@@ -543,6 +631,68 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
         db.close()
 
 
+def _validate_task_definition(db: OrmSession, fda_json: dict, toolkit_id: int | None) -> tuple[str, str | None]:
+    """Re-validate an FDA JSON against its toolkit's current flags and hardware modules.
+
+    Returns (validation_status, validation_message) where status is 'ok' or 'broken'.
+    If toolkit_id is None or toolkit not found, returns 'ok' (no context to validate against).
+    """
+    if not toolkit_id or not fda_json:
+        return "ok", None
+
+    toolkit = db.query(TaskToolkit).filter(TaskToolkit.id == toolkit_id).one_or_none()
+    if not toolkit:
+        return "ok", None
+
+    refs = scan_fda_for_refs(fda_json)
+    current_flag_names = set((toolkit.flags or {}).keys())
+
+    # Build a map of module_name → class_name for hardware method validation
+    module_ids = list(toolkit.hardware_module_ids or [])
+    hw_module_map: dict[str, str] = {}  # module_name → class_name
+    if module_ids:
+        module_rows = db.execute(
+            sa_text("SELECT name, class_name, hardware_lib_id FROM hardware_modules WHERE id = ANY(:ids)"),
+            {"ids": module_ids},
+        ).fetchall()
+        hw_module_map = {row.name: (row.class_name, row.hardware_lib_id) for row in module_rows}
+
+    # Build class_name → method_names map from lib AST
+    # Load libs only for modules we have
+    lib_class_methods: dict[str, set[str]] = {}  # class_name → {method_names}
+    seen_lib_ids: set[int] = set()
+    for mod_name, (cls_name, lib_id) in hw_module_map.items():
+        if lib_id not in seen_lib_ids:
+            seen_lib_ids.add(lib_id)
+            lib_row = db.execute(
+                sa_text("SELECT ast_metadata FROM hardware_libs WHERE id = :id"),
+                {"id": lib_id},
+            ).fetchone()
+            if lib_row and lib_row.ast_metadata:
+                meta = lib_row.ast_metadata if isinstance(lib_row.ast_metadata, dict) else json.loads(lib_row.ast_metadata)
+                for cls in meta.get("classes", []):
+                    lib_class_methods[cls["name"]] = {m["name"] for m in cls.get("methods", [])}
+
+    for ref_entry in refs:
+        action_type = ref_entry["action_type"]
+        ref = ref_entry.get("ref")
+        method = ref_entry.get("method")
+        state = ref_entry["state_name"]
+
+        if action_type == "flag" and ref not in current_flag_names:
+            return "broken", f"State '{state}': flag '{ref}' not in toolkit flags"
+
+        if action_type == "hardware" and ref is not None:
+            if hw_module_map and ref not in hw_module_map:
+                return "broken", f"State '{state}': hardware module '{ref}' not in toolkit modules"
+            if ref in hw_module_map and method is not None:
+                cls_name, _ = hw_module_map[ref]
+                if cls_name in lib_class_methods and method not in lib_class_methods[cls_name]:
+                    return "broken", f"State '{state}': {ref}.{method} not found in lib (class {cls_name})"
+
+    return "ok", None
+
+
 @router.put("/task-definitions/{defn_id}")
 def update_task_definition(defn_id: int, payload: TaskDefinitionUpdate, _: dict = Depends(verify_token)):
     import hashlib as _hl
@@ -564,13 +714,33 @@ def update_task_definition(defn_id: int, payload: TaskDefinitionUpdate, _: dict 
         if payload.toolkit_id is not None:
             updates["toolkit_id"] = payload.toolkit_id
 
+        # Re-validate against current toolkit state after applying changes
+        effective_fda = payload.fda_json
+        if effective_fda is None:
+            # Load existing fda_json if not being updated
+            existing_row = db.execute(
+                sa_text("SELECT fda_json, toolkit_id FROM task_definitions WHERE id = :id"),
+                {"id": defn_id},
+            ).fetchone()
+            if existing_row and existing_row.fda_json:
+                effective_fda = (
+                    existing_row.fda_json
+                    if isinstance(existing_row.fda_json, dict)
+                    else json.loads(existing_row.fda_json)
+                )
+
+        effective_toolkit_id = payload.toolkit_id if payload.toolkit_id is not None else defn.toolkit_id
+        v_status, v_msg = _validate_task_definition(db, effective_fda or {}, effective_toolkit_id)
+        updates["validation_status"] = v_status
+        updates["validation_message"] = v_msg
+
         if updates:
             set_parts = ", ".join(f"{k} = :{k}" for k in updates)
             updates["id"] = defn_id
             db.execute(sa_text(f"UPDATE task_definitions SET {set_parts} WHERE id = :id"), updates)
             db.commit()
 
-        return {"status": "ok", "id": defn_id}
+        return {"status": "ok", "id": defn_id, "validation_status": v_status}
     finally:
         db.close()
 

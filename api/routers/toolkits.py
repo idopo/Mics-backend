@@ -594,28 +594,6 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
         })
         db.commit()
 
-        # Auto-pin to stable (or active) version of each hw lib linked to the toolkit
-        if payload.toolkit_id:
-            links = db.query(ToolkitHardwareLib).filter(
-                ToolkitHardwareLib.toolkit_id == payload.toolkit_id
-            ).all()
-            for link in links:
-                lib = db.get(HardwareLib, link.hardware_lib_id)
-                if not lib:
-                    continue
-                pin_version_id = lib.stable_version_id or lib.active_version_id
-                if pin_version_id:
-                    already = db.query(TaskDefinitionHwLibPin).filter_by(
-                        task_def_id=defn.id, hardware_lib_id=lib.id
-                    ).first()
-                    if not already:
-                        db.add(TaskDefinitionHwLibPin(
-                            task_def_id=defn.id,
-                            hardware_lib_id=lib.id,
-                            pinned_version_id=pin_version_id,
-                        ))
-            db.commit()
-
         return {
             "id": defn.id,
             "task_name": task_name,

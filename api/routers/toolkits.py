@@ -654,7 +654,8 @@ def _validate_task_definition(
         return "ok", None
 
     refs = scan_fda_for_refs(fda_json)
-    current_flag_names = set((toolkit.flags or {}).keys())
+    # trial_counter is implicitly available in every toolkit (incremented via INC_TRIAL_COUNTER ZMQ message)
+    current_flag_names = set((toolkit.flags or {}).keys()) | {"trial_counter"}
 
     # Build a map of module_name → class_name for hardware method validation
     module_ids = list(toolkit.hardware_module_ids or [])

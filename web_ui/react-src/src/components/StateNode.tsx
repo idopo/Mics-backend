@@ -6,6 +6,7 @@ export type StateNodeData = {
   state: FdaState
   isInitial: boolean
   toolkit: ToolkitRead | null
+  warning?: string
 }
 
 function isPassthrough(name: string, state: FdaState, toolkit: ToolkitRead | null): boolean {
@@ -15,7 +16,7 @@ function isPassthrough(name: string, state: FdaState, toolkit: ToolkitRead | nul
 }
 
 export default function StateNode({ data, selected }: NodeProps) {
-  const { name, state, isInitial, toolkit } = data as StateNodeData
+  const { name, state, isInitial, toolkit, warning } = data as StateNodeData
   const passthrough = isPassthrough(name, state, toolkit)
 
   const nodeColor = isInitial ? '#7c3aed' : passthrough ? '#6b7280' : '#2563eb'
@@ -24,8 +25,9 @@ export default function StateNode({ data, selected }: NodeProps) {
   return (
     <div
       style={{
+        position: 'relative',
         background: '#1e2130',
-        border: '1px solid #2d3148',
+        border: `1px solid ${warning ? 'rgba(239,68,68,0.5)' : '#2d3148'}`,
         borderLeft: `4px solid ${nodeColor}`,
         borderRadius: '8px',
         padding: '10px 14px',
@@ -40,6 +42,34 @@ export default function StateNode({ data, selected }: NodeProps) {
         userSelect: 'none',
       }}
     >
+      {warning && (
+        <div
+          className="state-warning-badge"
+          style={{
+            position: 'absolute',
+            top: '-7px',
+            right: '-7px',
+            width: '16px',
+            height: '16px',
+            borderRadius: '50%',
+            background: '#ef4444',
+            color: '#fff',
+            fontSize: '10px',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'help',
+            zIndex: 10,
+            boxShadow: '0 0 6px rgba(239,68,68,0.7)',
+            lineHeight: 1,
+          }}
+        >
+          !
+          <span className="state-warning-tooltip">{warning}</span>
+        </div>
+      )}
+
       {!isInitial && <Handle type="target" position={Position.Left} style={{ background: nodeColor, width: 11, height: 11 }} />}
 
       <div style={{ fontWeight: 600, marginBottom: '4px', letterSpacing: '0.03em' }}>
@@ -63,7 +93,7 @@ export default function StateNode({ data, selected }: NodeProps) {
         )}
         {state.wait_condition && (
           <span style={{ fontSize: '10px', color: '#60a5fa' }} title="Has wait_condition">
-            {'\u23F3'}
+            {'⏳'}
           </span>
         )}
       </div>

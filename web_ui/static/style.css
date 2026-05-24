@@ -3916,3 +3916,32 @@ li,
 .main-content:has(.pilots-page) {
   padding-top: 2rem;
 }
+
+
+/* ── Hw-lib deprecation warning badge on FDA state nodes ── */
+.state-warning-badge { position: relative; }
+
+.state-warning-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: -4px;
+  background: #1e2130;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 6px 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  min-width: 200px;
+  max-width: 320px;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  line-height: 1.5;
+}
+
+.state-warning-badge:hover .state-warning-tooltip {
+  display: block;
+}

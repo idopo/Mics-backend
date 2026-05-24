@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-14T10:54:02.078Z"
+last_updated: "2026-05-24T05:55:36.834Z"
 progress:
   total_phases: 13
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 33
-  completed_plans: 26
-  percent: 76
+  completed_plans: 27
+  percent: 79
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [████████░░] 76%
+**Progress:** [████████░░] 79%
 
 ---
 
@@ -78,6 +78,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 12-hardware-fda-builder]: auto-save depends on fdaJson only (not editName) — name changes excluded from debounce since user may still be typing
 - [Phase 12]: Context menu renders as fixed-positioned div outside ReactFlow canvas — avoids transform coordinate issues
 - [Phase 11-06]: CreationModal extracted to separate file to keep Toolkits.tsx under 300-line limit
+- [Phase 12-hardware-fda-builder]: scan_fda_for_refs in api/fda_utils.py shared between hardware_libs and toolkits routers
+- [Phase 12-hardware-fda-builder]: Pinned task definitions insulated from active-version lib changes (skip in impact scan); classic toolkits skip hardware ref validation (no hardware_module_ids)
 
 ## Blockers
 

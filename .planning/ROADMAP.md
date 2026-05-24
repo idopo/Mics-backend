@@ -21,7 +21,7 @@
 | 9 | HardwareLib Storage | hardware_libs DB + API, AST validation, Pi override dir, E2E proof with gpio.py | HW-01–05 | ✓ Complete |
 | 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ✓ Complete |
 | 11 | 6/6 | Complete    | 2026-05-14 | ✓ Complete 2026-05-04 |
-| 12 | 3/4 | In Progress|  | ○ Pending |
+| 12 | 4/4 | Complete   | 2026-05-24 | ○ Pending |
 | 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
 
 ---

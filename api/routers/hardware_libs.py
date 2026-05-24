@@ -12,9 +12,11 @@ from sqlalchemy.orm import sessionmaker
 
 from auth import verify_token
 from db import engine
+from fda_utils import scan_fda_for_refs
 from models import (
     HardwareLib,
     HardwareLibVersion,
+    TaskDefinition,
     TaskDefinitionHwLibPin,
     TaskToolkit,
     ToolkitHardwareLib,
@@ -229,6 +231,95 @@ def get_hardware_lib(lib_id: int, _: dict = Depends(verify_token)):
         db.close()
 
 
+def _diff_removed_methods(old_meta: dict, new_meta: dict) -> dict[str, set[str]]:
+    """Return {class_name: {removed_method_names}} for methods removed in new vs old AST."""
+    old_classes = {c["name"]: {m["name"] for m in c.get("methods", [])} for c in (old_meta or {}).get("classes", [])}
+    new_classes = {c["name"]: {m["name"] for m in c.get("methods", [])} for c in (new_meta or {}).get("classes", [])}
+    removed: dict[str, set[str]] = {}
+    for cls_name, old_methods in old_classes.items():
+        new_methods = new_classes.get(cls_name, set())
+        diff = old_methods - new_methods
+        if diff:
+            removed[cls_name] = diff
+    return removed
+
+
+def _flag_broken_task_defs(db, lib_id: int, removed_methods: dict[str, set[str]]) -> list[int]:
+    """Scan task definitions linked to lib_id and flag any that reference removed methods.
+
+    Skips definitions pinned to a specific version of this lib (they are insulated).
+    Returns list of affected (flagged) definition IDs.
+    """
+    if not removed_methods:
+        return []
+
+    # Collect task_def_ids pinned to this specific lib (any version)
+    pinned_ids = {
+        row.task_def_id
+        for row in db.query(TaskDefinitionHwLibPin)
+        .filter(TaskDefinitionHwLibPin.hardware_lib_id == lib_id)
+        .all()
+    }
+
+    # Find all toolkits that use this lib
+    toolkit_links = db.query(ToolkitHardwareLib).filter(
+        ToolkitHardwareLib.hardware_lib_id == lib_id
+    ).all()
+    toolkit_ids = [tl.toolkit_id for tl in toolkit_links]
+    if not toolkit_ids:
+        return []
+
+    # Find all task definitions linked to those toolkits
+    task_defs = db.query(TaskDefinition).filter(
+        TaskDefinition.toolkit_id.in_(toolkit_ids)
+    ).all()
+
+    affected_ids: list[int] = []
+    from sqlalchemy import text as sa_text
+
+    for task_def in task_defs:
+        if task_def.id in pinned_ids:
+            # Pinned definitions are insulated from active-version changes
+            continue
+
+        # Load fda_json via raw SQL (migrated column, not on ORM class)
+        row = db.execute(
+            sa_text("SELECT fda_json FROM task_definitions WHERE id = :id"),
+            {"id": task_def.id},
+        ).fetchone()
+        if not row or not row.fda_json:
+            continue
+
+        import json as _json
+        fda = row.fda_json if isinstance(row.fda_json, dict) else _json.loads(row.fda_json)
+        refs = scan_fda_for_refs(fda)
+
+        for ref_entry in refs:
+            if ref_entry["action_type"] != "hardware":
+                continue
+            ref_method = ref_entry.get("method")
+            if not ref_method:
+                continue
+            for cls_name, removed in removed_methods.items():
+                if ref_method in removed:
+                    msg = (
+                        f"State '{ref_entry['state_name']}': "
+                        f"{ref_entry['ref']}.{ref_method} removed from lib (class {cls_name})"
+                    )
+                    db.execute(sa_text(
+                        "UPDATE task_definitions "
+                        "SET validation_status = 'broken', validation_message = :msg "
+                        "WHERE id = :id"
+                    ), {"msg": msg, "id": task_def.id})
+                    affected_ids.append(task_def.id)
+                    break
+            else:
+                continue
+            break
+
+    return affected_ids
+
+
 @router.put("/hardware-libs/{lib_id}")
 def update_hardware_lib_source(
     lib_id: int,
@@ -240,6 +331,9 @@ def update_hardware_lib_source(
         lib = db.get(HardwareLib, lib_id)
         if not lib:
             raise HTTPException(status_code=404, detail="Hardware lib not found")
+
+        # Capture old AST before overwrite for impact diff
+        old_ast = lib.ast_metadata
 
         last_version = (
             db.query(HardwareLibVersion)
@@ -256,9 +350,19 @@ def update_hardware_lib_source(
 
         lib.active_version_id = version.id
         lib.ast_metadata = version.ast_metadata
+
+        # Diff AST and flag any broken task definitions
+        removed_methods = _diff_removed_methods(old_ast, version.ast_metadata)
+        affected_ids = _flag_broken_task_defs(db, lib_id, removed_methods)
+
         db.commit()
         db.refresh(lib)
-        return _lib_dict(lib, version)
+        result = _lib_dict(lib, version)
+        result["impact"] = {
+            "removed_methods": {k: sorted(v) for k, v in removed_methods.items()},
+            "affected_definition_ids": affected_ids,
+        }
+        return result
     except HTTPException:
         raise
     except Exception as e:

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -20,7 +20,7 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibPins } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaState, HwLibPin, ToolkitRead, HardwareModule } from '../../types'
+import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule } from '../../types'
 import StateNode from '../../components/StateNode'
 import ConditionBuilder, { operandLabel } from '../../components/ConditionBuilder'
 import StateBodyPanel from '../../components/StateBodyPanel'
@@ -64,12 +64,24 @@ function normaliseFda(fdaJson: FdaJson): FdaJson {
   }
 }
 
-function fdaToNodes(fdaJson: FdaJson, toolkit: ToolkitRead | null): Node[] {
+function parseStateWarnings(validationMessage: string | null | undefined): Record<string, string> {
+  if (!validationMessage) return {}
+  const result: Record<string, string> = {}
+  for (const line of validationMessage.split('\n')) {
+    const m = line.match(/^State '([^']+)': (.+)$/)
+    if (m) {
+      result[m[1]] = result[m[1]] ? `${result[m[1]]}\n${m[2]}` : m[2]
+    }
+  }
+  return result
+}
+
+function fdaToNodes(fdaJson: FdaJson, toolkit: ToolkitRead | null, stateWarnings: Record<string, string>): Node[] {
   return Object.entries(fdaJson.states ?? {}).map(([name, state], i) => ({
     id: name,
     type: 'stateNode',
     position: { x: (i % 4) * 270, y: Math.floor(i / 4) * 170 },
-    data: { name, state, isInitial: name === fdaJson.initial_state, toolkit },
+    data: { name, state, isInitial: name === fdaJson.initial_state, toolkit, warning: stateWarnings[name] },
   }))
 }
 
@@ -126,8 +138,7 @@ export default function TaskEditor() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [savedMsg, setSavedMsg] = useState('')
-  const [versionModalLib, setVersionModalLib] = useState<HwLibPin | null>(null)
-  const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [hwLibsOpen, setHwLibsOpen] = useState(false)
   const [addingState, setAddingState] = useState(false)
   const [newStateName, setNewStateName] = useState('')
   const [ctxMenu, setCtxMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
@@ -135,9 +146,21 @@ export default function TaskEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
+  const stateWarnings = useMemo(
+    () => taskDef?.validation_status === 'broken' ? parseStateWarnings(taskDef.validation_message) : {},
+    [taskDef?.validation_status, taskDef?.validation_message],
+  )
+
   useEffect(() => {
     if (taskDef) {
-      if (taskDef.fda_json) setFdaJson(normaliseFda(taskDef.fda_json))
+      if (taskDef.fda_json) {
+        const normalised = normaliseFda(taskDef.fda_json)
+        setFdaJson(prev => {
+          // Avoid triggering auto-save when server round-trips identical content
+          if (prev && JSON.stringify(prev) === JSON.stringify(normalised)) return prev
+          return normalised
+        })
+      }
       setEditName(taskDef.display_name ?? taskDef.task_name ?? '')
     }
   }, [taskDef])
@@ -146,10 +169,16 @@ export default function TaskEditor() {
   const [canvasInited, setCanvasInited] = useState(false)
   useEffect(() => {
     if (!fdaJson || canvasInited) return
-    setNodes(fdaToNodes(fdaJson, toolkit))
+    setNodes(fdaToNodes(fdaJson, toolkit, stateWarnings))
     setEdges(fdaToEdges(fdaJson))
     setCanvasInited(true)
   }, [fdaJson, toolkit, canvasInited])
+
+  // Sync warning badges when validation status changes (e.g. after save)
+  useEffect(() => {
+    if (!canvasInited) return
+    setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, warning: stateWarnings[n.id] } })))
+  }, [stateWarnings, canvasInited])
 
   // Re-sync edges when transitions change (after adding a new edge)
   useEffect(() => {
@@ -168,6 +197,7 @@ export default function TaskEditor() {
           ...n.data,
           state: fdaJson.states[n.id] ?? n.data.state,
           toolkit,
+          warning: stateWarnings[n.id],
         },
       }))
       if (!toolkit?.states) return updated
@@ -191,7 +221,7 @@ export default function TaskEditor() {
       })
       return updated
     })
-  }, [fdaJson?.states, toolkit])
+  }, [fdaJson?.states, toolkit, stateWarnings])
 
   const saveMutation = useMutation({
     mutationFn: () => updateTaskDefinition(numId, {
@@ -376,31 +406,19 @@ export default function TaskEditor() {
           onBlur={e => (e.target.style.borderBottomColor = BORDER)}
           placeholder="Task definition name…"
         />
-        {taskDef?.toolkit_name && (
-          <span className="badge" style={{ fontSize: '11px', flexShrink: 0 }}>{taskDef.toolkit_name}</span>
-        )}
-        {hwLibPins.length > 0 && (
-          <div style={{ display: 'flex', gap: '4px', flexShrink: 0, flexWrap: 'wrap' }}>
-            {hwLibPins.map(pin => (
-              <button
-                key={pin.hardware_lib_id}
-                className={`meta-pill${pin.pinned_version_id ? ' pinned' : ''}`}
-                onClick={() => setVersionModalLib(pin)}
-                title={pin.pinned_version_id
-                  ? `Pinned to v${pin.pinned_version_number} (${pin.pinned_version_state})`
-                  : `Active: v${pin.active_version_number ?? '?'} (${pin.active_version_state ?? 'none'})`}
-                style={{ cursor: 'pointer', border: '1px solid var(--border)', background: pin.pinned_version_id ? 'rgba(129,140,248,0.12)' : undefined }}
-              >
-                {pin.lib_filename}
-                {pin.pinned_version_id ? ` v${pin.pinned_version_number}` : ' active'}
-                {(pin.pinned_version_state ?? pin.active_version_state) && (
-                  <span className={`badge status-${pin.pinned_version_state ?? pin.active_version_state}`} style={{ marginLeft: 4, fontSize: '10px' }}>
-                    {pin.pinned_version_state ?? pin.active_version_state}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+        {taskDef?.toolkit_name && hwLibPins.length > 0 && (
+          <button
+            onClick={() => setHwLibsOpen(true)}
+            title={`Hardware libraries — ${taskDef.toolkit_name}`}
+            style={{
+              background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer',
+              fontSize: '17px', padding: '2px 4px', flexShrink: 0, lineHeight: 1,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
+          >
+            ⚙
+          </button>
         )}
         {savedMsg && (
           <span style={{ fontSize: '12px', color: savedMsg.startsWith('Error') ? 'var(--error)' : 'var(--green)', flexShrink: 0 }}>
@@ -420,16 +438,6 @@ export default function TaskEditor() {
         >
           {saveMutation.isPending ? 'Saving…' : 'Save'}
         </button>
-        {versionModalLib && (
-          <HwLibVersionModal
-            taskDefId={numId}
-            pin={versionModalLib}
-            fdaJson={fdaJson}
-            toolkit={toolkit}
-            onClose={() => setVersionModalLib(null)}
-            onSaved={() => { refetchPins(); setVersionModalLib(null) }}
-          />
-        )}
       </div>
 
       {hasMultipleVariants && (
@@ -441,23 +449,6 @@ export default function TaskEditor() {
         </div>
       )}
 
-      {taskDef?.validation_status === 'broken' && !bannerDismissed && (
-        <div style={{
-          background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.25)',
-          padding: '6px 16px', fontSize: '12px', color: '#ef4444', flexShrink: 0,
-          display: 'flex', alignItems: 'center', gap: '12px',
-        }}>
-          <span style={{ fontWeight: 600 }}>⚠ Broken references:</span>
-          <span style={{ flex: 1 }}>{taskDef.validation_message ?? 'This task definition has broken hardware references.'}</span>
-          <button
-            onClick={() => setBannerDismissed(true)}
-            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0 4px', lineHeight: 1 }}
-            title="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Canvas */}
@@ -598,6 +589,18 @@ export default function TaskEditor() {
           borderLeft: `1px solid ${BORDER}`, padding: '14px',
           overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
+          {hwLibsOpen && (
+            <HwLibVersionModal
+              taskDefId={numId}
+              pins={hwLibPins}
+              onClose={() => setHwLibsOpen(false)}
+              onSaved={() => {
+                qc.invalidateQueries({ queryKey: ['task-definition', numId] })
+                refetchPins()
+                setHwLibsOpen(false)
+              }}
+            />
+          )}
           {/* Top: state or transition details */}
           {selectedTransition ? (
             <div>

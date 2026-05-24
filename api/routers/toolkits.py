@@ -16,12 +16,16 @@ from fda_utils import scan_fda_for_refs
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
+    HardwareLib,
+    HardwareLibVersion,
     HardwareModule,
     Pilot,
     TaskDefinition,
     TaskDefinitionCreate,
+    TaskDefinitionHwLibPin,
     TaskDefinitionUpdate,
     TaskToolkit,
+    ToolkitHardwareLib,
     ToolkitPilotOrigin,
 )
 
@@ -590,6 +594,28 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
         })
         db.commit()
 
+        # Auto-pin to stable (or active) version of each hw lib linked to the toolkit
+        if payload.toolkit_id:
+            links = db.query(ToolkitHardwareLib).filter(
+                ToolkitHardwareLib.toolkit_id == payload.toolkit_id
+            ).all()
+            for link in links:
+                lib = db.get(HardwareLib, link.hardware_lib_id)
+                if not lib:
+                    continue
+                pin_version_id = lib.stable_version_id or lib.active_version_id
+                if pin_version_id:
+                    already = db.query(TaskDefinitionHwLibPin).filter_by(
+                        task_def_id=defn.id, hardware_lib_id=lib.id
+                    ).first()
+                    if not already:
+                        db.add(TaskDefinitionHwLibPin(
+                            task_def_id=defn.id,
+                            hardware_lib_id=lib.id,
+                            pinned_version_id=pin_version_id,
+                        ))
+            db.commit()
+
         return {
             "id": defn.id,
             "task_name": task_name,
@@ -631,7 +657,12 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
         db.close()
 
 
-def _validate_task_definition(db: OrmSession, fda_json: dict, toolkit_id: int | None) -> tuple[str, str | None]:
+def _validate_task_definition(
+    db: OrmSession,
+    fda_json: dict,
+    toolkit_id: int | None,
+    task_def_id: int | None = None,
+) -> tuple[str, str | None]:
     """Re-validate an FDA JSON against its toolkit's current flags and hardware modules.
 
     Returns (validation_status, validation_message) where status is 'ok' or 'broken'.
@@ -664,13 +695,29 @@ def _validate_task_definition(db: OrmSession, fda_json: dict, toolkit_id: int | 
     for mod_name, (cls_name, lib_id) in hw_module_map.items():
         if lib_id not in seen_lib_ids:
             seen_lib_ids.add(lib_id)
-            lib_row = db.execute(
-                sa_text("SELECT ast_metadata FROM hardware_libs WHERE id = :id"),
-                {"id": lib_id},
-            ).fetchone()
-            if lib_row and lib_row.ast_metadata:
-                meta = lib_row.ast_metadata if isinstance(lib_row.ast_metadata, dict) else json.loads(lib_row.ast_metadata)
-                for cls in meta.get("classes", []):
+            ast_meta = None
+
+            # Prefer pinned version AST over active
+            if task_def_id:
+                pin = db.query(TaskDefinitionHwLibPin).filter_by(
+                    task_def_id=task_def_id,
+                    hardware_lib_id=lib_id,
+                ).one_or_none()
+                if pin:
+                    pv = db.get(HardwareLibVersion, pin.pinned_version_id)
+                    if pv and pv.ast_metadata:
+                        ast_meta = pv.ast_metadata if isinstance(pv.ast_metadata, dict) else json.loads(pv.ast_metadata)
+
+            if ast_meta is None:
+                lib_row = db.execute(
+                    sa_text("SELECT ast_metadata FROM hardware_libs WHERE id = :id"),
+                    {"id": lib_id},
+                ).fetchone()
+                if lib_row and lib_row.ast_metadata:
+                    ast_meta = lib_row.ast_metadata if isinstance(lib_row.ast_metadata, dict) else json.loads(lib_row.ast_metadata)
+
+            if ast_meta:
+                for cls in ast_meta.get("classes", []):
                     lib_class_methods[cls["name"]] = {m["name"] for m in cls.get("methods", [])}
 
     for ref_entry in refs:
@@ -730,7 +777,7 @@ def update_task_definition(defn_id: int, payload: TaskDefinitionUpdate, _: dict 
                 )
 
         effective_toolkit_id = payload.toolkit_id if payload.toolkit_id is not None else defn.toolkit_id
-        v_status, v_msg = _validate_task_definition(db, effective_fda or {}, effective_toolkit_id)
+        v_status, v_msg = _validate_task_definition(db, effective_fda or {}, effective_toolkit_id, defn_id)
         updates["validation_status"] = v_status
         updates["validation_message"] = v_msg
 

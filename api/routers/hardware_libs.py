@@ -1,6 +1,7 @@
 # api/routers/hardware_libs.py
 import ast
 import hashlib
+import json
 import os
 import py_compile
 import tempfile
@@ -8,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import sessionmaker
 
 from auth import verify_token
@@ -25,6 +27,26 @@ from models import (
 router = APIRouter(tags=["hardware-libs"])
 
 _SA_SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+def _revalidate_task_def(db, task_def_id: int) -> None:
+    """Re-run validation for a task def using its current pins and update status."""
+    from routers.toolkits import _validate_task_definition
+    row = db.execute(
+        sa_text("SELECT fda_json, toolkit_id FROM task_definitions WHERE id = :id"),
+        {"id": task_def_id},
+    ).fetchone()
+    if not row or not row.fda_json:
+        return
+    fda = row.fda_json if isinstance(row.fda_json, dict) else json.loads(row.fda_json)
+    v_status, v_msg = _validate_task_definition(db, fda, row.toolkit_id, task_def_id)
+    db.execute(
+        sa_text(
+            "UPDATE task_definitions SET validation_status = :s, validation_message = :m WHERE id = :id"
+        ),
+        {"s": v_status, "m": v_msg, "id": task_def_id},
+    )
+    db.commit()
 
 
 def extract_ast_metadata(source_code: str) -> dict:
@@ -748,6 +770,7 @@ def set_hw_lib_pin(
             )
             db.add(pin)
         db.commit()
+        _revalidate_task_def(db, task_def_id)
 
         lib = db.get(HardwareLib, lib_id)
         av = db.get(HardwareLibVersion, lib.active_version_id) if lib and lib.active_version_id else None
@@ -784,6 +807,7 @@ def delete_hw_lib_pin(task_def_id: int, lib_id: int, _: dict = Depends(verify_to
             raise HTTPException(status_code=404, detail="No pin found for this task def / lib combination")
         db.delete(pin)
         db.commit()
+        _revalidate_task_def(db, task_def_id)
         return {"deleted": {"task_def_id": task_def_id, "hardware_lib_id": lib_id}}
     except HTTPException:
         raise

@@ -9,7 +9,6 @@ import {
   updateHardwareLibSource,
   listVersions,
   markStable,
-  rollback,
 } from '../../api/hardware_libs'
 import type { HardwareLib, HardwareLibVersion, LibState } from '../../types'
 
@@ -87,14 +86,6 @@ export default function HardwareLibDetail(): JSX.Element {
     onSuccess: invalidate,
   })
 
-  const rollbackMutation = useMutation({
-    mutationFn: (versionId: number) => rollback(libId, versionId),
-    onSuccess: (updated) => {
-      invalidate()
-      setSelectedVersionId(updated.active_version_id)
-    },
-  })
-
   if (isLoading) return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '4rem', color: 'var(--subtext0)' }}>
       Loading…
@@ -165,16 +156,6 @@ export default function HardwareLibDetail(): JSX.Element {
                   onClick={() => stableMutation.mutate()}
                 >
                   {stableMutation.isPending ? '…' : 'Mark Stable'}
-                </button>
-              )}
-              {!isActiveSelected && selectedVersion && (
-                <button
-                  className="button-secondary"
-                  style={{ fontSize: '12px', padding: '4px 12px' }}
-                  disabled={rollbackMutation.isPending}
-                  onClick={() => rollbackMutation.mutate(selectedVersion.id)}
-                >
-                  {rollbackMutation.isPending ? '…' : 'Restore this version'}
                 </button>
               )}
               {isActiveSelected && (

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-24T06:45:28.146Z"
+last_updated: "2026-05-24T08:57:19.998Z"
 progress:
   total_phases: 13
   completed_phases: 4
   total_plans: 34
   completed_plans: 28
-  percent: 80
+  percent: 81
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [████████░░] 80%
+**Progress:** [████████░░] 81%
 
 ---
 
@@ -82,6 +82,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 12-hardware-fda-builder]: Pinned task definitions insulated from active-version lib changes (skip in impact scan); classic toolkits skip hardware ref validation (no hardware_module_ids)
 - [Phase 12-hardware-fda-builder]: Lazy import _validate_task_definition in _revalidate_task_def to avoid circular import between router modules
 - [Phase 12-hardware-fda-builder]: Auto-pin uses stable_version_id falling back to active_version_id at task def creation
+- [Phase 14]: CSS :hover tooltip chosen over React state tooltip to survive ReactFlow re-renders without JS overhead
 
 ## Blockers
 

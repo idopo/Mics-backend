@@ -20,7 +20,7 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule, ConditionGroup } from '../../types'
+import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule, ConditionGroup, ConditionNode } from '../../types'
 import StateNode from '../../components/StateNode'
 import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
@@ -68,6 +68,40 @@ function condLabel(t: FdaTransition): string {
         .join(' ∧ ')
     )
     .join(' ∨ ')
+}
+
+/** Convert legacy condition_groups DNF to a ConditionNode tree (for ConditionGroupsEditor). */
+function groupsToTree(groups: ConditionGroup[]): ConditionNode | null {
+  if (groups.length === 0) return null
+  const andNodes: ConditionNode[] = groups
+    .filter(g => g.conditions.length > 0)
+    .map((g): ConditionNode => {
+      if (g.conditions.length === 1) return g.conditions[0]
+      return { op: 'AND', children: g.conditions }
+    })
+  if (andNodes.length === 0) return null
+  if (andNodes.length === 1) return andNodes[0]
+  return { op: 'OR', children: andNodes }
+}
+
+/** Convert a ConditionNode tree back to legacy condition_groups DNF. */
+function treeToGroups(tree: ConditionNode | null): ConditionGroup[] {
+  if (tree === null) return []
+  // OR root: each child is a group
+  if (typeof tree === 'object' && 'children' in tree && tree.op === 'OR') {
+    return tree.children.map(child => {
+      if (typeof child === 'object' && 'children' in child && child.op === 'AND') {
+        return { conditions: child.children as FdaCondition[] }
+      }
+      return { conditions: [child as FdaCondition] }
+    })
+  }
+  // AND root: single group with all children
+  if (typeof tree === 'object' && 'children' in tree && tree.op === 'AND') {
+    return [{ conditions: tree.children as FdaCondition[] }]
+  }
+  // Leaf
+  return [{ conditions: [tree as FdaCondition] }]
 }
 
 function normaliseFda(fdaJson: FdaJson): FdaJson {
@@ -647,10 +681,10 @@ export default function TaskEditor() {
                 Conditions ({selectedTransition.from} → {selectedTransition.to})
               </div>
               <ConditionGroupsEditor
-                groups={selectedTransition.condition_groups ?? []}
+                tree={groupsToTree(selectedTransition.condition_groups ?? [])}
                 toolkit={toolkit}
                 hwModuleNames={hwModuleNames}
-                onChange={groups => updateTransitionGroups(selectedEdgeId!, groups)}
+                onChange={tree => updateTransitionGroups(selectedEdgeId!, treeToGroups(tree))}
               />
             </div>
           ) : selectedState && fdaJson ? (

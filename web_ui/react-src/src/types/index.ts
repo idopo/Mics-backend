@@ -251,11 +251,22 @@ export interface ConditionGroup {
   conditions: FdaCondition[]   // all must be true (AND within group)
 }
 
+/** Recursive condition tree node. Leaf = a single FdaCondition; branch = AND/OR of children. */
+export type ConditionNode =
+  | FdaCondition                                          // leaf: has left/op/right
+  | { op: 'AND' | 'OR'; children: ConditionNode[] }      // branch
+
+/** Type guard: is this a branch node (not a leaf FdaCondition)? */
+export function isConditionBranch(node: ConditionNode): node is { op: 'AND' | 'OR'; children: ConditionNode[] } {
+  return typeof node === 'object' && node !== null && ('op' in node) && (node.op === 'AND' || node.op === 'OR') && 'children' in node
+}
+
 export interface FdaTransition {
   from: string
   to: string
-  condition_groups?: ConditionGroup[]  // OR of AND-groups (DNF); new canonical field
-  conditions?: FdaCondition[]          // legacy — kept for Pi backward compat only
+  condition_tree?: ConditionNode        // canonical recursive tree (Phase 16+)
+  condition_groups?: ConditionGroup[]   // legacy DNF — kept for Pi backward compat
+  conditions?: FdaCondition[]           // legacy flat — kept for Pi backward compat
   description?: string
 }
 

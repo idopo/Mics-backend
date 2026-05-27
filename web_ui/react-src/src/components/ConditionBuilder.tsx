@@ -123,14 +123,24 @@ function OperandEditor({ operand, toolkit, hwModuleNames, onChange }: OperandEdi
   )
 }
 
-interface Props {
+export interface ConditionBuilderProps {
   condition: FdaCondition
   toolkit: ToolkitRead | null
   hwModuleNames?: string[]
   onChange: (updated: FdaCondition) => void
 }
 
-export default function ConditionBuilder({ condition, toolkit, hwModuleNames, onChange }: Props) {
+export interface ConditionRowProps {
+  condition: FdaCondition
+  toolkit: ToolkitRead | null
+  hwModuleNames?: string[]
+  onChange: (c: FdaCondition) => void
+  onDelete?: () => void
+}
+
+export function ConditionRow({
+  condition, toolkit, hwModuleNames, onChange, onDelete
+}: ConditionRowProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div>
@@ -147,10 +157,24 @@ export default function ConditionBuilder({ condition, toolkit, hwModuleNames, on
           {OPS.map(op => <option key={op} value={op}>{op}</option>)}
         </select>
       </div>
-      <div>
-        <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Right</div>
-        <OperandEditor operand={condition.right} toolkit={toolkit} hwModuleNames={hwModuleNames} onChange={right => onChange({ ...condition, right })} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Right</div>
+          <OperandEditor operand={condition.right} toolkit={toolkit} hwModuleNames={hwModuleNames} onChange={right => onChange({ ...condition, right })} />
+        </div>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            style={{ marginTop: 20, fontSize: 11, color: 'var(--text-muted)',
+                     background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+            title="Remove condition"
+          >×</button>
+        )}
       </div>
     </div>
   )
+}
+
+export default function ConditionBuilder(props: ConditionBuilderProps) {
+  return <ConditionRow {...props} />
 }

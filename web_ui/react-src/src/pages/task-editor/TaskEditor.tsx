@@ -22,14 +22,13 @@ import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
 import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule, ConditionGroup } from '../../types'
 import StateNode from '../../components/StateNode'
-import ConditionBuilder, { operandLabel } from '../../components/ConditionBuilder'
+import { operandLabel } from '../../components/ConditionBuilder'
+import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
 import TriggerAssignmentPanel from '../../components/TriggerAssignmentPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 
 const nodeTypes = { stateNode: StateNode }
-
-const EMPTY_CONDITION: FdaCondition = { left: { view: '' }, op: '==', right: 0 }
 
 // Normalise a stored transition to v2 format (handles legacy from_state/next_state/condition)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -645,16 +644,13 @@ export default function TaskEditor() {
                 {selectedTransition.from} → {selectedTransition.to}
               </div>
               <div style={{ fontSize: '11px', color: MUTED, marginBottom: '6px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Condition
+                Conditions ({selectedTransition.from} → {selectedTransition.to})
               </div>
-              {/* Stopgap until Plan 2 builds ConditionGroupsEditor */}
-              <ConditionBuilder
-                condition={selectedTransition.condition_groups?.[0]?.conditions[0] ?? EMPTY_CONDITION}
+              <ConditionGroupsEditor
+                groups={selectedTransition.condition_groups ?? []}
                 toolkit={toolkit}
                 hwModuleNames={hwModuleNames}
-                onChange={cond =>
-                  updateTransitionGroups(selectedEdgeId!, [{ conditions: [cond] }])
-                }
+                onChange={groups => updateTransitionGroups(selectedEdgeId!, groups)}
               />
             </div>
           ) : selectedState && fdaJson ? (

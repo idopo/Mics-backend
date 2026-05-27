@@ -251,14 +251,19 @@
 | COND-03 | Legacy transitions using flat `conditions[]` auto-migrate to `condition_groups` on editor open; re-save always writes `condition_groups` | 15 |
 | COND-04 | Pi evaluates `condition_groups` as `any(all(c() for c in g) for g in groups)`; falls back to legacy `conditions[]` if `condition_groups` absent | 15 |
 | COND-05 | Edge label renders compound expressions as human-readable `a ∧ b ∨ c` notation | 15 |
+| COND-06 | `FdaTransition` gains `condition_tree?` field: recursive `ConditionNode` (leaf = `FdaCondition`; branch = `{op:'AND'|'OR', children:ConditionNode[]}`); `condition_groups` and `conditions[]` are legacy fallbacks | 16 |
+| COND-07 | Migration chain in `normaliseTransition()`: `conditions[]` → single AND-leaf; `condition_groups` → OR-of-AND-nodes tree; `condition_tree` used as-is; re-save always writes `condition_tree` | 16 |
+| COND-08 | Per-row +AND and +OR buttons (Kibana FiltersBuilder model): +AND appends sibling in same AND-context; +OR appends at OR level; depth-based background shading distinguishes nesting levels | 16 |
+| COND-09 | Pi `_build_tree_lambda(node)` evaluates `condition_tree` recursively: leaf → `_build_transition_lambda`; AND-node → `all()`; OR-node → `any()`; fallback chain: `condition_tree` → `condition_groups` → `conditions[]` | 16 |
+| COND-10 | `condLabel()` renders tree with parentheses where needed: `(A ∨ B) ∧ C` when OR is child of AND; omits parens for flat structures | 16 |
 
 **Coverage:**
 - v1 requirements: 86 total (HW-01–24 added for Hardware Libs Centralization + Hardware Modules + Toolkit Redesign)
 - Bug requirements: 7 (BUG-01–07)
-- Compound condition requirements: 5 (COND-01–05)
-- Mapped to phases: 98
+- Compound condition requirements: 10 (COND-01–10)
+- Mapped to phases: 103
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-05-25 — Compound Transition Conditions requirements added (COND-01–05)*
+*Last updated: 2026-05-27 — Recursive condition tree requirements added (COND-06–10)*

@@ -20,7 +20,8 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule, ConditionGroup, ConditionNode } from '../../types'
+import type { FdaJson, FdaTransition, FdaCondition, FdaOperand, FdaState, ToolkitRead, HardwareModule, ConditionGroup, ConditionNode } from '../../types'
+import { isConditionBranch } from '../../types'
 import StateNode from '../../components/StateNode'
 import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
@@ -31,84 +32,79 @@ import HwLibVersionModal from './HwLibVersionModal'
 const nodeTypes = { stateNode: StateNode }
 
 // Normalise a stored transition to v2 format (handles legacy from_state/next_state/condition)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normaliseTransition(t: any): FdaTransition {
-  const from: string = t.from ?? t.from_state ?? ''
-  const to: string   = t.to   ?? t.next_state  ?? ''
+function normaliseTransition(t: Record<string, unknown>): FdaTransition {
+  const from: string = (t.from ?? t.from_state ?? '') as string
+  const to: string   = (t.to   ?? t.next_state  ?? '') as string
 
-  // Resolve legacy conditions[] (one or zero conditions)
-  let legacyConditions: FdaCondition[] = t.conditions ?? []
-  if (legacyConditions.length === 0 && t.condition) {
-    const c = t.condition
-    if ('left' in c) {
-      legacyConditions = [c]
-    } else {
-      legacyConditions = [{ left: { view: c.view ?? '' }, op: c.op ?? '==', right: c.rhs ?? 0 }]
-    }
+  // Already has condition_tree — use as-is (canonical Phase 16+ format)
+  if (t.condition_tree !== undefined) {
+    return { from, to, condition_tree: t.condition_tree as ConditionNode, description: t.description as string | undefined }
   }
 
-  // If already has condition_groups, use as-is (already migrated).
-  // Empty legacyConditions → [] (not [{conditions:[]}]) so ConditionGroupsEditor shows
-  // the "unconditional" hint instead of an empty group card.
-  const condition_groups: ConditionGroup[] = t.condition_groups
-    ?? (legacyConditions.length === 0 ? [] : [{ conditions: legacyConditions }])
+  // Migrate condition_groups (DNF) → OR-of-AND tree
+  const groups = t.condition_groups as ConditionGroup[] | undefined
+  if (groups && groups.length > 0) {
+    // Build OR-of-AND tree
+    const andNodes = groups
+      .filter(g => g.conditions.length > 0)
+      .map(g =>
+        g.conditions.length === 1
+          ? g.conditions[0]
+          : ({ op: 'AND' as const, children: g.conditions })
+      )
+    const tree: ConditionNode | null =
+      andNodes.length === 0 ? null :
+      andNodes.length === 1 ? andNodes[0] :
+      { op: 'OR', children: andNodes }
+    return { from, to, condition_tree: tree ?? undefined, description: t.description as string | undefined }
+  }
 
-  return { from, to, condition_groups, description: t.description }
+  // Migrate legacy conditions[] → single AND-leaf (or null if empty)
+  let legacyConditions: FdaCondition[] = (t.conditions ?? []) as FdaCondition[]
+  if (legacyConditions.length === 0 && t.condition) {
+    const c = t.condition as Record<string, unknown>
+    if ('left' in c) {
+      legacyConditions = [c as unknown as FdaCondition]
+    } else {
+      legacyConditions = [{ left: { view: (c.view ?? '') as string }, op: (c.op ?? '==') as FdaCondition['op'], right: (c.rhs ?? 0) as FdaOperand }]
+    }
+  }
+  const tree: ConditionNode | undefined =
+    legacyConditions.length === 0 ? undefined :
+    legacyConditions.length === 1 ? legacyConditions[0] :
+    { op: 'AND', children: legacyConditions }
+
+  return { from, to, condition_tree: tree, description: t.description as string | undefined }
 }
 
 function condLabel(t: FdaTransition): string {
-  const groups = t.condition_groups ?? []
-  if (groups.length === 0 || groups.every(g => g.conditions.length === 0)) {
-    return '(unconditional)'
-  }
-  return groups
-    .map(g =>
-      g.conditions
-        .map(c => `${operandLabel(c.left)} ${c.op} ${operandLabel(c.right)}`)
-        .join(' ∧ ')
-    )
-    .join(' ∨ ')
+  const tree = t.condition_tree
+  if (!tree) return '(unconditional)'
+  return renderTreeLabel(tree, null)
 }
 
-/** Convert legacy condition_groups DNF to a ConditionNode tree (for ConditionGroupsEditor). */
-function groupsToTree(groups: ConditionGroup[]): ConditionNode | null {
-  if (groups.length === 0) return null
-  const andNodes: ConditionNode[] = groups
-    .filter(g => g.conditions.length > 0)
-    .map((g): ConditionNode => {
-      if (g.conditions.length === 1) return g.conditions[0]
-      return { op: 'AND', children: g.conditions }
-    })
-  if (andNodes.length === 0) return null
-  if (andNodes.length === 1) return andNodes[0]
-  return { op: 'OR', children: andNodes }
+function renderTreeLabel(node: ConditionNode, parentOp: 'AND' | 'OR' | null): string {
+  if (!isConditionBranch(node)) {
+    // Leaf: render as "left op right"
+    return `${operandLabel(node.left)} ${node.op} ${operandLabel(node.right)}`
+  }
+  const childLabels = node.children.map(c => renderTreeLabel(c, node.op))
+  const sep = node.op === 'AND' ? ' ∧ ' : ' ∨ '
+  const joined = childLabels.join(sep)
+  // Add parens when this node's op has lower precedence than parent's op
+  // OR inside AND needs parens: (A ∨ B) ∧ C
+  const needsParens = parentOp !== null && (
+    (node.op === 'OR' && parentOp === 'AND') ||
+    (node.op === 'AND' && parentOp === 'OR')
+  )
+  return needsParens ? `(${joined})` : joined
 }
 
-/** Convert a ConditionNode tree back to legacy condition_groups DNF. */
-function treeToGroups(tree: ConditionNode | null): ConditionGroup[] {
-  if (tree === null) return []
-  // OR root: each child is a group
-  if (typeof tree === 'object' && 'children' in tree && tree.op === 'OR') {
-    return tree.children.map(child => {
-      if (typeof child === 'object' && 'children' in child && child.op === 'AND') {
-        return { conditions: child.children as FdaCondition[] }
-      }
-      return { conditions: [child as FdaCondition] }
-    })
-  }
-  // AND root: single group with all children
-  if (typeof tree === 'object' && 'children' in tree && tree.op === 'AND') {
-    return [{ conditions: tree.children as FdaCondition[] }]
-  }
-  // Leaf
-  return [{ conditions: [tree as FdaCondition] }]
-}
 
 function normaliseFda(fdaJson: FdaJson): FdaJson {
   return {
     ...fdaJson,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    transitions: (fdaJson.transitions ?? []).map(normaliseTransition),
+    transitions: (fdaJson.transitions ?? []).map(t => normaliseTransition(t as unknown as Record<string, unknown>)),
     trigger_assignments: fdaJson.trigger_assignments ?? [],
   }
 }
@@ -330,20 +326,20 @@ export default function TaskEditor() {
       if (!prev) return prev
       return {
         ...prev,
-        transitions: [...prev.transitions, { from: params.source!, to: params.target!, condition_groups: [] }],
+        transitions: [...prev.transitions, { from: params.source!, to: params.target! }],
       }
     })
   }, [setEdges])
 
-  const updateTransitionGroups = (edgeId: string, groups: ConditionGroup[]) => {
+  const updateTransitionTree = (edgeId: string, tree: ConditionNode | null) => {
     if (!fdaJson) return
     const idx = parseInt(edgeId.replace('e-', ''), 10)
     if (isNaN(idx) || idx < 0 || idx >= fdaJson.transitions.length) return
     const newTransitions = fdaJson.transitions.map((t, i) =>
-      i === idx ? { ...t, condition_groups: groups } : t
+      i === idx ? { ...t, condition_tree: tree ?? undefined, condition_groups: undefined } : t
     )
     setFdaJson(prev => prev ? { ...prev, transitions: newTransitions } : prev)
-    const label = condLabel({ ...fdaJson.transitions[idx], condition_groups: groups })
+    const label = condLabel({ ...fdaJson.transitions[idx], condition_tree: tree ?? undefined })
     setEdges(eds => eds.map(e => e.id === edgeId ? { ...e, label } : e))
   }
 
@@ -681,10 +677,10 @@ export default function TaskEditor() {
                 Conditions ({selectedTransition.from} → {selectedTransition.to})
               </div>
               <ConditionGroupsEditor
-                tree={groupsToTree(selectedTransition.condition_groups ?? [])}
+                tree={selectedTransition.condition_tree ?? null}
                 toolkit={toolkit}
                 hwModuleNames={hwModuleNames}
-                onChange={tree => updateTransitionGroups(selectedEdgeId!, treeToGroups(tree))}
+                onChange={tree => updateTransitionTree(selectedEdgeId!, tree)}
               />
             </div>
           ) : selectedState && fdaJson ? (

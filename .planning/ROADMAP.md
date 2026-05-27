@@ -23,6 +23,9 @@
 | 11 | 6/6 | Complete    | 2026-05-14 | ✓ Complete 2026-05-04 |
 | 12 | 5/5 | Complete   | 2026-05-24 | ○ Pending |
 | 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
+| 14 | Bug Backlog | CSS hover tooltip, hw-lib warning badge, toolkit creation modal UX fixes | BUG-01–07 | ✓ Complete 2026-05-27 |
+| 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
+| 16 | Recursive Condition Tree | Replace flat DNF with recursive condition_tree — per-row +AND/+OR, depth-shaded nesting, Pi recursive lambda evaluator | COND-06–10 | ○ Pending |
 
 ---
 
@@ -344,6 +347,35 @@ Plans:
 
 ---
 
+### Phase 16: Recursive Condition Tree (Kibana-Style)
+**Goal:** Replace flat DNF `condition_groups` with a recursive `condition_tree` model that supports arbitrary AND/OR nesting. Per-row +AND/+OR buttons (Kibana FiltersBuilder model), depth-based background shading for visual nesting, backward-compat migration of existing `condition_groups` and `conditions[]` data, parenthesized edge label rendering, and Pi recursive lambda evaluator.
+
+**Requirements:** COND-06, COND-07, COND-08, COND-09, COND-10
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Types (ConditionNode, FdaTransition.condition_tree) + ConditionGroupsEditor rewrite as recursive tree editor
+- [ ] 16-02-PLAN.md — TaskEditor.tsx: normaliseTransition migration, condLabel with parens, updateTransitionTree wiring
+- [ ] 16-03-PLAN.md — Pi: _build_tree_lambda recursive evaluator + three-way fallback chain
+
+**Success criteria:**
+1. Clicking +AND at a row adds a sibling within the AND-context; +OR adds a sibling at the OR level — matching Kibana FiltersBuilder
+2. `(A OR B) AND C` is expressible, stored as `condition_tree`, and evaluated correctly on Pi
+3. Edge label renders `(A ∨ B) ∧ C` with parentheses when OR is nested inside AND
+4. Opening a task def with legacy `condition_groups` auto-migrates to `condition_tree` on load; re-save writes `condition_tree`
+5. `IfActionEditor` (single `ConditionBuilder` row) is unaffected
+
+**Files to change:**
+- `web_ui/react-src/src/types/index.ts` (ConditionNode type; FdaTransition.condition_tree field)
+- `web_ui/react-src/src/pages/task-editor/TaskEditor.tsx` (normaliseTransition migration, condLabel with parens, updateTransitionTree)
+- `web_ui/react-src/src/components/ConditionGroupsEditor.tsx` (replace with ConditionTreeEditor or rewrite in-place)
+- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (_build_tree_lambda + updated transition registration)
+
+**Dependencies:** Phase 15 (condition_groups types + updateTransitionGroups + ConditionGroupsEditor exist — this phase supersedes them)
+
+---
+
 ## Dependency Graph
 
 ```
@@ -378,4 +410,4 @@ Phase 13 (Pre-Run Cross-Check + End-to-End)
 
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-04-20 — Phases 9–13 added: Hardware Libs Centralization + Hardware Modules + Toolkit Redesign (HW-01–24)*
+*Last updated: 2026-05-27 — Phase 16 plans added: recursive condition tree (COND-06–10)*

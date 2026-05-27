@@ -20,7 +20,7 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule } from '../../types'
+import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule, ConditionGroup } from '../../types'
 import StateNode from '../../components/StateNode'
 import ConditionBuilder, { operandLabel } from '../../components/ConditionBuilder'
 import StateBodyPanel from '../../components/StateBodyPanel'
@@ -35,24 +35,40 @@ const EMPTY_CONDITION: FdaCondition = { left: { view: '' }, op: '==', right: 0 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normaliseTransition(t: any): FdaTransition {
   const from: string = t.from ?? t.from_state ?? ''
-  const to: string = t.to ?? t.next_state ?? ''
-  let conditions: FdaCondition[] = t.conditions ?? []
-  if (conditions.length === 0 && t.condition) {
-    // convert legacy {view, op, rhs} to {left, op, right}
+  const to: string   = t.to   ?? t.next_state  ?? ''
+
+  // Resolve legacy conditions[] (one or zero conditions)
+  let legacyConditions: FdaCondition[] = t.conditions ?? []
+  if (legacyConditions.length === 0 && t.condition) {
     const c = t.condition
     if ('left' in c) {
-      conditions = [c]
+      legacyConditions = [c]
     } else {
-      conditions = [{ left: { view: c.view ?? '' }, op: c.op ?? '==', right: c.rhs ?? 0 }]
+      legacyConditions = [{ left: { view: c.view ?? '' }, op: c.op ?? '==', right: c.rhs ?? 0 }]
     }
   }
-  return { from, to, conditions, description: t.description }
+
+  // If already has condition_groups, use as-is (already migrated).
+  // Empty legacyConditions → [] (not [{conditions:[]}]) so ConditionGroupsEditor shows
+  // the "unconditional" hint instead of an empty group card.
+  const condition_groups: ConditionGroup[] = t.condition_groups
+    ?? (legacyConditions.length === 0 ? [] : [{ conditions: legacyConditions }])
+
+  return { from, to, condition_groups, description: t.description }
 }
 
 function condLabel(t: FdaTransition): string {
-  const cond = t.conditions?.[0]
-  if (!cond) return 'new'
-  return `${operandLabel(cond.left)} ${cond.op} ${operandLabel(cond.right)}`
+  const groups = t.condition_groups ?? []
+  if (groups.length === 0 || groups.every(g => g.conditions.length === 0)) {
+    return '(unconditional)'
+  }
+  return groups
+    .map(g =>
+      g.conditions
+        .map(c => `${operandLabel(c.left)} ${c.op} ${operandLabel(c.right)}`)
+        .join(' ∧ ')
+    )
+    .join(' ∨ ')
 }
 
 function normaliseFda(fdaJson: FdaJson): FdaJson {
@@ -281,20 +297,20 @@ export default function TaskEditor() {
       if (!prev) return prev
       return {
         ...prev,
-        transitions: [...prev.transitions, { from: params.source!, to: params.target!, conditions: [] }],
+        transitions: [...prev.transitions, { from: params.source!, to: params.target!, condition_groups: [] }],
       }
     })
   }, [setEdges])
 
-  const updateTransitionCondition = (edgeId: string, updated: FdaCondition) => {
+  const updateTransitionGroups = (edgeId: string, groups: ConditionGroup[]) => {
     if (!fdaJson) return
     const idx = parseInt(edgeId.replace('e-', ''), 10)
     if (isNaN(idx) || idx < 0 || idx >= fdaJson.transitions.length) return
     const newTransitions = fdaJson.transitions.map((t, i) =>
-      i === idx ? { ...t, conditions: [updated] } : t
+      i === idx ? { ...t, condition_groups: groups } : t
     )
     setFdaJson(prev => prev ? { ...prev, transitions: newTransitions } : prev)
-    const label = `${operandLabel(updated.left)} ${updated.op} ${operandLabel(updated.right)}`
+    const label = condLabel({ ...fdaJson.transitions[idx], condition_groups: groups })
     setEdges(eds => eds.map(e => e.id === edgeId ? { ...e, label } : e))
   }
 
@@ -631,11 +647,14 @@ export default function TaskEditor() {
               <div style={{ fontSize: '11px', color: MUTED, marginBottom: '6px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                 Condition
               </div>
+              {/* Stopgap until Plan 2 builds ConditionGroupsEditor */}
               <ConditionBuilder
-                condition={selectedTransition.conditions?.[0] ?? EMPTY_CONDITION}
+                condition={selectedTransition.condition_groups?.[0]?.conditions[0] ?? EMPTY_CONDITION}
                 toolkit={toolkit}
                 hwModuleNames={hwModuleNames}
-                onChange={updated => updateTransitionCondition(selectedEdgeId!, updated)}
+                onChange={cond =>
+                  updateTransitionGroups(selectedEdgeId!, [{ conditions: [cond] }])
+                }
               />
             </div>
           ) : selectedState && fdaJson ? (

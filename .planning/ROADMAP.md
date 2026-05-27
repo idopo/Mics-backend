@@ -25,7 +25,7 @@
 | 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
 | 14 | Bug Backlog | CSS hover tooltip, hw-lib warning badge, toolkit creation modal UX fixes | BUG-01–07 | ✓ Complete 2026-05-27 |
 | 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
-| 16 | 1/3 | In Progress|  | ○ Pending |
+| 16 | 2/3 | In Progress|  | ○ Pending |
 
 ---
 
@@ -352,7 +352,7 @@ Plans:
 
 **Requirements:** COND-06, COND-07, COND-08, COND-09, COND-10
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 16-01-PLAN.md — Types (ConditionNode, FdaTransition.condition_tree) + ConditionGroupsEditor rewrite as recursive tree editor

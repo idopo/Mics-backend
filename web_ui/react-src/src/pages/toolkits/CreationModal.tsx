@@ -2,21 +2,21 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { getLockedStates, createBackendToolkit } from '../../api/toolkits'
 import { listHardwareModules } from '../../api/hardware_modules'
-import { listHardwareLibs, listVersions, linkLib } from '../../api/hardware_libs'
+import { listHardwareLibs, linkLib } from '../../api/hardware_libs'
 import type {
   FlagDefinition, ParamDefinition, BackendToolkitCreatePayload,
-  HardwareLib, HardwareLibVersion,
 } from '../../types'
 
 const TRACKER_TYPES = ['Counter_Tracker', 'Boolean_Tracker', 'Trial_Tracker', 'Tracker']
+
+// Steps with no file selected: 1 (name+file) → 3 (hw-modules) → 4 (flags) → 5 (params)
+// Steps with file selected:    1 (name+file) → 2 (locked states) → 3 (hw-modules) → 4 (flags) → 5 (params)
 
 export function CreationModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [step, setStep] = useState(1)
   const [name, setName] = useState('')
   const [selectedFile, setSelectedFile] = useState('')
   const [selectedStates, setSelectedStates] = useState<string[]>([])
-  const [selectedLibVersions, setSelectedLibVersions] = useState<Record<number, number | null>>({})
-  const [libVersionCache, setLibVersionCache] = useState<Record<number, HardwareLibVersion[]>>({})
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([])
   const [flags, setFlags] = useState<FlagDefinition[]>([])
   const [params, setParams] = useState<ParamDefinition[]>([])
@@ -28,11 +28,11 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
   const createMutation = useMutation({
     mutationFn: (payload: BackendToolkitCreatePayload) => createBackendToolkit(payload),
     onSuccess: async (toolkit) => {
-      const entries = Object.entries(selectedLibVersions)
-      if (entries.length > 0) {
+      // Auto-link all hardware libraries using their stable version, falling back to active
+      if (hwLibs.length > 0) {
         await Promise.all(
-          entries.map(([libId, versionId]) =>
-            linkLib(toolkit.id, Number(libId), versionId)
+          hwLibs.map(lib =>
+            linkLib(toolkit.id, lib.id, lib.stable_version_id ?? lib.active_version_id ?? null)
           )
         )
       }
@@ -56,19 +56,6 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
   const toggleModule = (id: number) =>
     setSelectedModuleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
-  const toggleLib = async (lib: HardwareLib) => {
-    if (lib.id in selectedLibVersions) {
-      setSelectedLibVersions(prev => { const n = { ...prev }; delete n[lib.id]; return n })
-    } else {
-      if (!libVersionCache[lib.id]) {
-        const versions = await listVersions(lib.id)
-        setLibVersionCache(prev => ({ ...prev, [lib.id]: versions }))
-      }
-      const defaultVersion = lib.stable_version_id ?? lib.active_version_id ?? null
-      setSelectedLibVersions(prev => ({ ...prev, [lib.id]: defaultVersion }))
-    }
-  }
-
   const addFlag = () => setFlags(prev => [...prev, { name: '', tracker_type: 'Counter_Tracker', initial_value: 0 }])
   const updateFlag = (i: number, f: Partial<FlagDefinition>) => setFlags(prev => prev.map((x, idx) => idx === i ? { ...x, ...f } : x))
   const removeFlag = (i: number) => setFlags(prev => prev.filter((_, idx) => idx !== i))
@@ -76,6 +63,24 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
   const addParam = () => setParams(prev => [...prev, { name: '', type: 'float', default: null }])
   const updateParam = (i: number, p: Partial<ParamDefinition>) => setParams(prev => prev.map((x, idx) => idx === i ? { ...x, ...p } : x))
   const removeParam = (i: number) => setParams(prev => prev.filter((_, idx) => idx !== i))
+
+  const handleNext = () => {
+    // Skip step 2 (locked-states) when no source file selected
+    if (step === 1 && !selectedFile) {
+      setStep(3)
+    } else {
+      setStep(s => s + 1)
+    }
+  }
+
+  const handleBack = () => {
+    // Skip back over step 2 when no source file selected
+    if (step === 3 && !selectedFile) {
+      setStep(1)
+    } else {
+      setStep(s => s - 1)
+    }
+  }
 
   const handleCreate = () => {
     setError('')
@@ -90,12 +95,15 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
   }
 
   const canNext1 = name.trim().length > 0
+  const totalSteps = selectedFile ? 5 : 4
+  // Map internal step number to visible step position when file is not selected (step 3→2, 4→3, 5→4)
+  const visibleStep = (!selectedFile && step > 2) ? step - 1 : step
 
   return (
     <div className="modal-overlay" style={{ alignItems: 'flex-start', paddingTop: '10vh' }}>
       <div className="modal" style={{ width: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-header">
-          <span className="modal-title">New Backend Toolkit — Step {step} of 6</span>
+          <span className="modal-title">New Backend Toolkit — Step {visibleStep} of {totalSteps}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ overflowY: 'auto', flexGrow: 1 }}>
@@ -122,68 +130,18 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
           )}
           {step === 2 && (
             <div>
-              {!selectedFile ? (
-                <p style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>
-                  No task source file selected — toolkit will run the base <code>mics_task</code> class with no locked states.
-                </p>
-              ) : (
-                <>
-                  <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Select states from {selectedFile}</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {availableStates.map(s => (
-                      <label key={s} style={{ display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '6px 8px', borderRadius: '4px', background: selectedStates.includes(s) ? 'rgba(129,140,248,0.1)' : 'transparent', border: '1px solid transparent', transition: 'background 0.1s', borderColor: selectedStates.includes(s) ? 'rgba(129,140,248,0.25)' : 'transparent' }}>
-                        <input type="checkbox" checked={selectedStates.includes(s)} onChange={() => toggleState(s)} style={{ margin: 0 }} />
-                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{s}</span>
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
+              <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Select states from {selectedFile}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {availableStates.map(s => (
+                  <label key={s} style={{ display: 'grid', gridTemplateColumns: '20px 1fr', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '6px 8px', borderRadius: '4px', background: selectedStates.includes(s) ? 'rgba(129,140,248,0.1)' : 'transparent', border: '1px solid transparent', transition: 'background 0.1s', borderColor: selectedStates.includes(s) ? 'rgba(129,140,248,0.25)' : 'transparent' }}>
+                    <input type="checkbox" checked={selectedStates.includes(s)} onChange={() => toggleState(s)} style={{ margin: 0 }} />
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{s}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
           {step === 3 && (
-            <div>
-              <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>
-                Select hardware libraries to link (optional)
-              </p>
-              {hwLibs.length === 0 ? (
-                <p style={{ fontStyle: 'italic', fontSize: '12px', color: 'var(--muted)' }}>
-                  No hardware libraries defined yet — skip to continue.
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {hwLibs.map(lib => {
-                    const checked = lib.id in selectedLibVersions
-                    const versions = libVersionCache[lib.id] ?? []
-                    return (
-                      <div key={lib.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px 8px', borderRadius: '4px', background: checked ? 'rgba(129,140,248,0.1)' : 'transparent', border: '1px solid', borderColor: checked ? 'rgba(129,140,248,0.25)' : 'transparent', transition: 'background 0.1s' }}>
-                        <label style={{ display: 'grid', gridTemplateColumns: '20px 1fr auto', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={checked} onChange={() => toggleLib(lib)} style={{ margin: 0 }} />
-                          <span style={{ fontWeight: 500 }}>{lib.name}</span>
-                          <span style={{ fontSize: '11px', color: 'var(--muted)', fontFamily: "'IBM Plex Mono', monospace" }}>{lib.filename}</span>
-                        </label>
-                        {checked && (
-                          <select
-                            value={selectedLibVersions[lib.id] ?? ''}
-                            onChange={e => setSelectedLibVersions(prev => ({ ...prev, [lib.id]: e.target.value ? Number(e.target.value) : null }))}
-                            style={{ fontSize: '12px', marginLeft: '28px', width: 'calc(100% - 28px)' }}
-                          >
-                            <option value="">— no version pinned —</option>
-                            {versions.map(v => (
-                              <option key={v.id} value={v.id}>
-                                v{v.version_number} ({v.state}){lib.stable_version_id === v.id ? ' ★ stable' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-          {step === 4 && (
             <div>
               <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Select hardware modules to include</p>
               {hwModules.length === 0 ? <p className="muted" style={{ fontStyle: 'italic', fontSize: '12px' }}>No hardware modules defined yet.</p> : (
@@ -199,7 +157,7 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
               )}
             </div>
           )}
-          {step === 5 && (
+          {step === 4 && (
             <div>
               <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Define flags (optional)</p>
               {flags.length > 0 && (
@@ -233,7 +191,7 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
               <button className="button-secondary" style={{ fontSize: '12px', marginTop: '4px' }} onClick={addFlag}>+ Add Flag</button>
             </div>
           )}
-          {step === 6 && (
+          {step === 5 && (
             <div>
               <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Define params (optional)</p>
               {params.map((p, i) => (
@@ -250,9 +208,9 @@ export function CreationModal({ onClose, onCreated }: { onClose: () => void; onC
           )}
         </div>
         <div className="modal-actions ov-actions">
-          {step > 1 && <button className="button-secondary" onClick={() => setStep(s => s - 1)}>Back</button>}
-          {step < 6 && <button className="button-primary" onClick={() => setStep(s => s + 1)} disabled={step === 1 && !canNext1}>Next</button>}
-          {step === 6 && <button className="button-primary" onClick={handleCreate} disabled={createMutation.isPending}>{createMutation.isPending ? 'Creating…' : 'Create Toolkit'}</button>}
+          {step > 1 && <button className="button-secondary" onClick={handleBack}>Back</button>}
+          {step < 5 && <button className="button-primary" onClick={handleNext} disabled={step === 1 && !canNext1}>Next</button>}
+          {step === 5 && <button className="button-primary" onClick={handleCreate} disabled={createMutation.isPending}>{createMutation.isPending ? 'Creating…' : 'Create Toolkit'}</button>}
         </div>
       </div>
     </div>

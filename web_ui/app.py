@@ -423,6 +423,31 @@ async def proxy_toolkits_by_name(name: str):
                            media_type=resp.headers.get("content-type", "application/json"))
 
 
+@app.api_route("/api/toolkits/{toolkit_id}/hardware-libs", methods=["GET", "POST"])
+async def proxy_toolkit_hw_libs(toolkit_id: int, request: Request):
+    body = await request.body()
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/toolkits/{toolkit_id}/hardware-libs",
+            content=body or None,
+            headers={"Content-Type": "application/json"} if body else {},
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
+@app.api_route("/api/toolkits/{toolkit_id}/hardware-libs/{lib_id}", methods=["GET", "DELETE"])
+async def proxy_toolkit_hw_lib_item(toolkit_id: int, lib_id: int, request: Request):
+    async with backend_client() as client:
+        resp = await client.request(
+            method=request.method,
+            url=f"{API_URL}/api/toolkits/{toolkit_id}/hardware-libs/{lib_id}",
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
 @app.api_route("/api/locked-states", methods=["GET"])
 @app.api_route("/api/locked-states/{path:path}", methods=["GET", "PUT"])
 async def proxy_locked_states(request: Request, path: str = ""):

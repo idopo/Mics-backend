@@ -247,10 +247,15 @@ export interface FdaState {
   _passthrough?: boolean
 }
 
+export interface ConditionGroup {
+  conditions: FdaCondition[]   // all must be true (AND within group)
+}
+
 export interface FdaTransition {
   from: string
   to: string
-  conditions: FdaCondition[]
+  condition_groups?: ConditionGroup[]  // OR of AND-groups (DNF); new canonical field
+  conditions?: FdaCondition[]          // legacy — kept for Pi backward compat only
   description?: string
 }
 

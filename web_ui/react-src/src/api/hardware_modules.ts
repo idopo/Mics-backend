@@ -35,8 +35,9 @@ export async function deleteHardwareModule(id: number): Promise<void> {
   return apiFetch(`/api/hardware-modules/${id}`, { method: 'DELETE' })
 }
 
-export async function getHardwareModuleMethods(id: number): Promise<HardwareModuleMethods> {
-  return apiFetch(`/api/hardware-modules/${id}/methods`)
+export async function getHardwareModuleMethods(id: number, taskDefId?: number): Promise<HardwareModuleMethods> {
+  const qs = taskDefId != null ? `?task_def_id=${taskDefId}` : ''
+  return apiFetch(`/api/hardware-modules/${id}/methods${qs}`)
 }
 
 export async function listPilotHardwareConfig(pilotId: number): Promise<PilotHardwareConfigRow[]> {

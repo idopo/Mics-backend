@@ -22,7 +22,6 @@ from models import (
     Pilot,
     TaskDefinition,
     TaskDefinitionCreate,
-    TaskDefinitionHwLibPin,
     TaskDefinitionUpdate,
     TaskToolkit,
     ToolkitHardwareLib,
@@ -380,25 +379,23 @@ def _flag_broken_defs_for_toolkit(
         fda = row.fda_json if isinstance(row.fda_json, dict) else json.loads(row.fda_json)
         refs = scan_fda_for_refs(fda)
 
-        broken_msg: str | None = None
+        broken_msgs: list[str] = []
         for ref_entry in refs:
             action_type = ref_entry["action_type"]
             ref = ref_entry.get("ref")
             state = ref_entry["state_name"]
 
             if action_type == "flag" and ref in removed_flag_names:
-                broken_msg = f"State '{state}': flag '{ref}' removed from toolkit"
-                break
+                broken_msgs.append(f"State '{state}': flag '{ref}' removed from toolkit")
             if action_type in ("hardware", "timer") and ref in removed_module_names:
-                broken_msg = f"State '{state}': hardware module '{ref}' removed from toolkit"
-                break
+                broken_msgs.append(f"State '{state}': hardware module '{ref}' removed from toolkit")
 
-        if broken_msg:
+        if broken_msgs:
             db.execute(sa_text(
                 "UPDATE task_definitions "
                 "SET validation_status = 'broken', validation_message = :msg "
                 "WHERE id = :id"
-            ), {"msg": broken_msg, "id": task_def.id})
+            ), {"msg": "\n".join(broken_msgs), "id": task_def.id})
             affected_ids.append(task_def.id)
 
     return affected_ids
@@ -592,6 +589,31 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
             "tid": payload.toolkit_id,
             "id": defn.id,
         })
+
+        # Select latest stable version (or latest overall if no stable) for each linked hw lib
+        if payload.toolkit_id:
+            links = db.query(ToolkitHardwareLib).filter(
+                ToolkitHardwareLib.toolkit_id == payload.toolkit_id
+            ).all()
+            hw_lib_versions: dict[str, int] = {}
+            for link in links:
+                versions = (
+                    db.query(HardwareLibVersion)
+                    .filter(HardwareLibVersion.hardware_lib_id == link.hardware_lib_id)
+                    .order_by(HardwareLibVersion.version_number.desc())
+                    .all()
+                )
+                if not versions:
+                    continue
+                stable = next((v for v in versions if v.state == "stable"), None)
+                selected = stable or versions[0]
+                hw_lib_versions[str(link.hardware_lib_id)] = selected.id
+            if hw_lib_versions:
+                db.execute(
+                    sa_text("UPDATE task_definitions SET hw_lib_versions = :v WHERE id = :id"),
+                    {"v": json.dumps(hw_lib_versions), "id": defn.id},
+                )
+
         db.commit()
 
         return {
@@ -614,7 +636,7 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
     try:
         row = db.execute(sa_text(
             "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, toolkit_id, "
-            "validation_status, validation_message "
+            "validation_status, validation_message, hw_lib_versions "
             "FROM task_definitions WHERE id = :id"
         ), {"id": defn_id}).fetchone()
         if not row:
@@ -630,6 +652,7 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
             "toolkit_id": row.toolkit_id,
             "validation_status": row.validation_status or "ok",
             "validation_message": row.validation_message,
+            "hw_lib_versions": row.hw_lib_versions or {},
         }
     finally:
         db.close()
@@ -667,25 +690,33 @@ def _validate_task_definition(
         ).fetchall()
         hw_module_map = {row.name: (row.class_name, row.hardware_lib_id) for row in module_rows}
 
-    # Build class_name → method_names map from lib AST
-    # Load libs only for modules we have
+    # Build class_name → method_names map from lib AST.
+    # If task_def_id is given, prefer the version stored in hw_lib_versions over the lib's active AST.
+    hw_versions: dict[str, int] = {}
+    if task_def_id:
+        td_row = db.execute(
+            sa_text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+            {"id": task_def_id},
+        ).fetchone()
+        if td_row and td_row.hw_lib_versions:
+            hw_versions = td_row.hw_lib_versions
+
     lib_class_methods: dict[str, set[str]] = {}  # class_name → {method_names}
+    libs_with_ast: set[int] = set()  # lib_ids for which AST was successfully loaded
     seen_lib_ids: set[int] = set()
     for mod_name, (cls_name, lib_id) in hw_module_map.items():
         if lib_id not in seen_lib_ids:
             seen_lib_ids.add(lib_id)
             ast_meta = None
 
-            # Prefer pinned version AST over active
-            if task_def_id:
-                pin = db.query(TaskDefinitionHwLibPin).filter_by(
-                    task_def_id=task_def_id,
-                    hardware_lib_id=lib_id,
-                ).one_or_none()
-                if pin:
-                    pv = db.get(HardwareLibVersion, pin.pinned_version_id)
-                    if pv and pv.ast_metadata:
-                        ast_meta = pv.ast_metadata if isinstance(pv.ast_metadata, dict) else json.loads(pv.ast_metadata)
+            sel_id = hw_versions.get(str(lib_id))
+            if sel_id:
+                v_row = db.execute(
+                    sa_text("SELECT ast_metadata FROM hardware_lib_versions WHERE id = :id"),
+                    {"id": sel_id},
+                ).fetchone()
+                if v_row and v_row.ast_metadata:
+                    ast_meta = v_row.ast_metadata if isinstance(v_row.ast_metadata, dict) else json.loads(v_row.ast_metadata)
 
             if ast_meta is None:
                 lib_row = db.execute(
@@ -696,9 +727,11 @@ def _validate_task_definition(
                     ast_meta = lib_row.ast_metadata if isinstance(lib_row.ast_metadata, dict) else json.loads(lib_row.ast_metadata)
 
             if ast_meta:
+                libs_with_ast.add(lib_id)
                 for cls in ast_meta.get("classes", []):
                     lib_class_methods[cls["name"]] = {m["name"] for m in cls.get("methods", [])}
 
+    errors: list[str] = []
     for ref_entry in refs:
         action_type = ref_entry["action_type"]
         ref = ref_entry.get("ref")
@@ -706,16 +739,21 @@ def _validate_task_definition(
         state = ref_entry["state_name"]
 
         if action_type == "flag" and ref not in current_flag_names:
-            return "broken", f"State '{state}': flag '{ref}' not in toolkit flags"
+            errors.append(f"State '{state}': flag '{ref}' not in toolkit flags")
 
         if action_type == "hardware" and ref is not None:
             if hw_module_map and ref not in hw_module_map:
-                return "broken", f"State '{state}': hardware module '{ref}' not in toolkit modules"
-            if ref in hw_module_map and method is not None:
-                cls_name, _ = hw_module_map[ref]
-                if cls_name in lib_class_methods and method not in lib_class_methods[cls_name]:
-                    return "broken", f"State '{state}': {ref}.{method} not found in lib (class {cls_name})"
+                errors.append(f"State '{state}': hardware module '{ref}' not in toolkit modules")
+            elif ref in hw_module_map and method is not None:
+                cls_name, lib_id = hw_module_map[ref]
+                if lib_id in libs_with_ast:
+                    if cls_name not in lib_class_methods:
+                        errors.append(f"State '{state}': class '{cls_name}' not found in lib AST")
+                    elif method not in lib_class_methods[cls_name]:
+                        errors.append(f"State '{state}': {ref}.{method} not found in lib (class {cls_name})")
 
+    if errors:
+        return "broken", "\n".join(errors)
     return "ok", None
 
 

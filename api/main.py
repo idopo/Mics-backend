@@ -42,7 +42,6 @@ from models import (
     HardwareLib,
     HardwareLibVersion,
     ToolkitHardwareLib,
-    TaskDefinitionHwLibPin,
     TaskDefinitionCreate,
     TaskDefinitionUpdate,
     TaskDefinitionRead,

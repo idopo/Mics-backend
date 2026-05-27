@@ -1,7 +1,10 @@
 # api/routers/hardware_modules.py
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text as sa_text
 from pydantic import BaseModel
 from sqlalchemy.orm import sessionmaker
 
@@ -130,21 +133,49 @@ def delete_hardware_module(module_id: int, token=Depends(verify_token)):
         module = session.get(HardwareModule, module_id)
         if not module:
             raise HTTPException(status_code=404, detail="not found")
+        from models import PilotHardwareConfig
+        session.query(PilotHardwareConfig).filter_by(hardware_module_id=module_id).delete()
         session.delete(module)
         session.commit()
         return {"deleted": module_id}
 
 
 @router.get("/api/hardware-modules/{module_id}/methods")
-def get_hardware_module_methods(module_id: int, token=Depends(verify_token)):
+def get_hardware_module_methods(
+    module_id: int,
+    task_def_id: Optional[int] = Query(None),
+    token=Depends(verify_token),
+):
     with _SA_SessionLocal() as session:
         module = session.get(HardwareModule, module_id)
         if not module:
             raise HTTPException(status_code=404, detail="not found")
-        lib = session.get(HardwareLib, module.hardware_lib_id)
-        if not lib:
-            raise HTTPException(status_code=404, detail="linked hardware lib not found")
-        class_info = _find_class_in_ast(lib.ast_metadata or {}, module.class_name)
+
+        ast_meta = None
+
+        # When a task_def_id is provided, prefer the version assigned to that task def.
+        if task_def_id:
+            td_row = session.execute(
+                sa_text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+                {"id": task_def_id},
+            ).fetchone()
+            hw_versions = td_row.hw_lib_versions if td_row and td_row.hw_lib_versions else {}
+            sel_id = hw_versions.get(str(module.hardware_lib_id))
+            if sel_id:
+                v_row = session.execute(
+                    sa_text("SELECT ast_metadata FROM hardware_lib_versions WHERE id = :id"),
+                    {"id": sel_id},
+                ).fetchone()
+                if v_row and v_row.ast_metadata:
+                    ast_meta = v_row.ast_metadata if isinstance(v_row.ast_metadata, dict) else json.loads(v_row.ast_metadata)
+
+        if ast_meta is None:
+            lib = session.get(HardwareLib, module.hardware_lib_id)
+            if not lib:
+                raise HTTPException(status_code=404, detail="linked hardware lib not found")
+            ast_meta = lib.ast_metadata or {}
+
+        class_info = _find_class_in_ast(ast_meta, module.class_name)
         if not class_info:
             raise HTTPException(
                 status_code=422,

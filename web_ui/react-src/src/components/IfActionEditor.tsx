@@ -6,6 +6,8 @@ interface Props {
   action: FdaAction // action.type === 'if'
   toolkit: ToolkitRead | null
   hwModules: HardwareModule[]
+  taskDefId?: number
+  versionStamp?: string
   onChange: (updated: FdaAction) => void
 }
 
@@ -22,7 +24,7 @@ const branchLabel: React.CSSProperties = {
   display: 'block',
 }
 
-export default function IfActionEditor({ action, toolkit, hwModules, onChange }: Props) {
+export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, onChange }: Props) {
   const thenActions: FdaAction[] = action.then ?? []
   const elseActions: FdaAction[] | undefined = action.else
 
@@ -95,6 +97,8 @@ export default function IfActionEditor({ action, toolkit, hwModules, onChange }:
                   action={a}
                   toolkit={toolkit}
                   hwModules={hwModules}
+                  taskDefId={taskDefId}
+                  versionStamp={versionStamp}
                   onChange={upd => updateThen(i, upd)}
                 />
                 <button
@@ -165,6 +169,8 @@ export default function IfActionEditor({ action, toolkit, hwModules, onChange }:
                       action={a}
                       toolkit={toolkit}
                       hwModules={hwModules}
+                      taskDefId={taskDefId}
+                      versionStamp={versionStamp}
                       onChange={upd => updateElse(i, upd)}
                     />
                     <button

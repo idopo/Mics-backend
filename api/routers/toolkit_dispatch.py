@@ -27,6 +27,7 @@ def get_sa_session():
 def get_dispatch_spec(
     toolkit_id: int,
     pilot_id: int,
+    task_def_id: int | None = None,
     _: dict = Depends(verify_token),
     db: OrmSession = Depends(get_sa_session),
 ):
@@ -55,17 +56,30 @@ def get_dispatch_spec(
         if not module:
             continue
 
-        # Two explicit queries — no ORM relationship between HardwareModule and HardwareLib
-        lib = db.execute(
-            text("SELECT active_version_id FROM hardware_libs WHERE id = :id"),
-            {"id": module.hardware_lib_id},
-        ).fetchone()
-        if not lib or not lib.active_version_id:
-            continue
+        # Resolve which version to send: prefer pinned version from task definition
+        pinned_version_id = None
+        if task_def_id:
+            td_row = db.execute(
+                text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+                {"id": task_def_id},
+            ).fetchone()
+            hw_versions = (td_row.hw_lib_versions if td_row and td_row.hw_lib_versions else {})
+            pinned_version_id = hw_versions.get(str(module.hardware_lib_id))
+
+        if pinned_version_id:
+            version_id = pinned_version_id
+        else:
+            lib = db.execute(
+                text("SELECT active_version_id FROM hardware_libs WHERE id = :id"),
+                {"id": module.hardware_lib_id},
+            ).fetchone()
+            if not lib or not lib.active_version_id:
+                continue
+            version_id = lib.active_version_id
 
         version = db.execute(
             text("SELECT source_code FROM hardware_lib_versions WHERE id = :id"),
-            {"id": lib.active_version_id},
+            {"id": version_id},
         ).fetchone()
         if not version:
             continue

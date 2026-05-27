@@ -686,14 +686,6 @@ class ToolkitHardwareLib(Base):
     )
 
 
-class TaskDefinitionHwLibPin(Base):
-    __tablename__ = "task_definition_hw_lib_pins"
-
-    task_def_id = Column(Integer, ForeignKey("task_definitions.id"), primary_key=True)
-    hardware_lib_id = Column(Integer, ForeignKey("hardware_libs.id"), primary_key=True)
-    pinned_version_id = Column(Integer, ForeignKey("hardware_lib_versions.id"), nullable=False)
-
-
 # ============================================================
 # HARDWARE MODULES + PILOT HARDWARE CONFIG (Phase 10)
 # ============================================================

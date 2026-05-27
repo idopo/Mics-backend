@@ -166,6 +166,18 @@
 
 ---
 
+## Bug Fix Requirements
+
+### Toolkit Creation Modal (Phase 14-03)
+
+| ID | Requirement | Phase |
+|---|---|---|
+| BUG-05 | Toolkit creation wizard skips the locked-states step (step 2) when no source file is selected — the user lands directly on the hw-modules step | 14 |
+| BUG-06 | Toolkit creation auto-links all existing hardware libraries with their default version (stable if set, latest active otherwise); no manual selection step required | 14 |
+| BUG-07 | `POST /api/toolkits/{id}/hardware-libs` returns 200 through the web_ui proxy (`:8080`); route was missing from `web_ui/app.py` causing 404 | 14 |
+
+---
+
 ## v2 Requirements
 
 ### FDA Extensions
@@ -226,12 +238,27 @@
 | HW-12 through HW-16 | Phase 11 (Toolkit Redesign: Backend-Authored) | Pending |
 | HW-17 through HW-20 | Phase 12 (Hardware-Aware FDA State Builder) | Pending |
 | HW-21 through HW-24 | Phase 13 (Pre-Run Cross-Check + End-to-End) | Pending |
+| BUG-01 through BUG-02 | Phase 14, Plan 1 (Small Bug Fixes Batch 1) | Complete |
+| BUG-03 through BUG-04 | Phase 14, Plan 2 (Hw-lib Warning Badge Fixes) | Complete |
+| BUG-05 through BUG-07 | Phase 14, Plan 3 (Toolkit Creation Modal UX Fixes) | Pending |
+
+### Compound Transition Conditions
+
+| ID | Requirement | Phase |
+|---|---|---|
+| COND-01 | Transition edges support compound boolean conditions expressed as DNF (OR of AND-groups); empty condition_groups = unconditional | 15 |
+| COND-02 | UI: Kibana-style filter builder in edge panel — condition rows with left-operand/op/right-operand selectors, +AND within group, +OR adds new group | 15 |
+| COND-03 | Legacy transitions using flat `conditions[]` auto-migrate to `condition_groups` on editor open; re-save always writes `condition_groups` | 15 |
+| COND-04 | Pi evaluates `condition_groups` as `any(all(c() for c in g) for g in groups)`; falls back to legacy `conditions[]` if `condition_groups` absent | 15 |
+| COND-05 | Edge label renders compound expressions as human-readable `a ∧ b ∨ c` notation | 15 |
 
 **Coverage:**
 - v1 requirements: 86 total (HW-01–24 added for Hardware Libs Centralization + Hardware Modules + Toolkit Redesign)
-- Mapped to phases: 86
+- Bug requirements: 7 (BUG-01–07)
+- Compound condition requirements: 5 (COND-01–05)
+- Mapped to phases: 98
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after GSD initialization*
+*Last updated: 2026-05-25 — Compound Transition Conditions requirements added (COND-01–05)*

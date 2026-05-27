@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { HardwareLib, HardwareLibVersion, HwLibPin, HwLibDiff } from '../types'
+import type { HardwareLib, HardwareLibVersion, HwLibVersionEntry, HwLibDiff } from '../types'
 
 export async function listHardwareLibs(): Promise<HardwareLib[]> {
   return apiFetch('/api/hardware-libs')
@@ -39,19 +39,15 @@ export async function rollback(id: number, version_id: number): Promise<Hardware
   })
 }
 
-export async function getHwLibPins(taskDefId: number): Promise<HwLibPin[]> {
-  return apiFetch(`/api/task-definitions/${taskDefId}/hw-lib-pins`)
+export async function getHwLibVersions(taskDefId: number): Promise<HwLibVersionEntry[]> {
+  return apiFetch(`/api/task-definitions/${taskDefId}/hw-lib-versions`)
 }
 
-export async function setHwLibPin(taskDefId: number, libId: number, versionId: number): Promise<void> {
-  return apiFetch(`/api/task-definitions/${taskDefId}/hw-lib-pins/${libId}`, {
+export async function setHwLibVersion(taskDefId: number, libId: number, versionId: number): Promise<void> {
+  return apiFetch(`/api/task-definitions/${taskDefId}/hw-lib-versions/${libId}`, {
     method: 'PUT',
-    body: JSON.stringify({ pinned_version_id: versionId }),
+    body: JSON.stringify({ version_id: versionId }),
   })
-}
-
-export async function deleteHwLibPin(taskDefId: number, libId: number): Promise<void> {
-  return apiFetch(`/api/task-definitions/${taskDefId}/hw-lib-pins/${libId}`, { method: 'DELETE' })
 }
 
 export async function getHwLibVersionDiff(libId: number, fromVersionId: number, toVersionId: number): Promise<HwLibDiff> {

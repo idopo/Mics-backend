@@ -25,7 +25,7 @@ metrics:
   files_modified: 3
 ---
 
-# Phase 14 Plan 2: Hw-lib Warning Badge Fixes Summary
+# Phase 14 Plan 2: Hw-lib WarnIing Badge Fixes Summary
 
 **One-liner:** Fixed two bugs in the FDA editor's per-state "!" warning badge: stale validation state after pin save (BUG-03) and tooltip destroyed by ReactFlow re-renders (BUG-04).
 

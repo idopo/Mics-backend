@@ -157,7 +157,11 @@ completed: 2026-05-13
 ## Known Pending
 
 - Plan 12-02 (backend validation columns + impact detection) not yet implemented — `validation_status`/`validation_message` always null until 12-02 runs
-- `bool` args on hardware methods (e.g. `Digital_Out.set(state: bool)`) render as `true/false` select — `true==1` in Python so GPIO accepts either; future enhancement: per-arg type metadata on hardware libs
+- Plan 12-03 (FDA builder bug fixes) not yet implemented — see `12-03-PLAN.md`:
+  - Bug 1: "Add Action" button doesn't pre-fill module ref → method dropdown stays blank until user manually reselects module
+  - Bug 2: `bool` arg stored as `0`/`1` renders blank in select (normalize with `value ? 'true' : 'false'`)
+  - Bug 3: Trial counter requires dropdown selection — should be implicit `trial_counter` per toolkit (API + UI + Pi)
+  - Bug 4: No auto-save — states added then browser-refreshed are lost
 
 ## Pi Deploy Status
 

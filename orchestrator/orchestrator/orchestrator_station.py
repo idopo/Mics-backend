@@ -347,10 +347,11 @@ class OrchestratorStation:
                 )
             # Inject HARDWARE/FLAGS/PARAMS/PREFS_HARDWARE for backend-authored toolkits
             pilot_db_id = run_meta["pilot_id"]
-            self._inject_backend_toolkit_spec(task, toolkit_id, pilot_db_id)
+            self._inject_backend_toolkit_spec(task, toolkit_id, pilot_db_id, task_def_id=int(task_def_id) if task_def_id else None)
 
         try:
-            self._send_hardware_libs_if_needed(pilot_key, toolkit_id, task_def_id=task_def_id)
+            hw_lib_versions = (task_def_full or {}).get("hw_lib_versions") or {}
+            self._send_hardware_libs_if_needed(pilot_key, toolkit_id, hw_lib_versions=hw_lib_versions)
         except Exception:
             logger.exception("Failed to send LOAD_HARDWARE_LIBS to %s; continuing with START", pilot_key)
 
@@ -637,7 +638,7 @@ class OrchestratorStation:
                             "Overriding task_type to %s for backend toolkit %s in _advance_run_step",
                             dispatch["class_name"], next_toolkit_id,
                         )
-                    self._inject_backend_toolkit_spec(next_task, next_toolkit_id, run["pilot_id"])
+                    self._inject_backend_toolkit_spec(next_task, next_toolkit_id, run["pilot_id"], task_def_id=int(next_task_def_id))
             except Exception:
                 logger.exception(
                     "Failed dispatch class lookup in _advance_run_step for task_def %s", next_task_def_id
@@ -800,7 +801,9 @@ class OrchestratorStation:
         return task
 
 
-    def _inject_backend_toolkit_spec(self, task: dict, toolkit_id: int, pilot_db_id: int) -> None:
+    def _inject_backend_toolkit_spec(
+        self, task: dict, toolkit_id: int, pilot_db_id: int, task_def_id: int | None = None
+    ) -> None:
         """Inject HARDWARE, PREFS_HARDWARE, FLAGS, PARAMS into task for backend-authored toolkits.
 
         Called after _build_*_task() and after task_type override — must not reassign task_type
@@ -808,7 +811,7 @@ class OrchestratorStation:
         Non-fatal: logs and returns if the API call fails.
         """
         try:
-            spec = self.api.get_toolkit_dispatch_spec(toolkit_id, pilot_db_id)
+            spec = self.api.get_toolkit_dispatch_spec(toolkit_id, pilot_db_id, task_def_id=task_def_id)
             if not spec.get("is_backend_authored"):
                 return
             task["HARDWARE"] = spec["hardware"]
@@ -829,9 +832,9 @@ class OrchestratorStation:
             )
 
     def _send_hardware_libs_if_needed(
-        self, pilot_key: str, toolkit_id: int | None, task_def_id: int | None = None
+        self, pilot_key: str, toolkit_id: int | None, hw_lib_versions: dict | None = None
     ):
-        """Send LOAD_HARDWARE_LIBS to the Pi before START, using pinned version when set."""
+        """Send LOAD_HARDWARE_LIBS to the Pi before START using versions from task def."""
         if toolkit_id is None:
             return
 
@@ -839,19 +842,12 @@ class OrchestratorStation:
         if not libs:
             return
 
-        # Resolve per-lib pinned versions if task_def_id is known
-        pins = {}
-        if task_def_id:
-            pin_list = self.api.get_hw_lib_pins(task_def_id)
-            pins = {
-                p["hardware_lib_id"]: p["pinned_version_id"]
-                for p in pin_list
-                if p.get("pinned_version_id")
-            }
+        hw_lib_versions = hw_lib_versions or {}
 
         deployable = []
         for lib in libs:
-            version_id = pins.get(lib["id"])
+            # hw_lib_versions keys are string lib_ids (JSONB)
+            version_id = hw_lib_versions.get(str(lib["id"])) or hw_lib_versions.get(lib["id"])
             if version_id:
                 version = self.api.get_hw_lib_version(lib["id"], version_id)
                 if version.get("state") in ("beta", "stable"):
@@ -861,7 +857,7 @@ class OrchestratorStation:
                     })
                 else:
                     logger.warning(
-                        "Pinned version %s of %s is unvalidated — skipping",
+                        "Version %s of %s is unvalidated — skipping",
                         version_id, lib["filename"],
                     )
             else:

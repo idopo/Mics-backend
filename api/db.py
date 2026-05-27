@@ -109,20 +109,36 @@ def run_task_definition_toolkit_id_migration(eng):
 
 
 def run_hw_lib_pin_migrations(eng):
-    """Phase 09: add ast_metadata to hardware_lib_versions (for existing rows) and
-    create task_definition_hw_lib_pins. Both idempotent."""
+    """Phase 09: add ast_metadata to hardware_lib_versions. Idempotent."""
     with eng.begin() as conn:
         conn.execute(text(
             "ALTER TABLE hardware_lib_versions "
             "ADD COLUMN IF NOT EXISTS ast_metadata JSONB"
         ))
+        # Migrate pins table → hw_lib_versions JSONB column on task_definitions, then drop pins table.
+        conn.execute(text(
+            "ALTER TABLE task_definitions ADD COLUMN IF NOT EXISTS hw_lib_versions JSONB"
+        ))
         conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS task_definition_hw_lib_pins (
-                task_def_id       INTEGER NOT NULL REFERENCES task_definitions(id),
-                hardware_lib_id   INTEGER NOT NULL REFERENCES hardware_libs(id),
-                pinned_version_id INTEGER NOT NULL REFERENCES hardware_lib_versions(id),
-                PRIMARY KEY (task_def_id, hardware_lib_id)
-            )
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'task_definition_hw_lib_pins'
+              ) THEN
+                UPDATE task_definitions td
+                SET hw_lib_versions = (
+                  SELECT jsonb_object_agg(p.hardware_lib_id::text, p.pinned_version_id)
+                  FROM task_definition_hw_lib_pins p
+                  WHERE p.task_def_id = td.id
+                )
+                WHERE td.hw_lib_versions IS NULL
+                AND EXISTS (
+                  SELECT 1 FROM task_definition_hw_lib_pins p WHERE p.task_def_id = td.id
+                );
+                DROP TABLE task_definition_hw_lib_pins;
+              END IF;
+            END$$;
         """))
 
 

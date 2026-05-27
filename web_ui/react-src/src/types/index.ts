@@ -420,15 +420,15 @@ export interface PilotHardwareConfigRow {
   config: Record<string, unknown>
 }
 
-// --- Hw Lib Pins (Phase 9 / Phase 11 TaskEditor) ---
+// --- Hw Lib Version Selections (TaskEditor) ---
 
-export interface HwLibPin {
+export interface HwLibVersionEntry {
   hardware_lib_id: number
   lib_name: string
   lib_filename: string
-  pinned_version_id: number | null
-  pinned_version_number: number | null
-  pinned_version_state: string | null
+  selected_version_id: number | null
+  selected_version_number: number | null
+  selected_version_state: string | null
   active_version_id: number | null
   active_version_number: number | null
   active_version_state: string | null

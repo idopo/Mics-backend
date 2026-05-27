@@ -19,7 +19,6 @@ from models import (
     HardwareLib,
     HardwareLibVersion,
     TaskDefinition,
-    TaskDefinitionHwLibPin,
     TaskToolkit,
     ToolkitHardwareLib,
 )
@@ -129,8 +128,8 @@ class LinkLibBody(BaseModel):
     version_id: Optional[int] = None
 
 
-class PinBody(BaseModel):
-    pinned_version_id: int
+class VersionSelectBody(BaseModel):
+    version_id: int
 
 
 # ---------------------------------------------------------------------------
@@ -275,14 +274,6 @@ def _flag_broken_task_defs(db, lib_id: int, removed_methods: dict[str, set[str]]
     if not removed_methods:
         return []
 
-    # Collect task_def_ids pinned to this specific lib (any version)
-    pinned_ids = {
-        row.task_def_id
-        for row in db.query(TaskDefinitionHwLibPin)
-        .filter(TaskDefinitionHwLibPin.hardware_lib_id == lib_id)
-        .all()
-    }
-
     # Find all toolkits that use this lib
     toolkit_links = db.query(ToolkitHardwareLib).filter(
         ToolkitHardwareLib.hardware_lib_id == lib_id
@@ -300,10 +291,6 @@ def _flag_broken_task_defs(db, lib_id: int, removed_methods: dict[str, set[str]]
     from sqlalchemy import text as sa_text
 
     for task_def in task_defs:
-        if task_def.id in pinned_ids:
-            # Pinned definitions are insulated from active-version changes
-            continue
-
         # Load fda_json via raw SQL (migrated column, not on ORM class)
         row = db.execute(
             sa_text("SELECT fda_json FROM task_definitions WHERE id = :id"),
@@ -685,18 +672,20 @@ def _resolve_task_toolkit_id(db, task_def_id: int) -> int | None:
     return row.toolkit_id
 
 
-@router.get("/task-definitions/{task_def_id}/hw-lib-pins")
-def get_hw_lib_pins(task_def_id: int, _: dict = Depends(verify_token)):
-    """List pin state for all hw libs linked to this task def's toolkit.
-
-    Each entry shows the pinned version (if any) and the current active version,
-    so the UI can highlight when they differ.
-    """
+@router.get("/task-definitions/{task_def_id}/hw-lib-versions")
+def get_hw_lib_versions(task_def_id: int, _: dict = Depends(verify_token)):
+    """List hw lib version selections for all libs linked to this task def's toolkit."""
     db = _SA_SessionLocal()
     try:
         toolkit_id = _resolve_task_toolkit_id(db, task_def_id)
         if toolkit_id is None:
             return []
+
+        td_row = db.execute(
+            sa_text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+            {"id": task_def_id},
+        ).fetchone()
+        hw_versions = (td_row.hw_lib_versions if td_row and td_row.hw_lib_versions else {})
 
         links = db.query(ToolkitHardwareLib).filter(
             ToolkitHardwareLib.toolkit_id == toolkit_id
@@ -707,19 +696,16 @@ def get_hw_lib_pins(task_def_id: int, _: dict = Depends(verify_token)):
             lib = db.get(HardwareLib, link.hardware_lib_id)
             if not lib:
                 continue
-            pin = db.query(TaskDefinitionHwLibPin).filter(
-                TaskDefinitionHwLibPin.task_def_id == task_def_id,
-                TaskDefinitionHwLibPin.hardware_lib_id == lib.id,
-            ).first()
             av = db.get(HardwareLibVersion, lib.active_version_id) if lib.active_version_id else None
-            pv = db.get(HardwareLibVersion, pin.pinned_version_id) if pin else None
+            sel_id = hw_versions.get(str(lib.id))
+            sv = db.get(HardwareLibVersion, sel_id) if sel_id else None
             result.append({
                 "hardware_lib_id": lib.id,
                 "lib_name": lib.name,
                 "lib_filename": lib.filename,
-                "pinned_version_id": pv.id if pv else None,
-                "pinned_version_number": pv.version_number if pv else None,
-                "pinned_version_state": pv.state if pv else None,
+                "selected_version_id": sv.id if sv else None,
+                "selected_version_number": sv.version_number if sv else None,
+                "selected_version_state": sv.state if sv else None,
                 "active_version_id": av.id if av else None,
                 "active_version_number": av.version_number if av else None,
                 "active_version_state": av.state if av else None,
@@ -729,21 +715,20 @@ def get_hw_lib_pins(task_def_id: int, _: dict = Depends(verify_token)):
         db.close()
 
 
-@router.put("/task-definitions/{task_def_id}/hw-lib-pins/{lib_id}")
-def set_hw_lib_pin(
+@router.put("/task-definitions/{task_def_id}/hw-lib-versions/{lib_id}")
+def set_hw_lib_version(
     task_def_id: int,
     lib_id: int,
-    body: PinBody,
+    body: VersionSelectBody,
     _: dict = Depends(verify_token),
 ):
-    """Pin a task definition to a specific hw lib version."""
+    """Set the hw lib version used by a task definition."""
     db = _SA_SessionLocal()
     try:
         toolkit_id = _resolve_task_toolkit_id(db, task_def_id)
         if toolkit_id is None:
-            raise HTTPException(status_code=422, detail="Task definition has no toolkit; cannot pin")
+            raise HTTPException(status_code=422, detail="Task definition has no toolkit")
 
-        # Lib must be linked to the toolkit
         link = db.query(ToolkitHardwareLib).filter(
             ToolkitHardwareLib.toolkit_id == toolkit_id,
             ToolkitHardwareLib.hardware_lib_id == lib_id,
@@ -751,24 +736,18 @@ def set_hw_lib_pin(
         if not link:
             raise HTTPException(status_code=422, detail="Lib is not linked to this task definition's toolkit")
 
-        # Version must belong to this lib
-        version = db.get(HardwareLibVersion, body.pinned_version_id)
+        version = db.get(HardwareLibVersion, body.version_id)
         if not version or version.hardware_lib_id != lib_id:
             raise HTTPException(status_code=422, detail="Version does not belong to this lib")
 
-        pin = db.query(TaskDefinitionHwLibPin).filter(
-            TaskDefinitionHwLibPin.task_def_id == task_def_id,
-            TaskDefinitionHwLibPin.hardware_lib_id == lib_id,
-        ).first()
-        if pin:
-            pin.pinned_version_id = body.pinned_version_id
-        else:
-            pin = TaskDefinitionHwLibPin(
-                task_def_id=task_def_id,
-                hardware_lib_id=lib_id,
-                pinned_version_id=body.pinned_version_id,
-            )
-            db.add(pin)
+        db.execute(
+            sa_text(
+                "UPDATE task_definitions SET hw_lib_versions = "
+                "COALESCE(hw_lib_versions, '{}'::jsonb) || jsonb_build_object(:key, :val) "
+                "WHERE id = :id"
+            ),
+            {"key": str(lib_id), "val": body.version_id, "id": task_def_id},
+        )
         db.commit()
         _revalidate_task_def(db, task_def_id)
 
@@ -778,37 +757,13 @@ def set_hw_lib_pin(
             "hardware_lib_id": lib_id,
             "lib_name": lib.name if lib else None,
             "lib_filename": lib.filename if lib else None,
-            "pinned_version_id": version.id,
-            "pinned_version_number": version.version_number,
-            "pinned_version_state": version.state,
+            "selected_version_id": version.id,
+            "selected_version_number": version.version_number,
+            "selected_version_state": version.state,
             "active_version_id": av.id if av else None,
             "active_version_number": av.version_number if av else None,
             "active_version_state": av.state if av else None,
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-
-@router.delete("/task-definitions/{task_def_id}/hw-lib-pins/{lib_id}")
-def delete_hw_lib_pin(task_def_id: int, lib_id: int, _: dict = Depends(verify_token)):
-    """Remove a version pin; task def reverts to active version for this lib."""
-    db = _SA_SessionLocal()
-    try:
-        pin = db.query(TaskDefinitionHwLibPin).filter(
-            TaskDefinitionHwLibPin.task_def_id == task_def_id,
-            TaskDefinitionHwLibPin.hardware_lib_id == lib_id,
-        ).first()
-        if not pin:
-            raise HTTPException(status_code=404, detail="No pin found for this task def / lib combination")
-        db.delete(pin)
-        db.commit()
-        _revalidate_task_def(db, task_def_id)
-        return {"deleted": {"task_def_id": task_def_id, "hardware_lib_id": lib_id}}
     except HTTPException:
         raise
     except Exception as e:

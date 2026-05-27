@@ -335,9 +335,14 @@ class MicsApiClient:
         """GET /api/toolkits/{id}/dispatch-class — returns class_name + is_backend_authored."""
         return self._get(f"/api/toolkits/{toolkit_id}/dispatch-class")
 
-    def get_toolkit_dispatch_spec(self, toolkit_id: int, pilot_id: int) -> dict:
+    def get_toolkit_dispatch_spec(
+        self, toolkit_id: int, pilot_id: int, task_def_id: int | None = None
+    ) -> dict:
         """GET /api/toolkits/{id}/dispatch-spec — returns hardware, prefs_hardware, flags, params_schema."""
-        return self._get(f"/api/toolkits/{toolkit_id}/dispatch-spec?pilot_id={pilot_id}")
+        url = f"/api/toolkits/{toolkit_id}/dispatch-spec?pilot_id={pilot_id}"
+        if task_def_id is not None:
+            url += f"&task_def_id={task_def_id}"
+        return self._get(url)
 
     # -----------------------
     # Hardware Lib Endpoints
@@ -346,14 +351,6 @@ class MicsApiClient:
     def get_toolkit_hardware_libs(self, toolkit_id: int) -> list[dict]:
         resp = self._get(f"/api/toolkits/{toolkit_id}/hardware-libs")
         return resp.get("libs", []) if isinstance(resp, dict) else []
-
-    def get_hw_lib_pins(self, task_def_id: int) -> list[dict]:
-        try:
-            resp = self._get(f"/api/task-definitions/{task_def_id}/hw-lib-pins")
-            return resp if isinstance(resp, list) else []
-        except Exception as e:
-            self.logger.warning("Failed to get hw_lib_pins for task_def %s: %s", task_def_id, e)
-            return []
 
     def get_hw_lib_version(self, lib_id: int, version_id: int) -> dict:
         """Fetch a specific version by scanning the versions list."""

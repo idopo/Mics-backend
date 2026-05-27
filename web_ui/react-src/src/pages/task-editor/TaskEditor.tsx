@@ -18,7 +18,7 @@ import '@xyflow/react/dist/style.css'
 
 import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definitions'
 import { getToolkitsByName } from '../../api/toolkits'
-import { getHwLibPins } from '../../api/hardware_libs'
+import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
 import type { FdaJson, FdaTransition, FdaCondition, FdaState, ToolkitRead, HardwareModule } from '../../types'
 import StateNode from '../../components/StateNode'
@@ -119,11 +119,14 @@ export default function TaskEditor() {
   const toolkit = toolkits?.[0] ?? null
   const hasMultipleVariants = (toolkits?.length ?? 0) > 1
 
-  const { data: hwLibPins = [], refetch: refetchPins } = useQuery({
-    queryKey: ['hw-lib-pins', taskDef?.id],
-    queryFn: () => getHwLibPins(taskDef!.id),
+  const { data: hwLibVersions = [], refetch: refetchPins } = useQuery({
+    queryKey: ['hw-lib-versions', taskDef?.id],
+    queryFn: () => getHwLibVersions(taskDef!.id),
     enabled: !!taskDef?.id && !!toolkit,
   })
+
+  // Changes whenever the user saves a different version — used as a cache-bust key in ActionEditor
+  const versionStamp = hwLibVersions.map(e => `${e.hardware_lib_id}:${e.selected_version_id ?? 'none'}`).join(',')
 
   const hwModuleIds: number[] = toolkit?.hardware_module_ids ?? []
   const { data: hwModules = [] } = useQuery<HardwareModule[]>({
@@ -406,7 +409,7 @@ export default function TaskEditor() {
           onBlur={e => (e.target.style.borderBottomColor = BORDER)}
           placeholder="Task definition name…"
         />
-        {taskDef?.toolkit_name && hwLibPins.length > 0 && (
+        {taskDef?.toolkit_name && hwLibVersions.length > 0 && (
           <button
             onClick={() => setHwLibsOpen(true)}
             title={`Hardware libraries — ${taskDef.toolkit_name}`}
@@ -592,7 +595,7 @@ export default function TaskEditor() {
           {hwLibsOpen && (
             <HwLibVersionModal
               taskDefId={numId}
-              pins={hwLibPins}
+              pins={hwLibVersions}
               onClose={() => setHwLibsOpen(false)}
               onSaved={() => {
                 qc.invalidateQueries({ queryKey: ['task-definition', numId] })
@@ -641,6 +644,8 @@ export default function TaskEditor() {
               state={fdaJson.states[selectedState] ?? {}}
               toolkit={toolkit}
               hwModules={hwModules}
+              taskDefId={numId}
+              versionStamp={versionStamp}
               onChange={updated => updateStateBody(selectedState, updated)}
             />
           ) : (

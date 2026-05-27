@@ -92,7 +92,10 @@ None - plan executed exactly as written.
 
 ## Issues Encountered
 
-None. Build passed cleanly on first attempt. Pi syntax check passed.
+Post-plan Pi debugging (not in original scope):
+
+- **`_semantic_hw` loop bug (this session):** The broad `for group_hw in self.hardware.values()` loop added in a previous session caused `'elastic_test' object is not iterable` because non-Modules groups contain non-hw-object values. Fixed to `self.hardware.get("Modules", {}).items()` only. Commit: `ffd9964` (pi-mirror).
+- **`MethodType` wrapping bug (this session):** `_build_state_method` returned `MethodType(_state_fn, self)`, causing the FDA to call `_state_fn(task_instance)` — the instance landed in `_callables`, breaking `for fn in _callables:`. Fixed by returning `_state_fn` directly (closure already captures `self`; FDA uses `.__name__` fallback). Commit: `b19f366` (pi-mirror).
 
 ## User Setup Required
 

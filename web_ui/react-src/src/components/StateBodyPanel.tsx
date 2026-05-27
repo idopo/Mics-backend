@@ -45,10 +45,12 @@ interface Props {
   state: FdaState
   toolkit: ToolkitRead | null
   hwModules: HardwareModule[]
+  taskDefId?: number
+  versionStamp?: string
   onChange: (updated: FdaState) => void
 }
 
-export default function StateBodyPanel({ stateName, state, toolkit, hwModules, onChange }: Props) {
+export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, onChange }: Props) {
   const isPassthrough = !state.entry_actions?.length && (toolkit?.states?.includes(stateName) ?? false)
   const actions = state.entry_actions ?? []
 
@@ -131,6 +133,8 @@ export default function StateBodyPanel({ stateName, state, toolkit, hwModules, o
                     action={action}
                     toolkit={toolkit}
                     hwModules={hwModules}
+                    taskDefId={taskDefId}
+                    versionStamp={versionStamp}
                     onChange={updated => updateAction(i, updated)}
                   />
                   <button

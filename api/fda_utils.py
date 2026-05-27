@@ -9,7 +9,10 @@ def scan_fda_for_refs(fda_json: dict) -> list[dict]:
     Only populated fields are included — ref and method may be None depending on action type.
     """
     results = []
-    for state_name, state_body in fda_json.get("states", {}).items():
+    states = fda_json.get("states", {})
+    if not isinstance(states, dict):
+        return results
+    for state_name, state_body in states.items():
         if not isinstance(state_body, dict):
             continue
         results.extend(_scan_actions(state_name, state_body.get("entry_actions") or []))

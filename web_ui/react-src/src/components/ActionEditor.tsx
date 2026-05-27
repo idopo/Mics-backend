@@ -4,8 +4,9 @@ import { getHardwareModuleMethods } from '../api/hardware_modules'
 import ArgInput from './ArgInput'
 import IfActionEditor from './IfActionEditor'
 
-// Module-level method cache: avoids re-fetching within the same session
-const METHOD_CACHE: Record<number, AstMethod[]> = {}
+// Module-level method cache: keyed by "moduleId/versionStamp" to stay version-aware.
+// versionStamp changes whenever the version assignment for the task def changes.
+const METHOD_CACHE: Record<string, AstMethod[]> = {}
 
 // ── Action type metadata ────────────────────────────────────────────────────
 
@@ -67,6 +68,10 @@ function getTrackerMethods(trackerType: string): TrackerMethod[] {
   return TRACKER_METHODS[trackerType] ?? TRACKER_METHODS['Tracker']
 }
 
+function defaultArgForTrackerType(trackerType: string): unknown {
+  return trackerType === 'Boolean_Tracker' ? false : 0
+}
+
 function isTimerModule(mod: HardwareModule): boolean {
   return mod.lib_filename === 'timer.py'
 }
@@ -124,12 +129,14 @@ interface Props {
   action: FdaAction
   toolkit: ToolkitRead | null
   hwModules: HardwareModule[]
+  taskDefId?: number
+  versionStamp?: string
   onChange: (updated: FdaAction) => void
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function ActionEditor({ action, toolkit, hwModules, onChange }: Props) {
+export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, onChange }: Props) {
   const isBackendAuthored = toolkit?.is_backend_authored ?? false
 
   const [methods, setMethods] = useState<AstMethod[]>([])
@@ -158,15 +165,16 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
   // ── Method fetching ──────────────────────────────────────────────────────
 
   async function fetchMethods(moduleId: number): Promise<void> {
-    if (METHOD_CACHE[moduleId]) {
-      setMethods(METHOD_CACHE[moduleId])
+    const key = `${moduleId}/${versionStamp ?? taskDefId ?? 'active'}`
+    if (METHOD_CACHE[key]) {
+      setMethods(METHOD_CACHE[key])
       return
     }
     setMethodsLoading(true)
     try {
-      const res = await getHardwareModuleMethods(moduleId)
+      const res = await getHardwareModuleMethods(moduleId, taskDefId)
       const pub = res.methods.filter(m => !m.name.startsWith('_'))
-      METHOD_CACHE[moduleId] = pub
+      METHOD_CACHE[key] = pub
       setMethods(pub)
     } catch {
       setMethods([])
@@ -179,22 +187,19 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
     return toolkitModules.find(m => m.name === (action.ref ?? ''))
   }
 
-  // Re-fetch when ref or hwModules change (hwModules may not be loaded on first render)
+  // Re-fetch when ref, hwModules, or versionStamp changes.
+  // versionStamp changes when the user saves a different version in the version modal,
+  // causing a cache miss and a fresh fetch from the correct version's AST.
   useEffect(() => {
     if ((action.type !== 'hardware' && action.type !== 'timer') || !isBackendAuthored) return
     const mod = selectedHwModule()
     if (mod && !isTimerModule(mod)) fetchMethods(mod.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [action.type, action.ref, isBackendAuthored, hwModules])
+  }, [action.type, action.ref, isBackendAuthored, hwModules, versionStamp])
 
-  // Auto-select first method after methods load
-  useEffect(() => {
-    if ((action.type !== 'hardware' && action.type !== 'timer') || !isBackendAuthored || !methods.length) return
-    if (!action.method || !methods.find(m => m.name === action.method)) {
-      update({ method: methods[0]?.name ?? '', args: [] })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [methods])
+  // NOTE: Intentionally no auto-reset here. If the stored method isn't in the current
+  // version's methods list, we keep it as-is and let the warning badge signal the issue.
+  // Auto-resetting would silently corrupt the user's task definition.
 
   // ── Type change handler ──────────────────────────────────────────────────
 
@@ -208,8 +213,10 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
     } else if (t === 'flag') {
       const firstFlag = regularFlagKeys[0] ?? ''
       const trackerType = toolkit?.flags?.[firstFlag]?.tracker_type ?? 'Counter_Tracker'
-      const firstMethod = getTrackerMethods(trackerType)[0]?.name ?? 'increment'
-      onChange({ type: 'flag', ref: firstFlag, method: firstMethod, args: [] })
+      const firstMethodDef = getTrackerMethods(trackerType)[0]
+      const firstMethod = firstMethodDef?.name ?? 'increment'
+      const args = firstMethodDef?.hasArg ? [defaultArgForTrackerType(trackerType)] : []
+      onChange({ type: 'flag', ref: firstFlag, method: firstMethod, args })
     } else if (t === 'if') {
       onChange({ type: 'if', condition: undefined, then: [], else: undefined })
     } else if (t === 'method') {
@@ -229,8 +236,10 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
 
   function handleFlagChange(flagName: string) {
     const trackerType = toolkit?.flags?.[flagName]?.tracker_type ?? 'Counter_Tracker'
-    const firstMethod = getTrackerMethods(trackerType)[0]?.name ?? 'increment'
-    update({ ref: flagName, method: firstMethod, args: [] })
+    const firstMethodDef = getTrackerMethods(trackerType)[0]
+    const firstMethod = firstMethodDef?.name ?? 'increment'
+    const args = firstMethodDef?.hasArg ? [defaultArgForTrackerType(trackerType)] : []
+    update({ ref: flagName, method: firstMethod, args })
   }
 
   function currentMethodArgs(): AstMethod['args'] {
@@ -258,6 +267,15 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
   const flagMethodDefs = getTrackerMethods(flagTrackerType)
   const currentFlagMethodDef = flagMethodDefs.find(m => m.name === action.method)
   const flagMethodNeedsArg = currentFlagMethodDef?.hasArg ?? false
+
+  // Auto-initialize args for flag actions loaded from DB where args is empty but method needs one.
+  // The display default in ArgInput is only cosmetic; args stays [] unless we write it here.
+  useEffect(() => {
+    if (action.type !== 'flag' || uiType !== 'flag') return
+    if (!flagMethodNeedsArg || (action.args ?? []).length > 0) return
+    update({ args: [defaultArgForTrackerType(flagTrackerType)] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action.method, action.ref, flagMethodNeedsArg])
 
   // ── Legacy special action ────────────────────────────────────────────────
   if (action.type === 'special') {
@@ -344,6 +362,11 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
                 <select disabled style={{ width: '100%' }}><option>Loading…</option></select>
               ) : methods.length > 0 ? (
                 <select value={action.method ?? ''} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
+                  {action.method && !methods.find(m => m.name === action.method) && (
+                    <option value={action.method} style={{ color: '#ef4444' }}>
+                      ⚠ {action.method} (not in this version)
+                    </option>
+                  )}
                   {methods.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
                 </select>
               ) : (
@@ -448,7 +471,15 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
           </div>
           <div>
             <label style={labelStyle} title={currentFlagMethodDef?.description ?? ''}>Operation ⓘ</label>
-            <select value={action.method ?? flagMethodDefs[0]?.name ?? ''} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
+            <select
+              value={action.method ?? flagMethodDefs[0]?.name ?? ''}
+              onChange={e => {
+                const newMethodDef = flagMethodDefs.find(m => m.name === e.target.value)
+                const args = newMethodDef?.hasArg ? [defaultArgForTrackerType(flagTrackerType)] : []
+                update({ method: e.target.value, args })
+              }}
+              style={{ width: '100%' }}
+            >
               {flagMethodDefs.map(m => <option key={m.name} value={m.name} title={m.description}>{m.name}</option>)}
             </select>
           </div>
@@ -495,7 +526,7 @@ export default function ActionEditor({ action, toolkit, hwModules, onChange }: P
 
       {/* ── If action ─────────────────────────────────────────────────────── */}
       {action.type === 'if' && (
-        <IfActionEditor action={action} toolkit={toolkit} hwModules={hwModules} onChange={onChange} />
+        <IfActionEditor action={action} toolkit={toolkit} hwModules={hwModules} taskDefId={taskDefId} versionStamp={versionStamp} onChange={onChange} />
       )}
     </div>
   )

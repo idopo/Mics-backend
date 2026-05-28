@@ -3,30 +3,40 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listHardwareModules,
-  getHardwareModuleMethods,
   listPilotHardwareConfig,
   upsertPilotHardwareConfig,
-  deleteHardwareModule,
+  deletePilotHardwareConfig,
 } from '../../api/hardware_modules'
 import { apiFetch } from '../../api/client'
-import type { AstMethodArg } from '../../types'
+import type { PilotHardwareConfigRow, HardwareModule } from '../../types'
 
-function inputType(annotation: string | null): string {
-  if (annotation === 'int' || annotation === 'float') return 'number'
-  if (annotation === 'bool') return 'checkbox'
-  return 'text'
+const TEXTAREA_STYLE: React.CSSProperties = {
+  width: '100%',
+  fontFamily: 'monospace',
+  fontSize: 13,
+  resize: 'vertical',
+  boxSizing: 'border-box',
 }
 
-function inputStep(annotation: string | null): string | undefined {
-  if (annotation === 'float') return '0.01'
-  if (annotation === 'int') return '1'
-  return undefined
+function ParamsSummary({ config }: { config: Record<string, unknown> }) {
+  const entries = Object.entries(config).filter(([k]) => k !== 'class_name')
+  const shown = entries.slice(0, 4)
+  return (
+    <span style={{ fontSize: '0.82rem', color: 'var(--subtext0)' }}>
+      {shown.map(([k, v]) => (
+        <span key={k} style={{ marginRight: '0.6rem' }}>
+          <strong>{k}</strong>: {String(v)}
+        </span>
+      ))}
+      {entries.length > 4 && (
+        <span style={{ color: 'var(--overlay1)' }}>+{entries.length - 4} more</span>
+      )}
+    </span>
+  )
 }
 
-interface RowState {
-  editing: boolean
-  values: Record<string, string>
-  extra: string  // JSON string for kwargs not in __init__ signature
+function buildDefaultConfig(module: HardwareModule): string {
+  return JSON.stringify({ class_name: module.class_name }, null, 2)
 }
 
 export default function PilotHardwareConfig(): JSX.Element {
@@ -39,221 +49,263 @@ export default function PilotHardwareConfig(): JSX.Element {
     enabled: !!pilotName,
   })
   const pid = pilotRecord?.id ?? 0
-  const [rowState, setRowState] = useState<Record<number, RowState>>({})
-  const [saveError, setSaveError] = useState<Record<number, string>>({})
 
-  const { data: modules = [], isLoading: loadingModules } = useQuery({
-    queryKey: ['hardware-modules'],
-    queryFn: listHardwareModules,
-  })
+  // Table edit state: row name → raw JSON string being edited
+  const [editingRow, setEditingRow] = useState<string | null>(null)
+  const [editJson, setEditJson] = useState('')
+  const [editError, setEditError] = useState('')
 
-  const { data: configs = [] } = useQuery({
+  // Add Entry form state
+  const [addName, setAddName] = useState('')
+  const [addJson, setAddJson] = useState('{}')
+  const [addError, setAddError] = useState('')
+  const [selectedModuleId, setSelectedModuleId] = useState<string>('')
+
+  const { data: configs = [], isLoading: loadingConfigs } = useQuery({
     queryKey: ['pilot-hardware-config', pid],
     queryFn: () => listPilotHardwareConfig(pid),
     enabled: pid > 0,
   })
 
-  // keyed by name; temporary — file rewritten in 17-02 Task 3
-  const configByName: Record<string, typeof configs[number]> = Object.fromEntries(configs.map(c => [c.name, c]))
-
-  const removeMutation = useMutation({
-    mutationFn: (moduleId: number) => deleteHardwareModule(moduleId),
-    onSuccess: (_data, moduleId) => {
-      qc.invalidateQueries({ queryKey: ['hardware-modules'] })
-      qc.invalidateQueries({ queryKey: ['pilot-hardware-config', pid] })
-      setRowState(s => { const next = { ...s }; delete next[moduleId]; return next })
-    },
+  const { data: modules = [] } = useQuery({
+    queryKey: ['hardware-modules'],
+    queryFn: listHardwareModules,
   })
 
-  const saveMutation = useMutation({
-    mutationFn: ({ moduleId: _moduleId, name, config }: { moduleId: number; name: string; config: Record<string, unknown> }) =>
+  const upsertMutation = useMutation({
+    mutationFn: ({ name, config }: { name: string; config: Record<string, unknown> }) =>
       upsertPilotHardwareConfig(pid, name, config),
-    onSuccess: (_data, { moduleId }) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pilot-hardware-config', pid] })
-      setRowState(s => ({ ...s, [moduleId]: { ...s[moduleId], editing: false } }))
-      setSaveError(e => ({ ...e, [moduleId]: '' }))
-    },
-    onError: (err: Error, { moduleId }) => {
-      setSaveError(e => ({ ...e, [moduleId]: err.message }))
     },
   })
 
-  function getInitArgs(moduleId: number): AstMethodArg[] {
-    const key = ['hw-module-methods', moduleId]
-    const cached = qc.getQueryData<{ methods: { name: string; args: AstMethodArg[] }[] }>(key)
-    return cached?.methods.find(m => m.name === '__init__')?.args.filter(a => a.name !== 'self') ?? []
+  const deleteMutation = useMutation({
+    mutationFn: (name: string) => deletePilotHardwareConfig(pid, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pilot-hardware-config', pid] })
+    },
+  })
+
+  function startEdit(row: PilotHardwareConfigRow) {
+    setEditingRow(row.name)
+    setEditJson(JSON.stringify(row.config, null, 2))
+    setEditError('')
   }
 
-  function getOrLoadArgs(moduleId: number): AstMethodArg[] {
-    const args = getInitArgs(moduleId)
-    if (args.length === 0) {
-      qc.fetchQuery({
-        queryKey: ['hw-module-methods', moduleId],
-        queryFn: () => getHardwareModuleMethods(moduleId),
-      }).catch(() => {})
-    }
-    return args
+  function cancelEdit() {
+    setEditingRow(null)
+    setEditJson('')
+    setEditError('')
   }
 
-  function startEdit(moduleId: number, moduleName: string) {
-    const args = getInitArgs(moduleId)
-    const existing = configByName[moduleName]?.config ?? {}
-    const knownKeys = new Set(args.map(a => a.name))
-    const values: Record<string, string> = {}
-    for (const arg of args) {
-      values[arg.name] = String(existing[arg.name] ?? arg.default ?? '')
+  function saveEdit(name: string) {
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(editJson)
+    } catch {
+      setEditError('Invalid JSON')
+      return
     }
-    const extraEntries = Object.entries(existing).filter(([k]) => !knownKeys.has(k))
-    const extra = extraEntries.length > 0 ? JSON.stringify(Object.fromEntries(extraEntries), null, 2) : ''
-    setRowState(s => ({ ...s, [moduleId]: { editing: true, values, extra } }))
+    upsertMutation.mutate(
+      { name, config: parsed },
+      {
+        onSuccess: () => {
+          setEditingRow(null)
+          setEditJson('')
+          setEditError('')
+        },
+        onError: (e: Error) => setEditError(e.message),
+      },
+    )
   }
 
-  function saveRow(moduleId: number, moduleName: string) {
-    const args = getInitArgs(moduleId)
-    const values = rowState[moduleId]?.values ?? {}
-    const extra = rowState[moduleId]?.extra ?? ''
-    const config: Record<string, unknown> = {}
-    for (const arg of args) {
-      const raw = values[arg.name] ?? ''
-      if (arg.annotation === 'int') config[arg.name] = parseInt(raw) || 0
-      else if (arg.annotation === 'float') config[arg.name] = parseFloat(raw) || 0
-      else if (arg.annotation === 'bool') config[arg.name] = raw === 'true' || raw === '1'
-      else config[arg.name] = raw
+  function handleModulePick(moduleId: string) {
+    setSelectedModuleId(moduleId)
+    if (!moduleId) {
+      setAddJson('{}')
+      return
     }
-    if (extra.trim()) {
-      try {
-        Object.assign(config, JSON.parse(extra))
-      } catch {
-        setSaveError(e => ({ ...e, [moduleId]: 'Extra fields: invalid JSON' }))
-        return
-      }
+    const mod = modules.find(m => String(m.id) === moduleId)
+    if (mod) {
+      if (!addName) setAddName(mod.name)
+      setAddJson(buildDefaultConfig(mod))
     }
-    saveMutation.mutate({ moduleId, name: moduleName, config })
   }
 
-  if (loadingModules || !pid) return <div className="container"><p>Loading…</p></div>
+  function submitAdd() {
+    if (!addName.trim()) {
+      setAddError('Name is required')
+      return
+    }
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(addJson)
+    } catch {
+      setAddError('Invalid JSON')
+      return
+    }
+    upsertMutation.mutate(
+      { name: addName.trim(), config: parsed },
+      {
+        onSuccess: () => {
+          setAddName('')
+          setAddJson('{}')
+          setSelectedModuleId('')
+          setAddError('')
+        },
+        onError: (e: Error) => setAddError(e.message),
+      },
+    )
+  }
+
+  if (!pid) return <div className="container"><p>Loading…</p></div>
 
   return (
     <div className="container">
       <h2 style={{ marginBottom: '1rem' }}>Hardware Config — {pilotName}</h2>
-      <div className="card">
+
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
-              <th style={{ textAlign: 'left', padding: '0.5rem', width: '180px' }}>Module</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Config Fields</th>
-              <th style={{ textAlign: 'right', padding: '0.5rem', width: '120px' }}>Actions</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem', width: '180px' }}>Name</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem', width: '150px' }}>Class</th>
+              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Params</th>
+              <th style={{ textAlign: 'right', padding: '0.5rem', width: '130px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {modules.map(m => {
-              const args = getOrLoadArgs(m.id)
-              const row = rowState[m.id]
-              const existing = configByName[m.name]?.config ?? {}
-              const isEditing = row?.editing ?? false
-
-              return (
-                <tr key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '0.6rem 0.5rem', verticalAlign: 'top' }}>
-                    <strong>{m.name}</strong>
-                    <br />
-                    <span className="badge status-running">{m.class_name}</span>
-                  </td>
-                  <td style={{ padding: '0.6rem 0.5rem' }}>
-                    {args.length === 0 && <span style={{ color: 'var(--text-muted)' }}>loading…</span>}
-                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                      {args.map(arg => {
-                        const itype = inputType(arg.annotation)
-                        const displayVal = isEditing
-                          ? undefined
-                          : String(existing[arg.name] ?? arg.default ?? '—')
-                        return (
-                          <div key={arg.name} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {arg.name}{arg.annotation ? ` (${arg.annotation})` : ''}
-                            </label>
-                            {isEditing ? (
-                              itype === 'checkbox' ? (
-                                <input
-                                  type="checkbox"
-                                  checked={row.values[arg.name] === 'true'}
-                                  onChange={e => setRowState(s => ({
-                                    ...s,
-                                    [m.id]: { ...s[m.id], values: { ...s[m.id].values, [arg.name]: e.target.checked ? 'true' : 'false' } },
-                                  }))}
-                                />
-                              ) : (
-                                <input
-                                  type={itype}
-                                  step={inputStep(arg.annotation)}
-                                  value={row.values[arg.name] ?? ''}
-                                  onChange={e => setRowState(s => ({
-                                    ...s,
-                                    [m.id]: { ...s[m.id], values: { ...s[m.id].values, [arg.name]: e.target.value } },
-                                  }))}
-                                  style={{ width: '80px' }}
-                                />
-                              )
-                            ) : (
-                              <span>{displayVal}</span>
-                            )}
-                          </div>
-                        )
-                      })}
+            {loadingConfigs && (
+              <tr>
+                <td colSpan={4} style={{ padding: '1rem', color: 'var(--subtext0)' }}>Loading…</td>
+              </tr>
+            )}
+            {!loadingConfigs && configs.length === 0 && (
+              <tr>
+                <td colSpan={4} style={{ padding: '1rem', color: 'var(--subtext0)' }}>No entries yet — use Add Entry below.</td>
+              </tr>
+            )}
+            {configs.map(row => (
+              <tr key={row.name} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '0.6rem 0.5rem', verticalAlign: 'top' }}>
+                  <strong>{row.name}</strong>
+                </td>
+                <td style={{ padding: '0.6rem 0.5rem', verticalAlign: 'top' }}>
+                  {row.config.class_name ? (
+                    <span className="badge status-running">{String(row.config.class_name)}</span>
+                  ) : (
+                    <span style={{ color: 'var(--overlay1)', fontSize: '0.8rem' }}>—</span>
+                  )}
+                </td>
+                <td style={{ padding: '0.6rem 0.5rem', verticalAlign: 'top' }}>
+                  {editingRow === row.name ? (
+                    <div>
+                      <textarea
+                        rows={6}
+                        value={editJson}
+                        onChange={e => setEditJson(e.target.value)}
+                        style={TEXTAREA_STYLE}
+                      />
+                      {editError && (
+                        <span className="badge status-error" style={{ marginTop: '4px', display: 'inline-block' }}>
+                          {editError}
+                        </span>
+                      )}
                     </div>
-                    {isEditing && (
-                      <div style={{ marginTop: '0.75rem' }}>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                          extra kwargs (JSON) — for trigger, pull, init_hardware_state, etc.
-                        </label>
-                        <textarea
-                          rows={3}
-                          value={row?.extra ?? ''}
-                          placeholder={'{\n  "trigger": "U",\n  "pull": ""\n}'}
-                          onChange={e => setRowState(s => ({ ...s, [m.id]: { ...s[m.id], extra: e.target.value } }))}
-                          style={{ width: '100%', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                    )}
-                    {!isEditing && (() => {
-                      const args = getInitArgs(m.id)
-                      const existing = configByName[m.name]?.config ?? {}
-                      const knownKeys = new Set(args.map(a => a.name))
-                      const extraEntries = Object.entries(existing).filter(([k]) => !knownKeys.has(k))
-                      return extraEntries.length > 0 ? (
-                        <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {extraEntries.map(([k, v]) => (
-                            <span key={k} style={{ marginRight: '0.75rem' }}><strong>{k}</strong>: {String(v)}</span>
-                          ))}
-                        </div>
-                      ) : null
-                    })()}
-                    {saveError[m.id] && (
-                      <span className="badge status-error" style={{ marginTop: '0.25rem' }}>{saveError[m.id]}</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', verticalAlign: 'top' }}>
-                    {isEditing ? (
-                      <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                        <button className="button-primary" onClick={() => saveRow(m.id, m.name)}>Save</button>
-                        <button className="button-secondary" onClick={() => setRowState(s => ({ ...s, [m.id]: { ...s[m.id], editing: false, extra: '' } }))}>Cancel</button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                        <button className="button-secondary" onClick={() => startEdit(m.id, m.name)}>Edit</button>
-                        <button
-                          className="button-danger"
-                          onClick={() => removeMutation.mutate(m.id)}
-                          disabled={removeMutation.isPending}
-                        >Delete</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
+                  ) : (
+                    <ParamsSummary config={row.config} />
+                  )}
+                </td>
+                <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', verticalAlign: 'top' }}>
+                  {editingRow === row.name ? (
+                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                      <button
+                        className="button-primary"
+                        onClick={() => saveEdit(row.name)}
+                        disabled={upsertMutation.isPending}
+                      >
+                        Save
+                      </button>
+                      <button className="button-secondary" onClick={cancelEdit}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                      <button className="button-secondary" onClick={() => startEdit(row)}>
+                        Edit
+                      </button>
+                      <button
+                        className="button-danger"
+                        onClick={() => deleteMutation.mutate(row.name)}
+                        disabled={deleteMutation.isPending}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem' }}>Add Entry</h3>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>
+              Name
+            </label>
+            <input
+              type="text"
+              value={addName}
+              onChange={e => setAddName(e.target.value)}
+              placeholder="e.g. Left_LED"
+              style={{ padding: '5px 8px', fontSize: '0.875rem', width: '180px' }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>
+              Pre-fill from module (optional)
+            </label>
+            <select
+              value={selectedModuleId}
+              onChange={e => handleModulePick(e.target.value)}
+              style={{ padding: '5px 8px', fontSize: '0.875rem' }}
+            >
+              <option value="">— none —</option>
+              {modules.map(m => (
+                <option key={m.id} value={String(m.id)}>
+                  {m.name} ({m.class_name})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>
+            Config JSON
+          </label>
+          <textarea
+            rows={6}
+            value={addJson}
+            onChange={e => setAddJson(e.target.value)}
+            style={TEXTAREA_STYLE}
+          />
+        </div>
+        {addError && (
+          <p style={{ color: 'var(--red)', fontSize: '0.85rem', margin: '0 0 0.5rem' }}>{addError}</p>
+        )}
+        <button
+          className="button-primary"
+          onClick={submitAdd}
+          disabled={upsertMutation.isPending}
+        >
+          Add
+        </button>
       </div>
     </div>
   )

@@ -376,6 +376,41 @@ Plans:
 
 ---
 
+### Phase 17: Free-Form Pilot Hardware Config
+**Goal:** Decouple `pilot_hardware_config` from the `hardware_modules` FK. Make pilot hardware config a free-form named dict that mirrors the Pi's `prefs.json` HARDWARE section. Full CRUD: add/remove/rename entries by name, edit params via JSON textarea, optional module registry picker to pre-fill defaults (class_name + __init__ params). Preflight check (Phase 13) becomes the sole alignment mechanism — no FK link required.
+
+**Requirements:** HW-08 (update), HW-11 (update)
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — DB migration + model update + name-keyed API router rewrite
+- [ ] 17-02-PLAN.md — Dispatch/preflight SQL fix + cascade delete removal + frontend (types, API client, HardwareCheckModal, React page)
+
+**Success criteria:**
+1. `pilot_hardware_config` rows are identified by `(pilot_id, name)` — no FK to `hardware_modules`
+2. Adding an entry with a free-form name (not in module registry) works; name is the only identity key
+3. Module registry picker pre-fills class_name + default params but does not create a persistent link
+4. Renaming = delete + re-add (name is identity); confirmed in UI
+5. Preflight check (Phase 13 `/preflight-validate`) uses `name` matching, not `hardware_module_id`
+6. `HardwareCheckModal` inline-fix writes to the new name-keyed endpoint without stripping class_name
+7. Deleting a hardware module does NOT cascade-delete pilot hardware configs
+
+**Files to change:**
+- `api/db.py` (migration: add name col, backfill, drop old FK constraint, add uq_pilot_hw_config_pilot_name)
+- `api/models.py` (PilotHardwareConfig: name col, hardware_module_id nullable, swap UNIQUE constraint)
+- `api/routers/pilot_hardware_config.py` (rewrite: name-keyed PUT/DELETE, GET returns name, seed stores class_name)
+- `api/routers/toolkit_dispatch.py` (get_dispatch_spec + preflight_validate: WHERE name=:name instead of hardware_module_id)
+- `api/routers/hardware_modules.py` (remove cascade-delete of pilot configs on module delete)
+- `web_ui/react-src/src/types/index.ts` (PilotHardwareConfigRow: hardware_module_id → name)
+- `web_ui/react-src/src/api/hardware_modules.ts` (upsertPilotHardwareConfig + deletePilotHardwareConfig: name-keyed URLs)
+- `web_ui/react-src/src/components/HardwareCheckModal.tsx` (name-keyed PUT URL; do NOT strip class_name)
+- `web_ui/react-src/src/pages/hardware-modules/PilotHardwareConfig.tsx` (rewrite: free-form CRUD table + add entry form with optional module picker)
+
+**Dependencies:** Phase 13 (pilot_hardware_config schema exists; preflight-validate endpoint live)
+
+---
+
 ## Dependency Graph
 
 ```
@@ -404,10 +439,12 @@ Phase 11 (Toolkit Redesign: Backend-Authored)
 Phase 12 (Hardware-Aware FDA Builder)
     ↓ task definitions validated against live AST
 Phase 13 (Pre-Run Cross-Check + End-to-End)
+    ↓ pilot_hardware_config schema + preflight-validate endpoint
+Phase 17 (Free-Form Pilot Hardware Config)
 ```
 
 **Phase 1 can start today.** Phase 5 can also start in parallel with Phase 1 — they are fully independent. **Phase 9 can start after Phase 4 is complete** — it is independent of Phases 5–8.
 
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-05-27 — Phase 16 plans added: recursive condition tree (COND-06–10)*
+*Last updated: 2026-05-28 — Phase 17 added: free-form pilot hardware config CRUD (HW-08, HW-11)*

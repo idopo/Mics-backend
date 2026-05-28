@@ -189,7 +189,9 @@ def list_subject_runs(
         raise HTTPException(404, "Subject not found")
 
     runs = session.exec(
-        select(SubjectProtocolRun).where(SubjectProtocolRun.subject_id == subject.id)
+        select(SubjectProtocolRun)
+        .where(SubjectProtocolRun.subject_id == subject.id)
+        .order_by(SubjectProtocolRun.session_id.asc())
     ).all()
 
     return runs

@@ -30,7 +30,7 @@ export default function PilotSessions() {
   const pilotObj = pilots?.find((p) => p.name === pilot)
   const pilotId = pilotObj?.id ?? null
 
-  const { data: sessions, isLoading } = useQuery({ queryKey: ['sessions'], queryFn: getSessions })
+  const { data: sessions, isLoading } = useQuery({ queryKey: ['sessions'], queryFn: getSessions, refetchOnMount: 'always' })
   const { data: subjects } = useQuery({ queryKey: ['subjects'], queryFn: getSubjects })
 
   const subjectNames = useMemo(() =>

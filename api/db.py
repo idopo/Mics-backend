@@ -209,3 +209,70 @@ def run_toolkit_hw_lib_version_migration(eng):
             "ADD COLUMN IF NOT EXISTS default_version_id INTEGER "
             "REFERENCES hardware_lib_versions(id)"
         ))
+
+
+def run_pilot_hw_config_name_migration(eng):
+    """Phase 17: decouple pilot_hardware_config from hardware_modules FK.
+    Switches row identity from (pilot_id, hardware_module_id) to (pilot_id, name).
+    Idempotent — safe on fresh deployments and on existing DBs with data.
+    """
+    with eng.begin() as conn:
+        # 1. Add name column (nullable initially so existing rows survive)
+        conn.execute(text(
+            "ALTER TABLE pilot_hardware_config ADD COLUMN IF NOT EXISTS name VARCHAR"
+        ))
+
+        # 2. Backfill name from hardware_modules for rows that still have a hardware_module_id
+        conn.execute(text("""
+            UPDATE pilot_hardware_config phc
+            SET name = hm.name
+            FROM hardware_modules hm
+            WHERE phc.hardware_module_id = hm.id
+              AND phc.name IS NULL
+        """))
+
+        # 3. Drop old unique constraint if it exists (not present on fresh DBs)
+        conn.execute(text("""
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'pilot_hardware_config_pilot_id_hardware_module_id_key'
+                  AND table_name = 'pilot_hardware_config'
+              ) THEN
+                ALTER TABLE pilot_hardware_config
+                  DROP CONSTRAINT pilot_hardware_config_pilot_id_hardware_module_id_key;
+              END IF;
+            END$$;
+        """))
+
+        # 4. Make hardware_module_id nullable (idempotent — no error if already nullable)
+        conn.execute(text("""
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'pilot_hardware_config'
+                  AND column_name = 'hardware_module_id'
+                  AND is_nullable = 'NO'
+              ) THEN
+                ALTER TABLE pilot_hardware_config
+                  ALTER COLUMN hardware_module_id DROP NOT NULL;
+              END IF;
+            END$$;
+        """))
+
+        # 5. Add new unique constraint on (pilot_id, name) if not already present
+        conn.execute(text("""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'uq_pilot_hw_config_pilot_name'
+                  AND table_name = 'pilot_hardware_config'
+              ) THEN
+                ALTER TABLE pilot_hardware_config
+                  ADD CONSTRAINT uq_pilot_hw_config_pilot_name UNIQUE (pilot_id, name);
+              END IF;
+            END$$;
+        """))

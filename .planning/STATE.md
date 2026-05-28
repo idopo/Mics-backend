@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-28T09:47:23.955Z"
+last_updated: "2026-05-28T11:18:37.736Z"
 progress:
-  total_phases: 14
+  total_phases: 15
   completed_phases: 6
-  total_plans: 37
-  completed_plans: 32
-  percent: 88
+  total_plans: 39
+  completed_plans: 33
+  percent: 86
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [█████████░] 88%
+**Progress:** [█████████░] 86%
 
 ---
 
@@ -101,6 +101,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 13]: class_name injected by PUT endpoint from DB record (authoritative) — class_mismatch check skipped for legacy rows without class_name
 - [Phase 13]: preflight network failure is non-blocking — error caught silently so broken preflight endpoint never blocks session start
 - [Phase 13]: stable promotion fires after graduation check and wrapped in try/except — trial increment never fails due to promotion error
+- [Phase 17]: PilotHardwareConfig row identity switched from (pilot_id, hardware_module_id) to (pilot_id, name) — hardware_module_id retained as nullable FK for backward compat
+- [Phase 17]: Seed maps Pi 'class' key -> config['class_name'] without module registry lookup — free-form naming mirrors Pi prefs.json HARDWARE dict
 
 ## Blockers
 

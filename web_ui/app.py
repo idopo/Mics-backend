@@ -602,6 +602,16 @@ async def proxy_pilot_hw_config(pilot_id: int, path: str, request: Request):
                            media_type=resp.headers.get("content-type", "application/json"))
 
 
+@app.post("/api/sessions/{session_id}/preflight-validate/{pilot_id}")
+async def proxy_preflight_validate(session_id: int, pilot_id: int, request: Request):
+    async with backend_client() as client:
+        resp = await client.post(
+            f"{API_URL}/api/sessions/{session_id}/preflight-validate/{pilot_id}",
+        )
+    return FastAPIResponse(content=resp.content, status_code=resp.status_code,
+                           media_type=resp.headers.get("content-type", "application/json"))
+
+
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def api_catch_all(path: str, request: Request):
     body = await request.body()

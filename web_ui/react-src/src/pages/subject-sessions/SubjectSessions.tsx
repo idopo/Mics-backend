@@ -4,10 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getSubjectSessions } from '../../api/subjects'
 import { getBackendPilots, stopRun } from '../../api/pilots'
 import { getLatestRunsBulk, startSessionOnPilot } from '../../api/sessions'
+import { apiFetch } from '../../api/client'
 import { useConcurrentFetch } from '../../hooks/useConcurrentFetch'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import SessionCard from '../pilot-sessions/SessionCard'
+import HardwareCheckModal from '../../components/HardwareCheckModal'
 import type { PilotLive, Overrides } from '../../types'
+import type { PreflightIssue } from '../../components/HardwareCheckModal'
 
 export default function SubjectSessions() {
   const { subject } = useParams<{ subject: string }>()
@@ -15,6 +18,9 @@ export default function SubjectSessions() {
   const { limit } = useConcurrentFetch(4)
   const [selectedPilotName, setSelectedPilotName] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
+  const [pendingStart, setPendingStart] = useState<{ sessionId: number; pId: number; mode: string; overrides: Overrides | null } | null>(null)
+  const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([])
+  const [showHardwareModal, setShowHardwareModal] = useState(false)
 
   const { lastMessage } = useWebSocket<Record<string, PilotLive>>('/ws/pilots')
   const pilotLive = selectedPilotName ? (lastMessage?.[selectedPilotName] ?? null) : null
@@ -81,14 +87,57 @@ export default function SubjectSessions() {
     onError: (e: Error) => setStatusMsg(`Stop error: ${e.message}`),
   })
 
-  const handleStart = (sessionId: number, pId: number, mode: string, overrides: Overrides | null) => {
+  const doStart = (sessionId: number, pId: number, mode: string, overrides: Overrides | null) => {
     startMutation.mutate({ sessionId, pId, mode, overrides })
   }
+
+  const handleStart = async (sessionId: number, pId: number, mode: string, overrides: Overrides | null) => {
+    setStatusMsg('')
+    try {
+      const result = await apiFetch<{ ok: boolean; issues: PreflightIssue[]; skip_reason?: string }>(
+        `/api/sessions/${sessionId}/preflight-validate/${pId}`,
+        { method: 'POST' }
+      )
+      if (!result.ok && result.issues.length > 0) {
+        setPendingStart({ sessionId, pId, mode, overrides })
+        setPreflightIssues(result.issues)
+        setShowHardwareModal(true)
+        return
+      }
+    } catch (_e) {
+      // preflight check failure is non-blocking — proceed with start
+    }
+    doStart(sessionId, pId, mode, overrides)
+  }
+
+  const handleHardwareModalStart = () => {
+    setShowHardwareModal(false)
+    if (pendingStart) {
+      doStart(pendingStart.sessionId, pendingStart.pId, pendingStart.mode, pendingStart.overrides)
+      setPendingStart(null)
+    }
+  }
+
+  const handleHardwareModalCancel = () => {
+    setShowHardwareModal(false)
+    setPendingStart(null)
+    setPreflightIssues([])
+  }
+
   const handleStop = (runId: number) => stopMutation.mutate(runId)
 
   const isOffline = pilotLive !== null && !pilotLive?.connected
 
   return (
+    <>
+    {showHardwareModal && pilotId !== null && (
+      <HardwareCheckModal
+        issues={preflightIssues}
+        pilotId={pilotId}
+        onStart={handleHardwareModalStart}
+        onCancel={handleHardwareModalCancel}
+      />
+    )}
     <div className="container">
       <section className="card">
         {/* Header */}
@@ -171,5 +220,6 @@ export default function SubjectSessions() {
         )}
       </section>
     </div>
+    </>
   )
 }

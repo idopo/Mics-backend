@@ -140,7 +140,7 @@ def get_dispatch_class(
     return {"class_name": class_name, "is_backend_authored": bool(row.is_backend_authored)}
 
 
-@router.post("/api/sessions/{session_id}/preflight-validate/{pilot_id}")
+@router.post("/sessions/{session_id}/preflight-validate/{pilot_id}")
 def preflight_validate(
     session_id: int,
     pilot_id: int,

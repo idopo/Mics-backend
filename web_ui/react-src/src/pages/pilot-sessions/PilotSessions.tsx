@@ -8,6 +8,9 @@ import { getSubjects } from '../../api/subjects'
 import { useConcurrentFetch } from '../../hooks/useConcurrentFetch'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import SessionCard from './SessionCard'
+import HardwareCheckModal from '../../components/HardwareCheckModal'
+import type { PreflightIssue } from '../../components/HardwareCheckModal'
+import { apiFetch } from '../../api/client'
 import type { PilotLive, Overrides } from '../../types'
 
 function norm(s: string) { return s.trim().toLowerCase() }
@@ -22,6 +25,9 @@ export default function PilotSessions() {
   const filterWrapRef = useRef<HTMLDivElement>(null)
   const { limit } = useConcurrentFetch(4)
   const [statusMsg, setStatusMsg] = useState('')
+  const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([])
+  const [showHardwareModal, setShowHardwareModal] = useState(false)
+  const [pendingStart, setPendingStart] = useState<{ sessionId: number; pId: number; mode: string; overrides: Overrides | null } | null>(null)
 
   const { lastMessage } = useWebSocket<Record<string, PilotLive>>('/ws/pilots')
   const pilotLive = lastMessage?.[pilot ?? ''] ?? null
@@ -74,8 +80,41 @@ export default function PilotSessions() {
     onError: (e: Error) => setStatusMsg(`Stop error: ${e.message}`),
   })
 
-  const handleStart = (sessionId: number, pId: number, mode: string, overrides: Overrides | null) => {
+  const doStart = (sessionId: number, pId: number, mode: string, overrides: Overrides | null) => {
     startMutation.mutate({ sessionId, pId, mode, overrides })
+  }
+
+  const handleStart = async (sessionId: number, pId: number, mode: string, overrides: Overrides | null) => {
+    setStatusMsg('')
+    try {
+      const result = await apiFetch<{ ok: boolean; issues: PreflightIssue[]; skip_reason?: string }>(
+        `/api/sessions/${sessionId}/preflight-validate/${pId}`,
+        { method: 'POST' }
+      )
+      if (!result.ok && result.issues.length > 0) {
+        setPendingStart({ sessionId, pId, mode, overrides })
+        setPreflightIssues(result.issues)
+        setShowHardwareModal(true)
+        return
+      }
+    } catch (_e) {
+      // preflight network error — proceed with start
+    }
+    doStart(sessionId, pId, mode, overrides)
+  }
+
+  const handleHardwareModalStart = () => {
+    setShowHardwareModal(false)
+    if (pendingStart) {
+      doStart(pendingStart.sessionId, pendingStart.pId, pendingStart.mode, pendingStart.overrides)
+      setPendingStart(null)
+    }
+  }
+
+  const handleHardwareModalCancel = () => {
+    setShowHardwareModal(false)
+    setPendingStart(null)
+    setPreflightIssues([])
   }
 
   // SessionCard already provides activeRunId ?? run?.id — just fire it
@@ -118,6 +157,15 @@ export default function PilotSessions() {
   const isOffline = pilotLive !== null && !pilotLive.connected
 
   return (
+    <>
+    {showHardwareModal && pilotId !== null && (
+      <HardwareCheckModal
+        issues={preflightIssues}
+        pilotId={pilotId}
+        onStart={handleHardwareModalStart}
+        onCancel={handleHardwareModalCancel}
+      />
+    )}
     <div className="container">
       <section className="card">
         <h2>Pilot: {pilot}</h2>
@@ -213,5 +261,6 @@ export default function PilotSessions() {
         )}
       </section>
     </div>
+    </>
   )
 }

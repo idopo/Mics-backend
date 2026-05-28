@@ -219,8 +219,28 @@ def preflight_validate(
 
     module_ids = toolkit_row.hardware_module_ids or []
 
+    # Fetch existing pilot configs once — shared by steps 6 and 7 for "copy from" suggestions.
+    existing_configs = [
+        {"name": row[0], "config": row[1]}
+        for row in db.execute(
+            text("SELECT name, config FROM pilot_hardware_config WHERE pilot_id = :pid ORDER BY name"),
+            {"pid": pilot_id},
+        ).fetchall()
+    ]
+    configured_names = {e["name"] for e in existing_configs}
+
+    # Build name→class_name map from all toolkit modules for expected_class hints.
+    module_class_by_name: dict[str, str] = {}
+    for mid in module_ids:
+        m = db.execute(
+            text("SELECT name, class_name FROM hardware_modules WHERE id = :id"),
+            {"id": mid},
+        ).fetchone()
+        if m:
+            module_class_by_name[m.name] = m.class_name
+
     # 6. Check each hardware module
-    issues = []
+    issues: list[dict] = []
     for module_id in module_ids:
         module = db.execute(
             text("SELECT id, name, class_name FROM hardware_modules WHERE id = :id"),
@@ -243,6 +263,8 @@ def preflight_validate(
                 "module_name": module.name,
                 "issue": "missing",
                 "detail": f"Pilot has no config for hardware module {module.name}",
+                "expected_class": module.class_name,
+                "existing_configs": existing_configs,
             })
             continue
 
@@ -255,6 +277,7 @@ def preflight_validate(
                 "module_name": module.name,
                 "issue": "incomplete_config",
                 "detail": f"Config for {module.name} is empty — no hardware parameters set",
+                "config": cfg,
             })
             continue
 
@@ -272,6 +295,32 @@ def preflight_validate(
                 "expected_class": module.class_name,
                 "stored_class": stored_class,
                 "config": cfg,
+            })
+
+    # 7. Validate FDA hardware refs against configured pilot modules.
+    # Skip refs already reported in step 6 to avoid duplicates.
+    td_full = db.execute(
+        text("SELECT fda_json FROM task_definitions WHERE id = :id"),
+        {"id": task_def_id},
+    ).fetchone()
+
+    if td_full and td_full.fda_json:
+        already_flagged = {i["module_name"] for i in issues}
+        unresolved: set[str] = set()
+        for state_def in (td_full.fda_json.get("states") or {}).values():
+            for action in (state_def.get("entry_actions") or []):
+                if action.get("type") == "hardware":
+                    ref = action.get("ref")
+                    if ref and ref not in configured_names and ref not in already_flagged:
+                        unresolved.add(ref)
+        for ref in sorted(unresolved):
+            issues.append({
+                "module_id": None,
+                "module_name": ref,
+                "issue": "fda_ref_unresolved",
+                "detail": f"FDA references hardware '{ref}' but pilot has no config for that name",
+                "expected_class": module_class_by_name.get(ref),
+                "existing_configs": existing_configs,
             })
 
     return {"ok": len(issues) == 0, "issues": issues}

@@ -190,6 +190,8 @@ export default function TaskEditor() {
   const [addingState, setAddingState] = useState(false)
   const [newStateName, setNewStateName] = useState('')
   const [ctxMenu, setCtxMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
+  const [condModalOpen, setCondModalOpen] = useState(false)
+  const [condModalTree, setCondModalTree] = useState<ConditionNode | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -430,6 +432,27 @@ export default function TaskEditor() {
         return !isNaN(idx) ? fdaJson.transitions[idx] ?? null : null
       })()
     : null
+
+  function openCondModal() {
+    setCondModalTree(selectedTransition?.condition_tree ?? null)
+    setCondModalOpen(true)
+  }
+
+  function saveCondModal() {
+    if (selectedEdgeId) updateTransitionTree(selectedEdgeId, condModalTree)
+    setCondModalOpen(false)
+  }
+
+  function conditionSummary(tree: ConditionNode | null): string {
+    if (tree === null) return 'unconditional'
+    if (!isConditionBranch(tree)) return '1 condition'
+    function countLeaves(n: ConditionNode): number {
+      if (!isConditionBranch(n)) return 1
+      return n.children.reduce((s, c) => s + countLeaves(c), 0)
+    }
+    const n = countLeaves(tree)
+    return `${n} condition${n !== 1 ? 's' : ''} (${tree.op})`
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -673,15 +696,25 @@ export default function TaskEditor() {
               <div style={{ fontSize: '12px', color: 'var(--text)', marginBottom: '12px', fontFamily: "'IBM Plex Mono', monospace" }}>
                 {selectedTransition.from} → {selectedTransition.to}
               </div>
-              <div style={{ fontSize: '11px', color: MUTED, marginBottom: '6px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Conditions ({selectedTransition.from} → {selectedTransition.to})
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{ fontSize: '11px', color: MUTED, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Conditions
+                </div>
+                <button
+                  className="button-secondary"
+                  style={{ fontSize: '10px', padding: '2px 10px' }}
+                  onClick={openCondModal}
+                >
+                  Edit →
+                </button>
               </div>
-              <ConditionGroupsEditor
-                tree={selectedTransition.condition_tree ?? null}
-                toolkit={toolkit}
-                hwModuleNames={hwModuleNames}
-                onChange={tree => updateTransitionTree(selectedEdgeId!, tree)}
-              />
+              <div style={{
+                fontSize: '11px',
+                fontStyle: selectedTransition.condition_tree ? 'normal' : 'italic',
+                color: selectedTransition.condition_tree ? 'var(--text)' : MUTED,
+              }}>
+                {conditionSummary(selectedTransition.condition_tree ?? null)}
+              </div>
             </div>
           ) : selectedState && fdaJson ? (
             <StateBodyPanel
@@ -714,6 +747,46 @@ export default function TaskEditor() {
           )}
         </div>
       </div>
+
+      {/* Condition editor modal */}
+      {condModalOpen && selectedTransition && (
+        <div className="modal-overlay" style={{ alignItems: 'flex-start', paddingTop: '8vh' }}>
+          <div className="modal" style={{ width: '700px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header">
+              <span className="modal-title" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '13px' }}>
+                Conditions: {selectedTransition.from} → {selectedTransition.to}
+              </span>
+              <button className="modal-close" onClick={() => setCondModalOpen(false)}>✕</button>
+            </div>
+
+            <div className="modal-body" style={{ overflowY: 'auto', flex: 1, padding: '16px 20px' }}>
+              <ConditionGroupsEditor
+                tree={condModalTree}
+                toolkit={toolkit}
+                hwModuleNames={hwModuleNames}
+                onChange={setCondModalTree}
+              />
+            </div>
+
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '12px 20px', borderTop: `1px solid ${BORDER}`, flexShrink: 0,
+            }}>
+              <button
+                className="button-secondary"
+                style={{ fontSize: '11px', color: MUTED }}
+                onClick={() => setCondModalTree(null)}
+              >
+                Clear (unconditional)
+              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="button-secondary" onClick={() => setCondModalOpen(false)}>Cancel</button>
+                <button className="button-primary" onClick={saveCondModal}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

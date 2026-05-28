@@ -1,14 +1,18 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../api/client'
+import { listHardwareModules, getHardwareModuleMethods } from '../api/hardware_modules'
+import type { HardwareModule, AstMethodArg } from '../types'
 
 export interface PreflightIssue {
-  module_id: number
+  module_id: number | null
   module_name: string
-  issue: 'missing' | 'incomplete_config' | 'class_mismatch'
+  issue: 'missing' | 'incomplete_config' | 'class_mismatch' | 'fda_ref_unresolved'
   detail: string
   expected_class?: string
   stored_class?: string
   config?: Record<string, unknown>
+  existing_configs?: Array<{ name: string; config: Record<string, unknown> }>
 }
 
 interface HardwareCheckModalProps {
@@ -18,85 +22,220 @@ interface HardwareCheckModalProps {
   onCancel: () => void
 }
 
-interface PendingKV {
-  key: string
-  value: string
+const INPUT_STYLE: React.CSSProperties = {
+  flex: 1,
+  padding: '4px 8px',
+  fontSize: '13px',
+  background: 'var(--surface1)',
+  border: '1px solid var(--overlay0)',
+  borderRadius: '4px',
+  color: 'var(--text)',
 }
 
-/** Editable fields for a single hardware module issue. */
-function ModuleIssueEditor({
+const TEXTAREA_STYLE: React.CSSProperties = {
+  width: '100%',
+  fontFamily: 'monospace',
+  fontSize: 13,
+  resize: 'vertical',
+  boxSizing: 'border-box',
+}
+
+function libTypePrefix(filename: string | null): string {
+  return filename ? filename.replace(/\.py$/i, '') : ''
+}
+
+function parseDefault(s: string): unknown {
+  if (s === 'True') return true
+  if (s === 'False') return false
+  if (s === 'None') return null
+  const n = Number(s)
+  if (s.trim() !== '' && !isNaN(n)) return n
+  if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+    return s.slice(1, -1)
+  }
+  return s
+}
+
+function buildTemplate(mod: HardwareModule, initArgs: AstMethodArg[], name: string): string {
+  const prefix = libTypePrefix(mod.lib_filename)
+  const type = prefix ? `${prefix}.${mod.class_name}` : mod.class_name
+  const obj: Record<string, unknown> = { type, name, group: '' }
+  for (const arg of initArgs) {
+    if (arg.name === 'self') continue
+    obj[arg.name] = arg.default !== undefined ? parseDefault(arg.default) : null
+  }
+  return JSON.stringify(obj, null, 2)
+}
+
+/**
+ * Editor for missing / fda_ref_unresolved issues.
+ * Two modes: copy an existing config (dropdown → confirmation) or add manually (Name + Class + JSON textarea).
+ */
+function MissingModuleEditor({
   issue,
-  pendingEdits,
-  onEdit,
+  onReplaceEdits,
 }: {
   issue: PreflightIssue
-  pendingEdits: Record<string, unknown>
-  onEdit: (moduleName: string, key: string, value: string) => void
-}) {
-  const [newKey, setNewKey] = useState('')
-  const [newValue, setNewValue] = useState('')
+  onReplaceEdits: (moduleName: string, config: Record<string, unknown>) => void
+}): JSX.Element {
+  const [copySource, setCopySource] = useState('')
+  const [addJson, setAddJson] = useState('{}')
+  const [jsonError, setJsonError] = useState('')
+  const [selectedModuleId, setSelectedModuleId] = useState('')
+  const [templateLoading, setTemplateLoading] = useState(false)
 
-  if (issue.issue === 'missing') {
-    const kvPairs: PendingKV[] = Object.entries(pendingEdits).map(([k, v]) => ({
-      key: k,
-      value: String(v),
-    }))
+  const { data: modules = [] } = useQuery<HardwareModule[]>({
+    queryKey: ['hardware-modules'],
+    queryFn: listHardwareModules,
+  })
 
+  const existingConfigs = issue.existing_configs ?? []
+  const autoSeeded = useRef(false)
+
+  useEffect(() => {
+    if (autoSeeded.current || !issue.expected_class || modules.length === 0) return
+    const mod = modules.find(m => m.class_name === issue.expected_class)
+    if (!mod) return
+    autoSeeded.current = true
+    void handleModulePick(String(mod.id))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modules])
+
+  function handleCopyPick(name: string): void {
+    setCopySource(name)
+    if (!name) return
+    const src = existingConfigs.find(c => c.name === name)
+    if (src) onReplaceEdits(issue.module_name, { ...src.config, name: issue.module_name })
+  }
+
+  async function handleModulePick(moduleId: string): Promise<void> {
+    setSelectedModuleId(moduleId)
+    if (!moduleId) { setAddJson('{}'); return }
+    const mod = modules.find(m => String(m.id) === moduleId)
+    if (!mod) return
+    setTemplateLoading(true)
+    try {
+      const methods = await getHardwareModuleMethods(mod.id)
+      const initArgs = methods.methods.find(m => m.name === '__init__')?.args ?? []
+      const json = buildTemplate(mod, initArgs, issue.module_name)
+      setAddJson(json)
+      setJsonError('')
+      onReplaceEdits(issue.module_name, JSON.parse(json) as Record<string, unknown>)
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  function handleJsonChange(value: string): void {
+    setAddJson(value)
+    try {
+      onReplaceEdits(issue.module_name, JSON.parse(value) as Record<string, unknown>)
+      setJsonError('')
+    } catch {
+      setJsonError('Invalid JSON')
+    }
+  }
+
+  if (copySource) {
     return (
       <div>
-        <p style={{ margin: '4px 0 8px', fontSize: '13px', color: 'var(--subtext0)' }}>
-          {issue.detail}. Add the hardware parameters below:
-        </p>
-        {kvPairs.map(({ key }) => (
-          <div key={key} style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-            <input
-              value={key}
-              readOnly
-              style={{ flex: '0 0 120px', padding: '4px 8px', fontSize: '13px', background: 'var(--surface2)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
-            />
-            <input
-              value={String(pendingEdits[key] ?? '')}
-              onChange={e => onEdit(issue.module_name, key, e.target.value)}
-              placeholder="value"
-              style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
-            />
-          </div>
-        ))}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-          <input
-            value={newKey}
-            onChange={e => setNewKey(e.target.value)}
-            placeholder="key"
-            style={{ flex: '0 0 120px', padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
-          />
-          <input
-            value={newValue}
-            onChange={e => setNewValue(e.target.value)}
-            placeholder="value"
-            style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
-          />
+        <p style={{ margin: '4px 0 10px', fontSize: '13px', color: 'var(--subtext0)' }}>{issue.detail}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'var(--surface2)', borderRadius: '4px', border: '1px solid var(--overlay0)' }}>
+          <span style={{ fontSize: '13px', flex: 1 }}>
+            Copy <strong>{copySource}</strong> → rename to <strong>{issue.module_name}</strong>
+          </span>
           <button
             className="button-secondary"
-            onClick={() => {
-              if (newKey.trim()) {
-                onEdit(issue.module_name, newKey.trim(), newValue)
-                setNewKey('')
-                setNewValue('')
-              }
-            }}
-            style={{ padding: '4px 12px', fontSize: '13px' }}
+            style={{ padding: '2px 10px', fontSize: '12px' }}
+            onClick={() => setCopySource('')}
           >
-            Add
+            Clear
           </button>
         </div>
       </div>
     )
   }
 
+  return (
+    <div>
+      <p style={{ margin: '4px 0 10px', fontSize: '13px', color: 'var(--subtext0)' }}>{issue.detail}</p>
+      {existingConfigs.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--subtext0)', whiteSpace: 'nowrap' }}>Copy from:</span>
+          <select
+            style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
+            value=""
+            onChange={e => handleCopyPick(e.target.value)}
+          >
+            <option value="">— pick existing config —</option>
+            {existingConfigs.map(c => (
+              <option key={c.name} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'flex-end' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>Name</label>
+          <input
+            type="text"
+            value={issue.module_name}
+            readOnly
+            style={{ padding: '5px 8px', fontSize: '0.875rem', width: '160px', background: 'var(--surface2)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>Class</label>
+          <select
+            value={selectedModuleId}
+            onChange={e => handleModulePick(e.target.value)}
+            style={{ padding: '5px 8px', fontSize: '0.875rem' }}
+            disabled={templateLoading}
+          >
+            <option value="">— select class —</option>
+            {modules.map(m => (
+              <option key={m.id} value={String(m.id)}>
+                {libTypePrefix(m.lib_filename)}.{m.class_name}
+              </option>
+            ))}
+          </select>
+          {templateLoading && (
+            <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: 'var(--subtext0)' }}>Loading…</span>
+          )}
+        </div>
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>Config JSON</label>
+        <textarea
+          rows={6}
+          value={addJson}
+          onChange={e => handleJsonChange(e.target.value)}
+          style={TEXTAREA_STYLE}
+        />
+        {jsonError && <span style={{ fontSize: '12px', color: 'var(--red)' }}>{jsonError}</span>}
+      </div>
+    </div>
+  )
+}
+
+function ModuleIssueEditor({
+  issue,
+  pendingEdits,
+  onEdit,
+  onReplaceEdits,
+}: {
+  issue: PreflightIssue
+  pendingEdits: Record<string, unknown>
+  onEdit: (moduleName: string, key: string, value: string) => void
+  onReplaceEdits: (moduleName: string, config: Record<string, unknown>) => void
+}): JSX.Element | null {
+  if (issue.issue === 'missing' || issue.issue === 'fda_ref_unresolved') {
+    return <MissingModuleEditor issue={issue} onReplaceEdits={onReplaceEdits} />
+  }
+
   if (issue.issue === 'incomplete_config') {
     const baseConfig = issue.config ?? {}
     const editableKeys = Object.keys(baseConfig).filter(k => k !== 'class_name')
-
     return (
       <div>
         <p style={{ margin: '4px 0 8px', fontSize: '13px', color: 'var(--subtext0)' }}>
@@ -108,7 +247,7 @@ function ModuleIssueEditor({
             <input
               value={String(pendingEdits[key] ?? baseConfig[key] ?? '')}
               onChange={e => onEdit(issue.module_name, key, e.target.value)}
-              style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
+              style={INPUT_STYLE}
             />
           </div>
         ))}
@@ -119,9 +258,7 @@ function ModuleIssueEditor({
   if (issue.issue === 'class_mismatch') {
     return (
       <div>
-        <p style={{ margin: '4px 0 4px', fontSize: '13px', color: 'var(--subtext0)' }}>
-          {issue.detail}
-        </p>
+        <p style={{ margin: '4px 0 4px', fontSize: '13px', color: 'var(--subtext0)' }}>{issue.detail}</p>
         <p style={{ margin: '0 0 8px', fontSize: '12px', color: 'var(--yellow)' }}>
           Expected: <strong>{issue.expected_class}</strong>
         </p>
@@ -130,7 +267,7 @@ function ModuleIssueEditor({
           <input
             value={String(pendingEdits['class_name'] ?? issue.stored_class ?? '')}
             onChange={e => onEdit(issue.module_name, 'class_name', e.target.value)}
-            style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
+            style={INPUT_STYLE}
           />
         </div>
       </div>
@@ -141,8 +278,7 @@ function ModuleIssueEditor({
 }
 
 /** Modal for reviewing and fixing hardware config issues before starting a session. */
-export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel }: HardwareCheckModalProps) {
-  // pendingEdits: module_name → {key: value} dict of pending changes
+export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel }: HardwareCheckModalProps): JSX.Element {
   const [pendingEdits, setPendingEdits] = useState<Record<string, Record<string, unknown>>>(() => {
     const init: Record<string, Record<string, unknown>> = {}
     for (const issue of issues) {
@@ -166,15 +302,21 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
     }))
   }, [])
 
-  const handleStart = async () => {
+  const handleReplaceEdits = useCallback((moduleName: string, config: Record<string, unknown>) => {
+    setPendingEdits(prev => ({ ...prev, [moduleName]: config }))
+  }, [])
+
+  const handleStart = async (): Promise<void> => {
     setSaving(true)
     setSaveError('')
     try {
       for (const issue of issues) {
         const edits = pendingEdits[issue.module_name] ?? {}
-        // Build the config to save: merge edits onto existing config (class_name included as-is)
         const baseConfig = issue.config ?? {}
-        const configToSave: Record<string, unknown> = { ...baseConfig, ...edits }
+        const configToSave: Record<string, unknown> =
+          issue.issue === 'missing' || issue.issue === 'fda_ref_unresolved'
+            ? edits
+            : { ...baseConfig, ...edits }
 
         await apiFetch(`/api/pilots/${pilotId}/hardware-config/${encodeURIComponent(issue.module_name)}`, {
           method: 'PUT',
@@ -214,16 +356,17 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <strong style={{ fontSize: '14px' }}>{issue.module_name}</strong>
                 <span
-                  className={`badge status-${issue.issue === 'missing' ? 'error' : 'warning'}`}
+                  className={`badge status-${issue.issue === 'missing' || issue.issue === 'fda_ref_unresolved' ? 'error' : 'warning'}`}
                   style={{ fontSize: '11px' }}
                 >
-                  {issue.issue.replace('_', ' ')}
+                  {issue.issue.replace(/_/g, ' ')}
                 </span>
               </div>
               <ModuleIssueEditor
                 issue={issue}
                 pendingEdits={pendingEdits[issue.module_name] ?? {}}
                 onEdit={handleEdit}
+                onReplaceEdits={handleReplaceEdits}
               />
             </div>
           ))}
@@ -232,9 +375,7 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
           )}
         </div>
         <div className="modal-actions ov-actions">
-          <button className="button-secondary" onClick={onCancel} disabled={saving}>
-            Cancel
-          </button>
+          <button className="button-secondary" onClick={onCancel} disabled={saving}>Cancel</button>
           <button className="button-primary" onClick={handleStart} disabled={saving}>
             {saving ? 'Saving...' : 'Save & Start'}
           </button>

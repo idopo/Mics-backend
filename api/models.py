@@ -707,9 +707,10 @@ class PilotHardwareConfig(Base):
 
     id = Column(Integer, primary_key=True)
     pilot_id = Column(Integer, ForeignKey("pilots.id"), nullable=False)
-    hardware_module_id = Column(Integer, ForeignKey("hardware_modules.id"), nullable=False)
+    hardware_module_id = Column(Integer, ForeignKey("hardware_modules.id"), nullable=True)
+    name = Column(String, nullable=True)   # identity key; nullable for create_all compat on fresh DBs
     config = Column(SAJSON, nullable=False)
-    __table_args__ = (UniqueConstraint("pilot_id", "hardware_module_id"),)
+    __table_args__ = (UniqueConstraint("pilot_id", "name", name="uq_pilot_hw_config_pilot_name"),)
 
 
 # ============================================================

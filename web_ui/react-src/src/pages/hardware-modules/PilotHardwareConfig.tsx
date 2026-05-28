@@ -53,7 +53,8 @@ export default function PilotHardwareConfig(): JSX.Element {
     enabled: pid > 0,
   })
 
-  const configByModuleId = Object.fromEntries(configs.map(c => [c.hardware_module_id, c]))
+  // keyed by name; temporary — file rewritten in 17-02 Task 3
+  const configByName: Record<string, typeof configs[number]> = Object.fromEntries(configs.map(c => [c.name, c]))
 
   const removeMutation = useMutation({
     mutationFn: (moduleId: number) => deleteHardwareModule(moduleId),
@@ -65,8 +66,8 @@ export default function PilotHardwareConfig(): JSX.Element {
   })
 
   const saveMutation = useMutation({
-    mutationFn: ({ moduleId, config }: { moduleId: number; config: Record<string, unknown> }) =>
-      upsertPilotHardwareConfig(pid, moduleId, config),
+    mutationFn: ({ moduleId: _moduleId, name, config }: { moduleId: number; name: string; config: Record<string, unknown> }) =>
+      upsertPilotHardwareConfig(pid, name, config),
     onSuccess: (_data, { moduleId }) => {
       qc.invalidateQueries({ queryKey: ['pilot-hardware-config', pid] })
       setRowState(s => ({ ...s, [moduleId]: { ...s[moduleId], editing: false } }))
@@ -94,9 +95,9 @@ export default function PilotHardwareConfig(): JSX.Element {
     return args
   }
 
-  function startEdit(moduleId: number) {
+  function startEdit(moduleId: number, moduleName: string) {
     const args = getInitArgs(moduleId)
-    const existing = configByModuleId[moduleId]?.config ?? {}
+    const existing = configByName[moduleName]?.config ?? {}
     const knownKeys = new Set(args.map(a => a.name))
     const values: Record<string, string> = {}
     for (const arg of args) {
@@ -107,7 +108,7 @@ export default function PilotHardwareConfig(): JSX.Element {
     setRowState(s => ({ ...s, [moduleId]: { editing: true, values, extra } }))
   }
 
-  function saveRow(moduleId: number) {
+  function saveRow(moduleId: number, moduleName: string) {
     const args = getInitArgs(moduleId)
     const values = rowState[moduleId]?.values ?? {}
     const extra = rowState[moduleId]?.extra ?? ''
@@ -127,7 +128,7 @@ export default function PilotHardwareConfig(): JSX.Element {
         return
       }
     }
-    saveMutation.mutate({ moduleId, config })
+    saveMutation.mutate({ moduleId, name: moduleName, config })
   }
 
   if (loadingModules || !pid) return <div className="container"><p>Loading…</p></div>
@@ -148,7 +149,7 @@ export default function PilotHardwareConfig(): JSX.Element {
             {modules.map(m => {
               const args = getOrLoadArgs(m.id)
               const row = rowState[m.id]
-              const existing = configByModuleId[m.id]?.config ?? {}
+              const existing = configByName[m.name]?.config ?? {}
               const isEditing = row?.editing ?? false
 
               return (
@@ -216,7 +217,7 @@ export default function PilotHardwareConfig(): JSX.Element {
                     )}
                     {!isEditing && (() => {
                       const args = getInitArgs(m.id)
-                      const existing = configByModuleId[m.id]?.config ?? {}
+                      const existing = configByName[m.name]?.config ?? {}
                       const knownKeys = new Set(args.map(a => a.name))
                       const extraEntries = Object.entries(existing).filter(([k]) => !knownKeys.has(k))
                       return extraEntries.length > 0 ? (
@@ -234,12 +235,12 @@ export default function PilotHardwareConfig(): JSX.Element {
                   <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', verticalAlign: 'top' }}>
                     {isEditing ? (
                       <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                        <button className="button-primary" onClick={() => saveRow(m.id)}>Save</button>
+                        <button className="button-primary" onClick={() => saveRow(m.id, m.name)}>Save</button>
                         <button className="button-secondary" onClick={() => setRowState(s => ({ ...s, [m.id]: { ...s[m.id], editing: false, extra: '' } }))}>Cancel</button>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                        <button className="button-secondary" onClick={() => startEdit(m.id)}>Edit</button>
+                        <button className="button-secondary" onClick={() => startEdit(m.id, m.name)}>Edit</button>
                         <button
                           className="button-danger"
                           onClick={() => removeMutation.mutate(m.id)}

@@ -31,7 +31,7 @@ function ModuleIssueEditor({
 }: {
   issue: PreflightIssue
   pendingEdits: Record<string, unknown>
-  onEdit: (moduleId: number, key: string, value: string) => void
+  onEdit: (moduleName: string, key: string, value: string) => void
 }) {
   const [newKey, setNewKey] = useState('')
   const [newValue, setNewValue] = useState('')
@@ -56,7 +56,7 @@ function ModuleIssueEditor({
             />
             <input
               value={String(pendingEdits[key] ?? '')}
-              onChange={e => onEdit(issue.module_id, key, e.target.value)}
+              onChange={e => onEdit(issue.module_name, key, e.target.value)}
               placeholder="value"
               style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
             />
@@ -79,7 +79,7 @@ function ModuleIssueEditor({
             className="button-secondary"
             onClick={() => {
               if (newKey.trim()) {
-                onEdit(issue.module_id, newKey.trim(), newValue)
+                onEdit(issue.module_name, newKey.trim(), newValue)
                 setNewKey('')
                 setNewValue('')
               }
@@ -107,7 +107,7 @@ function ModuleIssueEditor({
             <span style={{ flex: '0 0 120px', fontSize: '13px', color: 'var(--text)' }}>{key}</span>
             <input
               value={String(pendingEdits[key] ?? baseConfig[key] ?? '')}
-              onChange={e => onEdit(issue.module_id, key, e.target.value)}
+              onChange={e => onEdit(issue.module_name, key, e.target.value)}
               style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
             />
           </div>
@@ -129,7 +129,7 @@ function ModuleIssueEditor({
           <span style={{ flex: '0 0 80px', fontSize: '13px', color: 'var(--text)' }}>class_name</span>
           <input
             value={String(pendingEdits['class_name'] ?? issue.stored_class ?? '')}
-            onChange={e => onEdit(issue.module_id, 'class_name', e.target.value)}
+            onChange={e => onEdit(issue.module_name, 'class_name', e.target.value)}
             style={{ flex: 1, padding: '4px 8px', fontSize: '13px', background: 'var(--surface1)', border: '1px solid var(--overlay0)', borderRadius: '4px', color: 'var(--text)' }}
           />
         </div>
@@ -142,16 +142,16 @@ function ModuleIssueEditor({
 
 /** Modal for reviewing and fixing hardware config issues before starting a session. */
 export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel }: HardwareCheckModalProps) {
-  // pendingEdits: moduleId → {key: value} dict of pending changes
-  const [pendingEdits, setPendingEdits] = useState<Record<number, Record<string, unknown>>>(() => {
-    const init: Record<number, Record<string, unknown>> = {}
+  // pendingEdits: module_name → {key: value} dict of pending changes
+  const [pendingEdits, setPendingEdits] = useState<Record<string, Record<string, unknown>>>(() => {
+    const init: Record<string, Record<string, unknown>> = {}
     for (const issue of issues) {
       if (issue.issue === 'class_mismatch') {
-        init[issue.module_id] = { ...issue.config }
+        init[issue.module_name] = { ...issue.config }
       } else if (issue.issue === 'incomplete_config') {
-        init[issue.module_id] = { ...(issue.config ?? {}) }
+        init[issue.module_name] = { ...(issue.config ?? {}) }
       } else {
-        init[issue.module_id] = {}
+        init[issue.module_name] = {}
       }
     }
     return init
@@ -159,10 +159,10 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  const handleEdit = useCallback((moduleId: number, key: string, value: string) => {
+  const handleEdit = useCallback((moduleName: string, key: string, value: string) => {
     setPendingEdits(prev => ({
       ...prev,
-      [moduleId]: { ...(prev[moduleId] ?? {}), [key]: value },
+      [moduleName]: { ...(prev[moduleName] ?? {}), [key]: value },
     }))
   }, [])
 
@@ -171,14 +171,12 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
     setSaveError('')
     try {
       for (const issue of issues) {
-        const edits = pendingEdits[issue.module_id] ?? {}
-        // Build the config to save: merge edits onto existing config (minus class_name, added by API)
+        const edits = pendingEdits[issue.module_name] ?? {}
+        // Build the config to save: merge edits onto existing config (class_name included as-is)
         const baseConfig = issue.config ?? {}
         const configToSave: Record<string, unknown> = { ...baseConfig, ...edits }
-        // Remove class_name — the PUT endpoint injects it from the DB record
-        delete configToSave['class_name']
 
-        await apiFetch(`/api/pilots/${pilotId}/hardware-config/${issue.module_id}`, {
+        await apiFetch(`/api/pilots/${pilotId}/hardware-config/${encodeURIComponent(issue.module_name)}`, {
           method: 'PUT',
           body: JSON.stringify({ config: configToSave }),
         })
@@ -204,7 +202,7 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
           </p>
           {issues.map(issue => (
             <div
-              key={issue.module_id}
+              key={issue.module_name}
               style={{
                 marginBottom: '20px',
                 padding: '12px 14px',
@@ -224,7 +222,7 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
               </div>
               <ModuleIssueEditor
                 issue={issue}
-                pendingEdits={pendingEdits[issue.module_id] ?? {}}
+                pendingEdits={pendingEdits[issue.module_name] ?? {}}
                 onEdit={handleEdit}
               />
             </div>

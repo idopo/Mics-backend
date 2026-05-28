@@ -432,7 +432,7 @@ export interface HardwareModuleMethods {
 export interface PilotHardwareConfigRow {
   id: number
   pilot_id: number
-  hardware_module_id: number
+  name: string
   config: Record<string, unknown>
 }
 

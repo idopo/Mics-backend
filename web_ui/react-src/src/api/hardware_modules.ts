@@ -46,15 +46,17 @@ export async function listPilotHardwareConfig(pilotId: number): Promise<PilotHar
 
 export async function upsertPilotHardwareConfig(
   pilotId: number,
-  moduleId: number,
+  name: string,
   config: Record<string, unknown>,
 ): Promise<PilotHardwareConfigRow> {
-  return apiFetch(`/api/pilots/${pilotId}/hardware-config/${moduleId}`, {
+  return apiFetch(`/api/pilots/${pilotId}/hardware-config/${encodeURIComponent(name)}`, {
     method: 'PUT',
     body: JSON.stringify({ config }),
   })
 }
 
-export async function deletePilotHardwareConfig(pilotId: number, moduleId: number): Promise<void> {
-  return apiFetch(`/api/pilots/${pilotId}/hardware-config/${moduleId}`, { method: 'DELETE' })
+export async function deletePilotHardwareConfig(pilotId: number, name: string): Promise<void> {
+  return apiFetch(`/api/pilots/${pilotId}/hardware-config/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
 }

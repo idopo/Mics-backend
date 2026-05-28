@@ -133,8 +133,6 @@ def delete_hardware_module(module_id: int, token=Depends(verify_token)):
         module = session.get(HardwareModule, module_id)
         if not module:
             raise HTTPException(status_code=404, detail="not found")
-        from models import PilotHardwareConfig
-        session.query(PilotHardwareConfig).filter_by(hardware_module_id=module_id).delete()
         session.delete(module)
         session.commit()
         return {"deleted": module_id}

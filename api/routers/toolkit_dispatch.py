@@ -96,9 +96,9 @@ def get_dispatch_spec(
         cfg = db.execute(
             text(
                 "SELECT config FROM pilot_hardware_config"
-                " WHERE pilot_id = :pid AND hardware_module_id = :mid"
+                " WHERE pilot_id = :pid AND name = :name"
             ),
-            {"pid": pilot_id, "mid": module_id},
+            {"pid": pilot_id, "name": module.name},
         ).fetchone()
         if cfg:
             prefs_hardware.setdefault("Modules", {})[module.name] = cfg.config
@@ -232,9 +232,9 @@ def preflight_validate(
         cfg_row = db.execute(
             text(
                 "SELECT config FROM pilot_hardware_config"
-                " WHERE pilot_id = :pid AND hardware_module_id = :mid"
+                " WHERE pilot_id = :pid AND name = :name"
             ),
-            {"pid": pilot_id, "mid": module_id},
+            {"pid": pilot_id, "name": module.name},
         ).fetchone()
 
         if not cfg_row:

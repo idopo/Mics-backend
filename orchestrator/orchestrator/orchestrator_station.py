@@ -560,6 +560,24 @@ class OrchestratorStation:
         if resp.get("should_graduate"):
             self._advance_run_step(run)
 
+        # Stable promotion: a real trial run confirms hw lib works on hardware.
+        # Promote beta libs → stable. Runs after graduation so the step advance
+        # is complete before we modify lib state.
+        try:
+            pilot = self.api.get_pilot(run["pilot_id"])
+            if pilot:
+                pilot_key = self.state.resolve_pilot_key(
+                    db_name=pilot.get("name"),
+                    ip=pilot.get("ip"),
+                )
+                active_run = self.state.get_active_run(pilot_key)
+                if active_run and active_run.get("toolkit_id"):
+                    self.api.promote_active_hw_libs_to_stable(
+                        active_run["toolkit_id"], pilot_key
+                    )
+        except Exception:
+            logger.exception("Failed stable promotion for run %s", run.get("id"))
+
     # =====================================================
     # INTERNAL FLOW
     # =====================================================

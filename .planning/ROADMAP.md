@@ -381,7 +381,7 @@ Plans:
 
 **Requirements:** HW-08 (update), HW-11 (update)
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 17-01-PLAN.md — DB migration + model update + name-keyed API router rewrite

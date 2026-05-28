@@ -1,14 +1,16 @@
-"""Toolkit dispatch-class endpoint (Phase 11-02).
+"""Toolkit dispatch-class and preflight-validate endpoints (Phase 11-02, Phase 13).
 
-Returns the Python class name the orchestrator should use when starting a run
-for a backend-authored toolkit. Separate from routers/toolkits.py (already >500 lines).
+Separate from routers/toolkits.py (already >500 lines).
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session as OrmSession, sessionmaker
 
 from auth import verify_token
 from db import engine
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["toolkit-dispatch"])
 
@@ -136,3 +138,140 @@ def get_dispatch_class(
     ).fetchone()
     class_name = cls_row.class_name if cls_row and cls_row.class_name else "mics_task"
     return {"class_name": class_name, "is_backend_authored": bool(row.is_backend_authored)}
+
+
+@router.post("/api/sessions/{session_id}/preflight-validate/{pilot_id}")
+def preflight_validate(
+    session_id: int,
+    pilot_id: int,
+    _: dict = Depends(verify_token),
+    db: OrmSession = Depends(get_sa_session),
+):
+    """Validate that a pilot has all hardware modules configured for the session's current step.
+
+    Returns ok=True if validation passes or if the session is not backend-authored.
+    Returns ok=False with a list of issues if any hardware config is missing or mismatched.
+    Each issue includes module_id so the React client can call PUT directly to fix it.
+    """
+    # 1. Get the current step index from run_progress for this session on this pilot
+    run_row = db.execute(
+        text(
+            "SELECT sr.id, rp.current_step_idx"
+            " FROM session_runs sr"
+            " LEFT JOIN run_progress rp ON rp.run_id = sr.id"
+            " WHERE sr.session_id = :sid AND sr.pilot_id = :pid"
+            "   AND sr.status NOT IN ('completed', 'error')"
+            " ORDER BY sr.id DESC"
+            " LIMIT 1"
+        ),
+        {"sid": session_id, "pid": pilot_id},
+    ).fetchone()
+
+    # If no active/pending run found, use step 0 (pre-start check)
+    current_step_idx = 0
+    if run_row and run_row.current_step_idx is not None:
+        current_step_idx = run_row.current_step_idx
+
+    # 2. Load session → get one of its subject_protocol_runs to find protocol_id
+    spr_row = db.execute(
+        text(
+            "SELECT protocol_id FROM subject_protocol_runs WHERE session_id = :sid LIMIT 1"
+        ),
+        {"sid": session_id},
+    ).fetchone()
+    if not spr_row:
+        logger.warning("preflight_validate: no subject_protocol_run for session %s", session_id)
+        return {"ok": True, "issues": [], "skip_reason": "no_protocol_run"}
+
+    protocol_id = spr_row.protocol_id
+
+    # 3. Load the protocol step at current_step_idx
+    step_row = db.execute(
+        text(
+            "SELECT task_definition_id FROM protocol_step_templates"
+            " WHERE protocol_id = :pid ORDER BY order_index ASC"
+            " LIMIT 1 OFFSET :step_idx"
+        ),
+        {"pid": protocol_id, "step_idx": current_step_idx},
+    ).fetchone()
+    if not step_row or not step_row.task_definition_id:
+        return {"ok": True, "issues": [], "skip_reason": "not_backend_authored"}
+
+    task_def_id = step_row.task_definition_id
+
+    # 4. Load task definition → get toolkit_id
+    td_row = db.execute(
+        text("SELECT toolkit_id FROM task_definitions WHERE id = :id"),
+        {"id": task_def_id},
+    ).fetchone()
+    if not td_row or not td_row.toolkit_id:
+        return {"ok": True, "issues": [], "skip_reason": "not_backend_authored"}
+
+    toolkit_id = td_row.toolkit_id
+
+    # 5. Load toolkit → check is_backend_authored and get hardware_module_ids
+    toolkit_row = db.execute(
+        text("SELECT is_backend_authored, hardware_module_ids FROM task_toolkits WHERE id = :id"),
+        {"id": toolkit_id},
+    ).fetchone()
+    if not toolkit_row or not toolkit_row.is_backend_authored:
+        return {"ok": True, "issues": [], "skip_reason": "not_backend_authored"}
+
+    module_ids = toolkit_row.hardware_module_ids or []
+
+    # 6. Check each hardware module
+    issues = []
+    for module_id in module_ids:
+        module = db.execute(
+            text("SELECT id, name, class_name FROM hardware_modules WHERE id = :id"),
+            {"id": module_id},
+        ).fetchone()
+        if not module:
+            continue
+
+        cfg_row = db.execute(
+            text(
+                "SELECT config FROM pilot_hardware_config"
+                " WHERE pilot_id = :pid AND hardware_module_id = :mid"
+            ),
+            {"pid": pilot_id, "mid": module_id},
+        ).fetchone()
+
+        if not cfg_row:
+            issues.append({
+                "module_id": module.id,
+                "module_name": module.name,
+                "issue": "missing",
+                "detail": f"Pilot has no config for hardware module {module.name}",
+            })
+            continue
+
+        cfg = cfg_row.config or {}
+        non_class_keys = [k for k in cfg if k != "class_name"]
+
+        if not non_class_keys:
+            issues.append({
+                "module_id": module.id,
+                "module_name": module.name,
+                "issue": "incomplete_config",
+                "detail": f"Config for {module.name} is empty — no hardware parameters set",
+            })
+            continue
+
+        # class_mismatch: only check if class_name is present (skip for legacy rows)
+        stored_class = cfg.get("class_name")
+        if stored_class is not None and stored_class != module.class_name:
+            issues.append({
+                "module_id": module.id,
+                "module_name": module.name,
+                "issue": "class_mismatch",
+                "detail": (
+                    f"Config has class '{stored_class}', "
+                    f"module expects '{module.class_name}'"
+                ),
+                "expected_class": module.class_name,
+                "stored_class": stored_class,
+                "config": cfg,
+            })
+
+    return {"ok": len(issues) == 0, "issues": issues}

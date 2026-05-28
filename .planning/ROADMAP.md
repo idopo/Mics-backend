@@ -23,7 +23,7 @@
 | 11 | 6/6 | Complete    | 2026-05-14 | ✓ Complete 2026-05-04 |
 | 12 | 5/5 | Complete   | 2026-05-24 | ○ Pending |
 | 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
-| 14 | Bug Backlog | CSS hover tooltip, hw-lib warning badge, toolkit creation modal UX fixes | BUG-01–07 | ✓ Complete 2026-05-27 |
+| 14 | 3/3 | Complete   | 2026-05-28 | ✓ Complete 2026-05-27 |
 | 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
 

@@ -50,18 +50,23 @@ def upsert_pilot_hardware_config(
     pilot_id: int, module_id: int, body: UpsertConfigBody, token=Depends(verify_token)
 ):
     with _SA_SessionLocal() as session:
+        module = session.get(HardwareModule, module_id)
+        if not module:
+            raise HTTPException(status_code=404, detail="hardware module not found")
+        # Inject class_name so preflight class_mismatch check has a value to compare
+        config_to_store = {**body.config, "class_name": module.class_name}
         row = (
             session.query(PilotHardwareConfig)
             .filter_by(pilot_id=pilot_id, hardware_module_id=module_id)
             .first()
         )
         if row:
-            row.config = body.config
+            row.config = config_to_store
         else:
             row = PilotHardwareConfig(
                 pilot_id=pilot_id,
                 hardware_module_id=module_id,
-                config=body.config,
+                config=config_to_store,
             )
             session.add(row)
         session.commit()
@@ -103,6 +108,7 @@ def seed_pilot_hardware_config(pilot_id: int, body: SeedBody, token=Depends(veri
                 logger.warning("seed_pilot_hardware_config: no HardwareModule named %r — skipping", hw_name)
                 continue
             config = {k: v for k, v in hw_cfg.items() if k != "class"}
+            config["class_name"] = module.class_name  # authoritative from DB, not Pi-reported
             session.add(
                 PilotHardwareConfig(
                     pilot_id=pilot_id,

@@ -22,7 +22,7 @@
 | 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ✓ Complete |
 | 11 | 6/6 | Complete    | 2026-05-14 | ✓ Complete 2026-05-04 |
 | 12 | 5/5 | Complete   | 2026-05-24 | ○ Pending |
-| 13 | Pre-Run Cross-Check | validate-for-pilot endpoint, start flow gate, Pi dynamic hardware init from received config | HW-21–24 | ○ Pending |
+| 13 | 1/1 | Complete   | 2026-05-28 | ○ Pending |
 | 14 | 3/3 | Complete   | 2026-05-28 | ✓ Complete 2026-05-27 |
 | 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
@@ -352,7 +352,7 @@ Plans:
 
 **Requirements:** COND-06, COND-07, COND-08, COND-09, COND-10
 
-**Plans:** 3/3 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 16-01-PLAN.md — Types (ConditionNode, FdaTransition.condition_tree) + ConditionGroupsEditor rewrite as recursive tree editor

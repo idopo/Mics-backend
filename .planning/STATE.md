@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-28T08:53:33.552Z"
+last_updated: "2026-05-28T09:47:23.955Z"
 progress:
   total_phases: 14
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 37
-  completed_plans: 31
-  percent: 86
+  completed_plans: 32
+  percent: 88
 ---
 
 # STATE: MICS Backend
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** Not started (Phase 1 next)
-**Progress:** [█████████░] 86%
+**Progress:** [█████████░] 88%
 
 ---
 
@@ -98,6 +98,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 16-recursive-condition-tree]: normaliseTransition accepts Record<string,unknown>; callsite casts FdaTransition via 'as unknown as' to handle legacy stored data
 - [Phase 14-bug-backlog]: refetchOnMount: 'always' for PilotSessions sessions query — no cross-page cache coordination needed
 - [Phase 14-bug-backlog]: ORDER BY session_id ASC in /subjects/{name}/runs — deterministic sort at DB level for SubjectSessions .reverse()
+- [Phase 13]: class_name injected by PUT endpoint from DB record (authoritative) — class_mismatch check skipped for legacy rows without class_name
+- [Phase 13]: preflight network failure is non-blocking — error caught silently so broken preflight endpoint never blocks session start
+- [Phase 13]: stable promotion fires after graduation check and wrapped in try/except — trial increment never fails due to promotion error
 
 ## Blockers
 

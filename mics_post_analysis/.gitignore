@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Cache of resolved/aligned intermediates (per session key)
+cache/
+*.pkl
+
+# Local data (never commit lab data)
+data/
+
+# Project-local installed deps (isolated, not committed)
+.pylibs/
+.pytest_cache/

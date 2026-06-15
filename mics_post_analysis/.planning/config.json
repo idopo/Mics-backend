@@ -1,0 +1,15 @@
+{
+  "mode": "interactive",
+  "granularity": "standard",
+  "parallelization": true,
+  "commit_docs": true,
+  "model_profile": "balanced",
+  "workflow": {
+    "research": false,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": true,
+    "_auto_chain_active": false
+  },
+  "_note": "Dedicated planning for the mics_post_analysis sub-project. Hand-driven GSD (native /gsd:* commands are pinned to the backend's root .planning and are NOT used here). All planning paths are under mics_post_analysis/.planning/."
+}

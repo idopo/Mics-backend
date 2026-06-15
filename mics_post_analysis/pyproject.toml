@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mics"
+version = "0.1.0"
+description = "MICS offline analysis toolkit — unify Elasticsearch events, Open Ephys signals, and sorted spikes per session"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "numpy",
+    "elasticsearch",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+# Kept out of base so events-only runs need no ephys reader installed.
+ephys = ["open-ephys-python-tools"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

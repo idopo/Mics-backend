@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas",
     "numpy",
-    "elasticsearch",
+    "elasticsearch>=8.10,<9",  # server is ES 8.10.2; 9.x client sends incompatible compatible-with=9 headers
     "matplotlib",
 ]
 

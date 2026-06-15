@@ -97,12 +97,13 @@ MD_SECTION1 = """\
 
 The always-available base layer — no ephys required. Key columns:
 
-- `time` — **canonical event clock**: the precise on-Pi GPIO time where the event
-  reports it, else the ES ingest time as fallback. Use this, not the ingest time.
-- `pi_time` — precise GPIO time (null when the event doesn't report one)
-- `raw_time` — ES ingest time, ~tens of ms after `pi_time` (provenance only)
-- `relative_time` — seconds from session start, on the canonical `time` clock
+- `raw_time` — ES ingest time (always present)
+- `pi_time` — precise on-Pi **GPIO** time, its own independent timestamp; null when
+  the event doesn't report one (~tens of ms before `raw_time` when present)
+- `relative_time` — seconds from session start (on `raw_time`)
 - `run_id`/`subjects` — null for legacy data · `event_data` — raw dict
+
+Which clock to align on (ingest vs GPIO) is decided later, in the alignment step.
 
 Results are cached per session key under `cache/<key>/events.pkl`; pass
 `force=True` to refetch."""

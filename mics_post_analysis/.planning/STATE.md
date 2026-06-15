@@ -52,7 +52,7 @@ See: `.planning/PROJECT.md` (updated 2026-06-15)
 - Secondary ES host `132.77.73.125:9200` holds `restored-event_log_v2` — confirm which subjects require it.
 - Large `.xls` spike exports (~192 MB) are slow to parse — pickle is the fast path; validate `.xls`/`.plx` fallback only if a session lacks a pickle.
 - Open Ephys reader library choice (e.g. `open-ephys-python-tools`) to be selected in Phase 3.
-- **Phase 4 alignment must prefer `pi_time` (precise GPIO time) over `raw_time` where present** — `pi_time` is generic (any event reporting `event_data.pi_timestamp`), ~23 ms ahead of ES ingest time. Matters for lick/IR-locked PSTHs.
+- **Phase 4 must decide the alignment clock: ingest (`raw_time`) vs precise GPIO (`pi_time`).** Both are kept as independent columns in the events DF (no merged clock — per user direction). `pi_time` is generic (any event reporting `event_data.pi_timestamp`), ~23 ms ahead of ingest; matters for lick/IR-locked PSTHs.
 
 ---
 

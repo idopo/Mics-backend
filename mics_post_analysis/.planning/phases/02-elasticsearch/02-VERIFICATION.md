@@ -24,8 +24,8 @@
 **Commits:** `e21559f` (02-01 ElasticClient + discovery), `c346351` (02-02 notebook Section 1).
 
 **Enhancement (post-verify, user-raised):** precise-time handling.
-- Added nullable `pi_time` — the on-Pi **GPIO** timestamp (`event_data.pi_timestamp`), extracted **generically by field presence** (not a hardcoded event-type list, since which events carry it varies by task). ~23–32 ms before ES ingest `raw_time`; 742 events in the fixture (IR/LICKER).
-- Added canonical **`time`** column = `pi_time` where present, else `raw_time` (ingest is fallback only — never the primary clock). `relative_time` and sort order derive from `time`. `raw_time`/`pi_time` retained for provenance.
-- Tests: `test_pi_time`, `test_canonical_time_prefers_gpio`, `test_relative_time_monotonic` (now checks derivation from `time`). **14 tests pass.**
+- Added nullable `pi_time` — the on-Pi **GPIO** timestamp (`event_data.pi_timestamp`), as **its own independent column**, extracted **generically by field presence** (not a hardcoded event-type list, since which events carry it varies by task). ~23–32 ms before ES ingest `raw_time`; 742 events in the fixture (IR/LICKER).
+- `raw_time` (ingest) and `pi_time` (GPIO) are kept **separate** — no merged canonical clock. Per user direction, the choice of which clock to align on is deferred to the alignment step (Phase 4). `relative_time` is provisional, on `raw_time`.
+- Tests: `test_pi_time`, `test_pi_time_is_independent_column`. **10 tests pass** (5 resolve + 5 elastic active; ES-gated ones run when reachable).
 
-**Note for Phase 3:** `relative_time` is session-relative on the canonical `time` clock. The ephys-anchored `aligned_time` is added by the Phase 4 aligner, not here.
+**Note for Phase 4:** decide the alignment clock there — ingest (`raw_time`) vs precise GPIO (`pi_time`). The ephys-anchored `aligned_time` is added by the aligner, not here.

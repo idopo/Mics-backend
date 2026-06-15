@@ -31,19 +31,11 @@ def events_df():
 @needs_es
 def test_columns_and_count(events_df):
     expected = {
-        "event_type", "hardware_id", "level", "time", "pi_time", "raw_time",
+        "event_type", "hardware_id", "level", "raw_time", "pi_time",
         "relative_time", "run_id", "subjects", "task_type", "event_data",
     }
     assert set(events_df.columns) == expected
     assert 2100 <= len(events_df) <= 2200  # fixture is ~2137
-
-
-@needs_es
-def test_canonical_time_prefers_gpio(events_df):
-    # `time` = pi_time where present (precise GPIO), else raw_time (ingest fallback).
-    has_pi = events_df.pi_time.notna()
-    assert (events_df.loc[has_pi, "time"] == events_df.loc[has_pi, "pi_time"]).all()
-    assert (events_df.loc[~has_pi, "time"] == events_df.loc[~has_pi, "raw_time"]).all()
 
 
 @needs_es
@@ -93,9 +85,16 @@ def test_relative_time_monotonic(events_df):
     rt = events_df.relative_time
     assert rt.iloc[0] == pytest.approx(0.0, abs=1e-6)
     assert rt.is_monotonic_increasing
-    # relative_time is derived from the canonical `time` clock, not raw ingest time.
-    expected = (events_df["time"] - events_df["time"].iloc[0]).dt.total_seconds()
-    assert (rt - expected).abs().max() < 1e-6
+
+
+@needs_es
+def test_pi_time_is_independent_column(events_df):
+    # pi_time is its own timestamp, not merged into a canonical clock.
+    assert "time" not in events_df.columns
+    has_pi = events_df.pi_time.notna()
+    assert has_pi.any()
+    # where present it differs from (precedes) the ingest time
+    assert (events_df.loc[has_pi, "pi_time"] <= events_df.loc[has_pi, "raw_time"]).all()
 
 
 @needs_es

@@ -61,10 +61,25 @@ A session with no ephys recording still produces a valid events-only result."""
 
 CODE_IMPORTS = """\
 import sys
-sys.path.insert(0, "../src")
+sys.path.insert(0, "../src")  # harmless if `mics` is pip-installed (-e .)
 
 from mics.config import SessionConfig
-from mics.resolve import load_sessions"""
+from mics.resolve import load_sessions
+from mics.elastic import ElasticClient
+from mics.cache import cached_pickle"""
+
+MD_DISCOVER = """\
+## Find your subject + session (optional)
+
+ES subjects are descriptive strings (e.g. `m74_cue_reward`), not the short key.
+Look one up instead of memorizing it, then copy it into `SESSIONS` below."""
+
+CODE_DISCOVER = """\
+es = ElasticClient()                  # primary host
+es.subjects("m74")                    # -> ['m74_cue_reward', 'm74_appetitive', ...]"""
+
+CODE_DISCOVER_SESS = """\
+es.sessions("m74_cue_reward")         # -> {1: 960, 2: 781, 4: 2137, ...} (session -> #events)"""
 
 CODE_SESSIONS = """\
 SESSIONS = [
@@ -77,6 +92,31 @@ sessions = load_sessions(SESSIONS)
 for s in sessions:
     print(s.summary())"""
 
+MD_SECTION1 = """\
+## Section 1 · Behavioral Events (Elasticsearch)
+
+The always-available base layer — no ephys required. Columns: `event_type`,
+`hardware_id`, `level`, `raw_time`, `relative_time` (seconds from session start),
+`run_id`/`subjects` (null for legacy data), `event_data` (raw dict).
+
+Results are cached per session key under `cache/<key>/events.pkl`; pass
+`force=True` to refetch."""
+
+CODE_S1_FETCH = """\
+events = {}
+for s in sessions:
+    events[s.key] = cached_pickle(
+        s.key, "events",
+        lambda s=s: ElasticClient(s.es_host).fetch_events(s),
+    )
+    print(f"{s.key}: {len(events[s.key])} events")"""
+
+CODE_S1_DISPLAY = """\
+key = sessions[0].key
+df = events[key]
+display(df.head(20))
+df.event_type.value_counts()"""
+
 
 def build() -> nbformat.NotebookNode:
     nb = new_notebook()
@@ -85,9 +125,15 @@ def build() -> nbformat.NotebookNode:
         new_markdown_cell(MD_ADD_SESSION),
         new_markdown_cell(MD_HOW_TO_RUN),
         new_code_cell(CODE_IMPORTS),
+        new_markdown_cell(MD_DISCOVER),
+        new_code_cell(CODE_DISCOVER),
+        new_code_cell(CODE_DISCOVER_SESS),
         new_code_cell(CODE_SESSIONS),
         new_code_cell(CODE_RESOLVE),
-        # Phase 2+ append Section 1..4 cells here.
+        new_markdown_cell(MD_SECTION1),
+        new_code_cell(CODE_S1_FETCH),
+        new_code_cell(CODE_S1_DISPLAY),
+        # Phase 3+ append Section 2..4 cells here.
     ]
     nb.metadata.update(
         {

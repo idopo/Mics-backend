@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 # Kept out of base so events-only runs need no ephys reader installed.
 ephys = ["open-ephys-python-tools"]
-dev = ["pytest"]
+dev = ["pytest", "nbformat", "ipykernel"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

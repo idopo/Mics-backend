@@ -23,4 +23,6 @@
 
 **Commits:** `e21559f` (02-01 ElasticClient + discovery), `c346351` (02-02 notebook Section 1).
 
+**Enhancement (post-verify, user-raised):** added a nullable `pi_time` column — the precise on-Pi **GPIO** timestamp (`event_data.pi_timestamp`), extracted **generically by field presence** (not a hardcoded event-type list, since which events carry it varies by task). It runs ~tens of ms (≈23 ms here) before the ES ingest `raw_time`. In the m74s4 fixture 742 events carry it (IR/LICKER). Phase 4 alignment should prefer `pi_time` when present for sub-event precision. Test: `test_pi_time`. 13 tests pass.
+
 **Note for Phase 3:** `relative_time` is session-relative (seconds from first event). The ephys-anchored `aligned_time` is added by the Phase 4 aligner, not here.

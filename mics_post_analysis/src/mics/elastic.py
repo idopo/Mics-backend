@@ -18,7 +18,7 @@ from elasticsearch import Elasticsearch
 from .config import ES_PRIMARY
 
 COLUMNS = [
-    "event_type", "hardware_id", "level", "raw_time",
+    "event_type", "hardware_id", "level", "raw_time", "pi_time",
     "relative_time", "run_id", "subjects", "task_type", "event_data",
 ]
 
@@ -96,6 +96,9 @@ class ElasticClient:
             "hardware_id": data.get("id"),
             "level": ev.get("level"),
             "raw_time": src.get("timestamp"),
+            # precise on-Pi GPIO time when the event reports it (varies by task);
+            # extracted generically by field presence, not by event type.
+            "pi_time": data.get("pi_timestamp"),
             "run_id": src.get("run_id"),
             "subjects": src.get("subjects"),
             "task_type": src.get("task_type"),
@@ -113,6 +116,7 @@ class ElasticClient:
             return df[COLUMNS]
 
         df["raw_time"] = pd.to_datetime(df["raw_time"], utc=True, format="ISO8601")
+        df["pi_time"] = pd.to_datetime(df["pi_time"], utc=True, format="ISO8601")
         df = df.sort_values("raw_time", kind="stable").reset_index(drop=True)
         df["relative_time"] = (df["raw_time"] - df["raw_time"].iloc[0]).dt.total_seconds()
         return df[COLUMNS]

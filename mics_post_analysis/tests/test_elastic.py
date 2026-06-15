@@ -31,11 +31,27 @@ def events_df():
 @needs_es
 def test_columns_and_count(events_df):
     expected = {
-        "event_type", "hardware_id", "level", "raw_time",
+        "event_type", "hardware_id", "level", "raw_time", "pi_time",
         "relative_time", "run_id", "subjects", "task_type", "event_data",
     }
     assert set(events_df.columns) == expected
     assert 2100 <= len(events_df) <= 2200  # fixture is ~2137
+
+
+@needs_es
+def test_pi_time(events_df):
+    # pi_time = precise on-Pi GPIO time. It is extracted generically wherever an
+    # event reports event_data.pi_timestamp — the set of event types that carry
+    # it varies by experiment/task, so the contract is driven by field presence,
+    # not by a hardcoded event-type list.
+    has_pi = events_df.event_data.apply(
+        lambda d: isinstance(d, dict) and "pi_timestamp" in d
+    )
+    assert has_pi.any()  # fixture has some GPIO-timestamped events
+    assert events_df.loc[has_pi, "pi_time"].notna().all()
+    assert events_df.loc[~has_pi, "pi_time"].isna().all()
+    # GPIO time precedes the ES ingest time.
+    assert (events_df.loc[has_pi, "pi_time"] <= events_df.loc[has_pi, "raw_time"]).all()
 
 
 @needs_es

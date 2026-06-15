@@ -5,9 +5,11 @@ One client replaces the two near-duplicate legacy clients. Reads legacy docs
 ``subjects``) through a single path; the schema difference is just nullable
 columns. Host + index come from the resolved session.
 
-Note: ``relative_time`` here is seconds from the session's first event (a
-standalone events view). The cross-clock ``aligned_time`` (ephys trigger anchor)
-is added later by the aligner, not at this layer.
+Times: ``time`` is the canonical event clock — the precise on-Pi GPIO time
+(``pi_time``) where the event reports it, otherwise the ES ingest time
+(``raw_time``) as fallback. ``relative_time`` is seconds from the session's first
+event on that canonical clock. The cross-clock ``aligned_time`` (ephys trigger
+anchor) is added later by the aligner, not at this layer.
 """
 
 from __future__ import annotations
@@ -18,7 +20,10 @@ from elasticsearch import Elasticsearch
 from .config import ES_PRIMARY
 
 COLUMNS = [
-    "event_type", "hardware_id", "level", "raw_time", "pi_time",
+    "event_type", "hardware_id", "level",
+    "time",        # canonical event time: precise GPIO pi_time where present, else raw_time
+    "pi_time",     # on-Pi GPIO time (precise, present only when the event reports it)
+    "raw_time",    # ES ingest time (always present; ~tens of ms after pi_time) — provenance only
     "relative_time", "run_id", "subjects", "task_type", "event_data",
 ]
 
@@ -109,14 +114,19 @@ class ElasticClient:
         """Return a tidy events DataFrame for a resolved session."""
         query = self._build_query(resolved.es_subject, resolved.es_session, resolved.run_id, event_type)
         rows = [self._row(h["_source"]) for h in self._scroll(resolved.es_index, query)]
-        df = pd.DataFrame(rows, columns=[c for c in COLUMNS if c != "relative_time"])
+        # _row emits raw_time + pi_time; `time` and `relative_time` are derived below.
+        base_cols = [c for c in COLUMNS if c not in ("time", "relative_time")]
+        df = pd.DataFrame(rows, columns=base_cols)
 
         if df.empty:
+            df["time"] = pd.Series(dtype="datetime64[ns, UTC]")
             df["relative_time"] = pd.Series(dtype="float64")
             return df[COLUMNS]
 
         df["raw_time"] = pd.to_datetime(df["raw_time"], utc=True, format="ISO8601")
         df["pi_time"] = pd.to_datetime(df["pi_time"], utc=True, format="ISO8601")
-        df = df.sort_values("raw_time", kind="stable").reset_index(drop=True)
-        df["relative_time"] = (df["raw_time"] - df["raw_time"].iloc[0]).dt.total_seconds()
+        # Canonical clock prefers the precise GPIO time; ingest time is fallback only.
+        df["time"] = df["pi_time"].fillna(df["raw_time"])
+        df = df.sort_values("time", kind="stable").reset_index(drop=True)
+        df["relative_time"] = (df["time"] - df["time"].iloc[0]).dt.total_seconds()
         return df[COLUMNS]

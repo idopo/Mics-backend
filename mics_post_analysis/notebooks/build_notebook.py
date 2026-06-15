@@ -95,11 +95,14 @@ for s in sessions:
 MD_SECTION1 = """\
 ## Section 1 · Behavioral Events (Elasticsearch)
 
-The always-available base layer — no ephys required. Columns: `event_type`,
-`hardware_id`, `level`, `raw_time` (ES ingest time), `pi_time` (precise on-Pi
-GPIO time — present wherever an event reports it, ~tens of ms before `raw_time`),
-`relative_time` (seconds from session start), `run_id`/`subjects` (null for
-legacy data), `event_data` (raw dict).
+The always-available base layer — no ephys required. Key columns:
+
+- `time` — **canonical event clock**: the precise on-Pi GPIO time where the event
+  reports it, else the ES ingest time as fallback. Use this, not the ingest time.
+- `pi_time` — precise GPIO time (null when the event doesn't report one)
+- `raw_time` — ES ingest time, ~tens of ms after `pi_time` (provenance only)
+- `relative_time` — seconds from session start, on the canonical `time` clock
+- `run_id`/`subjects` — null for legacy data · `event_data` — raw dict
 
 Results are cached per session key under `cache/<key>/events.pkl`; pass
 `force=True` to refetch."""

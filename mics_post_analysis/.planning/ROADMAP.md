@@ -10,7 +10,7 @@ Replace ~20 copy-pasted, data-coupled legacy notebooks with one generic notebook
 - Integer phases (1, 2, 3): planned milestone work
 - Decimal phases (2.1): urgent insertions (marked INSERTED)
 
-- [ ] **Phase 1: Foundation & Session Resolver** — `mics/` scaffold, convention resolver, `SESSIONS` config, notebook skeleton
+- [x] **Phase 1: Foundation & Session Resolver** — `mics/` scaffold, convention resolver, `SESSIONS` config, notebook skeleton
 - [ ] **Phase 2: Elasticsearch Events Layer** — unified `ElasticClient` → tidy events DataFrame; notebook Section 1
 - [ ] **Phase 3: Open Ephys Layer** — `EphysRecording` TTL/trigger extraction + visualizer; notebook Section 2
 - [ ] **Phase 4: Alignment & Spikes Layer** — `aligned_time` into events DF + `SpikeTable` + unified DataFrame; notebook Section 3
@@ -87,7 +87,7 @@ Replace ~20 copy-pasted, data-coupled legacy notebooks with one generic notebook
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Session Resolver | 0/2 | Planned | - |
+| 1. Foundation & Session Resolver | 2/2 | Complete | 2026-06-15 |
 | 2. Elasticsearch Events Layer | 0/2 | Planned | - |
 | 3. Open Ephys Layer | 0/TBD | Not started | - |
 | 4. Alignment & Spikes Layer | 0/TBD | Not started | - |

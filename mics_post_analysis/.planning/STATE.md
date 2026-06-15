@@ -6,10 +6,10 @@ status: planning_complete
 last_updated: "2026-06-15"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 2
+  percent: 20
 ---
 
 # STATE: MICS Offline Analysis Toolkit
@@ -19,15 +19,15 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-15)
 
 **Core value:** One unified, clock-aligned events+spikes DataFrame per session — ES events always work alone; ephys/spike layers attach only when a recording exists.
-**Current focus:** Phases 1 & 2 planned (4 plans). Ready to execute Phase 1.
+**Current focus:** Phase 1 complete (5/5 criteria). Ready to execute Phase 2 (ElasticClient).
 
 ---
 
 ## Current Position
 
 **Milestone:** v1.0 — Offline Analysis Toolkit
-**Phase:** Not started (Phase 1 next)
-**Progress:** [░░░░░░░░░░] 0%
+**Phase:** Phase 1 complete — Phase 2 next
+**Progress:** [██░░░░░░░░] 20%
 
 ---
 
@@ -57,8 +57,8 @@ See: `.planning/PROJECT.md` (updated 2026-06-15)
 
 ## Next Action
 
-Execute Phase 1 (Foundation & Session Resolver):
-1. `01-01` — package scaffold + resolver + tests (TDD: write `tests/test_resolve.py` first)
-2. `01-02` — notebook skeleton (after 01-01)
+Execute Phase 2 (Elasticsearch Events Layer):
+1. `02-01` — `ElasticClient` → tidy events DataFrame (TDD against live `m74_cue_reward` s4 = ~2137 events)
+2. `02-02` — notebook Section 1 (cached events display) after 02-01
 
-Then Phase 2 (`02-01` ElasticClient, `02-02` notebook Section 1). Hand-driven — no native `/gsd:execute-phase`.
+Env note: deps in `.pylibs/`; run with `PYTHONPATH=.pylibs:src`. ES-py client is 9.x against ES server 8.10.2 — confirm scroll API compatibility early in 02-01.

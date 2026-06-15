@@ -26,6 +26,6 @@
 **Enhancement (post-verify, user-raised):** precise-time handling.
 - Added nullable `pi_time` — the on-Pi **GPIO** timestamp (`event_data.pi_timestamp`), as **its own independent column**, extracted **generically by field presence** (not a hardcoded event-type list, since which events carry it varies by task). ~23–32 ms before ES ingest `raw_time`; 742 events in the fixture (IR/LICKER).
 - `raw_time` (ingest) and `pi_time` (GPIO) are kept **separate** — no merged canonical clock. Per user direction, the choice of which clock to align on is deferred to the alignment step (Phase 4). `relative_time` is provisional, on `raw_time`.
-- Tests: `test_pi_time`, `test_pi_time_is_independent_column`. **10 tests pass** (5 resolve + 5 elastic active; ES-gated ones run when reachable).
+- Tests: `test_pi_time`, `test_pi_time_is_independent_column`. **14 tests pass** (5 resolve + 9 elastic; ES-gated ones run when reachable).
 
 **Note for Phase 4:** decide the alignment clock there — ingest (`raw_time`) vs precise GPIO (`pi_time`). The ephys-anchored `aligned_time` is added by the aligner, not here.

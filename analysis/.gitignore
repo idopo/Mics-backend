@@ -1,3 +1,4 @@
-# Generated analysis output (rasters, curves, poke grids, CSV)
+# Generated analysis output (rasters, curves, poke grids, CSVs)
 appetitive_rasters/
+generalization_figs/
 __pycache__/

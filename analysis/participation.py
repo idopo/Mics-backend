@@ -33,7 +33,7 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 ENGAGE_CRITERION = 50.0  # % engagement that counts as "participating"
-ROLL_WINDOW = 10  # trials, trailing window for the within-session ramp
+BLOCK_TRIALS = 10  # within-session block size for the engagement ramp
 
 
 def _mouse_num(key: str) -> int:
@@ -178,22 +178,58 @@ def plot_dissociation_by_mouse(per_mouse: dict, out_path: str, cue_label: str, n
     plt.close(fig)
 
 
-# --- 3. within-session engagement ramp ------------------------------------
-def _rolling(seq: list[bool], window: int) -> list[float]:
-    out = []
-    for i in range(len(seq)):
-        chunk = seq[max(0, i - window + 1):i + 1]
-        out.append(100.0 * sum(chunk) / len(chunk))
-    return out
-
-
+# --- 3. within-session engagement ramp (binned) ---------------------------
 def _session_color(s: int, max_s: int):
     """Distinct categorical color per session number (1-based)."""
     cmap = plt.get_cmap("tab10" if max_s <= 10 else "tab20")
     return cmap((s - 1) % cmap.N)
 
 
+def _block_engagement(seq: list[bool], size: int) -> list[float]:
+    """Mean engagement (%) per consecutive full block of `size` trials. A trailing
+    partial block (e.g. a stray 61st trial) is dropped to avoid a misleading dip."""
+    last = max(size, len(seq) - len(seq) % size)  # keep >=1 block even if seq<size
+    return [100.0 * sum(seq[i:i + size]) / len(seq[i:i + size])
+            for i in range(0, last, size)]
+
+
+def _block_x(n_blocks: int, size: int) -> list[float]:
+    return [b * size + size / 2 + 0.5 for b in range(n_blocks)]
+
+
 def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
+    """Group-level warm-up: mean engagement in successive trial-blocks within a
+    session, one line per session. Rising left→right = within-session warm-up;
+    later-session lines sitting higher = the ramp strengthens across sessions."""
+    fig, ax = plt.subplots(figsize=(9, 6))
+    max_s = _max_session(per_mouse)
+    for s in range(1, max_s + 1):
+        per_mouse_blocks = [_block_engagement(r["engaged_seq"], BLOCK_TRIALS)
+                            for rows in per_mouse.values() for r in rows
+                            if r["session_num"] == s and r["engaged_seq"]]
+        if not per_mouse_blocks:
+            continue
+        nb = max(len(b) for b in per_mouse_blocks)
+        xs, ys = [], []
+        for b in range(nb):
+            vals = [bm[b] for bm in per_mouse_blocks if b < len(bm)]
+            xs.append(_block_x(nb, BLOCK_TRIALS)[b])
+            ys.append(float(np.mean(vals)))
+        ax.plot(xs, ys, "-o", color=_session_color(s, max_s), lw=2.2, ms=5,
+                label=f"session {s}")
+    ax.set_xlabel(f"trial # within session (mean per {BLOCK_TRIALS}-trial block)")
+    ax.set_ylabel("engagement (% of trials in block)")
+    ax.set_ylim(0, 100)
+    ax.set_title(f"[{num}] {cue_label} — within-session engagement ramp")
+    ax.legend(fontsize=9, framealpha=0.9)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_within_session_ramp_by_mouse(per_mouse: dict, out_path: str, cue_label: str,
+                                       num: int) -> None:
+    """Same warm-up, per-mouse grid (binned), one distinct color per session."""
     mice = _sorted_mice(per_mouse)
     fig, axes = _grid(len(mice))
     max_s = _max_session(per_mouse)
@@ -202,8 +238,9 @@ def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str, num
             seq = r["engaged_seq"]
             if not seq:
                 continue
-            ax.plot(range(1, len(seq) + 1), _rolling(seq, ROLL_WINDOW),
-                    color=_session_color(r["session_num"], max_s), lw=1.3)
+            ys = _block_engagement(seq, BLOCK_TRIALS)
+            ax.plot(_block_x(len(ys), BLOCK_TRIALS), ys, "-o",
+                    color=_session_color(r["session_num"], max_s), lw=1.4, ms=3)
         ax.set_title(_short(mouse), fontsize=10)
         ax.set_ylim(0, 100)
     for ax in axes[len(mice):]:
@@ -212,9 +249,9 @@ def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str, num
                for s in range(1, max_s + 1)]
     fig.legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.9,
                ncol=1 if max_s <= 6 else 2)
-    fig.supxlabel("trial # within session")
-    fig.supylabel(f"engagement (rolling %, window={ROLL_WINDOW})")
-    fig.suptitle(f"[{num}] {cue_label} — within-session engagement ramp", fontsize=12)
+    fig.supxlabel(f"trial # within session (per {BLOCK_TRIALS}-trial block)")
+    fig.supylabel("engagement (% of trials in block)")
+    fig.suptitle(f"[{num}] {cue_label} — within-session engagement ramp, per mouse", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
@@ -305,6 +342,7 @@ def plot_all(per_mouse: dict, out_dir: str, prefix: str, cue_label: str) -> list
         (2, "2_participation_vs_competence", plot_dissociation),
         (2, "2b_participation_vs_competence_by_mouse", plot_dissociation_by_mouse),
         (3, "3_within_session_ramp", plot_within_session_ramp),
+        (3, "3b_within_session_ramp_by_mouse", plot_within_session_ramp_by_mouse),
         (4, "4_latency_to_engage", plot_latency),
         (5, "5_sessions_to_criterion", plot_sessions_to_criterion),
     ]

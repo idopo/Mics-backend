@@ -153,6 +153,28 @@ the original discussion), and the number is in the filename too.
 Run via either script's `--analysis participation` (appetitive) or as part of a
 full `generalization_analysis.py` run.
 
+---
+
+# Behavioral patterns across mice & tasks
+
+`behavior_patterns.py` — four exploratory, cross-cutting analyses (output under
+`behavior_figs/`). Reuses the generalization + appetitive data loaders.
+
+| Figure | Shows |
+|---|---|
+| `phenotypes.png` | two engagement phenotypes: x = reward-dependence of engagement (P(engage\|prev hit) − P(engage\|prev miss)), y = longest run of consecutive disengaged trials. **m92 & m101** sit top-right (reward-gated / bursty); the rest cluster bottom-left (steady) |
+| `impulsivity.png` | off-cue nose pokes per trial (poking with no cue / no reward available), ranked. **m102** is a strong outlier (~8/trial vs median ~3) — most impulsive |
+| `licking_dynamics.png` | left: anticipatory licking is ~absent (poke-gated task — licking follows the poke); right: poke→reward-lick latency, the licking signal that exists (bursty m92/m101 are slowest to collect; steady m102/m103 fastest) |
+| `cross_task_transfer.png` | appetitive (tone) vs generalization (light) per mouse: participation transfers moderately (r≈0.5 — engagement is a stable trait); competence does **not** (r≈0.1 — generalization accuracy is ceilinged because the rule is already known) |
+
+**Headline patterns.** Two phenotypes fall out of trial-to-trial structure:
+*reward-gated/bursty* mice (m92, m101) disengage for 20+ trials at a time and
+re-engage mainly after reward, and are also the slowest to collect reward; the
+other eight are *steady* participators. Impulsivity (off-cue poking) is a
+separate axis — m102 is both the best performer and the most impulsive.
+Engagement (participation) is a stable individual trait across tasks; competence
+is not, because by generalization every mouse already knows the rule.
+
 **What they show.** In the **generalization** task, accuracy-when-engaged is
 tightly clustered high (~90%) while engagement spreads wide — participation, not
 competence, is what develops. In the **appetitive** task the same axes show

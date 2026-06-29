@@ -93,6 +93,7 @@ session-start priming pulse).
 - `generalization_learning_curve.png` — hit rate (all trials) + engagement rate across sessions, both mice
 - `generalization_engaged_hits_miss.png` — per mouse, per session: engaged trials split into hit vs miss
 - `rasters/<mouse>/gen_session_N.png` — per-session rasters (LED2-on band, nose pokes, licks, rewarded/HIT licks)
+- `generalization_all_rasters.png` — all rasters in one figure (rows = sessions, m97 left / m102 right)
 - `generalization_metrics.csv` — per-session table (incl. `acc_given_engaged`)
 
 ## Key finding — yes, both generalized

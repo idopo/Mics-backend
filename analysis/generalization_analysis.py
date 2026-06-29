@@ -265,11 +265,10 @@ def plot_engaged_hits_miss(per_mouse: dict[str, list[dict]], out_path: str) -> N
     plt.close(fig)
 
 
-def plot_raster(mouse: str, row: dict, out_path: str) -> None:
-    trials = row["trials"]
+def _draw_trials(ax, trials: list[dict], scale: float = 1.0) -> None:
+    """Render one session's trials into `ax` (trial 1 at top). `scale` shrinks
+    the event ticks for use in small grid panels."""
     n = len(trials)
-    fig_h = max(3.0, min(0.18 * n + 1.5, 30))
-    fig, ax = plt.subplots(figsize=(10, fig_h))
     ax.axvline(0, color="#3a7ca5", lw=0.8, zorder=1)
     for idx, tr in enumerate(trials):
         y = n - idx  # trial 1 at top
@@ -278,31 +277,72 @@ def plot_raster(mouse: str, row: dict, out_path: str) -> None:
         rewarded = set(tr["rewarded_licks"])
         plain = [t for t in tr["licks"] if t not in rewarded]
         if plain:
-            ax.scatter(plain, [y] * len(plain), marker="|", s=120, linewidths=1.0,
-                       color="black", zorder=3)
+            ax.scatter(plain, [y] * len(plain), marker="|", s=120 * scale,
+                       linewidths=1.0 * scale, color="black", zorder=3)
         if tr["nose_pokes"]:
             ax.scatter(tr["nose_pokes"], [y] * len(tr["nose_pokes"]), marker="|",
-                       s=120, linewidths=1.6, color="#2ca02c", zorder=2)
+                       s=120 * scale, linewidths=1.6 * scale, color="#2ca02c", zorder=2)
         if tr["rewarded_licks"]:
             ax.scatter(tr["rewarded_licks"], [y] * len(tr["rewarded_licks"]),
-                       marker="|", s=200, linewidths=2.2, color="#f5c518", zorder=4)
-    ax.set_xlabel("Trial time (s)  —  0 = LED2 (cue) onset")
-    ax.set_ylabel("Trial #")
+                       marker="|", s=200 * scale, linewidths=2.2 * scale,
+                       color="#f5c518", zorder=4)
     ax.set_ylim(0.5, n + 0.5)
     ax.set_xlim(-2, max(LED_WINDOW_S + 4, 12))
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.set_title(f"{mouse} ({row['subject']} s{row['raw_session']})  ·  gen session "
-                 f"{row['session_num']}  ·  {n} trials, {row['n_engaged']} engaged, "
-                 f"{row['hits']} hits")
-    handles = [
+
+
+def _raster_legend_handles():
+    return [
         mpatches.Patch(color="#add8e6", alpha=0.55, label="LED2 on (cue)"),
         plt.Line2D([], [], color="#2ca02c", marker="|", linestyle="None", label="nose poke"),
         plt.Line2D([], [], color="black", marker="|", linestyle="None", label="lick"),
         plt.Line2D([], [], color="#f5c518", marker="|", linestyle="None", label="rewarded lick (HIT)"),
     ]
-    ax.legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.9)
+
+
+def plot_raster(mouse: str, row: dict, out_path: str) -> None:
+    n = len(row["trials"])
+    fig, ax = plt.subplots(figsize=(10, max(3.0, min(0.18 * n + 1.5, 30))))
+    _draw_trials(ax, row["trials"])
+    ax.set_xlabel("Trial time (s)  —  0 = LED2 (cue) onset")
+    ax.set_ylabel("Trial #")
+    ax.set_title(f"{mouse} ({row['subject']} s{row['raw_session']})  ·  gen session "
+                 f"{row['session_num']}  ·  {n} trials, {row['n_engaged']} engaged, "
+                 f"{row['hits']} hits")
+    ax.legend(handles=_raster_legend_handles(), loc="upper right", fontsize=8, framealpha=0.9)
     fig.tight_layout()
     fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+
+
+def plot_combined_rasters(per_mouse: dict[str, list[dict]], out_path: str) -> None:
+    """One figure: rows = sessions, columns = mice (m97 left, m102 right)."""
+    mice = list(per_mouse)
+    nrows = max(len(rows) for rows in per_mouse.values())
+    ncols = len(mice)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(7 * ncols, 3.0 * nrows),
+                             sharex=True, squeeze=False)
+    for c, mouse in enumerate(mice):
+        rows = per_mouse[mouse]
+        for r in range(nrows):
+            ax = axes[r][c]
+            if r >= len(rows):
+                ax.axis("off")
+                continue
+            row = rows[r]
+            _draw_trials(ax, row["trials"], scale=0.45)
+            ax.set_title(f"{mouse} · gen s{row['session_num']} · "
+                         f"{row['hits']}/{row['n_engaged']} engaged hits "
+                         f"({row['n_trials']} trials)", fontsize=9)
+            ax.set_ylabel("trial #")
+            if r == nrows - 1:
+                ax.set_xlabel("Trial time (s)  —  0 = LED2 onset")
+    fig.legend(handles=_raster_legend_handles(), loc="upper center", ncol=4,
+               fontsize=9, framealpha=0.9, bbox_to_anchor=(0.5, 0.995))
+    fig.suptitle("Generalization rasters — all sessions (m97 left, m102 right)",
+                 fontsize=13, y=0.965)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(out_path, dpi=140)
     plt.close(fig)
 
 
@@ -342,7 +382,11 @@ def main() -> int:
             plot_raster(mouse, r, os.path.join(rdir, f"gen_session_{r['session_num']}.png"))
             n_rasters += 1
 
+    combined_path = os.path.join(OUT_ROOT, "generalization_all_rasters.png")
+    plot_combined_rasters(per_mouse, combined_path)
+
     print(f"\nWrote figures + {n_rasters} rasters under '{OUT_ROOT}/'.")
+    print(f"Combined raster grid: {combined_path}")
     return 0
 
 

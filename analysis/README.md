@@ -1,4 +1,45 @@
-# AppetitiveTaskReal — Behavioral Analysis Summary
+# MICS Behavioral Analysis
+
+Reproducible analysis of two behavioral tasks run on the `RecordingBox` pilot for
+10 mice — the **appetitive tone task** and the **generalization (light cue) task** —
+plus cross-cutting **behavioral-pattern** analyses. Pure-Python (`requests` +
+`numpy` + `matplotlib`), no Elasticsearch client needed, and OS-portable
+(headless `Agg` backend + matplotlib's bundled fonts → identical figures on
+Windows/macOS/Linux).
+
+## Quickstart — Windows + conda
+
+```bat
+:: 1. create + activate the environment (run from the analysis/ folder)
+conda env create -f environment.yml
+conda activate mics-analysis
+
+:: 2. tell the scripts where Elasticsearch is (edit config.py, or set an env var)
+::    PowerShell:  $env:ES_URL = "http://132.77.73.125:9200"
+::    cmd.exe:     set ES_URL=http://132.77.73.125:9200
+set ES_URL=http://YOUR-ES-HOST:9200
+
+:: 3. run the analyses (each writes figures into a sibling folder)
+python appetitive_analysis.py            :: -> appetitive_rasters/
+python generalization_analysis.py        :: -> generalization_figs/
+python behavior_patterns.py              :: -> behavior_figs/
+```
+
+`config.py` holds `ES_URL` / `ES_INDEX` (env vars override). The committed
+figures were produced against `ES_INDEX = restored-event_log_v2`. Results are
+deterministic: same ES data in → identical numbers and figures out.
+
+## Scripts & outputs
+
+| Script | Produces | Notes |
+|---|---|---|
+| `config.py` | — | ES host/index (edit or override with env vars) |
+| `appetitive_analysis.py` | `appetitive_rasters/` | rasters, learning curves, poke grids, participation figures; `--analysis rasters\|curve\|pokes\|participation\|all` |
+| `generalization_analysis.py` | `generalization_figs/` | generalization learning curve, engaged hits/miss, rasters, participation figures |
+| `behavior_patterns.py` | `behavior_figs/` | phenotypes, impulsivity, licking, cross-task transfer (loads both tasks) |
+| `participation.py` | — | shared participation-vs-competence figure module (imported by both task scripts) |
+
+---
 
 ## Scope & data source
 - **Task:** `AppetitveTaskReal` (appetitive tone-cued task)
@@ -60,10 +101,11 @@ Environment overrides: `ES_URL`, `ES_INDEX`, `MICS_TASK`, `MICS_PILOT`, `MICS_DA
 
 ---
 
-# Generalization Task — Did the Good Learners Generalize? (m97, m102)
+# Generalization Task — Did the Mice Generalize to a Light Cue?
 
 `generalization_analysis.py` — does the learned tone-cued behavior transfer when
-the cue becomes a **light**?
+the cue becomes a **light**? Covers all 10 mice; rasters are drawn for the two
+highlighted learners (m97, m102).
 
 ## Scope
 - **Task:** `Generalization` ("GenLight") — same poke→lick→reward structure as

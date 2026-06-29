@@ -53,8 +53,8 @@ import requests
 import participation
 
 # --- configuration (override via env; never hardcode in the body) ---------
-ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
-ES_INDEX = os.environ.get("ES_INDEX", "restored-event_log_v2")
+from config import ES_URL, ES_INDEX  # noqa: E402  (ES host/index, env-overridable)
+
 TASK_TYPE = os.environ.get("MICS_TASK", "AppetitveTaskReal")
 PILOT = os.environ.get("MICS_PILOT", "RecordingBox")
 DATE_GTE = os.environ.get("MICS_DATE_GTE", "2025-11-01")

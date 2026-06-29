@@ -49,8 +49,8 @@ import requests
 
 import participation
 
-ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
-ES_INDEX = os.environ.get("ES_INDEX", "restored-event_log_v2")
+from config import ES_URL, ES_INDEX  # ES host/index, env-overridable (see config.py)
+
 TASK_TYPE = "Generalization"
 PILOT = os.environ.get("MICS_PILOT", "RecordingBox")
 OUT_ROOT = os.environ.get("MICS_GEN_OUT", "generalization_figs")

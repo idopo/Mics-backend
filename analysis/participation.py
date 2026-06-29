@@ -54,11 +54,12 @@ def _max_session(per_mouse: dict) -> int:
     return max((r["session_num"] for rows in per_mouse.values() for r in rows), default=1)
 
 
-def _mean_sem_by_session(per_mouse: dict, key: str, max_s: int):
+def _mean_sem_by_session(per_mouse: dict, key: str, max_s: int, predicate=None):
     xs, means, sems = [], [], []
     for s in range(1, max_s + 1):
         vals = [r[key] for rows in per_mouse.values() for r in rows
-                if r["session_num"] == s and r[key] is not None]
+                if r["session_num"] == s and r[key] is not None
+                and (predicate is None or predicate(r))]
         if not vals:
             continue
         xs.append(s)
@@ -100,32 +101,77 @@ def plot_engagement_curve(per_mouse: dict, out_path: str, cue_label: str, num: i
     plt.close(fig)
 
 
-# --- 2. participation vs competence, per mouse ----------------------------
+# --- 2. participation vs competence (the dissociation, one axes) ----------
 def plot_dissociation(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
-    """Per-mouse panel: participation (engagement %) and competence (accuracy
-    when engaged) side by side across sessions, so the dissociation is visible
-    per mouse — competence stays high while participation climbs."""
+    """Group-level dissociation: competence (accuracy when engaged) is high and
+    flat from session 1, while participation (engagement rate) climbs toward it.
+    The across-session gain is participation, not competence. Faint per-mouse
+    lines show spread; bold lines are group mean ± SEM."""
     c_part, c_comp = "#ff7f0e", "#2ca02c"
-    mice = _sorted_mice(per_mouse)
-    fig, axes = _grid(len(mice))
+    fig, ax = plt.subplots(figsize=(9, 6))
     max_s = _max_session(per_mouse)
-    for ax, mouse in zip(axes, mice):
+
+    for rows in per_mouse.values():
+        rows = sorted(rows, key=lambda r: r["session_num"])
+        xs = [r["session_num"] for r in rows]
+        ax.plot(xs, [r["engaged_rate"] for r in rows], color=c_part, lw=0.8, alpha=0.2)
+        ax.plot(xs, [r["acc_given_engaged"] if r["n_engaged"] else np.nan for r in rows],
+                color=c_comp, lw=0.8, alpha=0.2)
+
+    xp, mp, sp = _mean_sem_by_session(per_mouse, "engaged_rate", max_s)
+    xc, mc, sc = _mean_sem_by_session(per_mouse, "acc_given_engaged", max_s,
+                                      predicate=lambda r: r["n_engaged"] > 0)
+    ax.plot(xc, mc, "-s", color=c_comp, lw=3, ms=7, zorder=5,
+            label="competence — accuracy when engaged")
+    ax.fill_between(xc, mc - sc, mc + sc, color=c_comp, alpha=0.15, zorder=4)
+    ax.plot(xp, mp, "-o", color=c_part, lw=3, ms=7, zorder=5,
+            label="participation — engagement rate")
+    ax.fill_between(xp, mp - sp, mp + sp, color=c_part, alpha=0.15, zorder=4)
+
+    if len(mp):
+        ax.annotate("participation rises", (xp[-1], mp[-1]), textcoords="offset points",
+                    xytext=(-6, -16), color=c_part, fontsize=9, ha="right")
+    if len(mc):
+        ax.annotate("competence stays high", (xc[0], mc[0]), textcoords="offset points",
+                    xytext=(8, 6), color=c_comp, fontsize=9)
+
+    ax.set_xlabel("session #")
+    ax.set_ylabel("% of trials  (group mean ± SEM)")
+    ax.set_title(f"[{num}] {cue_label} — participation rises while competence stays high")
+    ax.set_ylim(0, 100)
+    ax.set_xlim(0.5, max_s + 0.5)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.legend(fontsize=9, loc="lower right", framealpha=0.9)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_dissociation_by_mouse(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
+    """Same dissociation, but each mouse in its own color across two panels:
+    participation (engagement rate) and competence (accuracy when engaged).
+    Participation lines fan upward and vary; competence lines cluster flat-high."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.6), sharey=True)
+    cmap = plt.get_cmap("tab10")
+    mice = _sorted_mice(per_mouse)
+    max_s = _max_session(per_mouse)
+    for i, mouse in enumerate(mice):
         rows = sorted(per_mouse[mouse], key=lambda r: r["session_num"])
         xs = [r["session_num"] for r in rows]
-        ax.plot(xs, [r["engaged_rate"] for r in rows], "-o", color=c_part, lw=1.6, ms=4)
-        ax.plot(xs, [r["acc_given_engaged"] if r["n_engaged"] else np.nan for r in rows],
-                "-s", color=c_comp, lw=1.6, ms=4)
-        ax.set_title(_short(mouse), fontsize=10)
+        col = cmap(i % 10)
+        ax1.plot(xs, [r["engaged_rate"] for r in rows], "-o", color=col, lw=1.6, ms=4,
+                 label=_short(mouse))
+        ax2.plot(xs, [r["acc_given_engaged"] if r["n_engaged"] else np.nan for r in rows],
+                 "-o", color=col, lw=1.6, ms=4, label=_short(mouse))
+    for ax in (ax1, ax2):
+        ax.set_xlabel("session #")
         ax.set_ylim(0, 100)
         ax.set_xlim(0.5, max_s + 0.5)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    for ax in axes[len(mice):]:
-        ax.axis("off")
-    handles = [plt.Line2D([], [], color=c_part, marker="o", label="participation (engagement %)"),
-               plt.Line2D([], [], color=c_comp, marker="s", label="competence (accuracy when engaged %)")]
-    fig.legend(handles=handles, loc="upper right", fontsize=9, framealpha=0.9)
-    fig.supxlabel("session #")
-    fig.supylabel("% of trials")
+    ax1.set_ylabel("% of trials")
+    ax1.set_title("participation — engagement rate")
+    ax2.set_title("competence — accuracy when engaged")
+    ax1.legend(fontsize=8, ncol=2, framealpha=0.9)
     fig.suptitle(f"[{num}] {cue_label} — participation vs competence, per mouse", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_path, dpi=140)
@@ -255,15 +301,16 @@ def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str, n
 def plot_all(per_mouse: dict, out_dir: str, prefix: str, cue_label: str) -> list[str]:
     """Render all five participation figures; return the written paths."""
     jobs = [
-        (1, "engagement_curve", plot_engagement_curve),
-        (2, "participation_vs_competence", plot_dissociation),
-        (3, "within_session_ramp", plot_within_session_ramp),
-        (4, "latency_to_engage", plot_latency),
-        (5, "sessions_to_criterion", plot_sessions_to_criterion),
+        (1, "1_engagement_curve", plot_engagement_curve),
+        (2, "2_participation_vs_competence", plot_dissociation),
+        (2, "2b_participation_vs_competence_by_mouse", plot_dissociation_by_mouse),
+        (3, "3_within_session_ramp", plot_within_session_ramp),
+        (4, "4_latency_to_engage", plot_latency),
+        (5, "5_sessions_to_criterion", plot_sessions_to_criterion),
     ]
     paths = []
     for num, name, fn in jobs:
-        path = os.path.join(out_dir, f"{prefix}{num}_{name}.png")
+        path = os.path.join(out_dir, f"{prefix}{name}.png")
         fn(per_mouse, path, cue_label, num)
         paths.append(path)
     return paths

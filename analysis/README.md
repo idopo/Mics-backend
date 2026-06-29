@@ -143,7 +143,8 @@ the original discussion), and the number is in the filename too.
 | Figure | Shows |
 |---|---|
 | `*_1_engagement_curve.png` | engagement rate (% trials with on-cue poke) across sessions, per mouse + group mean — the participation trajectory |
-| `*_2_participation_vs_competence.png` | per-mouse grid, two lines across sessions: participation (engagement %) vs competence (accuracy-when-engaged %). Competence stays flat-high while participation climbs = "slow to participate, not to learn" |
+| `*_2_participation_vs_competence.png` | the dissociation in one axes: group-mean competence (accuracy-when-engaged) vs participation (engagement rate) across sessions, ±SEM, faint per-mouse lines. Competence flat-high from session 1; participation climbs toward it → the across-session gain is participation, not competence ("slow to participate, not to learn") |
+| `*_2b_participation_vs_competence_by_mouse.png` | same dissociation, each mouse in its own color across two panels (participation \| competence): participation lines fan upward & vary, competence lines cluster flat-high |
 | `*_3_within_session_ramp.png` | per-mouse grid: rolling engagement (%) vs trial # within a session, one distinct color per session (legend) — reveals warm-up; later sessions start more engaged |
 | `*_4_latency_to_engage.png` | grouped bars, x = mouse, one bar per session (color = session #). Left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke) |
 | `*_5_sessions_to_criterion.png` | bar per mouse: first session reaching 50% engagement (red = never) — a single "speed of participation" number |

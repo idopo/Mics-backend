@@ -74,8 +74,9 @@ the cue becomes a **light**?
   (`RASTER_MICE`) since a 10-mouse raster grid is unreadable.
 - Each mouse's generalization sessions span two ES subject strings
   (`<id>_GenLight_400` then `<id>_GenLight_400_2`, a continuation); they are
-  merged and ordered chronologically into **session # 1..N** (Dec 2025–Jan 2026).
-  Partial/aborted sessions (< `MIN_TRIALS`=10 trials) are dropped.
+  merged and ordered chronologically. Partial/aborted sessions
+  (< `MIN_TRIALS`=10 trials) are dropped, and only the first **4 sessions**
+  (`MAX_SESSION`, common to all mice; Dec 2025–Jan 2026) are kept.
 
 ## Event semantics (verified against the raw stream)
 | Behavior | ES event |
@@ -136,13 +137,16 @@ succeed once engaged). Used by both scripts; an "engaged" trial is one with a
 nose poke while the cue is on (tone for the appetitive task, LED2 for
 generalization). Output prefix is `appetitive_` or `generalization_`.
 
+Each figure title is stamped with its number `[1]`–`[5]` (matching this list and
+the original discussion), and the number is in the filename too.
+
 | Figure | Shows |
 |---|---|
-| `*_engagement_curve.png` | engagement rate (% trials with on-cue poke) across sessions, per mouse + group mean — the participation trajectory |
-| `*_participation_vs_competence.png` | scatter, one point per mouse-session: x = engagement rate, y = accuracy-when-engaged, colored by session. Spread in x with flat-high y = "slow to participate, not to learn" |
-| `*_within_session_ramp.png` | per-mouse grid: rolling engagement (%) vs trial # within a session — reveals warm-up; later sessions (brighter) start more engaged |
-| `*_latency_to_engage.png` | left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke). Per mouse + group mean across sessions |
-| `*_sessions_to_criterion.png` | bar per mouse: first session reaching 50% engagement (red = never) — a single "speed of participation" number |
+| `*_1_engagement_curve.png` | engagement rate (% trials with on-cue poke) across sessions, per mouse + group mean — the participation trajectory |
+| `*_2_participation_vs_competence.png` | scatter, one point per mouse-session: x = engagement rate, y = accuracy-when-engaged, colored by session. Spread in x with flat-high y = "slow to participate, not to learn" |
+| `*_3_within_session_ramp.png` | per-mouse grid: rolling engagement (%) vs trial # within a session — reveals warm-up; later sessions (brighter) start more engaged |
+| `*_4_latency_to_engage.png` | left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke). Per mouse + group mean across sessions |
+| `*_5_sessions_to_criterion.png` | bar per mouse: first session reaching 50% engagement (red = never) — a single "speed of participation" number |
 
 Run via either script's `--analysis participation` (appetitive) or as part of a
 full `generalization_analysis.py` run.

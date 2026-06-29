@@ -76,6 +76,7 @@ ID_REWARD = "open"
 LED_WINDOW_S = 8.0  # fallback cue length when no LED-off is seen (miss trials)
 REWARD_LICK_WINDOW_S = 0.5
 MIN_TRIALS = 10  # drop partial/aborted sessions before re-indexing
+MAX_SESSION = 4  # only the first 4 generalization sessions are common to all mice
 
 
 def _iso_to_epoch(ts: str) -> float:
@@ -238,7 +239,7 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
             "engaged_seq": [t["engaged"] for t in trials],
             "rt_list": rt_list,
         })
-    return rows
+    return [r for r in rows if r["session_num"] <= MAX_SESSION]
 
 
 # --- plots ----------------------------------------------------------------

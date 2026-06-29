@@ -77,7 +77,7 @@ def _grid(n: int, ncol: int = 5):
 
 
 # --- 1. engagement (participation) learning curve -------------------------
-def plot_engagement_curve(per_mouse: dict, out_path: str, cue_label: str) -> None:
+def plot_engagement_curve(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     fig, ax = plt.subplots(figsize=(9, 6))
     cmap = plt.get_cmap("tab10")
     mice = _sorted_mice(per_mouse)
@@ -92,7 +92,7 @@ def plot_engagement_curve(per_mouse: dict, out_path: str, cue_label: str) -> Non
     ax.axhline(ENGAGE_CRITERION, color="grey", ls=":", lw=0.8, alpha=0.7)
     ax.set_xlabel("session #")
     ax.set_ylabel("engagement rate (% of trials with on-cue poke)")
-    ax.set_title(f"{cue_label} — participation across sessions")
+    ax.set_title(f"[{num}] {cue_label} — participation across sessions")
     ax.set_ylim(0, 100)
     ax.set_xlim(0.5, max_s + 0.5)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -103,7 +103,7 @@ def plot_engagement_curve(per_mouse: dict, out_path: str, cue_label: str) -> Non
 
 
 # --- 2. participation vs competence dissociation --------------------------
-def plot_dissociation(per_mouse: dict, out_path: str, cue_label: str) -> None:
+def plot_dissociation(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     fig, ax = plt.subplots(figsize=(7.5, 6.5))
     max_s = _max_session(per_mouse)
     norm = Normalize(vmin=1, vmax=max_s)
@@ -122,7 +122,7 @@ def plot_dissociation(per_mouse: dict, out_path: str, cue_label: str) -> None:
         ax.legend(fontsize=9, loc="lower left")
     ax.set_xlabel("engagement rate (% of trials with on-cue poke)  →  participation")
     ax.set_ylabel("accuracy when engaged (% of engaged trials)  →  competence")
-    ax.set_title(f"{cue_label} — participation vs competence\n(each point = one mouse-session)")
+    ax.set_title(f"[{num}] {cue_label} — participation vs competence\n(each point = one mouse-session)")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 105)
     fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=ax, label="session #")
@@ -140,7 +140,7 @@ def _rolling(seq: list[bool], window: int) -> list[float]:
     return out
 
 
-def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str) -> None:
+def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     mice = _sorted_mice(per_mouse)
     fig, axes = _grid(len(mice))
     max_s = _max_session(per_mouse)
@@ -159,7 +159,7 @@ def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str) -> 
         ax.axis("off")
     fig.supxlabel("trial # within session")
     fig.supylabel(f"engagement (rolling %, window={ROLL_WINDOW})")
-    fig.suptitle(f"{cue_label} — within-session engagement ramp", fontsize=12)
+    fig.suptitle(f"[{num}] {cue_label} — within-session engagement ramp", fontsize=12)
     fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes.tolist(),
                  label="session #", fraction=0.02, pad=0.01)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
@@ -167,7 +167,7 @@ def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str) -> 
 
 
 # --- 4. latency to engage (trials-to-first + reaction time) ---------------
-def plot_latency(per_mouse: dict, out_path: str, cue_label: str) -> None:
+def plot_latency(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.2))
     cmap = plt.get_cmap("tab10")
     mice = _sorted_mice(per_mouse)
@@ -203,14 +203,14 @@ def plot_latency(per_mouse: dict, out_path: str, cue_label: str) -> None:
     ax2.set_ylabel("median reaction time (s): cue → first on-cue poke")
     ax2.set_title("How fast it pokes once engaged")
     ax1.legend(fontsize=7, ncol=2, framealpha=0.9)
-    fig.suptitle(f"{cue_label} — latency to engage", fontsize=12)
+    fig.suptitle(f"[{num}] {cue_label} — latency to engage", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
 
 
 # --- 5. sessions to engagement criterion ----------------------------------
-def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str) -> None:
+def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     mice = _sorted_mice(per_mouse)
     max_s = _max_session(per_mouse)
     labels, values, colors = [], [], []
@@ -233,7 +233,7 @@ def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str) -
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.set_ylabel(f"sessions to reach {ENGAGE_CRITERION:.0f}% engagement")
-    ax.set_title(f"{cue_label} — speed of participation (lower = faster; red = never reached)")
+    ax.set_title(f"[{num}] {cue_label} — speed of participation (lower = faster; red = never reached)")
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylim(0, max_s + 1.5)
     fig.tight_layout()
@@ -244,15 +244,15 @@ def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str) -
 def plot_all(per_mouse: dict, out_dir: str, prefix: str, cue_label: str) -> list[str]:
     """Render all five participation figures; return the written paths."""
     jobs = [
-        ("engagement_curve", plot_engagement_curve),
-        ("participation_vs_competence", plot_dissociation),
-        ("within_session_ramp", plot_within_session_ramp),
-        ("latency_to_engage", plot_latency),
-        ("sessions_to_criterion", plot_sessions_to_criterion),
+        (1, "engagement_curve", plot_engagement_curve),
+        (2, "participation_vs_competence", plot_dissociation),
+        (3, "within_session_ramp", plot_within_session_ramp),
+        (4, "latency_to_engage", plot_latency),
+        (5, "sessions_to_criterion", plot_sessions_to_criterion),
     ]
     paths = []
-    for name, fn in jobs:
-        path = os.path.join(out_dir, f"{prefix}{name}.png")
-        fn(per_mouse, path, cue_label)
+    for num, name, fn in jobs:
+        path = os.path.join(out_dir, f"{prefix}{num}_{name}.png")
+        fn(per_mouse, path, cue_label, num)
         paths.append(path)
     return paths

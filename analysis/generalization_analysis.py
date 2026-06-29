@@ -47,6 +47,8 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 import requests
 
+import participation
+
 ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
 ES_INDEX = os.environ.get("ES_INDEX", "restored-event_log_v2")
 TASK_TYPE = "Generalization"
@@ -222,6 +224,8 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
         trials = r["trials"]
         engaged = [t for t in trials if t["engaged"]]
         hits_e = sum(t["is_hit"] for t in engaged)
+        rt_list = [min(p for p in t["nose_pokes"] if 0 <= p <= t["led_dur"])
+                   for t in engaged]
         r.update({
             "session_num": i,
             "n_trials": len(trials),
@@ -231,6 +235,8 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
             "hit_rate": 100.0 * sum(t["is_hit"] for t in trials) / len(trials),
             "engaged_rate": 100.0 * len(engaged) / len(trials),
             "acc_given_engaged": 100.0 * hits_e / len(engaged) if engaged else 0.0,
+            "engaged_seq": [t["engaged"] for t in trials],
+            "rt_list": rt_list,
         })
     return rows
 
@@ -420,6 +426,7 @@ def main() -> int:
     plot_learning_curve(per_mouse, os.path.join(OUT_ROOT, "generalization_learning_curve.png"))
     plot_engaged_hits_miss(per_mouse, os.path.join(OUT_ROOT, "generalization_engaged_hits_miss.png"))
     write_csv(per_mouse, os.path.join(OUT_ROOT, "generalization_metrics.csv"))
+    participation.plot_all(per_mouse, OUT_ROOT, "generalization_", "Generalization (light cue)")
 
     # rasters only for the highlighted learners (per-mouse files + combined grid)
     raster_mice = {m: per_mouse[m] for m in RASTER_MICE if m in per_mouse}

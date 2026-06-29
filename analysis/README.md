@@ -125,3 +125,33 @@ cd analysis
 python3 generalization_analysis.py
 ```
 Environment overrides: `ES_URL`, `ES_INDEX`, `MICS_PILOT`, `MICS_GEN_OUT`.
+
+---
+
+# Participation vs Competence (both tasks)
+
+`participation.py` — a shared module producing five figures that separate
+**participation** (does the mouse engage at all) from **competence** (does it
+succeed once engaged). Used by both scripts; an "engaged" trial is one with a
+nose poke while the cue is on (tone for the appetitive task, LED2 for
+generalization). Output prefix is `appetitive_` or `generalization_`.
+
+| Figure | Shows |
+|---|---|
+| `*_engagement_curve.png` | engagement rate (% trials with on-cue poke) across sessions, per mouse + group mean — the participation trajectory |
+| `*_participation_vs_competence.png` | scatter, one point per mouse-session: x = engagement rate, y = accuracy-when-engaged, colored by session. Spread in x with flat-high y = "slow to participate, not to learn" |
+| `*_within_session_ramp.png` | per-mouse grid: rolling engagement (%) vs trial # within a session — reveals warm-up; later sessions (brighter) start more engaged |
+| `*_latency_to_engage.png` | left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke). Per mouse + group mean across sessions |
+| `*_sessions_to_criterion.png` | bar per mouse: first session reaching 50% engagement (red = never) — a single "speed of participation" number |
+
+Run via either script's `--analysis participation` (appetitive) or as part of a
+full `generalization_analysis.py` run.
+
+**What they show.** In the **generalization** task, accuracy-when-engaged is
+tightly clustered high (~90%) while engagement spreads wide — participation, not
+competence, is what develops. In the **appetitive** task the same axes show
+accuracy-when-engaged genuinely scattered (mean ~71%): there the mice are still
+*learning the association*, so competence is itself developing. The contrast
+across the two `*_participation_vs_competence.png` plots is the clearest single
+summary of "already knows the rule" (generalization) vs "still learning it"
+(appetitive).

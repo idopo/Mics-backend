@@ -50,6 +50,8 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 import requests
 
+import participation
+
 # --- configuration (override via env; never hardcode in the body) ---------
 ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
 ES_INDEX = os.environ.get("ES_INDEX", "restored-event_log_v2")
@@ -401,6 +403,27 @@ def poke_metrics(events: list[dict], trials: list[dict]) -> dict:
             "n_poked_licked": poked_licked, "n_poked_nolick": poked_nolick}
 
 
+def engagement_metrics(trials: list[dict]) -> dict:
+    """Per-trial engagement (on-cue poke = poke while tone plays) for the shared
+    participation analyses. Engaged trial -> reaction time = first on-cue poke."""
+    engaged_seq, rt_list, n_hits_eng = [], [], 0
+    for tr in trials:
+        on_cue = [p for p in tr["nose_pokes"] if 0 <= p <= tr["tone_dur"]]
+        engaged_seq.append(bool(on_cue))
+        if on_cue:
+            rt_list.append(min(on_cue))
+            if tr["is_hit"]:
+                n_hits_eng += 1
+    n_engaged = sum(engaged_seq)
+    return {
+        "n_engaged": n_engaged,
+        "engaged_seq": engaged_seq,
+        "rt_list": rt_list,
+        "engaged_rate": 100.0 * n_engaged / len(trials) if trials else 0.0,
+        "acc_given_engaged": 100.0 * n_hits_eng / n_engaged if n_engaged else 0.0,
+    }
+
+
 def _bar_grid(per_mouse: dict[str, list[dict]], out_path: str, suptitle: str,
               ylabel: str, draw_panel, legend_handles=None) -> None:
     """Generic 2x5 grid: one panel per mouse, `draw_panel(ax, rows)` fills it."""
@@ -512,6 +535,7 @@ def run(args: argparse.Namespace) -> int:
     do_rasters = args.analysis in ("all", "rasters")
     do_curve = args.analysis in ("all", "curve")
     do_pokes = args.analysis in ("all", "pokes")
+    do_participation = args.analysis in ("all", "participation")
 
     subjects = [args.subject] if args.subject else discover_subjects()
     if not subjects:
@@ -538,7 +562,7 @@ def run(args: argparse.Namespace) -> int:
                 plot_raster(subject, s, trials, out_path)
                 n_rasters += 1
 
-        if do_curve or do_pokes:
+        if do_curve or do_pokes or do_participation:
             rows = []
             for s in sorted(trials_by_session):
                 trials = trials_by_session[s]
@@ -549,9 +573,11 @@ def run(args: argparse.Namespace) -> int:
                        "n_trials": len(trials), "n_hits": n_hits,
                        "hit_rate": 100.0 * n_hits / len(trials)}
                 row.update(poke_metrics(by_session[s], trials))
+                row.update(engagement_metrics(trials))
                 rows.append(row)
             for day, row in enumerate(rows, start=1):
                 row["training_day"] = day
+                row["session_num"] = day  # shared participation key
             per_mouse[subject] = rows
             if rows:
                 rates = ", ".join(f"{r['hit_rate']:.0f}" for r in rows)
@@ -596,13 +622,17 @@ def run(args: argparse.Namespace) -> int:
                           ["#2ca02c", "#d62728"])
         print(f"Poke bars:\n  {total_path}\n  {tone_path}\n  {cmp_path}\n"
               f"  {breakdown_path}\n  {ontone_path}")
+    if do_participation and per_mouse:
+        paths = participation.plot_all(per_mouse, OUT_ROOT, "appetitive_",
+                                       "Appetitive tone task")
+        print("Participation figures:\n  " + "\n  ".join(paths))
     return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--analysis", choices=["all", "rasters", "curve", "pokes"],
+    ap.add_argument("--analysis", choices=["all", "rasters", "curve", "pokes", "participation"],
                     default="all", help="which analysis to run (default: all)")
     ap.add_argument("--subject", help="single ES subject (default: all 10 mice)")
     ap.add_argument("--session", type=int, help="single session number (rasters)")

@@ -145,7 +145,7 @@ the original discussion), and the number is in the filename too.
 | `*_1_engagement_curve.png` | engagement rate (% trials with on-cue poke) across sessions, per mouse + group mean — the participation trajectory |
 | `*_2_participation_vs_competence.png` | per-mouse grid, two lines across sessions: participation (engagement %) vs competence (accuracy-when-engaged %). Competence stays flat-high while participation climbs = "slow to participate, not to learn" |
 | `*_3_within_session_ramp.png` | per-mouse grid: rolling engagement (%) vs trial # within a session, one distinct color per session (legend) — reveals warm-up; later sessions start more engaged |
-| `*_4_latency_to_engage.png` | grouped bars per session (one bar per mouse). Left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke) |
+| `*_4_latency_to_engage.png` | grouped bars, x = mouse, one bar per session (color = session #). Left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke) |
 | `*_5_sessions_to_criterion.png` | bar per mouse: first session reaching 50% engagement (red = never) — a single "speed of participation" number |
 
 Run via either script's `--analysis participation` (appetitive) or as part of a

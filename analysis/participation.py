@@ -180,38 +180,40 @@ def _first_engaged_idx(seq: list[bool]):
 
 
 def plot_latency(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
+    """x-axis = mice; bars grouped by session (color = session number)."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.4))
-    cmap = plt.get_cmap("tab10")
     mice = _sorted_mice(per_mouse)
     max_s = _max_session(per_mouse)
-    nmice = len(mice)
-    width = 0.8 / nmice
+    base = np.arange(len(mice))
+    width = 0.8 / max_s
 
-    for i, mouse in enumerate(mice):
-        offset = (i - (nmice - 1) / 2) * width
-        col = cmap(i % 10)
-        rows = per_mouse[mouse]
+    for s in range(1, max_s + 1):
+        color = _session_color(s, max_s)
+        offset = (s - 1 - (max_s - 1) / 2) * width
         x1, y1, x2, y2 = [], [], [], []
-        for r in rows:
-            idx = _first_engaged_idx(r["engaged_seq"])
+        for i, mouse in enumerate(mice):
+            row = next((r for r in per_mouse[mouse] if r["session_num"] == s), None)
+            if row is None:
+                continue
+            idx = _first_engaged_idx(row["engaged_seq"])
             if idx is not None:
-                x1.append(r["session_num"] + offset)
+                x1.append(i + offset)
                 y1.append(idx)
-            if r["rt_list"]:
-                x2.append(r["session_num"] + offset)
-                y2.append(float(np.median(r["rt_list"])))
-        ax1.bar(x1, y1, width=width, color=col, label=_short(mouse))
-        ax2.bar(x2, y2, width=width, color=col, label=_short(mouse))
+            if row["rt_list"]:
+                x2.append(i + offset)
+                y2.append(float(np.median(row["rt_list"])))
+        ax1.bar(x1, y1, width=width, color=color, label=f"session {s}")
+        ax2.bar(x2, y2, width=width, color=color)
 
     for ax in (ax1, ax2):
-        ax.set_xlabel("session #")
-        ax.set_xticks(range(1, max_s + 1))
-        ax.set_xlim(0.5, max_s + 0.5)
+        ax.set_xlabel("mouse")
+        ax.set_xticks(base)
+        ax.set_xticklabels([_short(m) for m in mice], rotation=45, ha="right", fontsize=8)
     ax1.set_ylabel("trials until first engaged trial")
     ax1.set_title("How long before the mouse switches on")
     ax2.set_ylabel("median reaction time (s): cue → first on-cue poke")
     ax2.set_title("How fast it pokes once engaged")
-    ax1.legend(fontsize=7, ncol=2, framealpha=0.9)
+    ax1.legend(fontsize=8, ncol=1 if max_s <= 6 else 2, framealpha=0.9)
     fig.suptitle(f"[{num}] {cue_label} — latency to engage", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_path, dpi=140)

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 from datetime import datetime
 
 import matplotlib
@@ -52,12 +53,12 @@ TASK_TYPE = "Generalization"
 PILOT = os.environ.get("MICS_PILOT", "RecordingBox")
 OUT_ROOT = os.environ.get("MICS_GEN_OUT", "generalization_figs")
 
-# Each mouse -> the ES subject strings holding its generalization sessions
-# (main run + "_2" continuation), merged in chronological order.
-MICE = {
-    "m97": ["m97_GenLight_400", "m97_GenLight_400_2"],
-    "m102": ["m102_GenLight_400", "m102_GenLight_400_2"],
-}
+# Each mouse's generalization sessions live in two ES subject strings
+# (<id>_GenLight_400 + "_2" continuation); discovered dynamically below.
+SUBJECT_RE = re.compile(r"^m(\d+)_GenLight_400(_2)?$")
+# Rasters are only drawn for these highlighted learners (a 10-mouse raster grid
+# is unreadable); the aggregate figures cover every discovered mouse.
+RASTER_MICE = ["m97", "m102"]
 
 ET_STATE = "state_transition"
 ET_DIGITAL_IN = "gpio.Digital_In"
@@ -72,6 +73,7 @@ ID_REWARD = "open"
 
 LED_WINDOW_S = 8.0  # fallback cue length when no LED-off is seen (miss trials)
 REWARD_LICK_WINDOW_S = 0.5
+MIN_TRIALS = 10  # drop partial/aborted sessions before re-indexing
 
 
 def _iso_to_epoch(ts: str) -> float:
@@ -123,6 +125,22 @@ def fetch_events(subject: str, page: int = 5000) -> list[dict]:
             requests.delete(f"{ES_URL}/_search/scroll",
                             json={"scroll_id": [scroll_id]}, timeout=30)
     return out
+
+
+def discover_mice() -> dict[str, list[str]]:
+    """Map mouse id -> its GenLight subject strings, ordered (main then _2)."""
+    body = {"size": 0, "query": {"bool": {"must": [
+        {"term": {"task_type.keyword": TASK_TYPE}},
+        {"term": {"pilot.keyword": PILOT}}]}},
+        "aggs": {"subjects": {"terms": {"field": "subject.keyword", "size": 200}}}}
+    r = requests.post(f"{ES_URL}/{ES_INDEX}/_search", json=body, timeout=60)
+    r.raise_for_status()
+    mice: dict[int, list[str]] = {}
+    for b in r.json()["aggregations"]["subjects"]["buckets"]:
+        m = SUBJECT_RE.match(b["key"])
+        if m:
+            mice.setdefault(int(m.group(1)), []).append(b["key"])
+    return {f"m{n}": sorted(mice[n]) for n in sorted(mice)}
 
 
 def _dedupe(times: list[float], gap: float = 0.3) -> list[float]:
@@ -195,7 +213,7 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
             by_session.setdefault(e["session"], []).append(e)
         for sess, evs in by_session.items():
             trials = segment_trials(evs)
-            if not trials:
+            if len(trials) < MIN_TRIALS:
                 continue
             rows.append({"subject": subject, "raw_session": sess,
                          "start": min(e["epoch"] for e in evs), "trials": trials})
@@ -218,49 +236,76 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
 
 
 # --- plots ----------------------------------------------------------------
+def _sorted_mice(per_mouse: dict[str, list[dict]]) -> list[str]:
+    return sorted(per_mouse, key=lambda m: int(m[1:]))
+
+
 def plot_learning_curve(per_mouse: dict[str, list[dict]], out_path: str) -> None:
-    fig, ax = plt.subplots(figsize=(8, 5.5))
-    colors = {"m97": "#1f77b4", "m102": "#d62728"}
+    """Hit rate (all trials) across sessions: one line per mouse + group mean."""
+    fig, ax = plt.subplots(figsize=(9, 6))
+    cmap = plt.get_cmap("tab10")
+    mice = _sorted_mice(per_mouse)
     max_s = max((r["session_num"] for rows in per_mouse.values() for r in rows), default=1)
-    for mouse, rows in per_mouse.items():
-        xs = [r["session_num"] for r in rows]
-        ax.plot(xs, [r["hit_rate"] for r in rows], "-o", color=colors.get(mouse),
-                lw=2.2, ms=6, label=f"{mouse} — hit rate (all trials)")
-        ax.plot(xs, [r["engaged_rate"] for r in rows], "--s", color=colors.get(mouse),
-                lw=1.4, ms=4, alpha=0.6, label=f"{mouse} — engaged (poked on-cue)")
+    for i, mouse in enumerate(mice):
+        rows = per_mouse[mouse]
+        ax.plot([r["session_num"] for r in rows], [r["hit_rate"] for r in rows],
+                "-o", color=cmap(i % 10), lw=1.5, ms=4, alpha=0.7, label=mouse)
+
+    xs, means, sems = [], [], []
+    for day in range(1, max_s + 1):
+        vals = [r["hit_rate"] for rows in per_mouse.values()
+                for r in rows if r["session_num"] == day]
+        if not vals:
+            continue
+        xs.append(day)
+        means.append(float(np.mean(vals)))
+        sems.append(float(np.std(vals, ddof=1) / np.sqrt(len(vals))) if len(vals) > 1 else 0.0)
+    xs, means, sems = np.array(xs), np.array(means), np.array(sems)
+    ax.plot(xs, means, "-", color="black", lw=2.8, zorder=5, label="group mean")
+    ax.fill_between(xs, means - sems, means + sems, color="black", alpha=0.15, zorder=4)
+
     ax.axhline(50, color="grey", ls=":", lw=0.8, alpha=0.7)
     ax.set_xlabel("session #")
-    ax.set_ylabel("% of trials")
-    ax.set_title("Generalization (light cue) — learning curve")
+    ax.set_ylabel("hit rate (% of all trials)")
+    ax.set_title("Generalization (light cue) — learning curve, all mice")
     ax.set_ylim(0, 100)
     ax.set_xlim(0.5, max_s + 0.5)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.legend(fontsize=8, framealpha=0.9)
+    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
     fig.tight_layout()
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
 
 
 def plot_engaged_hits_miss(per_mouse: dict[str, list[dict]], out_path: str) -> None:
-    mice = list(per_mouse)
-    fig, axes = plt.subplots(1, len(mice), figsize=(5.2 * len(mice), 4.4),
-                             sharey=True, squeeze=False)
-    axes = axes[0]
+    """Grid (one panel per mouse): per-session engaged trials split hit vs miss."""
+    mice = _sorted_mice(per_mouse)
+    ncol = 5
+    nrow = (len(mice) + ncol - 1) // ncol
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3 * ncol, 2.6 * nrow),
+                             sharex=True, sharey=True)
+    axes = np.array(axes).reshape(-1)
+    max_s = max((r["session_num"] for rows in per_mouse.values() for r in rows), default=1)
     for ax, mouse in zip(axes, mice):
         rows = per_mouse[mouse]
         x = np.array([r["session_num"] for r in rows], dtype=float)
         hits = [r["hits"] for r in rows]
         miss = [r["miss"] for r in rows]
-        ax.bar(x, hits, width=0.6, color="#2ca02c", label="hit")
-        ax.bar(x, miss, width=0.6, bottom=hits, color="#d62728", label="miss")
-        ax.set_title(mouse, fontsize=11)
-        ax.set_xlabel("session #")
-        ax.set_xticks(x)
+        ax.bar(x, hits, width=0.7, color="#2ca02c")
+        ax.bar(x, miss, width=0.7, bottom=hits, color="#d62728")
+        ax.set_title(mouse, fontsize=10)
+        ax.set_xlim(0.5, max_s + 0.5)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    axes[0].set_ylabel("engaged trials (poked during LED2 on)")
-    axes[0].legend(fontsize=8, framealpha=0.9)
+    for ax in axes[len(mice):]:
+        ax.axis("off")
+
+    handles = [mpatches.Patch(color="#2ca02c", label="hit"),
+               mpatches.Patch(color="#d62728", label="miss")]
+    fig.legend(handles=handles, loc="upper right", fontsize=9, framealpha=0.9)
+    fig.supxlabel("session #")
+    fig.supylabel("engaged trials (poked during LED2 on)")
     fig.suptitle("Generalization (light cue) — hits vs misses among engaged trials", fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
 
@@ -358,8 +403,10 @@ def write_csv(per_mouse: dict[str, list[dict]], out_path: str) -> None:
 
 
 def main() -> int:
+    mice = discover_mice()
+    print(f"Mice ({len(mice)}): {', '.join(mice)}")
     per_mouse: dict[str, list[dict]] = {}
-    for mouse, subjects in MICE.items():
+    for mouse, subjects in mice.items():
         rows = collect_mouse(subjects)
         per_mouse[mouse] = rows
         print(f"{mouse}: {len(rows)} sessions")
@@ -374,19 +421,19 @@ def main() -> int:
     plot_engaged_hits_miss(per_mouse, os.path.join(OUT_ROOT, "generalization_engaged_hits_miss.png"))
     write_csv(per_mouse, os.path.join(OUT_ROOT, "generalization_metrics.csv"))
 
+    # rasters only for the highlighted learners (per-mouse files + combined grid)
+    raster_mice = {m: per_mouse[m] for m in RASTER_MICE if m in per_mouse}
     n_rasters = 0
-    for mouse, rows in per_mouse.items():
+    for mouse, rows in raster_mice.items():
         rdir = os.path.join(OUT_ROOT, "rasters", mouse)
         os.makedirs(rdir, exist_ok=True)
         for r in rows:
             plot_raster(mouse, r, os.path.join(rdir, f"gen_session_{r['session_num']}.png"))
             n_rasters += 1
-
-    combined_path = os.path.join(OUT_ROOT, "generalization_all_rasters.png")
-    plot_combined_rasters(per_mouse, combined_path)
-
-    print(f"\nWrote figures + {n_rasters} rasters under '{OUT_ROOT}/'.")
-    print(f"Combined raster grid: {combined_path}")
+    if raster_mice:
+        combined_path = os.path.join(OUT_ROOT, "generalization_all_rasters.png")
+        plot_combined_rasters(raster_mice, combined_path)
+        print(f"\nRasters: {n_rasters} ({', '.join(raster_mice)}) + combined grid {combined_path}")
     return 0
 
 

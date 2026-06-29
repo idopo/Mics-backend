@@ -68,10 +68,14 @@ the cue becomes a **light**?
 ## Scope
 - **Task:** `Generalization` ("GenLight") — same poke→lick→reward structure as
   the appetitive task, but the cue is **LED2 (a light)** instead of a tone.
-- **Mice:** the two clear learners, **m97** and **m102**.
+- **Mice:** all 10 are auto-discovered (`m<id>_GenLight_400` subjects). The
+  aggregate figures (learning curve, engaged hits/miss, CSV) cover **all mice**;
+  the rasters are drawn only for the highlighted learners **m97, m102**
+  (`RASTER_MICE`) since a 10-mouse raster grid is unreadable.
 - Each mouse's generalization sessions span two ES subject strings
   (`<id>_GenLight_400` then `<id>_GenLight_400_2`, a continuation); they are
-  merged and ordered chronologically into **session # 1..4** (Dec 2025–Jan 2026).
+  merged and ordered chronologically into **session # 1..N** (Dec 2025–Jan 2026).
+  Partial/aborted sessions (< `MIN_TRIALS`=10 trials) are dropped.
 
 ## Event semantics (verified against the raw stream)
 | Behavior | ES event |
@@ -96,17 +100,24 @@ session-start priming pulse).
 - `generalization_all_rasters.png` — all rasters in one figure (rows = sessions, m97 left / m102 right)
 - `generalization_metrics.csv` — per-session table (incl. `acc_given_engaged`)
 
-## Key finding — yes, both generalized
-**When these mice poke on the light cue, they are almost always right** (accuracy-when-engaged):
+## Key finding — the whole cohort generalized
+**Whenever a mouse pokes on the light cue, it is almost always right.** Across
+all 10 mice, accuracy-given-engagement sits at ~**85–100%** from the very first
+session (the engaged hits/miss bars are nearly all green, with thin red slivers).
+The light→reward association transferred immediately; understanding was never the
+bottleneck. What grows across sessions is **engagement** — how many trials the
+mouse bothers to poke on — and the group-mean hit rate rises accordingly
+(~44% → ~67% by session 4).
+
+The two highlighted learners illustrate the pattern (accuracy-when-engaged):
 
 | | s1 | s2 | s3 | s4 |
 |---|---|---|---|---|
 | **m97** | 83% | 90% | 88% | 86% |
 | **m102** | 86% | 94% | 100% | 93% |
 
-- Accuracy-given-engagement is **83–100% from the first session** — the light→reward association transferred immediately; understanding was not the bottleneck.
-- What grows across sessions is **engagement** (how many trials they poke on): m102 climbs 42→59 engaged trials; m97 trends up too.
-- **m102 generalized most completely** (near-ceiling engagement and accuracy by session 3); **m97 is just as accurate but engages on fewer trials.**
+- **m102 generalized most completely** (near-ceiling engagement and accuracy by session 3).
+- Slowest *starters* were m92 and m101 (low session-1 engagement) but they climb steeply and reach the same high accuracy — so they generalized too, just engaged later.
 
 ## Reproduce
 ```bash

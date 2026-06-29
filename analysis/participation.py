@@ -29,8 +29,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 
@@ -102,31 +100,34 @@ def plot_engagement_curve(per_mouse: dict, out_path: str, cue_label: str, num: i
     plt.close(fig)
 
 
-# --- 2. participation vs competence dissociation --------------------------
+# --- 2. participation vs competence, per mouse ----------------------------
 def plot_dissociation(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
-    fig, ax = plt.subplots(figsize=(7.5, 6.5))
+    """Per-mouse panel: participation (engagement %) and competence (accuracy
+    when engaged) side by side across sessions, so the dissociation is visible
+    per mouse — competence stays high while participation climbs."""
+    c_part, c_comp = "#ff7f0e", "#2ca02c"
+    mice = _sorted_mice(per_mouse)
+    fig, axes = _grid(len(mice))
     max_s = _max_session(per_mouse)
-    norm = Normalize(vmin=1, vmax=max_s)
-    cmap = plt.get_cmap("viridis")
-    accs = []
-    for rows in per_mouse.values():
-        for r in rows:
-            if r["n_engaged"] == 0:
-                continue
-            ax.scatter(r["engaged_rate"], r["acc_given_engaged"], s=45,
-                       color=cmap(norm(r["session_num"])), edgecolor="white", linewidths=0.4)
-            accs.append(r["acc_given_engaged"])
-    if accs:
-        ax.axhline(float(np.mean(accs)), color="grey", ls="--", lw=1.0,
-                   label=f"mean accuracy = {np.mean(accs):.0f}%")
-        ax.legend(fontsize=9, loc="lower left")
-    ax.set_xlabel("engagement rate (% of trials with on-cue poke)  →  participation")
-    ax.set_ylabel("accuracy when engaged (% of engaged trials)  →  competence")
-    ax.set_title(f"[{num}] {cue_label} — participation vs competence\n(each point = one mouse-session)")
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 105)
-    fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=ax, label="session #")
-    fig.tight_layout()
+    for ax, mouse in zip(axes, mice):
+        rows = sorted(per_mouse[mouse], key=lambda r: r["session_num"])
+        xs = [r["session_num"] for r in rows]
+        ax.plot(xs, [r["engaged_rate"] for r in rows], "-o", color=c_part, lw=1.6, ms=4)
+        ax.plot(xs, [r["acc_given_engaged"] if r["n_engaged"] else np.nan for r in rows],
+                "-s", color=c_comp, lw=1.6, ms=4)
+        ax.set_title(_short(mouse), fontsize=10)
+        ax.set_ylim(0, 100)
+        ax.set_xlim(0.5, max_s + 0.5)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    for ax in axes[len(mice):]:
+        ax.axis("off")
+    handles = [plt.Line2D([], [], color=c_part, marker="o", label="participation (engagement %)"),
+               plt.Line2D([], [], color=c_comp, marker="s", label="competence (accuracy when engaged %)")]
+    fig.legend(handles=handles, loc="upper right", fontsize=9, framealpha=0.9)
+    fig.supxlabel("session #")
+    fig.supylabel("% of trials")
+    fig.suptitle(f"[{num}] {cue_label} — participation vs competence, per mouse", fontsize=12)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
 
@@ -140,64 +141,72 @@ def _rolling(seq: list[bool], window: int) -> list[float]:
     return out
 
 
+def _session_color(s: int, max_s: int):
+    """Distinct categorical color per session number (1-based)."""
+    cmap = plt.get_cmap("tab10" if max_s <= 10 else "tab20")
+    return cmap((s - 1) % cmap.N)
+
+
 def plot_within_session_ramp(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     mice = _sorted_mice(per_mouse)
     fig, axes = _grid(len(mice))
     max_s = _max_session(per_mouse)
-    norm = Normalize(vmin=1, vmax=max_s)
-    cmap = plt.get_cmap("viridis")
     for ax, mouse in zip(axes, mice):
         for r in per_mouse[mouse]:
             seq = r["engaged_seq"]
             if not seq:
                 continue
             ax.plot(range(1, len(seq) + 1), _rolling(seq, ROLL_WINDOW),
-                    color=cmap(norm(r["session_num"])), lw=1.2, alpha=0.85)
+                    color=_session_color(r["session_num"], max_s), lw=1.3)
         ax.set_title(_short(mouse), fontsize=10)
         ax.set_ylim(0, 100)
     for ax in axes[len(mice):]:
         ax.axis("off")
+    handles = [plt.Line2D([], [], color=_session_color(s, max_s), label=f"session {s}")
+               for s in range(1, max_s + 1)]
+    fig.legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.9,
+               ncol=1 if max_s <= 6 else 2)
     fig.supxlabel("trial # within session")
     fig.supylabel(f"engagement (rolling %, window={ROLL_WINDOW})")
     fig.suptitle(f"[{num}] {cue_label} — within-session engagement ramp", fontsize=12)
-    fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes.tolist(),
-                 label="session #", fraction=0.02, pad=0.01)
-    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.savefig(out_path, dpi=140)
     plt.close(fig)
 
 
-# --- 4. latency to engage (trials-to-first + reaction time) ---------------
+# --- 4. latency to engage (trials-to-first + reaction time), grouped bars --
+def _first_engaged_idx(seq: list[bool]):
+    return next((k + 1 for k, v in enumerate(seq) if v), None)
+
+
 def plot_latency(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.2))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.4))
     cmap = plt.get_cmap("tab10")
     mice = _sorted_mice(per_mouse)
     max_s = _max_session(per_mouse)
+    nmice = len(mice)
+    width = 0.8 / nmice
 
     for i, mouse in enumerate(mice):
-        rows = per_mouse[mouse]
+        offset = (i - (nmice - 1) / 2) * width
         col = cmap(i % 10)
-        first_eng, rt_med = [], []
+        rows = per_mouse[mouse]
+        x1, y1, x2, y2 = [], [], [], []
         for r in rows:
-            seq = r["engaged_seq"]
-            idx = next((k + 1 for k, v in enumerate(seq) if v), None)
-            r["_first_eng"] = idx
-            r["_rt_med"] = float(np.median(r["rt_list"])) if r["rt_list"] else None
-        xs1 = [r["session_num"] for r in rows if r["_first_eng"] is not None]
-        ys1 = [r["_first_eng"] for r in rows if r["_first_eng"] is not None]
-        ax1.plot(xs1, ys1, "-o", color=col, lw=1.4, ms=4, alpha=0.7, label=_short(mouse))
-        xs2 = [r["session_num"] for r in rows if r["_rt_med"] is not None]
-        ys2 = [r["_rt_med"] for r in rows if r["_rt_med"] is not None]
-        ax2.plot(xs2, ys2, "-o", color=col, lw=1.4, ms=4, alpha=0.7, label=_short(mouse))
-
-    mx, mm, _ = _mean_sem_by_session(per_mouse, "_first_eng", max_s)
-    ax1.plot(mx, mm, "-", color="black", lw=2.6, label="group mean")
-    rx, rm, _ = _mean_sem_by_session(per_mouse, "_rt_med", max_s)
-    ax2.plot(rx, rm, "-", color="black", lw=2.6, label="group mean")
+            idx = _first_engaged_idx(r["engaged_seq"])
+            if idx is not None:
+                x1.append(r["session_num"] + offset)
+                y1.append(idx)
+            if r["rt_list"]:
+                x2.append(r["session_num"] + offset)
+                y2.append(float(np.median(r["rt_list"])))
+        ax1.bar(x1, y1, width=width, color=col, label=_short(mouse))
+        ax2.bar(x2, y2, width=width, color=col, label=_short(mouse))
 
     for ax in (ax1, ax2):
         ax.set_xlabel("session #")
+        ax.set_xticks(range(1, max_s + 1))
         ax.set_xlim(0.5, max_s + 0.5)
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax1.set_ylabel("trials until first engaged trial")
     ax1.set_title("How long before the mouse switches on")
     ax2.set_ylabel("median reaction time (s): cue → first on-cue poke")

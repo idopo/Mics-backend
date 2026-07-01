@@ -1,0 +1,14 @@
+Engagement bouts (consecutive on-cue-engaged trials)
+Bout = run of more than 3 engaged trials in a row (>= 4).
+
+## Appetitive (tone)  (10 mice)
+    m97: 1.5 bouts/session, mean 5.4 trials in a row, longest 12 (8 sessions)
+   m102: 1.6 bouts/session, mean 5.3 trials in a row, longest 8 (11 sessions)
+    m90: 0.4 bouts/session, mean 5.2 trials in a row, longest 7 (13 sessions)
+    m93: 0.2 bouts/session, mean 5.0 trials in a row, longest 6 (12 sessions)
+   m104: 0.3 bouts/session, mean 4.5 trials in a row, longest 5 (12 sessions)
+   m103: 0.2 bouts/session, mean 4.3 trials in a row, longest 5 (12 sessions)
+   m100: 1.0 bouts/session, mean 4.0 trials in a row, longest 4 (4 sessions)
+   m101: 0.1 bouts/session, mean 4.0 trials in a row, longest 4 (12 sessions)
+    m92: 0.0 bouts/session, mean n/a trials in a row, longest 0 (11 sessions)
+    m98: 0.0 bouts/session, mean n/a trials in a row, longest 0 (12 sessions)

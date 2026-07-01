@@ -1,0 +1,11 @@
+task,mouse,n_trials,n_sessions,P_engage_after_reward,P_engage_after_no_reward,engagement_reward_delta,P_engage_after_engaged,P_engage_after_not_engaged,engagement_persistence_delta,P_offcue_after_reward,P_offcue_after_no_reward,offcue_reward_delta,P_rewarded_given_engaged_after_reward,P_rewarded_given_engaged_after_no_reward,competence_reward_delta,mean_prev3_reward_rate,mean_prev3_engagement_rate,reward_gated_score,state_persistence_score,final_interpretation
+AppetitveTaskReal,m90,780,13,36.181,29.577,6.603,34.156,29.962,4.195,75.377,63.732,11.644,90.278,77.976,12.302,25.793,31.551,12.426,4.195,steady participator
+AppetitveTaskReal,m92,660,11,30.303,14.58,15.723,24.299,14.576,9.723,57.576,42.196,15.38,75.0,60.0,15.0,10.067,16.641,23.413,9.723,strong reward-gated engagement
+AppetitveTaskReal,m93,727,12,27.007,19.031,7.976,26.667,18.938,7.729,68.613,57.439,11.174,89.189,91.818,-2.629,19.161,20.979,13.563,7.729,steady participator
+AppetitveTaskReal,m97,480,8,49.246,41.392,7.854,47.17,42.692,4.478,85.427,76.19,9.237,92.857,92.92,-0.063,41.702,44.456,12.473,4.478,steady participator
+AppetitveTaskReal,m98,732,12,23.529,10.164,13.365,18.75,10.156,8.594,66.667,33.632,33.034,91.667,58.824,32.843,7.037,11.088,29.882,8.594,off-cue dominated after reward
+AppetitveTaskReal,m100,245,4,40.741,29.947,10.794,36.709,30.247,6.462,79.63,63.102,16.528,90.909,57.143,33.766,22.199,32.573,19.058,6.462,off-cue dominated after reward
+AppetitveTaskReal,m101,730,12,33.333,16.188,17.146,26.772,15.567,11.205,57.895,44.024,13.871,73.684,41.121,32.563,7.776,17.781,24.081,11.205,strong reward-gated engagement
+AppetitveTaskReal,m102,671,11,50.655,32.947,17.708,50.958,31.328,19.63,79.476,64.965,14.511,91.379,84.507,6.872,34.545,39.369,24.964,19.63,strong reward-gated engagement
+AppetitveTaskReal,m103,732,12,24.638,25.086,-0.448,25.946,24.673,1.273,70.29,56.873,13.417,73.529,74.658,-1.128,19.306,25.903,6.26,1.273,steady participator
+AppetitveTaskReal,m104,720,12,30.841,20.799,10.042,29.193,20.293,8.9,61.682,59.401,2.281,75.758,63.2,12.558,14.948,22.646,11.183,8.9,steady participator

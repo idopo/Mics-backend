@@ -1,0 +1,23 @@
+ACTION-SEQUENCE ANALYSIS — INTERPRETATION
+================================================
+
+NOTE: the five chain categories are mutually exclusive and sum to 100%. 'mixed_offcue_and_oncue' overlaps them (off-cue/ITI poking is near-universal) and is reported separately, not as a stack slice.
+
+### Appetitive (tone) (AppetitveTaskReal)
+1. Most reliable full poke->lick->reward sequence: m97 (41%), m102 (34%), m90 (25%), m100 (22%)
+2. Poke on-cue but fail to lick (lowest P(lick|poke)): m101 (65%), m98 (71%), m92 (75%), m100 (79%)
+3. Mostly fail at engagement (lowest engagement): m98 (11%), m92 (16%), m101 (18%), m93 (21%)
+4. Highest off-cue poking (pokes/trial): m102 (4), m97 (3), m100 (3), m104 (2)
+5. Most reward-gated (engage more after reward; P(engage|prev hit) - P(engage|prev miss)): m102 (18pp), m101 (17pp), m92 (16pp), m98 (13pp)
+
+### Generalization (light) (Generalization)
+1. Most reliable full poke->lick->reward sequence: m102 (81%), m100 (65%), m90 (62%), m103 (61%)
+2. Poke on-cue but fail to lick (lowest P(lick|poke)): m100 (94%), m98 (98%), m90 (98%), m97 (98%)
+3. Mostly fail at engagement (lowest engagement): m92 (44%), m101 (48%), m98 (57%), m97 (57%)
+4. Highest off-cue poking (pokes/trial): m102 (8), m90 (4), m100 (3), m103 (3)
+5. Most reward-gated (engage more after reward; P(engage|prev hit) - P(engage|prev miss)): m92 (33pp), m101 (21pp), m93 (17pp), m100 (14pp)
+
+### Appetitive vs Generalization
+6. Group means — complete-sequence %: appetitive 19% vs generalization 57%; engagement: 25% vs 63%; accuracy when engaged: 72% vs 90%.
+7. Generalization improvement is driven by PARTICIPATION, not accuracy: engagement 50% -> 72% (s1->s4) while accuracy-when-engaged stays high/flat 87% -> 91%.
+

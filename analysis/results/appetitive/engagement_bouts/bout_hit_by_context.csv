@@ -1,0 +1,67 @@
+task,mouse,context,n_trials,n_hits,hit_rate
+AppetitveTaskReal,m90,prev engaged attempt,5,4,80.0
+AppetitveTaskReal,m90,bout 1st,5,5,100.0
+AppetitveTaskReal,m90,bout mid,16,15,93.8
+AppetitveTaskReal,m90,bout last,5,5,100.0
+AppetitveTaskReal,m90,next engaged attempt,5,5,100.0
+AppetitveTaskReal,m90,engaged (no bout),217,173,79.7
+AppetitveTaskReal,m92,prev engaged attempt,0,0,
+AppetitveTaskReal,m92,bout 1st,0,0,
+AppetitveTaskReal,m92,bout mid,0,0,
+AppetitveTaskReal,m92,bout last,0,0,
+AppetitveTaskReal,m92,next engaged attempt,0,0,
+AppetitveTaskReal,m92,engaged (no bout),107,66,61.7
+AppetitveTaskReal,m93,prev engaged attempt,2,2,100.0
+AppetitveTaskReal,m93,bout 1st,2,2,100.0
+AppetitveTaskReal,m93,bout mid,6,6,100.0
+AppetitveTaskReal,m93,bout last,2,2,100.0
+AppetitveTaskReal,m93,next engaged attempt,2,2,100.0
+AppetitveTaskReal,m93,engaged (no bout),140,127,90.7
+AppetitveTaskReal,m97,prev engaged attempt,10,8,80.0
+AppetitveTaskReal,m97,bout 1st,12,11,91.7
+AppetitveTaskReal,m97,bout mid,40,39,97.5
+AppetitveTaskReal,m97,bout last,12,10,83.3
+AppetitveTaskReal,m97,next engaged attempt,11,9,81.8
+AppetitveTaskReal,m97,engaged (no bout),148,137,92.6
+AppetitveTaskReal,m98,prev engaged attempt,0,0,
+AppetitveTaskReal,m98,bout 1st,0,0,
+AppetitveTaskReal,m98,bout mid,0,0,
+AppetitveTaskReal,m98,bout last,0,0,
+AppetitveTaskReal,m98,next engaged attempt,0,0,
+AppetitveTaskReal,m98,engaged (no bout),80,51,63.7
+AppetitveTaskReal,m100,prev engaged attempt,4,4,100.0
+AppetitveTaskReal,m100,bout 1st,4,4,100.0
+AppetitveTaskReal,m100,bout mid,8,7,87.5
+AppetitveTaskReal,m100,bout last,4,4,100.0
+AppetitveTaskReal,m100,next engaged attempt,4,3,75.0
+AppetitveTaskReal,m100,engaged (no bout),63,38,60.3
+AppetitveTaskReal,m101,prev engaged attempt,1,1,100.0
+AppetitveTaskReal,m101,bout 1st,1,1,100.0
+AppetitveTaskReal,m101,bout mid,2,2,100.0
+AppetitveTaskReal,m101,bout last,1,1,100.0
+AppetitveTaskReal,m101,next engaged attempt,1,1,100.0
+AppetitveTaskReal,m101,engaged (no bout),124,54,43.5
+AppetitveTaskReal,m102,prev engaged attempt,18,13,72.2
+AppetitveTaskReal,m102,bout 1st,18,17,94.4
+AppetitveTaskReal,m102,bout mid,60,53,88.3
+AppetitveTaskReal,m102,bout last,18,16,88.9
+AppetitveTaskReal,m102,next engaged attempt,15,14,93.3
+AppetitveTaskReal,m102,engaged (no bout),165,143,86.7
+AppetitveTaskReal,m103,prev engaged attempt,2,0,0.0
+AppetitveTaskReal,m103,bout 1st,3,2,66.7
+AppetitveTaskReal,m103,bout mid,7,5,71.4
+AppetitveTaskReal,m103,bout last,3,3,100.0
+AppetitveTaskReal,m103,next engaged attempt,2,1,50.0
+AppetitveTaskReal,m103,engaged (no bout),173,128,74.0
+AppetitveTaskReal,m104,prev engaged attempt,4,3,75.0
+AppetitveTaskReal,m104,bout 1st,4,3,75.0
+AppetitveTaskReal,m104,bout mid,10,5,50.0
+AppetitveTaskReal,m104,bout last,4,3,75.0
+AppetitveTaskReal,m104,next engaged attempt,4,3,75.0
+AppetitveTaskReal,m104,engaged (no bout),143,95,66.4
+AppetitveTaskReal,GROUP,prev engaged attempt,46,35,76.1
+AppetitveTaskReal,GROUP,bout 1st,49,45,91.8
+AppetitveTaskReal,GROUP,bout mid,149,132,88.6
+AppetitveTaskReal,GROUP,bout last,49,44,89.8
+AppetitveTaskReal,GROUP,next engaged attempt,44,38,86.4
+AppetitveTaskReal,GROUP,engaged (no bout),1360,1012,74.4

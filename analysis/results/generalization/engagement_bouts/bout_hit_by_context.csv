@@ -1,0 +1,67 @@
+task,mouse,context,n_trials,n_hits,hit_rate
+Generalization,m90,prev engaged attempt,14,12,85.7
+Generalization,m90,bout 1st,15,15,100.0
+Generalization,m90,bout mid,94,81,86.2
+Generalization,m90,bout last,15,12,80.0
+Generalization,m90,next engaged attempt,13,11,84.6
+Generalization,m90,engaged (no bout),49,43,87.8
+Generalization,m92,prev engaged attempt,9,9,100.0
+Generalization,m92,bout 1st,9,9,100.0
+Generalization,m92,bout mid,40,37,92.5
+Generalization,m92,bout last,9,8,88.9
+Generalization,m92,next engaged attempt,9,9,100.0
+Generalization,m92,engaged (no bout),50,45,90.0
+Generalization,m93,prev engaged attempt,11,11,100.0
+Generalization,m93,bout 1st,12,11,91.7
+Generalization,m93,bout mid,57,54,94.7
+Generalization,m93,bout last,12,12,100.0
+Generalization,m93,next engaged attempt,11,11,100.0
+Generalization,m93,engaged (no bout),62,57,91.9
+Generalization,m97,prev engaged attempt,10,10,100.0
+Generalization,m97,bout 1st,11,9,81.8
+Generalization,m97,bout mid,56,46,82.1
+Generalization,m97,bout last,11,11,100.0
+Generalization,m97,next engaged attempt,11,9,81.8
+Generalization,m97,engaged (no bout),61,55,90.2
+Generalization,m98,prev engaged attempt,8,7,87.5
+Generalization,m98,bout 1st,9,9,100.0
+Generalization,m98,bout mid,38,35,92.1
+Generalization,m98,bout last,9,8,88.9
+Generalization,m98,next engaged attempt,8,8,100.0
+Generalization,m98,engaged (no bout),82,75,91.5
+Generalization,m100,prev engaged attempt,19,17,89.5
+Generalization,m100,bout 1st,22,17,77.3
+Generalization,m100,bout mid,113,100,88.5
+Generalization,m100,bout last,22,17,77.3
+Generalization,m100,next engaged attempt,19,16,84.2
+Generalization,m100,engaged (no bout),29,25,86.2
+Generalization,m101,prev engaged attempt,9,8,88.9
+Generalization,m101,bout 1st,10,8,80.0
+Generalization,m101,bout mid,36,33,91.7
+Generalization,m101,bout last,10,7,70.0
+Generalization,m101,next engaged attempt,9,8,88.9
+Generalization,m101,engaged (no bout),61,55,90.2
+Generalization,m102,prev engaged attempt,14,13,92.9
+Generalization,m102,bout 1st,16,13,81.2
+Generalization,m102,bout mid,157,151,96.2
+Generalization,m102,bout last,16,16,100.0
+Generalization,m102,next engaged attempt,13,10,76.9
+Generalization,m102,engaged (no bout),21,17,81.0
+Generalization,m103,prev engaged attempt,14,13,92.9
+Generalization,m103,bout 1st,15,13,86.7
+Generalization,m103,bout mid,74,65,87.8
+Generalization,m103,bout last,15,14,93.3
+Generalization,m103,next engaged attempt,14,13,92.9
+Generalization,m103,engaged (no bout),63,56,88.9
+Generalization,m104,prev engaged attempt,15,15,100.0
+Generalization,m104,bout 1st,17,17,100.0
+Generalization,m104,bout mid,64,59,92.2
+Generalization,m104,bout last,17,17,100.0
+Generalization,m104,next engaged attempt,16,15,93.8
+Generalization,m104,engaged (no bout),60,51,85.0
+Generalization,GROUP,prev engaged attempt,123,115,93.5
+Generalization,GROUP,bout 1st,136,121,89.0
+Generalization,GROUP,bout mid,729,661,90.7
+Generalization,GROUP,bout last,136,122,89.7
+Generalization,GROUP,next engaged attempt,123,110,89.4
+Generalization,GROUP,engaged (no bout),538,479,89.0

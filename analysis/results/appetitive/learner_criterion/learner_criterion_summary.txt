@@ -1,0 +1,21 @@
+FORMAL LEARNER-CRITERION ANALYSIS — SUMMARY
+==============================================
+
+Thresholds: engagement >= 50%, accuracy(strong) >= 70%, accuracy(competent) >= 80%, non-learner accuracy < 60%. Late = last 3 sessions.
+Learning is judged on PARTICIPATION (engagement) and COMPETENCE (accuracy-when-engaged), never on hit rate alone.
+
+### Appetitive (tone)
+1. Strong learners: m97
+2. Partial learners: m90, m92, m98, m100, m102, m103, m104
+3. Competent but low-participation: m93
+4. Non-learners: m101
+5. Impulsive / off-cue-dominated: m97, m100, m102
+
+### 7. Did failures come from low competence or low participation?
+  Appetitive (tone): participation-limited (knows rule, under-engages) = m90, m92, m93, m98, m100, m102, m103; competence-limited (fails when engaged) = m101.
+
+### 8. Where hit-rate-alone disagrees with the engagement+competence view
+   (hit-rate rule = >=50% for 2 consecutive sessions; it writes off any
+    mouse that engages little, even one that is accurate when it does.)
+  Appetitive (tone): hit-rate-only fails to credit these competent mice → m93 (accuracy 88%, hit rate 13%, competent, low participation), m97 (accuracy 97%, hit rate 52%, strong learner)
+

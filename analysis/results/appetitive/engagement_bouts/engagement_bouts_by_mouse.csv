@@ -1,0 +1,11 @@
+task,mouse,n_sessions,mean_n_bouts_per_session,sem_n_bouts,mean_bout_length,sem_bout_length,longest_bout
+AppetitveTaskReal,m90,13,0.385,0.180,5.250,0.629,7
+AppetitveTaskReal,m92,11,0.000,0.000,,0.000,0
+AppetitveTaskReal,m93,12,0.167,0.112,5.000,1.000,6
+AppetitveTaskReal,m97,8,1.500,0.378,5.417,0.779,12
+AppetitveTaskReal,m98,12,0.000,0.000,,0.000,0
+AppetitveTaskReal,m100,4,1.000,0.408,4.000,0.000,4
+AppetitveTaskReal,m101,12,0.083,0.083,4.000,0.000,4
+AppetitveTaskReal,m102,11,1.636,0.388,5.269,0.332,8
+AppetitveTaskReal,m103,12,0.250,0.131,4.333,0.333,5
+AppetitveTaskReal,m104,12,0.333,0.188,4.500,0.289,5

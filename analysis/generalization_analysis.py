@@ -37,6 +37,7 @@ import csv
 import os
 import re
 from datetime import datetime
+from pathlib import Path
 
 import matplotlib
 
@@ -75,8 +76,17 @@ ID_REWARD = "open"
 
 LED_WINDOW_S = 8.0  # fallback cue length when no LED-off is seen (miss trials)
 REWARD_LICK_WINDOW_S = 0.5
-MIN_TRIALS = 10  # drop partial/aborted sessions before re-indexing
+# A valid "session" has a trial count around the nominal 60; sessions outside
+# [MIN_TRIALS, MAX_TRIALS] (aborted partials or merged double-sessions) are
+# dropped before re-indexing. Shared band with appetitive_analysis (env-tunable).
+MIN_TRIALS = int(os.environ.get("MICS_MIN_TRIALS", "50"))
+MAX_TRIALS = int(os.environ.get("MICS_MAX_TRIALS", "72"))
 MAX_SESSION = 4  # only the first 4 generalization sessions are common to all mice
+
+
+def session_len_ok(n_trials: int) -> bool:
+    """True if a session's trial count is within the valid ~60-trial band."""
+    return MIN_TRIALS <= n_trials <= MAX_TRIALS
 
 
 def _iso_to_epoch(ts: str) -> float:
@@ -216,7 +226,7 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
             by_session.setdefault(e["session"], []).append(e)
         for sess, evs in by_session.items():
             trials = segment_trials(evs)
-            if len(trials) < MIN_TRIALS:
+            if not session_len_ok(len(trials)):
                 continue
             rows.append({"subject": subject, "raw_session": sess,
                          "start": min(e["epoch"] for e in evs), "trials": trials})

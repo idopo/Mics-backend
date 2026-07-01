@@ -40,6 +40,7 @@ import os
 import re
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import matplotlib
 
@@ -69,8 +70,18 @@ SUBJECT_PATTERN = re.compile(r"^m\d+_+AppetitiveTone_150$")
 # on a MISS the tone is never muted early, it just plays out and stops here.
 TONE_FILE_LENGTH_S = float(os.environ.get("MICS_TONE_S", "8.0"))
 REWARD_LICK_WINDOW_S = 0.5  # a lick within this much before a reward = the HIT lick
-MIN_TRIALS = int(os.environ.get("MICS_MIN_TRIALS", "10"))  # drop partial sessions in curve
-OUT_ROOT = os.environ.get("MICS_OUT", "appetitive_rasters")
+# A valid "session" has a trial count around the nominal 60. Sessions outside
+# [MIN_TRIALS, MAX_TRIALS] are aborted partials or merged double-sessions (~120)
+# and are excluded from every analysis. Override the band via env if needed.
+MIN_TRIALS = int(os.environ.get("MICS_MIN_TRIALS", "50"))
+MAX_TRIALS = int(os.environ.get("MICS_MAX_TRIALS", "72"))
+
+
+def session_len_ok(n_trials: int) -> bool:
+    """True if a session's trial count is within the valid ~60-trial band."""
+    return MIN_TRIALS <= n_trials <= MAX_TRIALS
+OUT_ROOT = os.environ.get("MICS_OUT") or str(
+    Path(__file__).resolve().parent / "results" / "appetitive" / "overview")
 
 # Event-type / id constants (verified against the data)
 ET_AUDIO = "mixer.AUDIO"
@@ -566,7 +577,7 @@ def run(args: argparse.Namespace) -> int:
             rows = []
             for s in sorted(trials_by_session):
                 trials = trials_by_session[s]
-                if len(trials) < args.min_trials:
+                if not (args.min_trials <= len(trials) <= MAX_TRIALS):
                     continue
                 n_hits = sum(t["is_hit"] for t in trials)
                 row = {"subject": subject, "session": s,

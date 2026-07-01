@@ -1,0 +1,18 @@
+TRIAL-HISTORY ANALYSIS — SUMMARY
+========================================
+
+Descriptive conditional probabilities (bootstrap CIs) are the primary result; the logistic models corroborate them. Effects are descriptive — a previous-reward effect means 'more likely to engage after reward', not a proven mechanism.
+
+### Appetitive (tone)
+1. Most reward-gated (Δengage after reward): m102 (+18pp), m101 (+17pp), m92 (+16pp)
+2. Strongest engagement persistence (Δengage after engaged): m102 (+20pp), m101 (+11pp), m92 (+10pp)
+3. Strongest off-cue-after-reward (Δoff-cue): m98 (+33pp), m100 (+17pp), m92 (+15pp)
+7. Steady participators: m90, m93, m97, m103, m104
+8. Bursty / reward-gated: m92, m101, m102
+
+### 4-5. Does previous reward predict behavior?
+  Appetitive (tone): engagement is +11pp higher after a rewarded trial; accuracy-once-engaged changes only +14pp (history mostly gates WHETHER they engage, not success once engaged).
+
+### 9. What this adds beyond hit rate / engagement rate
+  Hit rate and engagement rate are static averages; trial-history shows the DYNAMICS — whether engagement is self-sustaining (persistence) or has to be re-triggered by reward (gating). Two mice with the same engagement rate can differ sharply here: a reward-gated mouse disengages until the next reward, a steady mouse engages regardless of the last outcome.
+

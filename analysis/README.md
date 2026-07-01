@@ -36,7 +36,10 @@ deterministic: same ES data in → identical numbers and figures out.
 | `config.py` | — | ES host/index (edit or override with env vars) |
 | `appetitive_analysis.py` | `appetitive_rasters/` | rasters, learning curves, poke grids, participation figures; `--analysis rasters\|curve\|pokes\|participation\|all` |
 | `generalization_analysis.py` | `generalization_figs/` | generalization learning curve, engaged hits/miss, rasters, participation figures |
-| `behavior_patterns.py` | `behavior_figs/` | phenotypes, impulsivity, licking, cross-task transfer (loads both tasks) |
+| `behavior_patterns.py` | `behavior_figs/` | phenotypes, impulsivity, licking, cross-task transfer; `--task appetitive\|generalization\|both` (generalization default + cross-task; appetitive = within-task figures only) |
+| `action_sequence_analysis.py` | `action_sequence_figs/` | per-trial decomposition of the behavioral chain (cue→poke→lick→reward) — stacked bars, group trajectory, per-mouse chain dynamics (on/off-cue pokes + licks across sessions), latencies, trial-history, transition matrix, 2 CSVs + summary.txt; `--task appetitive\|generalization\|both --mouse mNNN` |
+| `learner_criterion_analysis.py` | `learner_criterion_figs/` | formal learner classification (participation vs competence, never hit rate alone); 7 figures + 2 CSVs + summary.txt; `--task … --mouse …` |
+| `trial_history_analysis.py` | `trial_history_figs/` | does current-trial behavior depend on recent history? reward-gating / persistence / off-cue, conditional probabilities + numpy logistic models; 6 figures + 2 CSVs + summary.txt; `--task … --mouse …` |
 | `participation.py` | — | shared participation-vs-competence figure module (imported by both task scripts) |
 
 ---
@@ -202,12 +205,33 @@ full `generalization_analysis.py` run.
 `behavior_patterns.py` — four exploratory, cross-cutting analyses (output under
 `behavior_figs/`). Reuses the generalization + appetitive data loaders.
 
+> The same four behavioral analyses run for the **appetitive (tone)** task — and
+> the within-task figures from this script — are collected under
+> [`behavior_in_appetitive_task/`](behavior_in_appetitive_task/README.md)
+> (`--task appetitive`). The cross-task transfer figures below are not duplicated
+> there since they describe both tasks at once.
+
 | Figure | Shows |
 |---|---|
 | `phenotypes.png` | two engagement phenotypes: x = reward-dependence of engagement (P(engage\|prev hit) − P(engage\|prev miss)), y = longest run of consecutive disengaged trials. **m92 & m101** sit top-right (reward-gated / bursty); the rest cluster bottom-left (steady) |
 | `impulsivity.png` | off-cue nose pokes per trial (poking with no cue / no reward available), ranked. **m102** is a strong outlier (~8/trial vs median ~3) — most impulsive |
 | `licking_dynamics.png` | left: anticipatory licking is ~absent (poke-gated task — licking follows the poke); right: poke→reward-lick latency, the licking signal that exists (bursty m92/m101 are slowest to collect; steady m102/m103 fastest) |
 | `cross_task_transfer.png` | appetitive (tone) vs generalization (light) per mouse: participation transfers moderately (r≈0.5 — engagement is a stable trait); competence does **not** (r≈0.1 — generalization accuracy is ceilinged because the rule is already known) |
+| `hits_first_vs_generalization.png` | dot plot, one point per mouse: **total hits on the first association task (appetitive, tone)** vs **total hits on the generalization (light) task**. Tests whether the mice that earn the most rewards while first learning the association also earn the most once the cue generalizes. Positive (r≈0.77): high-hit learners (m102, m100, m90) stay high; low-hit mice (m92, m101, m98) stay low. *Caveat:* total hits is a raw count, so it reflects both performance and how many sessions a mouse ran (appetitive uses all sessions; generalization is capped at the first 4) — see the per-session version, which removes that confound. |
+| `hits_per_session_first_vs_generalization.png` | same dot plot, but **hits per session** (total hits ÷ kept-session count) on both axes, removing the session-count confound. The relationship weakens to r≈0.54 — still positive, but the standout is **m97**, which earns the most appetitive hits/session (~25) yet only middling generalization hits/session (~30): a fast first-task learner whose per-session reward rate doesn't carry over as strongly. m102 stays top-right on both metrics. |
+| `hits_per_engaged_first_vs_generalization.png` | the **third normalization — hits per *engaged* trial** (total hits ÷ total engaged trials = pooled accuracy-when-engaged), i.e. **success fully decoupled from engagement / participation = competence**. The cross-task correlation **collapses to r≈0.09**. Completing the trilogy `total hits (0.77) → per session (0.54) → per engaged trial (0.09)` shows the raw-hits correlation was carried by *participation* (a stable trait), not competence: appetitive competence ranges widely (45–94%) but generalization competence is ceilinged (86–94% for every mouse — the rule is already known), so success-given-engagement in the first task cannot predict it in the second. This is the same conclusion as the `cross_task_transfer.png` competence panel, viewed through the hits lens. |
+| `scorecard_generalization.png` | integrated per-mouse scorecard (generalization task) — a heatmap with one row per mouse and one column per metric (engagement %, accuracy when engaged, hits/session, impulsivity = off-cue pokes/trial, reward-collection latency). Color = z-score within each column (red high / blue low); cell text = raw value. Single-glance "who's who": **m102** is red across engagement, accuracy, hits/session *and* impulsivity (best performer + most impulsive, fast collector); **m92** is the coldest row (lowest engagement, slowest to collect reward). |
+
+**Who engaged / tried most during the cue.** "Trying during the cue" is the
+**engagement rate** — how often a mouse pokes while the cue (LED/tone) is on. It
+is *not* pokes-per-cue: the cue is cut short the instant the rewarded poke lands,
+so on-cue pokes per engaged trial are pinned at ≈1 for every mouse and don't
+discriminate (this is itself a finding — there's no "hammering" behavior). By
+engagement, the generalization order is **m102 (86%) > m100 (77%) > m90 (71%)**
+… down to **m101 (48%) > m92 (44%)**; on the appetitive task it is **m97 (44%) >
+m102 (38%) > m100 (35%)** … down to **m92 (17%) > m98 (11%)**. m97 leads the
+*first* task's engagement but drops to mid-pack on generalization — the same
+"doesn't carry over" signal seen in the hits/session plot.
 
 **Headline patterns.** Two phenotypes fall out of trial-to-trial structure:
 *reward-gated/bursty* mice (m92, m101) disengage for 20+ trials at a time and
@@ -225,3 +249,296 @@ accuracy-when-engaged genuinely scattered (mean ~71%): there the mice are still
 across the two `*_participation_vs_competence.png` plots is the clearest single
 summary of "already knows the rule" (generalization) vs "still learning it"
 (appetitive).
+
+---
+
+# Action-sequence analysis — where the behavioral chain breaks
+
+`action_sequence_analysis.py` — decomposes every trial into the behavioral chain
+so a low hit rate can be attributed to a *specific* failed link rather than
+treated as one number:
+
+```
+cue presented → on-cue poke → lick after poke → reward → (off-cue noise)
+```
+
+Loads the appetitive (tone) and generalization (light) tasks, reusing the
+existing ES access / subject discovery / session ordering (`appetitive_analysis`,
+`generalization_analysis`, `config`). Trials are re-segmented locally only to
+capture the absolute cue-onset time and reward time that the existing lean trial
+objects drop — the segmentation *logic and event semantics are identical*.
+
+```bash
+python3 action_sequence_analysis.py                  # both tasks, all mice
+python3 action_sequence_analysis.py --task appetitive
+python3 action_sequence_analysis.py --task generalization
+python3 action_sequence_analysis.py --mouse m102
+```
+
+## Trial categories (mutually exclusive — used for the stacked bars + transitions)
+| Category | Meaning |
+|---|---|
+| `no_response` | cue occurred, no poke during the cue window |
+| `cue_poke_no_lick` | on-cue poke, but no lick afterwards |
+| `cue_poke_lick_no_reward` | on-cue poke + lick, but no reward |
+| `complete_sequence_rewarded` | on-cue poke + lick + reward |
+| `offcue_poke_only` | no on-cue poke, but poke(s) outside the cue window |
+
+**Why no exclusive `mixed_offcue_and_oncue` slice (important limitation).**
+Off-cue / ITI poking is near-universal here — `percent_mixed_offcue_and_oncue`
+reaches **88%** in some sessions. Making "mixed" a sixth *exclusive* stack slice
+("any off-cue poke anywhere in the trial") would cannibalise the chain categories
+and make every figure unreadable. So the five chain categories are kept exclusive
+(they sum to exactly 100% — verified on all 156 sessions), and `mixed` is reported
+as a **separate, overlapping diagnostic** (its own summary column + the
+`P(off-cue poke | trial)` line in the group trajectory). A trial is "on-cue" only
+if the nose poke fell while the cue was active; the cue is cut short at reward on
+hits, so the full ~8 s default applies to misses.
+
+## Outputs (under `action_sequence_figs/`)
+- `action_sequence_trials.csv` — one row per trial (cue/poke/lick/reward times,
+  on/off-cue poke counts, off-cue lick count, category, the three chain latencies,
+  and the previous trial's category/rewarded/engaged for history analysis).
+- `action_sequence_session_summary.csv` — one row per (task, mouse, session):
+  the six category percentages, the conditional chain rates
+  (`engagement_rate`, `lick_given_oncue_poke_rate`, `reward_given_oncue_poke_rate`,
+  `reward_given_poke_and_lick_rate`) and the three median latencies.
+- `action_sequence_stacked_by_mouse.png` — **Fig 1**: stacked category bars,
+  one panel per mouse, appetitive block over generalization block. Shows where
+  in the chain each mouse fails.
+- `action_sequence_group_trajectory.png` — **Fig 2**: group mean ± SEM across
+  sessions of `P(on-cue poke | cue)`, `P(lick | poke)`, `P(reward | poke)`,
+  `P(reward | poke+lick)`, `P(off-cue poke | trial)`, per task.
+- `action_chain_by_mouse.png` — **Fig 3**: per-mouse **dynamics across sessions**
+  (one panel per mouse, axes shared across mice). **Left axis (% of trials):**
+  `on-cue poke` and `on-cue poke + lick afterwards` — the gap between the two is
+  the on-cue pokes *not* followed by a lick. **Right axis (events per trial):**
+  `off-cue pokes/trial` and `off-cue licks/trial`. Line style/marker distinguishes
+  task when more than one is loaded. *Caveat:* off-cue licks are defined
+  symmetrically with off-cue pokes (any lick outside the cue window) and therefore
+  **include reward-consumption licking** during the post-cue / ITI period — that
+  red line tracks reward earned rather than pure impulsivity.
+  (Earlier this figure was a cumulative cue→poke→lick→reward funnel averaged over
+  each mouse's last sessions; it now shows the per-session dynamics above.)
+- `action_sequence_latencies.png` — **Fig 4**: per-session median latency
+  (group mean ± SEM) for cue→poke, poke→lick, lick→reward, one line per task.
+- `action_sequence_trial_history.png` — **Fig 5**: reward-gating as a **dumbbell
+  plot** — per mouse, `P(engage)` (and `P(off-cue poke)`) on trial *t* after a
+  rewarded (green) vs non-rewarded (red) trial; the connector length is the
+  gating strength (Δ, annotated), and mice are sorted by the engagement gap so
+  reward-gated mice rise to the top.
+- `action_sequence_transition_matrix.png` — trial-to-trial transitions collapsed
+  onto a **3-level engagement ladder** (`complete → engaged-but-no-reward →
+  disengaged`), row-normalized, one heatmap per task; the boxed diagonal is each
+  state's persistence. Reads directly as stuck / holds-success / recovers.
+- `action_sequence_summary.txt` — plain-text answers to the seven interpretation
+  questions (most-reliable sequence, poke-without-lick, engagement failures,
+  off-cue poking, reward-gating, task contrast, participation-vs-accuracy).
+
+## Key findings (committed run, 156 sessions / 9,552 trials)
+- **The appetitive bottleneck is engagement, not the downstream chain.** Group
+  `P(on-cue poke | cue)` sits at ~25% and is roughly flat across sessions, while
+  every downstream link (`P(lick | poke)`, `P(reward | poke)`) is high — so the
+  grey "no response" + blue "off-cue only" bands dominate Fig 1's appetitive
+  block. Mice mostly fail by *not engaging the cue*, not by botching the action.
+- **Generalization improves through participation.** Engagement climbs
+  ~50% → 75% (s1→s4) while accuracy-when-engaged is near-ceiling from session 1
+  (~87% → 91%). The green "complete sequence" band grows session over session;
+  the chain links were never the problem.
+- **Task contrast:** complete-sequence rate 19% (appetitive) → 58%
+  (generalization); engagement 25% → 64%; accuracy-when-engaged 71% → 89%.
+- **Reward-gated mice fall straight out of Fig 5:** **m92** engages 62% after a
+  rewarded trial vs 31% after an unrewarded one (a +33 pp gap) in generalization,
+  with **m101** (+21) next — the bursty/reward-gated phenotype seen in
+  `behavior_patterns.py`, now localized to the engagement link.
+- **The transition ladder shows where mice get stuck vs hold success.** In
+  appetitive, the disengaged state is sticky (disengaged→disengaged 78%) and even
+  a complete trial usually drops back to disengaged (complete→disengaged 62%). In
+  generalization that flips: success persists (complete→complete 66%) and the
+  disengaged state readily recovers into a complete sequence (disengaged→complete
+  44%) — engagement, once triggered, sustains itself.
+- **m102** is the most complete sequencer (81% complete in generalization) and
+  also the most off-cue (≈8 pokes/trial) — high performer *and* most impulsive,
+  consistent with the scorecard.
+
+---
+
+# Formal learner-criterion analysis — learned, or just didn't participate?
+
+`learner_criterion_analysis.py` — classifies every mouse on whether it **learned**
+the task, **generalized**, or mainly failed from **low participation** — and never
+on hit rate alone. A low hit rate is ambiguous: a mouse can fail because it does
+not understand the task (low *competence*) or because it rarely engages the cue
+(low *participation*). This script separates the two.
+
+Reuses the existing loaders (`appetitive_analysis`, `generalization_analysis`,
+`config`) — same ES setup/env vars, no new client. Generalization session
+ordering comes from `generalization_analysis.collect_mouse`.
+
+```bash
+python3 learner_criterion_analysis.py                  # both tasks, all mice
+python3 learner_criterion_analysis.py --task appetitive
+python3 learner_criterion_analysis.py --task generalization
+python3 learner_criterion_analysis.py --mouse m102
+```
+
+## The four orthogonal axes (one consistent definition for both tasks)
+| metric | meaning |
+|---|---|
+| `engagement_rate` | engaged trials / all trials — **participation** (engaged = on-cue poke) |
+| `accuracy_when_engaged` | rewarded / engaged — **competence** (success once engaged) |
+| `hit_rate` | rewarded / all trials — the **ambiguous** number |
+| `offcue_pokes_per_trial` | pokes outside the cue window / trial — **impulsivity** |
+
+## Three rule sets (computed and compared per mouse)
+- **A — hit-rate only:** ≥50% hit rate for ≥2 consecutive sessions (traditional, insensitive).
+- **B — engagement + competence:** ≥50% engagement AND ≥70% accuracy for ≥2 consecutive sessions.
+- **C — late-session:** the same thresholds on the mean of the last 3 sessions.
+A robust cohort rule flags **impulsive / off-cue-dominated** mice (late off-cue
+pokes/trial above the cohort median + 1 MAD). Thresholds are constants at the top
+of the script.
+
+## Final categories (one per mouse)
+`strong_learner` · `partial_learner` · `competent_low_participation` ·
+`non_learner` · `impulsive_offcue_dominated`. A confidence flag
+(`low_confidence_competence`) marks mice whose accuracy rests on < 15 engaged
+trials in the late window.
+
+### The "strong-participation bar" is TASK-RELATIVE (and why)
+A single absolute engagement threshold cannot serve both tasks, because the
+engagement *regimes* differ: the tone is hard to engage (cohort median ≈ 25%), the
+light is easy (median ≈ 66%). With an absolute 50% bar, **every** generalization
+mouse clears it and is labelled a strong learner — hiding the real variation,
+which in generalization is participation *degree* (competence is uniformly high).
+So the strong bar = `max(50%, the task cohort's median late engagement)`. This
+leaves the appetitive result unchanged (floor binds at 50%, so m97 stays the lone
+strong learner) while splitting the light cohort into high vs moderate
+participators. Lowering thresholds would make the problem *worse*, not better.
+
+## Outputs (under `learner_criterion_figs/`)
+- `session_learning_metrics.csv` — per (task, mouse, session): trials, engaged,
+  rewarded, the four axes, and the two median latencies.
+- `mouse_learning_classification.csv` — per (task, mouse): max/late metrics,
+  first-session-to-threshold, all rule booleans, the task-relative bar, the
+  confidence flag, the final class, and a human-readable `classification_reason`.
+- `learner_classification_summary.png` — **Fig 1**: each category is a row; member
+  mice are labelled chips. Read a row to see exactly who is in each category.
+- `engagement_vs_competence_map.png` — **Fig 2** (the core map): x = late
+  engagement (participation), y = late accuracy-when-engaged (competence), with the
+  50% / 70% threshold lines. Top-left = knows rule but under-participates; top-right
+  = strong learners; bottom = non-learners.
+- `hit_rate_vs_competence.png` — **Fig 3**: x = late hit rate, y = competence,
+  point size ∝ engagement — shows two mice with the same low hit rate splitting
+  into competent (small, high) vs genuinely poor (low).
+- `hit_rate_decomposition.png` — **the clearest "hit rate misleads" figure**: since
+  `hit_rate = engagement_rate × accuracy_when_engaged`, each mouse's faded bar is
+  its competence ceiling (accuracy when engaged) and the solid bar is the actual
+  hit rate; the gap is reward lost to under-participation (engagement % annotated).
+  A tall faded bar over a tiny solid bar (e.g. appetitive **m93** — 88% ceiling,
+  13% hit, 15% engagement) = a participation problem; a low faded bar (e.g. **m101**
+  — 56% ceiling) = a genuine competence problem. Bars colored by final class.
+- `learning_trajectory_by_classification.png` — **Fig 4**: session trajectories of
+  hit rate / engagement / accuracy, colored by final class, per task.
+- `offcue_behavior_by_classification.png` — **Fig 5**: late off-cue pokes/trial per
+  mouse with the cohort impulsivity threshold — who is impulsive vs a true non-learner.
+- `learner_classification_heatmap.png` — mouse × metric heatmap (z-score color, raw
+  values shown).
+- `learner_criterion_summary.txt` — plain-text answers to the 8 questions.
+
+## What we discovered
+**Appetitive (tone) — failure is mostly a PARTICIPATION problem, not competence.**
+- **m97** is the only strong learner (engages ~53% — far above the ~25% cohort —
+  and 97% accurate when engaged).
+- **m93** is *competent but low-participation*: 88% accurate when engaged, but
+  engages only 15% — its low hit rate is purely participation-limited.
+- **m101** is the one true non-learner (accuracy when engaged < 60%).
+- **m102** is *impulsive / off-cue-dominated*: it engages a lot (42%) but is only
+  51% accurate and pokes off-cue ~4×/trial — the off-cue behavior, not a learning
+  failure, explains its low hit rate.
+- The remaining six are *partial learners* (know the rule reasonably but engage
+  inconsistently). Net: most "low hit rate" in appetitive is under-engagement.
+
+**Generalization (light) — everyone learned the rule; they differ only in participation.**
+- **All 10 mice generalized**: accuracy-when-engaged is 84–96% for every mouse and
+  flat-high from session 1. Competence is uniform — the rule transferred immediately.
+- What varies is *participation*: high participators (**m90, m98, m100, m102, m103**)
+  vs moderate participators who learned the rule but engage less / ramp up slower
+  (**m92, m93, m97, m101, m104**). m92 and m101 are the known laggards; **m97** —
+  the appetitive star — only participates moderately here, the same "participation
+  doesn't carry over" signal seen in the hits-per-session analysis.
+
+**Why hit rate alone misleads (the headline).** The traditional hit-rate rule
+fails to credit clearly competent mice: **m97** (97% accurate when engaged in
+appetitive, 88% in generalization) and **m93** (88% accurate) never satisfy
+"≥50% hit rate for 2 consecutive sessions," because they don't engage *often*
+enough — even though they plainly know the task. Judging on engagement + competence
+recovers them.
+
+---
+
+# Trial-history analysis — learning vs. control by recent reward
+
+`trial_history_analysis.py` — tests whether a mouse's current-trial behavior
+depends on what happened on the previous trial(s), separating mice whose
+engagement is **self-sustaining** (steady) from those whose engagement must be
+**re-triggered by reward** (reward-gated / bursty, e.g. m92, m101).
+
+Reuses the existing loaders (`appetitive_analysis`, `generalization_analysis`,
+`config`); builds an enriched per-trial table with history fields computed
+**strictly within each mouse × task × session** (the last trial of one session
+never becomes the previous trial of the next).
+
+```bash
+python3 trial_history_analysis.py                  # both tasks, all mice
+python3 trial_history_analysis.py --task generalization
+python3 trial_history_analysis.py --mouse m102
+```
+
+## Method
+- **Descriptive (primary, numpy only):** conditional probabilities with **seeded
+  bootstrap CIs** — `P(engage | prev rewarded)` vs `P(engage | prev not)`, the
+  same for off-cue poking and for accuracy-once-engaged.
+- **Models:** statsmodels/pandas are not installed and the project is kept
+  dependency-light, so the three logistic regressions (engagement, accuracy-when-
+  engaged, off-cue poking) use a **ridge-regularized IRLS logistic regression
+  implemented in numpy**, with mouse dummies as fixed effects, reporting odds
+  ratios + 95% CIs. Any model that can't be fit is skipped with a note.
+- **Reward-gated score** = `Δengage(after reward − after no-reward) + 0.5·Δoff-cue`.
+  `state_persistence_score` = `Δengage(after engaged − after not-engaged)`.
+
+## Outputs (under `trial_history_figs/`)
+- `trial_history_trials.csv` — one row per trial: outcomes, previous / 2-back /
+  rolling prev-3 & prev-5 rates, latencies, trial-in-session fraction.
+- `mouse_trial_history_summary.csv` — per (task, mouse): all conditional
+  probabilities, the deltas, the two scores, and `final_interpretation`.
+- `trial_history_prev_reward_engagement.png` — **Fig 1**: `P(engage | prev rewarded)`
+  vs `| prev not`, per mouse, sorted by the gap — the reward-gating headline.
+- `trial_history_engagement_persistence.png` — **Fig 2**: `P(engage | prev engaged)`
+  vs `| prev not engaged` — is behavior state-like?
+- `trial_history_offcue_after_outcome.png` — **Fig 3**: off-cue poking after
+  reward vs after no-reward.
+- `trial_history_reward_gated_ranking.png` — **Fig 4**: reward-gated score ranked,
+  with bootstrap CIs; mice above threshold highlighted.
+- `trial_history_model_coefficients.png` — **Fig 5**: odds-ratio forest plot for
+  the three logistic models, one marker per task.
+- `trial_history_example_mice.png` — **Fig 6**: concatenated trial timelines for
+  m92/m101/m102/m97 (reward / miss / off-cue rasters) — bursty vs steady at a glance.
+- `trial_history_summary.txt` — plain-text answers to the 9 questions.
+
+## What we discovered
+- **Reward gates *whether* a mouse engages, not *whether it succeeds once engaged*.**
+  Group engagement is ~+10pp (appetitive) / +13pp (generalization) higher after a
+  rewarded trial, while accuracy-once-engaged barely moves with history — competence
+  is stable once the mouse chooses to participate. The logistic models agree (the
+  accuracy model's odds ratios sit near 1; the engagement model's `prev-3 reward
+  rate` and `session` sit above 1).
+- **m92 and m101 are the reward-gated / bursty mice** (generalization Δengage
+  **+33pp** and **+21pp**), and they are *also* the most persistent/state-like —
+  they sit in a disengaged mode for long runs and re-engage mainly after reward.
+  **m97, m100, m102, m103** are steady participators (small reward-gating gap).
+  The example-mice timelines show it directly: m92/m101 have sparse, clustered
+  rewards early that fill in later; m102 is dense and uniform from the start.
+- **This is the dynamic layer hit rate and engagement rate hide.** Two mice with
+  the same average engagement can differ sharply in *how* that engagement is
+  produced — self-sustained vs reward-triggered — which is exactly the
+  reward-gated phenotype flagged in `behavior_patterns.py`, now quantified.

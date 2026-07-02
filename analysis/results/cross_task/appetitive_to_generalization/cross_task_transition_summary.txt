@@ -1,0 +1,26 @@
+Cross-task transition — last appetitive (tone) -> first generalization (light)
+strong-participation bar = 50% engagement
+
+## Phenotype shift (tone last -> light first)
+    m90: competent, low participation -> partial learner              (eng 27->44%, acc 88->78%)  ==> CHANGED
+    m92: competent, low participation -> competent, low participation (eng 23->11%, acc 86->86%)
+    m93: partial learner              -> competent, low participation (eng 13->44%, acc 75->89%)  ==> CHANGED
+    m97: strong learner               -> competent, low participation (eng 60->49%, acc 92->83%)  ==> CHANGED
+    m98: competent, low participation -> strong learner               (eng 21->57%, acc 100->89%)  ==> CHANGED
+   m100: impulsive / off-cue          -> strong learner               (eng 49->69%, acc 57->86%)  ==> CHANGED
+   m101: competent, low participation -> competent, low participation (eng 33->23%, acc 90->86%)
+   m102: impulsive / off-cue          -> strong learner               (eng 52->69%, acc 62->86%)  ==> CHANGED
+   m103: competent, low participation -> strong learner               (eng 44->66%, acc 81->95%)  ==> CHANGED
+   m104: non-learner                  -> strong learner               (eng 25->67%, acc 47->95%)  ==> CHANGED
+
+## Learning onset in the first light session (trial #)
+    m90: rule trial 6/61 | on-cue poke trial 6/61 | poke+lick trial 6/61
+    m92: rule no clear step | on-cue poke no clear step | poke+lick no clear step
+    m93: rule no clear step | on-cue poke trial 18/61 | poke+lick trial 18/61
+    m97: rule trial 8/61 | on-cue poke trial 20/61 | poke+lick trial 20/61
+    m98: rule no clear step | on-cue poke no clear step | poke+lick no clear step
+   m100: rule trial 32/61 | on-cue poke no clear step | poke+lick no clear step
+   m101: rule trial 33/61 | on-cue poke trial 33/61 | poke+lick trial 33/61
+   m102: rule no clear step | on-cue poke trial 21/61 | poke+lick trial 21/61
+   m103: rule trial 5/61 | on-cue poke no clear step | poke+lick trial 5/61
+   m104: rule no clear step | on-cue poke trial 3/61 | poke+lick trial 3/61

@@ -1,0 +1,9 @@
+# On-cue vs off-cue, lick density, and ITI timing
+
+
+## Appetitive (tone)
+on-cue share of pokes+licks: group mean 17.2% (range 14.4–21.3%)
+licks in 1s after reward: 7.80 vs after off-cue poke: 3.28 (reward = 2.4x denser)
+ITI (from disengagement) off-cue pokes  early:late = 7:8 (more LATE (anticipatory))
+ITI (from disengagement) licks          early:late = 26:33 (more LATE (anticipatory))
+most probable time after ITI start — poke: 0.2s, lick: 1.8s (n=5971 ITIs)

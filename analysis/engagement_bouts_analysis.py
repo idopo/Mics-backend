@@ -259,10 +259,42 @@ def _bout_legend_handles(with_outcome: bool = False) -> list:
     return handles
 
 
+def _draw_mouse_raster(ax, sessions, rows, ylabels, bout_trials, cmap, *,
+                       marker_scale=1.0, label_fs=8, ann_fs=7, ann_full=True):
+    """Draw one mouse's bout raster on `ax`: sessions as rows, trials on x,
+    coloured by bout membership, with hit (o) / engaged-miss (x) markers and a
+    per-row bout-trial annotation. Returns the trial-axis width."""
+    width = max(n for n, _ in rows)
+    mat = np.full((len(rows), width), np.nan)
+    for r, (n, cats) in enumerate(rows):
+        mat[r, :n] = cats
+    ax.imshow(np.ma.masked_invalid(mat), aspect="auto", cmap=cmap,
+              vmin=-0.5, vmax=3.5, interpolation="nearest")
+    hx, hy, mx, my = [], [], [], []
+    for r, s in enumerate(sessions):
+        for j, (eng, rew) in enumerate(zip(s["engaged_seq"], s["rewarded_seq"])):
+            if rew:
+                hx.append(j); hy.append(r)
+            elif eng:
+                mx.append(j); my.append(r)
+    msz = float(np.clip(1600.0 / max(width, 1), 22.0, 90.0)) * marker_scale
+    ax.scatter(hx, hy, s=msz, marker="o", facecolors="white", edgecolors="black",
+               linewidths=max(0.5, marker_scale), zorder=3)
+    ax.scatter(mx, my, s=msz * 0.9, marker="x", c="black",
+               linewidths=max(0.8, 1.6 * marker_scale), zorder=3)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels(ylabels, fontsize=label_fs)
+    for r, (n, _) in enumerate(rows):
+        txt = (f"{bout_trials[r]}/{n} in bouts · {sessions[r]['n_hits']} hits"
+               if ann_full else f"{bout_trials[r]}/{n}")
+        ax.text(width + 0.5, r, txt, va="center", ha="left", fontsize=ann_fs, color="#333333")
+    ax.set_xlim(-0.5, width + 0.5 + width * (0.24 if ann_full else 0.14))
+    return width
+
+
 def fig_bout_raster_per_mouse(by_task: dict, out_dir: str) -> int:
-    """One figure PER mouse: every session as a raster row, trials on x, coloured
-    by bout membership. The count of bout-trials (trials that fell inside a bout)
-    is annotated at the right of each session row. Returns the number written."""
+    """One figure PER mouse: every session as a raster row, with per-trial outcome
+    markers (hit = o, miss = x) over the bouts. Returns the number written."""
     os.makedirs(out_dir, exist_ok=True)
     cmap = _bout_cmap()
     written = 0
@@ -271,34 +303,11 @@ def fig_bout_raster_per_mouse(by_task: dict, out_dir: str) -> int:
         if not rows:
             continue
         width = max(n for n, _ in rows)
-        mat = np.full((len(rows), width), np.nan)
-        for r, (n, cats) in enumerate(rows):
-            mat[r, :n] = cats
         fig, ax = plt.subplots(figsize=(max(8.0, 0.15 * width + 2.4),
                                         max(2.4, 0.46 * len(rows) + 1.6)))
-        ax.imshow(np.ma.masked_invalid(mat), aspect="auto", cmap=cmap,
-                  vmin=-0.5, vmax=3.5, interpolation="nearest")
-        # overlay trial outcome: hit (reward) vs engaged-but-missed
-        hx, hy, mx, my = [], [], [], []
-        for r, s in enumerate(sessions):
-            for j, (eng, rew) in enumerate(zip(s["engaged_seq"], s["rewarded_seq"])):
-                if rew:
-                    hx.append(j); hy.append(r)
-                elif eng:
-                    mx.append(j); my.append(r)
-        msz = float(np.clip(1600.0 / max(width, 1), 22.0, 90.0))
-        ax.scatter(hx, hy, s=msz, marker="o", facecolors="white", edgecolors="black",
-                   linewidths=1.0, zorder=3)
-        ax.scatter(mx, my, s=msz * 0.9, marker="x", c="black", linewidths=1.6, zorder=3)
-        ax.set_yticks(range(len(rows)))
-        ax.set_yticklabels(ylabels, fontsize=8)
+        _draw_mouse_raster(ax, sessions, rows, ylabels, bout_trials, cmap)
         ax.set_xlabel("trial in session")
         ax.set_ylabel("session")
-        for r, (n, _) in enumerate(rows):
-            ax.text(width + 0.5, r, f"{bout_trials[r]}/{n} in bouts · "
-                    f"{sessions[r]['n_hits']} hits",
-                    va="center", ha="left", fontsize=7, color="#333333")
-        ax.set_xlim(-0.5, width + 0.5 + width * 0.22)
         ax.set_title(f"{m} — engagement bouts + outcome by session "
                      f"(bout = > {MIN_BOUT - 1} trials in a row)")
         ax.legend(handles=_bout_legend_handles(with_outcome=True), loc="upper center",
@@ -312,38 +321,35 @@ def fig_bout_raster_per_mouse(by_task: dict, out_dir: str) -> int:
 
 
 def fig_bout_raster(by_task: dict, out_path: str) -> None:
-    """Per-mouse timeline: one row per session, trials along x. Bouts are drawn on
-    the trial axis so you can SEE where in each session sustained engagement fell.
-    For --task both, tone sessions (blue) sit above light sessions (red)."""
+    """All mice in ONE figure, each rendered like the per-mouse rasters: sessions
+    as rows, trials on x, bout colouring + hit (o) / miss (x) markers and a per-row
+    bout-trial count. For --task both, tone rows (blue) sit above light rows (red)."""
     mice = _all_mice(by_task)
+    data = {m: _mouse_session_rows(by_task, m) for m in mice}
+    cmap = _bout_cmap()
     ncol = min(2, len(mice)) or 1
     nrow = int(np.ceil(len(mice) / ncol))
-    cmap = _bout_cmap()
-    fig, axes = plt.subplots(nrow, ncol, figsize=(6.2 * ncol, 2.6 * nrow), squeeze=False)
+    max_rows = max((len(data[m][0]) for m in mice), default=1)
+    panel_h = min(3.8, max(2.6, 0.33 * max_rows + 1.3))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(7.6 * ncol, panel_h * nrow), squeeze=False)
     for idx, m in enumerate(mice):
         ax = axes[idx // ncol][idx % ncol]
-        rows, ylabels, _, _ = _mouse_session_rows(by_task, m)
+        rows, ylabels, bout_trials, sessions = data[m]
         if not rows:
             ax.axis("off")
             continue
-        width = max(n for n, _ in rows)
-        mat = np.full((len(rows), width), np.nan)
-        for r, (n, cats) in enumerate(rows):
-            mat[r, :n] = cats
-        ax.imshow(np.ma.masked_invalid(mat), aspect="auto", cmap=cmap, vmin=-0.5, vmax=3.5,
-                  interpolation="nearest")
-        ax.set_yticks(range(len(ylabels)))
-        ax.set_yticklabels(ylabels, fontsize=6)
+        _draw_mouse_raster(ax, sessions, rows, ylabels, bout_trials, cmap,
+                           marker_scale=0.55, label_fs=6, ann_fs=6, ann_full=False)
+        ax.set_title(m, fontsize=10)
         ax.set_xlabel("trial in session", fontsize=8)
-        ax.set_title(m, fontsize=9)
         ax.tick_params(labelsize=7)
     for j in range(len(mice), nrow * ncol):
         axes[j // ncol][j % ncol].axis("off")
-    fig.legend(handles=_bout_legend_handles(), loc="lower center", ncol=4,
-               fontsize=8, frameon=False)
-    fig.suptitle(f"Engagement bouts along the session (bout = > {MIN_BOUT - 1} trials in a row)",
-                 fontsize=11)
-    fig.tight_layout(rect=(0, 0.03, 1, 0.96))
+    fig.legend(handles=_bout_legend_handles(with_outcome=True), loc="lower center",
+               ncol=6, fontsize=8, frameon=False)
+    fig.suptitle(f"Engagement bouts + outcome by session — all mice "
+                 f"(bout = > {MIN_BOUT - 1} trials in a row)", fontsize=12)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
 

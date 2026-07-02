@@ -219,10 +219,12 @@ def segment_trials(events: list[dict]) -> list[dict]:
                      and e["func"] == "mute" and e["epoch"] > t0), None)
         tone_dur = (mute["epoch"] - t0) if mute else TONE_FILE_LENGTH_S
 
-        nose_pokes, licks, rewards = [], [], []
+        nose_pokes, nose_pokes_out, licks, rewards = [], [], [], []
         for e in window:
             if e["etype"] == ET_DIGITAL_IN and e["id"] == ID_NOSEPOKE and e["level"] == 1:
-                nose_pokes.append(e["epoch"] - t0)
+                nose_pokes.append(e["epoch"] - t0)  # beam broken = nose in
+            elif e["etype"] == ET_DIGITAL_IN and e["id"] == ID_NOSEPOKE and e["level"] == 0:
+                nose_pokes_out.append(e["epoch"] - t0)  # beam restored = nose out
             elif e["etype"] == ET_DIGITAL_IN and e["id"] == ID_LICK:
                 licks.append(e["epoch"] - t0)
             elif (e["etype"] == ET_SOLENOID and e["id"] == ID_REWARD
@@ -232,10 +234,22 @@ def segment_trials(events: list[dict]) -> list[dict]:
                 rewards.append(e["epoch"] - t0)
 
         rewards = _dedupe(rewards)
+        # trial window end (= next trial onset) rel. to tone onset; used to place
+        # events within the post-cue ITI. Last trial has no next onset -> last event.
+        win_end = hi if hi != float("inf") else (window[-1]["epoch"] if window else t0)
+        # false alarm = a nose poke during the ITI countdown; each one resets the
+        # ITI timer (punishment). Logged as the state_ITI_nose_poke transition.
+        false_alarms = sum(1 for e in window
+                           if e["etype"] == ET_STATE and e["state"] == "state_ITI_nose_poke")
         trials.append({
             "tone_dur": tone_dur,
+            "iti_end": win_end - t0,
+            "n_false_alarms": false_alarms,
+            "punished": false_alarms > 0,
             "nose_pokes": nose_pokes,
+            "nose_pokes_out": nose_pokes_out,
             "licks": licks,
+            "rewards": rewards,  # deduped water-delivery times (rel. to tone onset)
             "rewarded_licks": _rewarded_licks(licks, rewards),
             "is_hit": bool(rewards),
         })

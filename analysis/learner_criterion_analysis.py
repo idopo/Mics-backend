@@ -322,6 +322,9 @@ def classify_mouse(rows: list[dict], impulsive_threshold: float,
         "late_engagement_rate": late_eng,
         "late_accuracy_when_engaged": late_acc,
         "late_offcue_pokes_per_trial": late_off,
+        "last_engagement_rate": rows[-1]["engagement_rate"],
+        "last_accuracy_when_engaged": rows[-1]["accuracy_when_engaged"],
+        "last_offcue_pokes_per_trial": rows[-1]["offcue_pokes_per_trial"],
         "first_session_50_hit_rate": _first_session(rows, lambda r: r["hit_rate"] >= HIT_THRESH),
         "first_session_50_engagement": _first_session(rows, lambda r: r["engagement_rate"] >= ENGAGE_THRESH),
         "first_session_70_accuracy_when_engaged": _first_session(
@@ -357,6 +360,44 @@ def classify_task(sessions_by_mouse: dict[str, list[dict]]) -> dict[str, dict]:
          for rows in sessions_by_mouse.values()])
     return {m: classify_mouse(rows, threshold, strong_engage)
             for m, rows in sessions_by_mouse.items()}
+
+
+def classify_session(eng: float, acc: float, offcue: float,
+                     strong_engage: float, impulsive_thr: float) -> str:
+    """Single-session phenotype using the same decision tree as classify_mouse,
+    with the cross-session (improvement / consecutive) branches dropped. Shared
+    by the last-session map here and by phenotype_transition_analysis."""
+    acc_val = 0.0 if np.isnan(acc) else acc
+    is_impulsive = (not np.isnan(offcue) and not np.isnan(impulsive_thr)
+                    and offcue > impulsive_thr)
+    if eng >= strong_engage and acc_val >= ACC_STRONG:
+        return "strong_learner"
+    if acc_val >= ACC_COMPETENT and eng < ENGAGE_THRESH:
+        return "competent_low_participation"
+    if is_impulsive and acc_val < ACC_STRONG:
+        return "impulsive_offcue_dominated"
+    if acc_val >= ACC_NONLEARNER:
+        return "partial_learner"
+    return "non_learner"
+
+
+def last_session_reference(classes_task: dict) -> tuple[float, float]:
+    """Task-relative strong-participation bar and impulsivity threshold computed
+    from the cohort's LAST session (the frame used to classify single sessions)."""
+    last_eng = [c["last_engagement_rate"] for c in classes_task.values()]
+    strong_engage = max(ENGAGE_THRESH, _median(last_eng))
+    impulsive_thr = _robust_impulsive_threshold(
+        [c["last_offcue_pokes_per_trial"] for c in classes_task.values()])
+    return strong_engage, impulsive_thr
+
+
+def assign_last_session_class(classes_task: dict) -> None:
+    """Add each mouse's single-last-session phenotype under 'last_classification'."""
+    strong_engage, impulsive_thr = last_session_reference(classes_task)
+    for c in classes_task.values():
+        c["last_classification"] = classify_session(
+            c["last_engagement_rate"], c["last_accuracy_when_engaged"],
+            c["last_offcue_pokes_per_trial"], strong_engage, impulsive_thr)
 
 
 # --- CSV output ------------------------------------------------------------
@@ -451,38 +492,47 @@ def fig_classification_summary(classes: dict, out_path: str) -> None:
     plt.close(fig)
 
 
-def _scatter_mice(ax, by_mouse: dict, xkey: str, ykey: str, size_key: str | None) -> None:
+def _scatter_mice(ax, by_mouse: dict, xkey: str, ykey: str, size_key: str | None,
+                  class_key: str = "final_classification") -> None:
     for m in _sorted_mice(by_mouse):
         d = by_mouse[m]
         x, y = d[xkey], d[ykey]
         if np.isnan(x) or np.isnan(y):
             continue
         s = 110 if size_key is None else 40 + 3.2 * (0 if np.isnan(d[size_key]) else d[size_key])
-        ax.scatter(x, y, s=s, color=_class_color(d["final_classification"]),
+        ax.scatter(x, y, s=s, color=_class_color(d[class_key]),
                    edgecolor="white", linewidths=0.7, zorder=3, alpha=0.9)
         ax.annotate(m, (x, y), textcoords="offset points", xytext=(6, 4), fontsize=7)
 
 
-def fig_engagement_vs_competence(classes: dict, out_path: str) -> None:
+def fig_engagement_vs_competence(classes: dict, out_path: str,
+                                 window: str = "late") -> None:
+    """Core participation/competence map. `window` selects which per-mouse point
+    to plot: 'late' = mean of the last 3 sessions (robust), 'last' = the single
+    last session (matches phenotype_transition, noisier). Point colour is always
+    the multi-session learner verdict."""
+    word = "last-session" if window == "last" else "late (last 3-session)"
+    xkey = "last_engagement_rate" if window == "last" else "late_engagement_rate"
+    ykey = "last_accuracy_when_engaged" if window == "last" else "late_accuracy_when_engaged"
+    class_key = "last_classification" if window == "last" else "final_classification"
     tasks = list(classes)
     fig, axes = plt.subplots(1, len(tasks), figsize=(6.8 * len(tasks), 6),
                              squeeze=False, sharey=True)
     for ax, task in zip(axes[0], tasks):
-        _scatter_mice(ax, classes[task], "late_engagement_rate",
-                      "late_accuracy_when_engaged", None)
+        _scatter_mice(ax, classes[task], xkey, ykey, None, class_key=class_key)
         ax.axvline(ENGAGE_THRESH, color="grey", ls="--", lw=1)
         ax.axhline(ACC_STRONG, color="grey", ls="--", lw=1)
         ax.set_xlim(0, 100)
         ax.set_ylim(0, 105)
-        ax.set_xlabel("late engagement rate (%)  →  participation")
+        ax.set_xlabel(f"{word} engagement rate (%)  →  participation")
         ax.set_title(TASK_LABELS[task])
         ax.text(75, 102, "strong learners", fontsize=8, color="#2ca02c", ha="center")
         ax.text(22, 102, "knows rule,\nlow participation", fontsize=8, color="#1f77b4", ha="center")
         ax.text(22, 30, "non-learners", fontsize=8, color="#d62728", ha="center")
-    axes[0][0].set_ylabel("late accuracy when engaged (%)  →  competence")
+    axes[0][0].set_ylabel(f"{word} accuracy when engaged (%)  →  competence")
     _legend_classes(fig)
-    fig.suptitle("Participation vs competence — the core learner map "
-                 "(each point = one mouse)", fontsize=13, y=0.99)
+    fig.suptitle(f"Participation vs competence — the core learner map "
+                 f"({word}, each point = one mouse)", fontsize=13, y=0.99)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
@@ -790,6 +840,8 @@ def main() -> int:
         return 1
 
     classes = {task: classify_task(by_mouse) for task, by_mouse in sessions.items()}
+    for classes_task in classes.values():
+        assign_last_session_class(classes_task)
 
     os.makedirs(OUT_ROOT, exist_ok=True)
     write_session_csv(sessions, os.path.join(OUT_ROOT, "session_learning_metrics.csv"))
@@ -797,6 +849,8 @@ def main() -> int:
 
     fig_classification_summary(classes, os.path.join(OUT_ROOT, "learner_classification_summary.png"))
     fig_engagement_vs_competence(classes, os.path.join(OUT_ROOT, "engagement_vs_competence_map.png"))
+    fig_engagement_vs_competence(classes, os.path.join(OUT_ROOT, "engagement_vs_competence_last_session.png"),
+                                 window="last")
     fig_hit_rate_vs_competence(classes, os.path.join(OUT_ROOT, "hit_rate_vs_competence.png"))
     fig_trajectory_by_classification(sessions, classes,
                                      os.path.join(OUT_ROOT, "learning_trajectory_by_classification.png"))
@@ -807,7 +861,7 @@ def main() -> int:
     write_summary_text(classes, os.path.join(OUT_ROOT, "learner_criterion_summary.txt"))
 
     n_mice = sum(len(v) for v in classes.values())
-    print(f"\nWrote 2 CSVs, 7 figures, and summary.txt under '{OUT_ROOT}/' "
+    print(f"\nWrote 2 CSVs, 8 figures, and summary.txt under '{OUT_ROOT}/' "
           f"({n_mice} mouse-task classifications).")
     return 0
 

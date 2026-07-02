@@ -1,0 +1,11 @@
+Learning trajectories: group early-phase -> late-phase change
+(early/late = first/last quarter of each mouse's sessions)
+
+## Appetitive (tone)
+  engagement %                  25.3 ->    29.1  (up 3.7)  (toward mature)
+  accuracy | engaged %          63.8 ->    73.5  (up 9.6)  (toward mature)
+  hit rate %                    17.6 ->    21.9  (up 4.2)  (toward mature)
+  in-bout trials % (persistence)     1.8 ->     7.1  (up 5.3)  (toward mature)
+  latency to engage (s)          3.3 ->     3.0  (down 0.3)  (toward mature)
+  off-cue pokes / trial          1.9 ->     2.1  (up 0.2)  (away from mature)
+  reward-gating (win-stay)       5.0 ->     3.7  (down 1.2)

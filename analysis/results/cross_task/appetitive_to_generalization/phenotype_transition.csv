@@ -1,0 +1,11 @@
+mouse,tone_engagement,tone_accuracy,tone_phenotype,light_engagement,light_accuracy,light_phenotype,changed
+m90,26.7,87.5,competent_low_participation,44.3,77.8,partial_learner,yes
+m92,23.3,85.7,competent_low_participation,11.5,85.7,competent_low_participation,no
+m93,13.3,75.0,partial_learner,44.3,88.9,competent_low_participation,yes
+m97,60.0,91.7,strong_learner,49.2,83.3,competent_low_participation,yes
+m98,21.3,100.0,competent_low_participation,57.4,88.6,strong_learner,yes
+m100,49.2,56.7,impulsive_offcue_dominated,68.9,85.7,strong_learner,yes
+m101,32.8,90.0,competent_low_participation,23.0,85.7,competent_low_participation,no
+m102,52.5,62.5,impulsive_offcue_dominated,68.9,85.7,strong_learner,yes
+m103,44.3,81.5,competent_low_participation,65.6,95.0,strong_learner,yes
+m104,25.0,46.7,non_learner,67.2,95.1,strong_learner,yes

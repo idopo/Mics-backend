@@ -40,6 +40,9 @@ deterministic: same ES data in → identical numbers and figures out.
 | `action_sequence_analysis.py` | `action_sequence_figs/` | per-trial decomposition of the behavioral chain (cue→poke→lick→reward) — stacked bars, group trajectory, per-mouse chain dynamics (on/off-cue pokes + licks across sessions), latencies, trial-history, transition matrix, 2 CSVs + summary.txt; `--task appetitive\|generalization\|both --mouse mNNN` |
 | `learner_criterion_analysis.py` | `learner_criterion_figs/` | formal learner classification (participation vs competence, never hit rate alone); 7 figures + 2 CSVs + summary.txt; `--task … --mouse …` |
 | `trial_history_analysis.py` | `trial_history_figs/` | does current-trial behavior depend on recent history? reward-gating / persistence / off-cue, conditional probabilities + numpy logistic models; 6 figures + 2 CSVs + summary.txt; `--task … --mouse …` |
+| `cross_task_transition_analysis.py` | `results/cross_task/appetitive_to_generalization/` | tone→light transition: (1) phenotype shift from each mouse's **last** appetitive session to its **first** generalization session, drawn as first→last arrows in the engagement×competence learner space (reuses learner_criterion metrics/classifier); (2) per-mouse raster of the **first** generalization session with CUSUM step-onset lines marking the trial from which hit rate, on-cue poking, and on-cue poke+lick each step up (when the mouse cracked the new rule / engaged the cue); 2 figures + 2 CSVs + summary.txt |
+| `punishment_analysis.py` | `results/<area>/punishment/` | ITI false-alarm punishment: a trial is "punished" if the mouse nose-poked during its inter-trial interval (ITI = 30±5 s; each poke resets the timer + adds ≥10 s), counted directly from the `state_ITI_nose_poke` FSM transition. % punished trials per mouse per session (curve, per-mouse bar, mouse×session heat map) plus within-session dynamics — punishment rate & false-alarms-per-trial vs trial position, a per-mouse trial-position curve, and a per-mouse session×trial map (which trials of which session added ITI); 6 figures + 3 CSVs + summary.txt; `--task appetitive\|generalization\|both --mouse mNNN` |
+| `on_off_cue_analysis.py` | `results/<area>/on_off_cue/` | on-cue vs off-cue pokes+licks (share/ratio per trial→session→mouse); lick density after reward vs after off-cue poke (burst size + PSTH); ITI timing measured from **disengagement** (mouse stops the consummatory lick bout AND withdraws its nose — IR1 level→0 poke-out) with the fixed ~10 s end-of-trial response lockout trimmed off — per-trial raster, most-probable-time graph, per-mouse heat map, group curve, first/second-half bars; 8 figures + 4 CSVs + summary.txt; `--task appetitive\|generalization\|both --mouse mNNN` |
 | `participation.py` | — | shared participation-vs-competence figure module (imported by both task scripts) |
 
 ---
@@ -542,3 +545,53 @@ python3 trial_history_analysis.py --mouse m102
   the same average engagement can differ sharply in *how* that engagement is
   produced — self-sustained vs reward-triggered — which is exactly the
   reward-gated phenotype flagged in `behavior_patterns.py`, now quantified.
+
+---
+
+# On/off-cue, ITI punishment & cross-task transfer (2026-07-02)
+
+Three analyses added this session: `on_off_cue_analysis.py`,
+`punishment_analysis.py`, and `cross_task_transition_analysis.py`. All reuse the
+existing loaders/segmentation, so the trial set matches every other analysis. Two
+data facts were verified against the raw ES stream and now anchor these analyses:
+the nose-poke sensor logs both entry (`IR1` level 1) **and exit** (level 0), and
+the FSM logs each ITI false-alarm as a `state_ITI_nose_poke` transition.
+
+## On-cue vs off-cue behaviour, lick density, ITI timing (`on_off_cue`)
+- **Only a minority of all pokes+licks are on-cue** — ~17% (tone), ~8% (light);
+  most activity is off-cue (consummatory drinking + ITI activity).
+- **Licking is a clean reward signal.** Licks in the 1 s after a reward are
+  **~2–3× denser** than after an off-cue poke, for every mouse in both tasks; the
+  PSTH shows a sharp consummatory burst locked to reward.
+- **ITI defined from *disengagement*, not cue offset.** The true off-cue period
+  starts only once the mouse has ended its consummatory lick bout *and* withdrawn
+  its nose. There is a **fixed ~10 s response lockout** before each next trial
+  (no pokes/licks ever occur in it) — this is the task's `min_punish_time`.
+- **Within the ITI, activity is front-loaded but ramps up again before the next
+  trial** (length-invariant view): pokes are most probable right at disengagement,
+  and both pokes and licks rise in the final ITI bin — a mild anticipatory lean
+  toward the next trial (stronger in generalization).
+
+## ITI punishment / false alarms (`punishment`)
+- The ITI is 30 ± 5 s; poking during it is a **false alarm** that resets the timer
+  (+≥10 s). A trial is *punished* if it contains ≥1 `state_ITI_nose_poke`.
+- **Punishment is the norm and mouse-specific.** Tone: group mean **57.7%** of
+  trials punished (m98 cleanest at 35.5%, m97 worst at 79%). Light: higher across
+  the board, **73.4%** (65–81%) — mice were more impulsive under the light cue.
+- **Within a session:** punishment is *lowest on the first trial*, ramps up over
+  the first ~5 trials (warm-up impatience), then stays high in the tone task but
+  **gradually declines through the light task** as the mouse settles. (The final
+  1–2 trials dip is an edge artifact — the last ITI is truncated when the session
+  ends.) The per-mouse view confirms light > tone for nearly every animal.
+
+## Cross-task transfer: tone → light (`appetitive_to_generalization`)
+- **8/10 mice changed learner phenotype** from their last tone session to their
+  first light session, almost all moving **up-and-right** (more engagement, high
+  accuracy) — e.g. m104 non-learner→strong, m100/m102 impulsive→strong. Caveat:
+  the last tone session is over-trained/low-engagement, so part of this shift is
+  novelty re-engagement, not only rule transfer.
+- **Most mice cracked the light rule fast.** First-session CUSUM onsets: immediate
+  transfer (m90 trial 6, m103 trial 5), mid-session steps (m97/m100/m101/m102/m93),
+  and two with no step — m98 was already engaged from trial 1 (full transfer),
+  m92 never engaged the light. So the tone→light rule generally transferred; the
+  main individual difference is *how quickly* and *whether* the mouse re-engaged.

@@ -1,0 +1,17 @@
+# ITI punishment — trials where the mouse poked before the ITI ended
+
+punished trial = contains >=1 state_ITI_nose_poke (false alarm); ITI = 25-35s, each false alarm adds >=10s
+
+
+## Appetitive (tone)  (10 mice)
+group: 57.7% of trials punished (range 35.5–79.0%)
+    m97:  79.0% of trials (379/480) | 1246 false alarms over 8 sessions
+   m102:  69.2% of trials (464/671) | 2363 false alarms over 11 sessions
+    m90:  65.4% of trials (510/780) | 1221 false alarms over 13 sessions
+   m100:  64.5% of trials (158/245) | 594 false alarms over 4 sessions
+    m93:  58.7% of trials (427/727) | 779 false alarms over 12 sessions
+   m103:  58.5% of trials (428/732) | 1131 false alarms over 12 sessions
+   m104:  57.6% of trials (415/720) | 1210 false alarms over 12 sessions
+   m101:  45.1% of trials (329/730) | 800 false alarms over 12 sessions
+    m92:  43.2% of trials (285/660) | 660 false alarms over 11 sessions
+    m98:  35.5% of trials (260/732) | 495 false alarms over 12 sessions

@@ -1,0 +1,13 @@
+Phenotype transition (first -> last session) — Generalization (light)
+strong-participation bar = 73% engagement
+
+    m90: partial learner              -> strong learner                (eng 44->85%, acc 78->90%)  ==>  CHANGED
+    m92: competent, low participation -> strong learner                (eng 11->75%, acc 86->93%)  ==>  CHANGED
+    m93: competent, low participation -> strong learner                (eng 44->85%, acc 89->90%)  ==>  CHANGED
+    m97: competent, low participation -> partial learner               (eng 49->70%, acc 83->86%)  ==>  CHANGED
+    m98: partial learner              -> competent, low participation  (eng 57->45%, acc 89->100%)  ==>  CHANGED
+   m100: partial learner              -> strong learner                (eng 69->79%, acc 86->92%)  ==>  CHANGED
+   m101: competent, low participation -> partial learner               (eng 23->56%, acc 86->91%)  ==>  CHANGED
+   m102: partial learner              -> strong learner                (eng 69->97%, acc 86->93%)  ==>  CHANGED
+   m103: partial learner              -> partial learner               (eng 66->59%, acc 95->89%)
+   m104: partial learner              -> partial learner               (eng 67->69%, acc 95->88%)

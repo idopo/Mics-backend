@@ -1,0 +1,11 @@
+mouse,n_trials,rule_onset_trial,oncue_poke_onset_trial,oncue_pokelick_onset_trial
+m90,61,6,6,6
+m92,61,,,
+m93,61,,18,18
+m97,61,8,20,20
+m98,61,,,
+m100,61,32,,
+m101,61,33,33,33
+m102,61,,21,21
+m103,61,5,,5
+m104,61,,3,3

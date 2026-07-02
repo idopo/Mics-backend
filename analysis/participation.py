@@ -257,52 +257,6 @@ def plot_within_session_ramp_by_mouse(per_mouse: dict, out_path: str, cue_label:
     plt.close(fig)
 
 
-# --- 4. latency to engage (trials-to-first + reaction time), grouped bars --
-def _first_engaged_idx(seq: list[bool]):
-    return next((k + 1 for k, v in enumerate(seq) if v), None)
-
-
-def plot_latency(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
-    """x-axis = mice; bars grouped by session (color = session number)."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.4))
-    mice = _sorted_mice(per_mouse)
-    max_s = _max_session(per_mouse)
-    base = np.arange(len(mice))
-    width = 0.8 / max_s
-
-    for s in range(1, max_s + 1):
-        color = _session_color(s, max_s)
-        offset = (s - 1 - (max_s - 1) / 2) * width
-        x1, y1, x2, y2 = [], [], [], []
-        for i, mouse in enumerate(mice):
-            row = next((r for r in per_mouse[mouse] if r["session_num"] == s), None)
-            if row is None:
-                continue
-            idx = _first_engaged_idx(row["engaged_seq"])
-            if idx is not None:
-                x1.append(i + offset)
-                y1.append(idx)
-            if row["rt_list"]:
-                x2.append(i + offset)
-                y2.append(float(np.median(row["rt_list"])))
-        ax1.bar(x1, y1, width=width, color=color, label=f"session {s}")
-        ax2.bar(x2, y2, width=width, color=color)
-
-    for ax in (ax1, ax2):
-        ax.set_xlabel("mouse")
-        ax.set_xticks(base)
-        ax.set_xticklabels([_short(m) for m in mice], rotation=45, ha="right", fontsize=8)
-    ax1.set_ylabel("trials until first engaged trial")
-    ax1.set_title("How long before the mouse switches on")
-    ax2.set_ylabel("median reaction time (s): cue → first on-cue poke")
-    ax2.set_title("How fast it pokes once engaged")
-    ax1.legend(fontsize=8, ncol=1 if max_s <= 6 else 2, framealpha=0.9)
-    fig.suptitle(f"[{num}] {cue_label} — latency to engage", fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
-    fig.savefig(out_path, dpi=140)
-    plt.close(fig)
-
-
 # --- 5. sessions to engagement criterion ----------------------------------
 def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str, num: int) -> None:
     mice = _sorted_mice(per_mouse)
@@ -336,14 +290,13 @@ def plot_sessions_to_criterion(per_mouse: dict, out_path: str, cue_label: str, n
 
 
 def plot_all(per_mouse: dict, out_dir: str, prefix: str, cue_label: str) -> list[str]:
-    """Render all five participation figures; return the written paths."""
+    """Render the participation figures; return the written paths."""
     jobs = [
         (1, "1_engagement_curve", plot_engagement_curve),
         (2, "2_participation_vs_competence", plot_dissociation),
         (2, "2b_participation_vs_competence_by_mouse", plot_dissociation_by_mouse),
         (3, "3_within_session_ramp", plot_within_session_ramp),
         (3, "3b_within_session_ramp_by_mouse", plot_within_session_ramp_by_mouse),
-        (4, "4_latency_to_engage", plot_latency),
         (5, "5_sessions_to_criterion", plot_sessions_to_criterion),
     ]
     paths = []

@@ -195,7 +195,6 @@ the original discussion), and the number is in the filename too.
 | `*_2b_participation_vs_competence_by_mouse.png` | same dissociation, each mouse in its own color across two panels (participation \| competence): participation lines fan upward & vary, competence lines cluster flat-high |
 | `*_3_within_session_ramp.png` | group-level warm-up: mean engagement in successive 10-trial blocks within a session (full blocks only, to trial 60), one line per session — rising left→right = within-session warm-up; later-session lines higher = ramp strengthens across sessions |
 | `*_3b_within_session_ramp_by_mouse.png` | same binned warm-up, per-mouse grid, one distinct color per session |
-| `*_4_latency_to_engage.png` | grouped bars, x = mouse, one bar per session (color = session #). Left: trials until first engaged trial; right: median reaction time (cue→first on-cue poke) |
 | `*_5_sessions_to_criterion.png` | bar per mouse: first session reaching 50% engagement (red = never) — a single "speed of participation" number |
 
 Run via either script's `--analysis participation` (appetitive) or as part of a

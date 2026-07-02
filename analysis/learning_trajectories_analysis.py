@@ -16,12 +16,15 @@ For each mouse / session it computes:
   offcue      : off-cue pokes per trial (lower = less impulsive)
   win_stay    : P(engage | prev hit) - P(engage | prev miss) (reward-gating)
 
-Figures (results/<area>/learning_trajectories/):
+Figures (results/learning_trajectories/<area>/):
   trajectories_by_metric.png       each metric vs session, group mean +- SEM and
                                    faint per-mouse lines (the fluid trajectory)
   first_vs_last_slopes.png         early-phase vs late-phase per mouse, per metric
   phenotype_radar.png              group phenotype shape, early vs late overlaid
   learning_index_heatmap.png       per-mouse composite maturity across sessions
+  cue_to_first_poke_latency_group.png       mean cue->first-on-cue-poke latency,
+                                   group mean +- SEM per session, one line per task
+  cue_to_first_poke_latency.csv    per-session mean latency + n engaged trials
   session_phenotype_metrics.csv    tidy per-session table
   first_vs_last_by_mouse.csv       early/late/delta per mouse and metric
   learning_trajectories_summary.txt
@@ -53,7 +56,7 @@ NAN = float("nan")
 _RESULTS_ROOT = Path(__file__).resolve().parent / "results"
 _TASK_AREA = {"appetitive": "appetitive", "generalization": "generalization", "both": "cross_task"}
 _ENV_OUT = os.environ.get("MICS_TRAJ_OUT")
-OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "cross_task" / "learning_trajectories")
+OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "learning_trajectories" / "cross_task")
 
 MIN_BOUT = int(os.environ.get("MICS_MIN_BOUT", "4"))
 
@@ -125,6 +128,26 @@ def build(records: list[dict]) -> dict[str, dict[str, list[dict]]]:
 
 def _sorted_mice(by_mouse: dict) -> list[str]:
     return sorted(by_mouse, key=lambda m: int("".join(filter(str.isdigit, m)) or 0))
+
+
+def first_poke_latency(records: list[dict]) -> dict[str, dict[str, list[dict]]]:
+    """{task: {mouse: [{session, mean_latency, n_engaged}]}} — mean time from cue
+    onset to the FIRST on-cue poke, averaged over that session's engaged trials
+    (trials with a poke inside the cue window). Trials with no on-cue poke have no
+    latency and are excluded, so this is the mean latency *when* the mouse engaged."""
+    out: dict[str, dict[str, list[dict]]] = {}
+    for r in records:
+        lat = [t["cue_to_poke_latency"] for t in r["trials"]
+               if t["engaged"] and not np.isnan(t["cue_to_poke_latency"])]
+        out.setdefault(r["task"], {}).setdefault(r["mouse"], []).append({
+            "session": r["training_day"],
+            "mean_latency": float(np.mean(lat)) if lat else NAN,
+            "n_engaged": len(lat),
+        })
+    for by_mouse in out.values():
+        for sessions in by_mouse.values():
+            sessions.sort(key=lambda d: d["session"])
+    return out
 
 
 def _window(n: int) -> int:
@@ -335,7 +358,57 @@ def fig_learning_index(by_task: dict, out_path: str) -> None:
     plt.close(fig)
 
 
+def _latency_bounds(lat_bt: dict) -> tuple[float, float]:
+    vals = [s["mean_latency"] for bm in lat_bt.values() for ss in bm.values()
+            for s in ss if not np.isnan(s["mean_latency"])]
+    return (min(vals), max(vals)) if vals else (0.0, 1.0)
+
+
+def fig_latency_group(lat_bt: dict, out_path: str) -> None:
+    """Group mean ± SEM latency vs session, one bold line per task — the clean
+    overall-trend view, no per-mouse clutter."""
+    fig, ax = plt.subplots(figsize=(8.4, 5.2))
+    for task in lat_bt:
+        bm = lat_bt[task]
+        max_s = max((s["session"] for ss in bm.values() for s in ss), default=1)
+        xs, means, sems = [], [], []
+        for day in range(1, max_s + 1):
+            mean, sem = _mean_sem([s["mean_latency"] for ss in bm.values()
+                                   for s in ss if s["session"] == day])
+            if np.isnan(mean):
+                continue
+            xs.append(day); means.append(mean); sems.append(sem)
+        xs, means, sems = np.array(xs), np.array(means), np.array(sems)
+        color = TH.TASK_COLORS.get(task, "#555")
+        ax.plot(xs, means, "-o", color=color, lw=2.8, ms=6, zorder=5,
+                label=TH.TASK_LABELS.get(task, task))
+        ax.fill_between(xs, means - sems, means + sems, color=color, alpha=0.18, zorder=4)
+    ax.set_xlabel("session #")
+    ax.set_ylabel("latency to first on-cue poke (s)")
+    ax.set_ylim(bottom=0)
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=10)
+    ax.set_title("Time from cue onset to first on-cue poke — group mean ± SEM")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
 # --- writers ---------------------------------------------------------------
+def write_latency_csv(lat_bt: dict, path: str) -> None:
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["task", "mouse", "session", "mean_latency_to_first_oncue_poke_s",
+                    "n_engaged_trials"])
+        for task in lat_bt:
+            for m in _sorted_mice(lat_bt[task]):
+                for s in lat_bt[task][m]:
+                    w.writerow([task, m, s["session"],
+                                "" if np.isnan(s["mean_latency"]) else f"{s['mean_latency']:.3f}",
+                                s["n_engaged"]])
+
+
 def write_session_csv(by_task: dict, path: str) -> None:
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -391,7 +464,7 @@ def main() -> int:
 
     global OUT_ROOT
     if not _ENV_OUT:
-        OUT_ROOT = str(_RESULTS_ROOT / _TASK_AREA[args.task] / "learning_trajectories")
+        OUT_ROOT = str(_RESULTS_ROOT / "learning_trajectories" / _TASK_AREA[args.task])
 
     records: list[dict] = []
     if args.task in ("appetitive", "both"):
@@ -412,10 +485,15 @@ def main() -> int:
     fig_slopes(by_task, os.path.join(OUT_ROOT, "first_vs_last_slopes.png"))
     fig_radar(by_task, os.path.join(OUT_ROOT, "phenotype_radar.png"))
     fig_learning_index(by_task, os.path.join(OUT_ROOT, "learning_index_heatmap.png"))
+
+    lat_bt = first_poke_latency(records)
+    fig_latency_group(lat_bt, os.path.join(OUT_ROOT, "cue_to_first_poke_latency_group.png"))
+    write_latency_csv(lat_bt, os.path.join(OUT_ROOT, "cue_to_first_poke_latency.csv"))
+
     write_summary(by_task, os.path.join(OUT_ROOT, "learning_trajectories_summary.txt"))
 
     n_sess = sum(len(s) for by_mouse in by_task.values() for s in by_mouse.values())
-    print(f"\nWrote 2 CSVs, 4 figures, and summary.txt under '{OUT_ROOT}/' "
+    print(f"\nWrote 3 CSVs, 7 figures, and summary.txt under '{OUT_ROOT}/' "
           f"({n_sess} sessions).")
     return 0
 

@@ -54,7 +54,8 @@ from config import ES_URL, ES_INDEX  # ES host/index, env-overridable (see confi
 
 TASK_TYPE = "Generalization"
 PILOT = os.environ.get("MICS_PILOT", "RecordingBox")
-OUT_ROOT = os.environ.get("MICS_GEN_OUT", "generalization_figs")
+OUT_ROOT = os.environ.get("MICS_GEN_OUT") or str(
+    Path(__file__).resolve().parent / "results" / "overview" / "generalization")
 
 # Each mouse's generalization sessions live in two ES subject strings
 # (<id>_GenLight_400 + "_2" continuation); discovered dynamically below.
@@ -210,12 +211,18 @@ def segment_trials(events: list[dict]) -> list[dict]:
         # events within the post-cue ITI. Last trial has no next onset -> last event.
         win_end_epoch = (events[onsets[k + 1]]["epoch"] if k + 1 < len(onsets)
                          else (window[-1]["epoch"] if window else t0))
+        # ITI start = when the FSM begins the inter-trial wait (after the response /
+        # consumption). Licks after this are impulsive; before it, consummatory.
+        iti_evt = next((e for e in window if e["etype"] == ET_STATE and e["epoch"] > t0
+                        and e["state"] in ("start_timer_ITI", "state_ITI")), None)
+        iti_start = (iti_evt["epoch"] - t0) if iti_evt else led_dur
         # false alarm = a nose poke during the ITI countdown; each one resets the
         # ITI timer (punishment). Logged as the state_ITI_nose_poke transition.
         false_alarms = sum(1 for e in window
                            if e["etype"] == ET_STATE and e["state"] == "state_ITI_nose_poke")
         trials.append({
             "led_dur": led_dur,
+            "iti_start": iti_start,
             "iti_end": win_end_epoch - t0,
             "n_false_alarms": false_alarms,
             "punished": false_alarms > 0,
@@ -259,6 +266,7 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
             "hits": hits_e,
             "miss": len(engaged) - hits_e,
             "hit_rate": 100.0 * sum(t["is_hit"] for t in trials) / len(trials),
+            "lick_hit_rate": _lick_hit_rate(trials),
             "engaged_rate": 100.0 * len(engaged) / len(trials),
             "acc_given_engaged": 100.0 * hits_e / len(engaged) if engaged else 0.0,
             "engaged_seq": [t["engaged"] for t in trials],
@@ -272,21 +280,37 @@ def _sorted_mice(per_mouse: dict[str, list[dict]]) -> list[str]:
     return sorted(per_mouse, key=lambda m: int(m[1:]))
 
 
-def plot_learning_curve(per_mouse: dict[str, list[dict]], out_path: str) -> None:
-    """Hit rate (all trials) across sessions: one line per mouse + group mean."""
+def _lick_hit_rate(trials: list[dict]) -> float:
+    """Lick-level hit rate = hits/(hits+FA): reward-related licks (rewarded trial,
+    before ITI) over reward-related + off-cue ITI licks (start_timer_ITI -> end)."""
+    hits = fa = 0
+    for t in trials:
+        iti0, iti1 = t["iti_start"], t["iti_end"]
+        if t["is_hit"]:
+            hits += sum(1 for lk in t["licks"] if 0 <= lk < iti0)
+        fa += sum(1 for lk in t["licks"] if iti0 <= lk <= iti1)
+    return 100.0 * hits / (hits + fa) if (hits + fa) else float("nan")
+
+
+def plot_learning_curve(per_mouse: dict[str, list[dict]], out_path: str,
+                        key: str = "hit_rate",
+                        ylabel: str = "hit rate (% of all trials)",
+                        title: str = "Generalization (light cue) — learning curve, all mice",
+                        refline: float | None = 50) -> None:
+    """Metric across sessions: one line per mouse + group mean (defaults to hit rate)."""
     fig, ax = plt.subplots(figsize=(9, 6))
     cmap = plt.get_cmap("tab10")
     mice = _sorted_mice(per_mouse)
     max_s = max((r["session_num"] for rows in per_mouse.values() for r in rows), default=1)
     for i, mouse in enumerate(mice):
         rows = per_mouse[mouse]
-        ax.plot([r["session_num"] for r in rows], [r["hit_rate"] for r in rows],
+        ax.plot([r["session_num"] for r in rows], [r[key] for r in rows],
                 "-o", color=cmap(i % 10), lw=1.5, ms=4, alpha=0.7, label=mouse)
 
     xs, means, sems = [], [], []
     for day in range(1, max_s + 1):
-        vals = [r["hit_rate"] for rows in per_mouse.values()
-                for r in rows if r["session_num"] == day]
+        vals = [r[key] for rows in per_mouse.values()
+                for r in rows if r["session_num"] == day and not np.isnan(r[key])]
         if not vals:
             continue
         xs.append(day)
@@ -296,10 +320,11 @@ def plot_learning_curve(per_mouse: dict[str, list[dict]], out_path: str) -> None
     ax.plot(xs, means, "-", color="black", lw=2.8, zorder=5, label="group mean")
     ax.fill_between(xs, means - sems, means + sems, color="black", alpha=0.15, zorder=4)
 
-    ax.axhline(50, color="grey", ls=":", lw=0.8, alpha=0.7)
+    if refline is not None:
+        ax.axhline(refline, color="grey", ls=":", lw=0.8, alpha=0.7)
     ax.set_xlabel("session #")
-    ax.set_ylabel("hit rate (% of all trials)")
-    ax.set_title("Generalization (light cue) — learning curve, all mice")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
     ax.set_ylim(0, 100)
     ax.set_xlim(0.5, max_s + 0.5)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -425,7 +450,8 @@ def plot_combined_rasters(per_mouse: dict[str, list[dict]], out_path: str) -> No
 
 def write_csv(per_mouse: dict[str, list[dict]], out_path: str) -> None:
     cols = ["mouse", "session_num", "subject", "raw_session", "n_trials",
-            "n_engaged", "hits", "miss", "hit_rate", "engaged_rate", "acc_given_engaged"]
+            "n_engaged", "hits", "miss", "hit_rate", "lick_hit_rate", "engaged_rate",
+            "acc_given_engaged"]
     with open(out_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
@@ -450,6 +476,10 @@ def main() -> int:
 
     os.makedirs(OUT_ROOT, exist_ok=True)
     plot_learning_curve(per_mouse, os.path.join(OUT_ROOT, "generalization_learning_curve.png"))
+    plot_learning_curve(per_mouse, os.path.join(OUT_ROOT, "generalization_lick_hitrate_curve.png"),
+                        key="lick_hit_rate", ylabel="lick hit rate  hits/(hits+FA)  %",
+                        title="Generalization (light) — lick hit rate hits/(hits+FA) across sessions",
+                        refline=None)
     plot_engaged_hits_miss(per_mouse, os.path.join(OUT_ROOT, "generalization_engaged_hits_miss.png"))
     write_csv(per_mouse, os.path.join(OUT_ROOT, "generalization_metrics.csv"))
     participation.plot_all(per_mouse, OUT_ROOT, "generalization_", "Generalization (light cue)")

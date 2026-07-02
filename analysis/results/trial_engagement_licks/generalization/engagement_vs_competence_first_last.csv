@@ -1,0 +1,11 @@
+task,mouse,engagement_first,competence_first,engagement_last,competence_last
+Generalization,m90,40.0,77.8,46.7,90.4
+Generalization,m92,15.0,85.7,42.3,93.5
+Generalization,m93,36.5,88.9,58.3,90.4
+Generalization,m97,27.8,83.3,59.3,86.0
+Generalization,m98,37.0,88.6,43.7,100.0
+Generalization,m100,36.3,85.7,54.8,91.7
+Generalization,m101,25.9,85.7,38.3,91.2
+Generalization,m102,37.0,85.7,82.3,93.2
+Generalization,m103,29.0,95.0,55.7,88.9
+Generalization,m104,45.8,95.1,51.9,88.1

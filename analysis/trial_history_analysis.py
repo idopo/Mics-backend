@@ -64,12 +64,12 @@ import numpy as np
 import appetitive_analysis as A
 import generalization_analysis as G
 
-# Output routes by task into results/<area>/trial_history/ (env var overrides).
+# Output routes by task into results/trial_history/<area>/ (env var overrides).
 # Reassigned in main() once --task is known; this default covers `--task both`.
 _RESULTS_ROOT = Path(__file__).resolve().parent / "results"
 _TASK_AREA = {"appetitive": "appetitive", "generalization": "generalization", "both": "cross_task"}
 _ENV_OUT = os.environ.get("MICS_TRIALHIST_OUT")
-OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "cross_task" / "trial_history")
+OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "trial_history" / "cross_task")
 NAN = float("nan")
 
 TASK_APP = "AppetitveTaskReal"
@@ -700,7 +700,7 @@ def main() -> int:
 
     if not _ENV_OUT:
         global OUT_ROOT
-        OUT_ROOT = str(_RESULTS_ROOT / _TASK_AREA[args.task] / "trial_history")
+        OUT_ROOT = str(_RESULTS_ROOT / "trial_history" / _TASK_AREA[args.task])
 
     records: list[dict] = []
     records_by_task: dict[str, list[dict]] = {}

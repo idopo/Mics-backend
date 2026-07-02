@@ -81,7 +81,7 @@ def session_len_ok(n_trials: int) -> bool:
     """True if a session's trial count is within the valid ~60-trial band."""
     return MIN_TRIALS <= n_trials <= MAX_TRIALS
 OUT_ROOT = os.environ.get("MICS_OUT") or str(
-    Path(__file__).resolve().parent / "results" / "appetitive" / "overview")
+    Path(__file__).resolve().parent / "results" / "overview" / "appetitive")
 
 # Event-type / id constants (verified against the data)
 ET_AUDIO = "mixer.AUDIO"
@@ -237,12 +237,18 @@ def segment_trials(events: list[dict]) -> list[dict]:
         # trial window end (= next trial onset) rel. to tone onset; used to place
         # events within the post-cue ITI. Last trial has no next onset -> last event.
         win_end = hi if hi != float("inf") else (window[-1]["epoch"] if window else t0)
+        # ITI start = when the FSM begins the inter-trial wait (after the response /
+        # consumption). Licks after this are impulsive; before it, consummatory.
+        iti_evt = next((e for e in window if e["etype"] == ET_STATE and e["epoch"] > t0
+                        and e["state"] in ("start_timer_ITI", "state_ITI")), None)
+        iti_start = (iti_evt["epoch"] - t0) if iti_evt else tone_dur
         # false alarm = a nose poke during the ITI countdown; each one resets the
         # ITI timer (punishment). Logged as the state_ITI_nose_poke transition.
         false_alarms = sum(1 for e in window
                            if e["etype"] == ET_STATE and e["state"] == "state_ITI_nose_poke")
         trials.append({
             "tone_dur": tone_dur,
+            "iti_start": iti_start,
             "iti_end": win_end - t0,
             "n_false_alarms": false_alarms,
             "punished": false_alarms > 0,
@@ -325,21 +331,38 @@ def plot_raster(subject: str, session: int, trials: list[dict], out_path: str) -
 
 
 # --- learning-curve plotting ----------------------------------------------
-def plot_curve_group(per_mouse: dict[str, list[dict]], out_path: str) -> None:
+def lick_hit_rate(trials: list[dict]) -> float:
+    """Lick-level hit rate = hits / (hits + FA), where a HIT lick is a reward-
+    related lick (on a rewarded trial, before the ITI) and an FA lick is an
+    off-cue lick during the ITI (start_timer_ITI/state_ITI -> trial end). A high /
+    rising value = licking became more reward-directed and less impulsive."""
+    hits = fa = 0
+    for t in trials:
+        iti0, iti1 = t["iti_start"], t["iti_end"]
+        if t["is_hit"]:
+            hits += sum(1 for lk in t["licks"] if 0 <= lk < iti0)
+        fa += sum(1 for lk in t["licks"] if iti0 <= lk <= iti1)
+    return 100.0 * hits / (hits + fa) if (hits + fa) else float("nan")
+
+
+def plot_curve_group(per_mouse: dict[str, list[dict]], out_path: str,
+                     key: str = "hit_rate", ylabel: str = "Hit rate (%)",
+                     title: str = "AppetitveTaskReal — learning curve (hit rate across sessions)",
+                     refline: float | None = 50) -> None:
     fig, ax = plt.subplots(figsize=(10, 6.5))
     cmap = plt.get_cmap("tab10")
     max_day = max((r["training_day"] for rows in per_mouse.values() for r in rows),
                   default=1)
 
     for i, (subject, rows) in enumerate(sorted(per_mouse.items())):
-        ax.plot([r["training_day"] for r in rows], [r["hit_rate"] for r in rows],
+        ax.plot([r["training_day"] for r in rows], [r[key] for r in rows],
                 "-o", color=cmap(i % 10), alpha=0.5, lw=1.2, ms=3.5,
                 label=short_name(subject))
 
     xs, means, sems = [], [], []
     for day in range(1, max_day + 1):
-        vals = [r["hit_rate"] for rows in per_mouse.values()
-                for r in rows if r["training_day"] == day]
+        vals = [r[key] for rows in per_mouse.values()
+                for r in rows if r["training_day"] == day and not np.isnan(r[key])]
         if not vals:
             continue
         xs.append(day)
@@ -349,10 +372,11 @@ def plot_curve_group(per_mouse: dict[str, list[dict]], out_path: str) -> None:
     ax.plot(xs, means, "-", color="black", lw=2.6, zorder=5, label="group mean")
     ax.fill_between(xs, means - sems, means + sems, color="black", alpha=0.15, zorder=4)
 
-    ax.axhline(50, color="grey", ls="--", lw=0.8, alpha=0.7)
+    if refline is not None:
+        ax.axhline(refline, color="grey", ls="--", lw=0.8, alpha=0.7)
     ax.set_xlabel("session #")
-    ax.set_ylabel("Hit rate (%)")
-    ax.set_title("AppetitveTaskReal — learning curve (hit rate across sessions)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
     ax.set_ylim(0, 100)
     ax.set_xlim(0.5, max_day + 0.5)
     ax.set_xticks(range(1, max_day + 1))
@@ -362,7 +386,10 @@ def plot_curve_group(per_mouse: dict[str, list[dict]], out_path: str) -> None:
     plt.close(fig)
 
 
-def plot_curve_grid(per_mouse: dict[str, list[dict]], out_path: str) -> None:
+def plot_curve_grid(per_mouse: dict[str, list[dict]], out_path: str,
+                    key: str = "hit_rate", ylabel: str = "Hit rate (%)",
+                    title: str = "AppetitveTaskReal — learning curve per mouse",
+                    refline: float | None = 50) -> None:
     subjects = sorted(per_mouse)
     ncol = 5
     nrow = (len(subjects) + ncol - 1) // ncol
@@ -374,9 +401,10 @@ def plot_curve_grid(per_mouse: dict[str, list[dict]], out_path: str) -> None:
 
     for ax, subject in zip(axes, subjects):
         rows = per_mouse[subject]
-        ax.plot([r["training_day"] for r in rows], [r["hit_rate"] for r in rows],
+        ax.plot([r["training_day"] for r in rows], [r[key] for r in rows],
                 "-o", color="#1f77b4", ms=3.5, lw=1.4)
-        ax.axhline(50, color="grey", ls="--", lw=0.7, alpha=0.6)
+        if refline is not None:
+            ax.axhline(refline, color="grey", ls="--", lw=0.7, alpha=0.6)
         ax.set_title(short_name(subject), fontsize=10)
         ax.set_ylim(0, 100)
         ax.set_xlim(0.5, max_day + 0.5)
@@ -385,8 +413,8 @@ def plot_curve_grid(per_mouse: dict[str, list[dict]], out_path: str) -> None:
         ax.axis("off")
 
     fig.supxlabel("session #")
-    fig.supylabel("Hit rate (%)")
-    fig.suptitle("AppetitveTaskReal — learning curve per mouse", fontsize=12)
+    fig.supylabel(ylabel)
+    fig.suptitle(title, fontsize=12)
     fig.tight_layout(rect=(0.02, 0.02, 1, 0.97))
     fig.savefig(out_path, dpi=140)
     plt.close(fig)
@@ -394,9 +422,10 @@ def plot_curve_grid(per_mouse: dict[str, list[dict]], out_path: str) -> None:
 
 def write_session_csv(per_mouse: dict[str, list[dict]], out_path: str) -> None:
     cols = ["subject", "session", "training_day", "n_trials", "n_hits", "hit_rate",
-            "total_pokes", "pokes_during_tone", "n_poked_licked", "n_poked_nolick"]
+            "lick_hit_rate", "total_pokes", "pokes_during_tone", "n_poked_licked",
+            "n_poked_nolick"]
     with open(out_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=cols)
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         for subject in sorted(per_mouse):
             for row in per_mouse[subject]:
@@ -487,24 +516,6 @@ def plot_poke_single(per_mouse: dict[str, list[dict]], key: str, color: str,
     _bar_grid(per_mouse, out_path, suptitle, ylabel, draw)
 
 
-def plot_poke_compare(per_mouse: dict[str, list[dict]], out_path: str) -> None:
-    c_lick, c_nolick = "#2ca02c", "#d62728"
-    w = 0.4
-
-    def draw(ax, rows):
-        days = np.array([r["training_day"] for r in rows], dtype=float)
-        ax.bar(days - w / 2, [r["n_poked_licked"] for r in rows], width=w, color=c_lick)
-        ax.bar(days + w / 2, [r["n_poked_nolick"] for r in rows], width=w, color=c_nolick)
-
-    handles = [
-        mpatches.Patch(color=c_lick, label="poked & licked"),
-        mpatches.Patch(color=c_nolick, label="poked, no lick"),
-    ]
-    _bar_grid(per_mouse, out_path,
-              "Poked-during-tone outcome per session (trial counts)",
-              "Trials", draw, legend_handles=handles)
-
-
 def plot_stacked_grid(per_mouse: dict[str, list[dict]], out_path: str, suptitle: str,
                       frac_fn, labels: list[str], colors: list[str]) -> None:
     """One stacked 0-100% bar per session: frac_fn(row) -> tuple of segment %."""
@@ -533,16 +544,6 @@ def poke_breakdown_fracs(row: dict) -> tuple[float, float, float]:
     off_cue = max(0, total - row["pokes_during_tone"])
     return (100.0 * rewarded / total, 100.0 * on_cue_miss / total,
             100.0 * off_cue / total)
-
-
-def ontone_reward_fracs(row: dict) -> tuple[float, float]:
-    """Among on-cue (during-tone) nose pokes only: (% rewarded, % not rewarded).
-    Denominator is the during-tone pokes — a learning-sensitive measure."""
-    on_cue = row["pokes_during_tone"]
-    if not on_cue:
-        return 0.0, 0.0
-    rewarded = min(100.0, 100.0 * row["n_hits"] / on_cue)
-    return rewarded, 100.0 - rewarded
 
 
 # --- driver ---------------------------------------------------------------
@@ -596,7 +597,8 @@ def run(args: argparse.Namespace) -> int:
                 n_hits = sum(t["is_hit"] for t in trials)
                 row = {"subject": subject, "session": s,
                        "n_trials": len(trials), "n_hits": n_hits,
-                       "hit_rate": 100.0 * n_hits / len(trials)}
+                       "hit_rate": 100.0 * n_hits / len(trials),
+                       "lick_hit_rate": lick_hit_rate(trials)}
                 row.update(poke_metrics(by_session[s], trials))
                 row.update(engagement_metrics(trials))
                 rows.append(row)
@@ -622,31 +624,29 @@ def run(args: argparse.Namespace) -> int:
         grid_path = os.path.join(OUT_ROOT, "learning_curve_grid.png")
         plot_curve_group(per_mouse, group_path)
         plot_curve_grid(per_mouse, grid_path)
-        print(f"Learning curve:\n  {group_path}\n  {grid_path}")
+        # lick-based hit rate = hits/(hits+FA) — reward-directed licking discipline
+        lick_group = os.path.join(OUT_ROOT, "learning_curve_lick_hitrate_group.png")
+        lick_grid = os.path.join(OUT_ROOT, "learning_curve_lick_hitrate_grid.png")
+        plot_curve_group(per_mouse, lick_group, key="lick_hit_rate",
+                         ylabel="lick hit rate  hits/(hits+FA)  %",
+                         title="AppetitveTaskReal — lick hit rate hits/(hits+FA) across sessions",
+                         refline=None)
+        plot_curve_grid(per_mouse, lick_grid, key="lick_hit_rate",
+                        ylabel="lick hit rate  hits/(hits+FA)  %",
+                        title="AppetitveTaskReal — lick hit rate per mouse", refline=None)
+        print(f"Learning curve:\n  {group_path}\n  {grid_path}\n  {lick_group}\n  {lick_grid}")
     if do_pokes and per_mouse:
-        total_path = os.path.join(OUT_ROOT, "pokes_total_per_session.png")
         tone_path = os.path.join(OUT_ROOT, "pokes_during_tone_per_session.png")
-        cmp_path = os.path.join(OUT_ROOT, "pokes_lick_vs_nolick_per_session.png")
-        plot_poke_single(per_mouse, "total_pokes", "#1f77b4",
-                         "Total nose pokes per session", "Nose pokes", total_path)
         plot_poke_single(per_mouse, "pokes_during_tone", "#3a7ca5",
                          "Nose pokes during the tone cue, per session",
                          "Nose pokes (during tone)", tone_path)
-        plot_poke_compare(per_mouse, cmp_path)
         breakdown_path = os.path.join(OUT_ROOT, "pokes_breakdown_per_session.png")
-        ontone_path = os.path.join(OUT_ROOT, "pokes_ontone_reward_ratio_per_session.png")
         plot_stacked_grid(per_mouse, breakdown_path,
                           "Nose-poke breakdown per session (% of all pokes)",
                           poke_breakdown_fracs,
                           ["rewarded (on-cue)", "on-cue, not rewarded", "off-cue (ITI)"],
                           ["#2ca02c", "#ff7f0e", "#999999"])
-        plot_stacked_grid(per_mouse, ontone_path,
-                          "On-cue nose pokes: rewarded vs not rewarded, per session (%)",
-                          ontone_reward_fracs,
-                          ["rewarded", "not rewarded"],
-                          ["#2ca02c", "#d62728"])
-        print(f"Poke bars:\n  {total_path}\n  {tone_path}\n  {cmp_path}\n"
-              f"  {breakdown_path}\n  {ontone_path}")
+        print(f"Poke bars:\n  {tone_path}\n  {breakdown_path}")
     if do_participation and per_mouse:
         paths = participation.plot_all(per_mouse, OUT_ROOT, "appetitive_",
                                        "Appetitive tone task")

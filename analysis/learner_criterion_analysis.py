@@ -76,12 +76,12 @@ import numpy as np
 import appetitive_analysis as A
 import generalization_analysis as G
 
-# Output routes by task into results/<area>/learner_criterion/ (env var overrides).
+# Output routes by task into results/learner_criterion/<area>/ (env var overrides).
 # Reassigned in main() once --task is known; this default covers `--task both`.
 _RESULTS_ROOT = Path(__file__).resolve().parent / "results"
 _TASK_AREA = {"appetitive": "appetitive", "generalization": "generalization", "both": "cross_task"}
 _ENV_OUT = os.environ.get("MICS_LEARNER_OUT")
-OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "cross_task" / "learner_criterion")
+OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "learner_criterion" / "cross_task")
 NAN = float("nan")
 
 TASK_APP = "AppetitveTaskReal"
@@ -538,32 +538,6 @@ def fig_engagement_vs_competence(classes: dict, out_path: str,
     plt.close(fig)
 
 
-def fig_hit_rate_vs_competence(classes: dict, out_path: str) -> None:
-    """Why hit rate alone misleads: x = hit rate, y = accuracy-when-engaged,
-    point SIZE = engagement. Mice with similar low hit rate split into competent
-    (high y, small) vs truly poor (low y)."""
-    tasks = list(classes)
-    fig, axes = plt.subplots(1, len(tasks), figsize=(6.8 * len(tasks), 6),
-                             squeeze=False, sharey=True)
-    for ax, task in zip(axes[0], tasks):
-        _scatter_mice(ax, classes[task], "late_hit_rate",
-                      "late_accuracy_when_engaged", "late_engagement_rate")
-        ax.axhline(ACC_STRONG, color="grey", ls="--", lw=1)
-        ax.set_xlim(0, 100)
-        ax.set_ylim(0, 105)
-        ax.set_xlabel("late hit rate (% of all trials)")
-        ax.set_title(TASK_LABELS[task])
-    axes[0][0].set_ylabel("late accuracy when engaged (%)")
-    _legend_classes(fig, extra=[plt.Line2D([], [], marker="o", linestyle="None",
-                                           color="grey", markersize=10,
-                                           label="point size ∝ engagement rate")])
-    fig.suptitle("Hit rate is misleading — low hit rate can mean low competence "
-                 "OR low participation", fontsize=13, y=0.99)
-    fig.tight_layout(rect=(0, 0, 1, 0.88))
-    fig.savefig(out_path, dpi=150)
-    plt.close(fig)
-
-
 def fig_trajectory_by_classification(sessions: dict, classes: dict, out_path: str) -> None:
     metrics = [("hit_rate", "hit rate (%)"),
                ("engagement_rate", "engagement rate (%)"),
@@ -820,7 +794,7 @@ def main() -> int:
 
     if not _ENV_OUT:
         global OUT_ROOT
-        OUT_ROOT = str(_RESULTS_ROOT / _TASK_AREA[args.task] / "learner_criterion")
+        OUT_ROOT = str(_RESULTS_ROOT / "learner_criterion" / _TASK_AREA[args.task])
 
     sessions: dict[str, dict[str, list[dict]]] = {}
     if args.task in ("appetitive", "both"):
@@ -849,9 +823,6 @@ def main() -> int:
 
     fig_classification_summary(classes, os.path.join(OUT_ROOT, "learner_classification_summary.png"))
     fig_engagement_vs_competence(classes, os.path.join(OUT_ROOT, "engagement_vs_competence_map.png"))
-    fig_engagement_vs_competence(classes, os.path.join(OUT_ROOT, "engagement_vs_competence_last_session.png"),
-                                 window="last")
-    fig_hit_rate_vs_competence(classes, os.path.join(OUT_ROOT, "hit_rate_vs_competence.png"))
     fig_trajectory_by_classification(sessions, classes,
                                      os.path.join(OUT_ROOT, "learning_trajectory_by_classification.png"))
     fig_offcue_by_classification(classes, os.path.join(OUT_ROOT, "offcue_behavior_by_classification.png"))

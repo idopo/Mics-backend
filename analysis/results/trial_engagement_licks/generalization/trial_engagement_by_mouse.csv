@@ -1,0 +1,11 @@
+task,mouse,n_sessions,mean_trial_engagement,pct_sessions_engaged,mouse_engaged,mean_catch_rate
+Generalization,m90,4,39.22,50,yes,7.39
+Generalization,m92,4,32.16,50,no,3.29
+Generalization,m93,4,44.24,50,yes,3.70
+Generalization,m97,4,46.32,50,yes,4.93
+Generalization,m98,4,40.44,50,yes,2.87
+Generalization,m100,4,41.26,25,yes,5.34
+Generalization,m101,4,33.19,25,no,4.54
+Generalization,m102,4,45.20,25,yes,3.70
+Generalization,m103,4,45.80,75,yes,6.97
+Generalization,m104,4,48.72,100,yes,4.10

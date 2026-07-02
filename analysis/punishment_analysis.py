@@ -18,7 +18,7 @@ Reuses the ES access / session ordering in appetitive_analysis /
 generalization_analysis (the false-alarm count now rides along on each
 segmented trial), so the session set matches every other analysis.
 
-Outputs (under results/<area>/punishment/, area = appetitive | generalization |
+Outputs (under results/punishment/<area>/, area = appetitive | generalization |
 cross_task for --task both; override root with MICS_PUNISH_OUT):
     punishment_rate_curve.png   % punished trials across sessions (per mouse + group)
     punishment_by_mouse.png     per-mouse mean % punished (dots = sessions)
@@ -55,7 +55,7 @@ NAN = float("nan")
 _RESULTS_ROOT = Path(__file__).resolve().parent / "results"
 _TASK_AREA = {"appetitive": "appetitive", "generalization": "generalization", "both": "cross_task"}
 _ENV_OUT = os.environ.get("MICS_PUNISH_OUT")
-OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "cross_task" / "punishment")
+OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "punishment" / "cross_task")
 
 
 # --- loaders (keep raw trials so the punished / n_false_alarms fields survive) --
@@ -490,7 +490,7 @@ def main() -> int:
 
     global OUT_ROOT
     if not _ENV_OUT:
-        OUT_ROOT = str(_RESULTS_ROOT / _TASK_AREA[args.task] / "punishment")
+        OUT_ROOT = str(_RESULTS_ROOT / "punishment" / _TASK_AREA[args.task])
 
     records: list[dict] = []
     if args.task in ("appetitive", "both"):

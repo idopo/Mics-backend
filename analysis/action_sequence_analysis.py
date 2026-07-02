@@ -59,12 +59,12 @@ import numpy as np
 import appetitive_analysis as A
 import generalization_analysis as G
 
-# Output routes by task into results/<area>/action_sequence/ (env var overrides).
+# Output routes by task into results/action_sequence/<area>/ (env var overrides).
 # Reassigned in main() once --task is known; this default covers `--task both`.
 _RESULTS_ROOT = Path(__file__).resolve().parent / "results"
 _TASK_AREA = {"appetitive": "appetitive", "generalization": "generalization", "both": "cross_task"}
 _ENV_OUT = os.environ.get("MICS_ACTSEQ_OUT")
-OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "cross_task" / "action_sequence")
+OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "action_sequence" / "cross_task")
 NAN = float("nan")
 
 TASK_APP = "AppetitveTaskReal"
@@ -820,7 +820,7 @@ def main() -> int:
 
     if not _ENV_OUT:
         global OUT_ROOT
-        OUT_ROOT = str(_RESULTS_ROOT / _TASK_AREA[args.task] / "action_sequence")
+        OUT_ROOT = str(_RESULTS_ROOT / "action_sequence" / _TASK_AREA[args.task])
 
     records: list[dict] = []
     if args.task in ("appetitive", "both"):

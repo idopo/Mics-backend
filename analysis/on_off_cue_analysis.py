@@ -30,7 +30,7 @@ in [0, cue_dur]); "off cue" = everything else (pre-cue wait + post-cue ITI).
    the data); it is trimmed off (MICS_ITI_LOCKOUT_S) so the ITI end = lockout
    onset, not the next cue.
 
-Outputs (under results/<area>/on_off_cue/, area = appetitive | generalization |
+Outputs (under results/on_off_cue/<area>/, area = appetitive | generalization |
 cross_task for --task both; override root with MICS_ONOFF_OUT):
     on_off_share_curve.png          on-cue share of events across sessions
     on_off_composition_by_mouse.png per-mouse on/off split of pokes & licks
@@ -72,7 +72,7 @@ NAN = float("nan")
 _RESULTS_ROOT = Path(__file__).resolve().parent / "results"
 _TASK_AREA = {"appetitive": "appetitive", "generalization": "generalization", "both": "cross_task"}
 _ENV_OUT = os.environ.get("MICS_ONOFF_OUT")
-OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "cross_task" / "on_off_cue")
+OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "on_off_cue" / "cross_task")
 
 # licks counted in this window (s) after a reward / off-cue poke = burst density
 LICK_DENSITY_WINDOW_S = float(os.environ.get("MICS_LICK_DENSITY_WIN", "1.0"))
@@ -754,7 +754,7 @@ def main() -> int:
 
     global OUT_ROOT
     if not _ENV_OUT:
-        OUT_ROOT = str(_RESULTS_ROOT / _TASK_AREA[args.task] / "on_off_cue")
+        OUT_ROOT = str(_RESULTS_ROOT / "on_off_cue" / _TASK_AREA[args.task])
 
     records: list[dict] = []
     if args.task in ("appetitive", "both"):

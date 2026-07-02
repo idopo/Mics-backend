@@ -1,0 +1,15 @@
+# Lick-based trial engagement + catch trials (EXPLORATORY)
+hit lick = reward-related (rewarded trial, before ITI); FA lick = off-cue lick during the ITI
+trial_engagement = hits/(hits+FA); engaged = >= cohort median (per task)
+
+## Appetitive (tone)  (engagement median 25.8%, catch median 0.0%)
+    m90: engagement  30.2% | 69% sessions engaged | catch 2.3% | mouse ENGAGED
+    m93: engagement  28.0% | 67% sessions engaged | catch 1.0% | mouse ENGAGED
+    m97: engagement  26.8% | 62% sessions engaged | catch 1.9% | mouse ENGAGED
+   m103: engagement  26.6% | 58% sessions engaged | catch 1.8% | mouse ENGAGED
+   m102: engagement  26.3% | 45% sessions engaged | catch 1.6% | mouse ENGAGED
+    m92: engagement  24.0% | 55% sessions engaged | catch 0.8% | mouse below
+   m100: engagement  23.5% | 50% sessions engaged | catch 0.8% | mouse below
+    m98: engagement  22.8% | 42% sessions engaged | catch 0.1% | mouse below
+   m104: engagement  21.8% | 50% sessions engaged | catch 1.0% | mouse below
+   m101: engagement  17.0% | 8% sessions engaged | catch 0.4% | mouse below

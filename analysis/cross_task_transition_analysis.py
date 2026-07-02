@@ -47,7 +47,7 @@ import learner_criterion_analysis as LC
 NAN = float("nan")
 OUT_ROOT = os.environ.get(
     "MICS_XT_OUT",
-    str(Path(__file__).resolve().parent / "results" / "cross_task" / "appetitive_to_generalization"))
+    str(Path(__file__).resolve().parent / "results" / "cross_task_transition" / "appetitive_to_generalization"))
 
 # onset lines (kept distinct from the raster's green pokes / black licks / yellow reward)
 RULE_COLOR = "#9467bd"       # hit-rate step-up

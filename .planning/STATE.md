@@ -106,6 +106,15 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 17-free-form-pilot-hardware-config]: HardwareCheckModal pendingEdits keyed by module_name (string) — was module_id (number); class_name not stripped before PUT
 - [Phase 17-free-form-pilot-hardware-config]: PilotHardwareConfig rewritten to show pilot_hardware_config rows directly; cascade delete removed from hardware modules router
 
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phases 1–4 archived (2026-07-26): moved to `.planning/archive/`. Superseded and re-planned inside phases 9–17 — the system is well past them. **Ignore when reviewing GSD phases.** Phases 5–8 (Pi Code Editor) marked Deferred: never started, not in the current plan.
+- Phase 24 added (2026-07-26): Trigger Assignment Action Lists — triggers run the same action vocabulary as state `entry_actions`, assigned from the UI. Sequenced **before** Phase 23 per stabilization plan.
+- Execution order agreed 2026-07-26: **24 → 23 → review → 18 → Open Ephys**. Rationale and full scope in `.planning/STABILIZATION_PLAN.md`.
+- Phases 12–17 were validated manually on the live system; the "Human Verification Required" lists in their VERIFICATION.md files are stale bookkeeping, not open work.
+
 ## Blockers
 
 None currently.
@@ -133,9 +142,11 @@ Plan 01 depends on Plan 06 (`depends_on: [06]`, wave 2).
 
 ## Next Actions
 
-1. `/gsd:discuss-phase 1` — gather context before planning Phase 1 (Pi Foundation)
-   - OR: `/gsd:plan-phase 1` — skip discussion, go straight to atomic task plans
-2. Phase 5 (Pi Editor: Viewer) can be planned and executed in parallel with Phase 1
+1. `/gsd:discuss-phase 24` — settle the open design decisions for trigger action lists
+   (dynamic tracker naming from a returned channel index; additive `actions` vs replacing
+   the `handler` enum) before planning.
+2. `/gsd:plan-phase 24`
+3. Then Phase 23 (Compute Primitives + Variables) — already planned, 3 plans, not executed.
 
 ---
 *Last updated: 2026-03-15 — corrections: hot-reload scope, SEMANTIC_HARDWARE naming source, FDA JSON persistence*

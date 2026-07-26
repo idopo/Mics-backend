@@ -257,13 +257,79 @@
 | COND-09 | Pi `_build_tree_lambda(node)` evaluates `condition_tree` recursively: leaf → `_build_transition_lambda`; AND-node → `all()`; OR-node → `any()`; fallback chain: `condition_tree` → `condition_groups` → `conditions[]` | 16 |
 | COND-10 | `condLabel()` renders tree with parentheses where needed: `(A ∨ B) ∧ C` when OR is child of AND; omits parens for flat structures | 16 |
 
+### External Software Integration (MICS-Link)
+
+| ID | Requirement | Phase |
+|---|---|---|
+| EXTLINK-01 | Each `ExternalHardware` instance binds its OWN ZMQ ROUTER socket on the `listen_port` declared in its `pilot_hardware_config.config` row; runs on the task's Tornado IOLoop alongside the orchestrator DEALER (no new thread). One module = one socket = one port. | 18 |
+| EXTLINK-02 | The external SDK on the remote computer connects with ZMQ DEALER using `identity = source_id` (also from `pilot_hardware_config.config`). The Pi rejects any DEALER frame whose identity ≠ the configured `source_id` for that socket. | 18 |
+| EXTLINK-03 | Wire protocol uses MessagePack envelope with kind discriminator: `SIG` (signal update), `EVT` (event with payload), `HB` (heartbeat), `ACK` (command result); Pi-outbound `CMD` (command invocation) | 18 |
+| EXTLINK-04 | `ExternalHardware` base class supports `@signal(default, stale_after_ms, stale_policy)`, `@event(payload)`, `@command` decorators that declare the wire contract once per class | 18 |
+| EXTLINK-05 | Each `@signal` auto-registers a View Tracker named `<source_id>.<signal_name>`; FDA reads via existing `view.get_value(...)` API with zero new call sites | 18 |
+| EXTLINK-06 | Per-signal stale policy enforced on every read: `hold_last` returns cached value, `return_default` returns the declared default, `return_none` returns None | 18 |
+| EXTLINK-07 | Per-source liveness: heartbeat-driven `<source_id>.alive` boolean tracker flips false after `stale_ms` (from per-pilot config) since last HB; flip emits a CONTINUOUS event for ES | 18 |
+| EXTLINK-08 | Ingress validation: messages whose `sig`/`evt`/`cmd` name is not declared in the corresponding `ExternalHardware` subclass are dropped + logged; no exception ever propagates into the Tornado IOLoop | 18 |
+| EXTLINK-09 | The hardware-libs AST extractor (`api/routers/hardware_libs.py` — Phase 9 plumbing) recognises `@signal` / `@event` / `@command` decorators and includes them in the lib's `ast_metadata`; downstream toolkit dispatch (Phase 11) treats `ExternalHardware` subclasses no differently — same `HARDWARE` + `PREFS_HARDWARE` dispatch shape, the `config` values differ but the wire is unchanged. The `extlink` block carries per-signal `dtype` (string name) and per-command `{args:[{name,dtype}], returns}` so FDA-editor and state-builder UIs (Phase 19+) can render typed forms without importing the lib | 18 |
+| EXTLINK-10 | A `pilot_hardware_config` row for an external module carries `{class_name, listen_port, source_id, stale_ms}` in its `config` JSON (Phase 17 free-form schema — no new column, no new endpoint); preflight (Phase 13) validates `class_name` like any other module | 18 |
+| EXTLINK-11 | Smoke test (`~/pi-mirror/scripts/dev/extlink_smoke.py`) demonstrates end-to-end: standalone DEALER script connects to the configured `listen_port` with the configured `source_id`, pushes `dlc_cam1.left_paw_x = 0.7`, an FDA transition lambda gated on `view.get_value("dlc_cam1.left_paw_x") > 0.5` advances the state machine | 18 |
+| EXTLINK-12 | **Type contract.** Every `@signal` declares a value dtype (resolved at class-build time from the method's return annotation, with `type(default)` as fallback); allowed primitives: `int`, `float`, `bool`, `str`. The decorator raises `TypeError` at import time if neither annotation nor default provides a usable type. Every `@command` captures its parameter annotations + return annotation. At wire ingest, `_dispatch_sig` coerces incoming `v` via `spec.dtype(v)`; on `TypeError` / `ValueError` it increments `type_mismatch_count`, drops with a rate-limited log, and NEVER raises into the IOLoop. `bool` is special-cased — only `isinstance(raw, bool)` is accepted (no silent `float(True)` coercion). Same metadata is mirrored in `ast_metadata.extlink` for UI consumption (see EXTLINK-09) | 18 |
+| EXTLINK-13 | **Readiness gate.** Per-source `required: bool` (default `true`) and `wait_timeout_s: int` (default `60`, range `[5, 600]`, `null` REJECTED at config save and Pi-side init) live in `pilot_hardware_config.config`. When a task starts on a pilot with one or more required external sources, `mics_task` injects a synthetic `_wait_extlink_ready` FDA pre-state ahead of the user-declared initial state. The pre-state has THREE exits, in priority order: (a) **all required alive** → user's initial state (normal path); (b) **manual skip** via orchestrator-relayed `EXTLINK_SKIP_WAIT` ZMQ message → user's initial state (with a warning logged + CONTINUOUS event); (c) **timeout** at `max(wait_timeout_s)` across required sources → terminal `_extlink_timeout` state, session aborts cleanly with a `CONTINUOUS ExtlinkTimeout` event listing offline sources. The pre-state is NEVER installed when zero required sources exist (zero overhead for non-MICS-Link tasks). Three escape paths guarantee a task can never hang indefinitely: timeout (always, finite default), manual skip (operator override), and STOP button (existing path, always available). | 18 |
+
+### Compute Primitives + Variables (CMP)
+
+GUI-assembled FDA-JSON-v2 tasks gain value-producing computation (random draws, derived
+numbers/booleans) that bridges state-entry → transition, without writing Python or editing
+locked toolkit source. Design spec: `~/.claude/plans/i-realized-something-the-ancient-pnueli.md`.
+
+| ID | Requirement | Phase |
+|---|---|---|
+| CMP-01 | FDA-JSON-v2 gains a top-level `variables` registry alongside `states`/`transitions`: `"variables": { "<name>": {} }`. Untyped generic scratch slots — a name is enough. | 23 |
+| CMP-02 | At `load_fda_from_json()` each declared variable is instantiated as a generic `Tracker` (initial value `None`) and registered in BOTH `self.flags` and `self.view.view` — identical to `init_flags()` (mics_task.py:268-280). Transitions then read variables via the existing `{"view": name}` / `{"flag": name}` operand path with zero new read code. | 23 |
+| CMP-03 | New entry-action `type: "compute"`: `{ "type": "compute", "op": "<primitive>", "args": [...], "output": "<var>" }`. `_build_action_callable()` resolves args via the existing `_resolve_arg` forms (literal / `{param}` / `{flag}` / variable), calls the named primitive, and `.set()`s the result into the `output` variable's Tracker. | 23 |
+| CMP-04 | Curated compute primitive set (stdlib `random`/`math` + builtins only — always present on Pi, no package dependency): random/copy — `random_choice(list)`, `random_int(min,max)`, `random_float(min,max)`, `random_bool(p)`, `assign(value)`; numeric/util — `add(a,b)`, `subtract(a,b)`, `multiply(a,b)`, `divide(a,b)` (raise on /0), `modulo(a,b)` (raise on /0), `minimum(a,b)`, `maximum(a,b)`, `clamp(value,lo,hi)`. Numeric value-production only — no comparison/boolean-logic ops (branching stays in transitions; Phase 15 DNF composes booleans). A variable read back as an arg (`add(counter,1)→counter`) is the supported counter pattern (one reused slot). Implemented as pure functions in a new shared compute-primitives module on the Pi. | 23 |
+| CMP-05 | Last-write-wins on re-entry: re-entering a state re-runs its compute action and overwrites the same variable slot (matches old instance-attribute behavior across trials). No reset between trials. | 23 |
+| CMP-06 | Hot-reload path: new `variables` and `compute` actions flow through the existing `UPDATE_FDA` store; newly-added variables are instantiated as Trackers on reload before transitions referencing them are rebuilt. | 23 |
+| CMP-10 | Backend `_validate_task_definition()` (api/routers/toolkits.py ~661) validates the `variables` registry: every `compute` `output` is declared in `variables`; every transition/condition reference to a variable resolves; rejects name collisions with toolkit `FLAGS`, `SEMANTIC_HARDWARE`, and view keys. | 23 |
+| CMP-11 | `api/fda_utils.py` recursive ref scanner extended to cover `compute` `output` names (so lib/ref impact detection sees them). | 23 |
+| CMP-12 | Shared compute library stored & versioned via the existing Phase-9 hardware-lib DB infra (a non-hardware library entry); AST extraction reused so the GUI knows each primitive's signature (name + args). No new table. | 23 |
+| CMP-13 | GUI state-builder (Phase-12 `StateBodyPanel`): `compute` action editor (primitive picker from compute library + per-arg `ArgInput` + `output` field). Typing a new `output` name auto-declares it into the task's `variables` registry inline. | 23 |
+| CMP-14 | GUI transition-condition builder: operand dropdown is populated from toolkit `FLAGS` + the task's `variables` registry, so a freshly-declared variable is immediately selectable as a condition operand. | 23 |
+| CMP-15 | GUI validation surfacing (nice-to-have): warn in the editor when a transition reads a variable not written by any reachable upstream state's compute action. | 23 |
+
+> **Deferred (not tracked):** the `expr` escape-hatch (former CMP-07–09 — a sandboxed restricted-AST expression evaluator with a `type:"expr"` action) was decoupled from Phase 23. With arithmetic/min/max/clamp now in the curated `compute` set, the library-backed primitives cover current needs; `expr` would only address the remaining long tail (multi-term expressions / boolean logic). It is documented in the design spec (`~/.claude/plans/i-realized-something-the-ancient-pnueli.md`) and can be re-added as its own phase if a concrete need arises.
+
+### Trigger Assignment Action Lists (TRIGA)
+
+A hardware trigger runs the same action vocabulary a state's `entry_actions` uses, assembled in
+the task-editor UI instead of hard-coded as a Python method. Reference case: `learning_cage.detectedLick`.
+Context: `.planning/phases/24-trigger-assignment-action-lists/24-CONTEXT.md`.
+
+| ID | Requirement | Phase |
+|---|---|---|
+| TRIGA-01 | A `trigger_assignments` entry carries an ordered `actions` list using the **same action schema as state `entry_actions`**; each action is built through the existing `_build_action_callable` (`mics_task.py:524`) so `hardware` / `flag` / `timer` / `special` / `method` / `if` all work identically in a trigger and in a state body. Load-time `ValueError` on unknown type/ref is preserved. | 24 |
+| TRIGA-02 | The composed trigger callable declares `level` / `tick` parameters so `execute_trigger`'s `inspect.signature` check (`task.py:286`) passes them, while the underlying action callables stay zero-arg. `_resolve_arg` (`mics_task.py:401`) gains a `{"trigger": "level"\|"tick"}` form so an action can consume the trigger invocation context. | 24 |
+| TRIGA-03 | A `view` action type can write `self.view.view[key]` — the trackers created by `check_for_detectors` via `view.add_Tracker` live only in `self.view.view`, never in `self.flags`, so no existing action type can reach them. Supports passing `pi_timestamp`. | 24 |
+| TRIGA-04 | A hardware/method action's **return value** can be captured into a named slot instead of being discarded (`_hw_call` currently drops it). The capture mechanism is shape-compatible with Phase 23's `variables` / `compute` `output` design — one mechanism, not two. | 24 |
+| TRIGA-05 | The `detectedLick` pattern — choosing the target tracker from a value **returned** by the hardware call (`device_str = f"{device_name}{pin_number}"`) — is expressible from the UI. Approach selected and justified during planning (see 24-CONTEXT.md Open Decision 1). | 24 |
+| TRIGA-06 | Backward compatibility: task definitions already stored in the DB keep loading and running. Absent/empty `trigger_assignments` leaves `self.triggers` untouched (existing documented contract). Existing `handler`-based entries keep working or are migrated losslessly. `~/pi-mirror/tests/test_trigger_assignments.py` still passes. | 24 |
+| TRIGA-07 | Backend validates `trigger_assignments` on save and returns **422** — handler/action type in the allowed set, `hardware_ref` resolves against the toolkit's `SEMANTIC_HARDWARE`, required config keys present, `method` refs in `CALLABLE_METHODS`, referenced view/flag keys exist. Today there is **zero** trigger validation in `api/`; a bad ref surfaces only as a Pi `ValueError` at session start. | 24 |
+| TRIGA-08 | `api/fda_utils.py`'s recursive reference scanner covers hardware refs inside `trigger_assignments`, so a hardware-lib version change flags the task definitions whose triggers use it. | 24 |
+| TRIGA-09 | The trigger panel hosts the **same action editor** the state body panel uses (`ActionEditor.tsx` / `ArgInput`), not a parallel implementation. | 24 |
+| TRIGA-10 | The allowed handler/action list is single-sourced. Today it is hard-coded twice — `HANDLERS` in `TriggerAssignmentPanel.tsx` and the `if/elif` chain in `apply_trigger_assignments` — with nothing keeping them in sync. | 24 |
+| TRIGA-11 | **Rig proof:** lick detection runs on the real pilot driven entirely by a UI-assigned action list, with no `detectedLick` method on the task class. Negative case: an invalid assignment is rejected at save time, not at session start. | 24 |
+
+---
+
 **Coverage:**
 - v1 requirements: 86 total (HW-01–24 added for Hardware Libs Centralization + Hardware Modules + Toolkit Redesign)
 - Bug requirements: 7 (BUG-01–07)
 - Compound condition requirements: 10 (COND-01–10)
-- Mapped to phases: 103
+- External integration requirements: 13 (EXTLINK-01–13)
+- Compute primitives + variables requirements: 12 (CMP-01–06, CMP-10–15); expr escape hatch (CMP-07–09) deferred — see note above
+- Mapped to phases: 128
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-05-27 — Recursive condition tree requirements added (COND-06–10)*
+*Last updated: 2026-05-31 — External integration (MICS-Link) requirements added (EXTLINK-01–13) for Phase 18; EXTLINK-12 covers the signal/command type contract (build-time declaration + wire-time coercion + AST emission); EXTLINK-13 covers the per-source readiness gate with three guaranteed escape paths (timeout, manual skip, STOP)*
+*Last updated: 2026-06-01 — Compute primitives + variables requirements added, then consolidated into single Phase 23 (3 plans): Pi runtime variables+compute (CMP-01–06), backend validation + compute-library storage (CMP-10–12), GUI state-builder + variable/transition wiring (CMP-13–15). The `expr` escape-hatch (CMP-07–09) was decoupled/deferred. Phases 19–22 left free for the MICS-Link SDK arc.*

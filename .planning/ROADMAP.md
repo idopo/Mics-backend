@@ -1,23 +1,24 @@
 # Roadmap: MICS Backend
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor + Hardware Centralization
-**Status:** Phases 1–8 planning complete; Phases 9–13 planned
+**Status:** Phases 9–17 complete. Active scope is **24 → 23 → review → 18**. Phases 1–4 archived, 5–8 deferred.
 **Requirements:** 86 v1 requirements across 13 phases
 
 ---
 
 ## Phase Summary
 
+> **Phases 1–4 are ARCHIVED** (moved to `.planning/archive/` on 2026-07-26). They were
+> superseded and re-planned inside phases 9–17; the system is well past them. **Skip them
+> when reviewing GSD phases** — they are history, not work.
+>
+> **Phases 5–8 (Pi Code Editor) are DEFERRED** — never started, not in the current plan.
+> Design doc retained at `.claude/docs/pi_code_editor_plan.md`.
+
 | # | Phase | Goal | Requirements | Status |
 |---|---|---|---|---|
-| 1 | 3/6 | In Progress|  | ○ Pending |
-| 2 | 4/4 | Complete   | 2026-03-22 | ○ Pending |
-| 3 | Visual FDA Editor | react-flow editor, state body panel, trigger panel, push button | UI-01–12, VAR-06 | ○ Pending |
-| 4 | 3/3 | Complete   | 2026-03-24 | ○ Pending |
-| 5 | Pi Editor: Viewer | Read-only file browser + Monaco + SSH status | EDIT-01–06 | ○ Pending |
-| 6 | Pi Editor: Terminal | xterm.js terminal, /ws/pi/exec, ALLOW_PI_EXEC gate | EDIT-07–10 | ○ Pending |
-| 7 | Pi Editor: Edit+Restart | PUT /api/pi/file, POST /api/pi/restart, Monaco edit mode | EDIT-11–14 | ○ Pending |
-| 8 | Pi Editor: Packages | Package diff, install endpoint, packages tab UI | EDIT-15–17 | ○ Pending |
+| 1–4 | *(archived)* | Pi foundation, DB+API, visual editor, protocol integration — superseded by phases 9–17 | — | ▣ Archived |
+| 5–8 | *(deferred)* | Pi Code Editor arc — Monaco viewer, terminal, edit+restart, packages | EDIT-01–17 | ◌ Deferred |
 | 9 | HardwareLib Storage | hardware_libs DB + API, AST validation, Pi override dir, E2E proof with gpio.py | HW-01–05 | ✓ Complete |
 | 10 | Hardware Modules + Pilot Config | hardware_modules + pilot_hardware_config DB + API + UI, prefs.json migration seeder | HW-06–11 | ✓ Complete |
 | 11 | 6/6 | Complete    | 2026-05-14 | ✓ Complete 2026-05-04 |
@@ -26,12 +27,20 @@
 | 14 | 3/3 | Complete   | 2026-05-28 | ✓ Complete 2026-05-27 |
 | 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
+| 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
+| 18 | MICS-Link: Pi Transport + ExternalHardware | ZMQ ROUTER socket on Pi IOLoop + ExternalHardware base class with @signal/@event/@command + View Tracker auto-registration + stale policy + smoke test | EXTLINK-01–11 | ○ Pending |
+| 23 | Compute Primitives + Variables | FDA-JSON-v2 `variables` registry → Trackers in flags+view; `compute` entry-action + curated stdlib primitives (last-write-wins, hot-reload); backend variables/collision validation + compute-library storage via Phase-9 hw-lib infra; GUI compute state-builder + transition operand wiring. 3 plans. (expr escape-hatch decoupled/deferred) | CMP-01–06, CMP-10–15 | ○ Pending |
+| 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments` (currently none); rig-proof by replacing `detectedLick` with a UI-assigned action list | TRIGA-01–11 | ○ Pending — **next up** |
+
+**Execution order (agreed 2026-07-26):** Phase 24 → Phase 23 → review → Phase 18 → Open Ephys. See `.planning/STABILIZATION_PLAN.md`.
 
 ---
 
 ## Phase Details
 
 ### Phase 1: Pi Foundation
+
+**▣ ARCHIVED 2026-07-26** — superseded and re-planned inside phases 9–17. Docs moved to `.planning/archive/`. Skip when reviewing GSD phases.
 **Goal:** Pi can load and hot-reload a complete FDA state machine from JSON without restart
 
 **Requirements:** FDA-01 through FDA-17, TRIG-01 through TRIG-05, HOT-02
@@ -57,6 +66,8 @@
 ---
 
 ### Phase 2: DB + API
+
+**▣ ARCHIVED 2026-07-26** — superseded and re-planned inside phases 9–17. Docs moved to `.planning/archive/`. Skip when reviewing GSD phases.
 **Goal:** Toolkit metadata stored from HANDSHAKE; task definitions created/edited/pushed via REST API
 
 **Requirements:** DB-01 through DB-08, VAR-01 through VAR-05
@@ -87,6 +98,8 @@ Plans:
 ---
 
 ### Phase 3: Visual FDA Editor
+
+**▣ ARCHIVED 2026-07-26** — superseded and re-planned inside phases 9–17. Docs moved to `.planning/archive/`. Skip when reviewing GSD phases.
 **Goal:** Non-technical researchers can build task state machines visually in the browser
 
 **Requirements:** UI-01 through UI-07, UI-05a, UI-10, UI-11, UI-12, VAR-06 (UI-08 removed, UI-09 deferred)
@@ -130,6 +143,8 @@ Plans:
 ---
 
 ### Phase 4: Protocol Integration
+
+**▣ ARCHIVED 2026-07-26** — superseded and re-planned inside phases 9–17. Docs moved to `.planning/archive/`. Skip when reviewing GSD phases.
 **Goal:** Protocol steps reference task definitions; FDA JSON flows end-to-end from DB to Pi
 
 **Requirements:** PROTO-01 through PROTO-04, VAR-07
@@ -159,6 +174,8 @@ Plans:
 ---
 
 ### Phase 5: Pi Editor — Viewer
+
+**◌ DEFERRED** — never started, not in the current plan. Design doc: `.claude/docs/pi_code_editor_plan.md`.
 **Goal:** Any lab member can browse Pi task source files in the browser without SSH access
 
 **Requirements:** EDIT-01 through EDIT-06
@@ -182,6 +199,8 @@ Plans:
 ---
 
 ### Phase 6: Pi Editor — Terminal
+
+**◌ DEFERRED** — never started, not in the current plan. Design doc: `.claude/docs/pi_code_editor_plan.md`.
 **Goal:** Developers can run commands on the Pi from the browser terminal
 
 **Requirements:** EDIT-07 through EDIT-10
@@ -200,6 +219,8 @@ Plans:
 ---
 
 ### Phase 7: Pi Editor — Edit + Restart
+
+**◌ DEFERRED** — never started, not in the current plan. Design doc: `.claude/docs/pi_code_editor_plan.md`.
 **Goal:** Developers can edit toolkit Python files and restart the pilot without SSH
 
 **Requirements:** EDIT-11 through EDIT-14
@@ -216,6 +237,8 @@ Plans:
 ---
 
 ### Phase 8: Pi Editor — Sync + Packages
+
+**◌ DEFERRED** — never started, not in the current plan. Design doc: `.claude/docs/pi_code_editor_plan.md`.
 **Goal:** Developers can sync code and manage Pi dependencies from the browser
 
 **Requirements:** EDIT-15 through EDIT-17
@@ -411,6 +434,73 @@ Plans:
 
 ---
 
+### Phase 18: MICS-Link — Pi Transport + ExternalHardware
+**Goal:** Pi gains a structured, crash-safe input channel that lets external software (DeepLabCut, OpenEphys, photometry, …) push data into the existing View / FDA framework. Author writes one `ExternalHardware` subclass with `@signal` / `@event` / `@command` decorators and uploads it as a regular hardware library (Phase 9). It is registered as a hardware module (Phase 10), its per-pilot network config (`{class_name, listen_port, source_id, stale_ms}`) lives in `pilot_hardware_config.config` (Phase 17 — free-form, no schema change), selected by a toolkit (Phase 11), dispatched on the existing `HARDWARE` + `PREFS_HARDWARE` channel (Phase 11), preflight-validated (Phase 13). On the Pi, each instance binds its own ROUTER on its `listen_port` and accepts only the configured `source_id` DEALER identity. FDA transitions read external data via the same `view.get_value(...)` API used for GPIO/I2C — zero new call sites, zero new dispatch shapes.
+
+**Requirements:** EXTLINK-01 through EXTLINK-11
+
+**Plans:** 2/2 plans
+
+Plans:
+- [ ] 18-01-PLAN.md — `external_hardware.py` only: `ExternalHardware` base class + `@signal` / `@event` / `@command` decorators + per-instance ROUTER socket helper (private composition) + View Tracker auto-registration + stale-policy reads + heartbeat-driven liveness
+- [ ] 18-02-PLAN.md — Small AST extractor extension in `api/routers/hardware_libs.py` so the three decorators land in `ast_metadata` (Phase 9 plumbing extended; same upload, same `/hardware-libs` API) + `mics_task.init_hardware()` post-pass that calls `hw.bind(ioloop, view)` on `ExternalHardware` instances + standalone smoke-test DEALER script
+
+**Success criteria:**
+1. A standalone DEALER script (`~/pi-mirror/scripts/dev/extlink_smoke.py`) connects to the per-instance `listen_port` with the configured `source_id`, pushes `dlc_cam1.left_paw_x = 0.7`, and an FDA transition gated on `view.get_value("dlc_cam1.left_paw_x") > 0.5` fires within 50 ms.
+2. `<source_id>.alive` flips false on the Pi within `stale_ms` (from per-pilot config) after the SDK stops sending heartbeats; flip emits a CONTINUOUS event visible in ES.
+3. Per-signal stale policy probe: stop pushing a `return_default` signal; `view.get_value(...)` returns the declared default after `stale_after_ms`.
+4. Two `ExternalHardware` subclasses uploaded as hardware libs, each registered as a `hardware_module`, each given its own `pilot_hardware_config` row with a distinct `listen_port`, and both used in one toolkit on one task — both Trackers visible in View, two ROUTER sockets up, no cross-talk.
+5. A malformed inbound message (unknown signal name, bad MessagePack) is dropped + logged; pilot keeps running; no traceback in pilot logs.
+6. `pilot.py` LOAD_HARDWARE_LIBS path (unchanged from Phase 9) accepts an `ExternalHardware` subclass; instantiation happens through the standard hw_libs → hw_modules → toolkit-dispatch path with NO new Pi-side ingress.
+7. AST extractor (`api/routers/hardware_libs.py`) emits the declared signal/event/command metadata so the UI (Phase 19+) can render the per-source schema; no schema change to any DB table.
+
+**Files to change:**
+- `mics-backend/api/routers/hardware_libs.py` (extend — AST extractor recognises `@signal` / `@event` / `@command`; metadata flows through the existing `ast_metadata` field)
+- `~/pi-mirror/autopilot/autopilot/hardware/external_hardware.py` (new — base class, decorators, private `_ExternalSocket` helper for ROUTER + codec + heartbeat, View Tracker auto-registration, stale policy)
+- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (extend — `init_hardware()` post-pass: after `super().init_hardware()`, walk `self.hardware`, for any `ExternalHardware` instance call `hw.bind(ioloop=self._task_ioloop, view=self.view)`)
+- `~/pi-mirror/scripts/dev/extlink_smoke.py` (new — standalone DEALER smoke test runnable from the dev machine; takes `--listen-port` and `--source-id`)
+
+**NOT in scope (left to later MICS-Link phases):**
+- `mics-link` Python SDK package (Phase 19)
+- Stub generation + bootstrap-zip endpoints + "Download SDK" GUI button (Phase 20)
+- Per-pilot health dashboard React page + WS forwarding via orchestrator (Phase 21)
+- DeepLabCut reference hw_lib + template + rig demo (Phase 22)
+- OpenEphys / photometry recipes (Phase 23)
+- No prefs.json EXTLINK block — explicitly rejected. Everything network-related lives in `pilot_hardware_config.config` (Phase 17 schema).
+
+**Dependencies:** Phase 9 (hardware_libs + AST extractor — this phase extends the extractor), Phase 10 (hardware_modules + pilot_hardware_config), Phase 11 (toolkit_dispatch.py spec emits HARDWARE + PREFS_HARDWARE), Phase 13 (preflight-validate by class_name), Phase 17 (pilot_hardware_config free-form name-keyed schema).
+
+**Verification posture:** Backend file edits are agent-driven (api/ is in the docker compose stack). Pi-side `<verify>` blocks return commands for the user to run themselves (sync `~/pi-mirror/` → Pi, restart pilot, run smoke script). The agent does not run git on the Pi, does not start/stop the pilot process, and does not run any Python on the Pi.
+
+---
+
+### Phase 23: Compute Primitives + Variables
+**Goal:** GUI-assembled FDA-JSON-v2 tasks can produce computed values (random draws, derived numbers/booleans) into named variables at state entry, and route on them via existing transitions — without writing Python or editing locked toolkit source. Delivers the library-backed computed-value loop end-to-end: Pi runtime (`variables` registry + `compute` action + curated stdlib primitives), backend validation + compute-library storage, and the GUI state-builder/transition wiring.
+
+**Requirements:** CMP-01–06, CMP-10–15
+
+**Design context:** `~/.claude/plans/i-realized-something-the-ancient-pnueli.md` (locked decisions: curated primitives + first-class `variables` registry; branching stays in FDA transitions; stdlib `random`/`math` only; per-Pi packages explicitly deferred).
+
+> **Renumbered from Phases 19–22 → single Phase 23** (three plans) to clear the MICS-Link SDK arc's reserved numbers (19–22), and structured as multiple plans under one phase per the established 09–13 pattern.
+>
+> **Decoupled:** the `expr` escape-hatch (former CMP-07–09 — a sandboxed restricted-AST evaluator + `type:"expr"` action) was pulled out of this phase. The library-backed `compute` path covers current needs; `expr` is deferred (documented in the design spec, can become its own phase later). `compute` is fully self-sufficient — it rides on the same `variables`/`output` plumbing built in 23-01.
+
+**Plans (waves):**
+- **23-01-PLAN.md** (wave 1) — *Pi runtime: variables + compute + primitives* (CMP-01–06). `~/pi-mirror/.../tasks/mics_task.py` `load_fda_from_json()` (~683): parse top-level `variables`, instantiate as generic Trackers in `self.flags` + `self.view.view` (init_flags pattern), carry through `UPDATE_FDA` hot-reload store; `_build_action_callable()` (~525): add `compute` branch resolving args via `_resolve_arg` and `.set()`-ing `output`. New `~/pi-mirror/.../tasks/compute_primitives.py` — pure functions: random/copy (`random_choice`, `random_int`, `random_float`, `random_bool`, `assign`) + numeric/util (`add`, `subtract`, `multiply`, `divide`, `modulo`, `minimum`, `maximum`, `clamp`); numeric value-production only (no boolean-logic ops — branching stays in transitions). `_resolve_arg` gains a `{"view": name}` branch so a variable read back as an arg resolves (counter pattern `add(counter,1)→counter`). Confirm generic `Tracker` (utils/Tracker.py) is the untyped base.
+- **23-02-PLAN.md** (wave 2, depends 23-01; also Phase 9) — *Backend validation + compute-library storage* (CMP-10–12). `api/routers/toolkits.py` `_validate_task_definition()` (~661) delegates to a new `api/fda_validation.py` `_validate_variables(...)`: variables-registry + collision + reference validation (hard 422s, distinct from the soft hardware-drift path). `api/fda_utils.py`: extend recursive ref scanner for `compute` `output` names. `api/routers/hardware_libs.py`: AST extractor also emits module-level `functions`. Store the shared compute library as a (non-hardware) `hardware_libs` row reusing Phase-9 storage/versioning/AST — no new table.
+- **23-03-PLAN.md** (wave 3, depends 23-02; also Phase 3/12) — *GUI: compute state builder + variable wiring* (CMP-13–15). `web_ui/react-src/src/components/StateBodyPanel.tsx` + `ActionEditor.tsx`: `compute` editor (primitive picker from compute-lib AST + per-arg `ArgInput` + `output`), inline variable auto-declare. `ConditionBuilder.tsx`: operand dropdown from toolkit `FLAGS` + task `variables`. `pages/task-editor/TaskEditor.tsx`: `variables` serialize/deserialize + reachability warning. `types/index.ts`: FDA-JSON-v2 `variables` + `compute` types. `src/api/computeLibrary.ts`: fetch compute-library primitive signatures.
+
+**Success criteria (phase-level — see plans for per-slice detail):**
+1. *(23-01)* FDA-JSON-v2 with `"variables": { "target": {} }` + a `trial_onset` state `entry_actions` including `{ "type": "compute", "op": "random_bool", "args": [0.5], "output": "target" }` loads without error; `self.flags["target"]` and `self.view.view["target"]` are the same generic Tracker after load. Two guarded transitions on `{"view":"target","op":"==","rhs":{"literal":true}}`/`false` both fire across trials (recomputed once per entry, last-write-wins). All thirteen primitives resolve args via `_resolve_arg` (including a variable read back as an arg). `check_determinism()` stays safe (pure reads). Hot-reload instantiates a newly-added variable before rebuilding transitions.
+2. *(23-02)* `POST/PUT /api/task-definitions` returns 422 for: undeclared `output`, variable-name collision with FLAGS/SEMANTIC_HARDWARE/view key, transition referencing an undeclared variable. `fda_utils` scanner returns `compute` outputs. Compute library stored as a `hardware_libs` row; GET returns AST metadata (name + args per primitive).
+3. *(23-03)* StateBodyPanel offers a `compute` action; typing a new `output` auto-declares it into `variables` and makes it selectable in the ConditionBuilder operand dropdown; save serializes `variables` + the compute action to FDA-JSON-v2 and round-trips on reload. (Nice-to-have) editor warns on a transition reading a variable no reachable upstream state writes.
+
+**Verification posture:** The Pi-side plan (23-01) is spec/edit-in-mirror only — `<verify>` blocks return commands for the user to run (sync `~/pi-mirror/` → Pi, restart pilot, run the gonogo-translation task); the agent does not run git, start/stop the pilot, or run Python on the Pi. Backend (23-02) and GUI (23-03) are agent-driven in the docker compose stack (call endpoints / verify DB via postgres MCP / rebuild web_ui).
+
+**Dependencies:** Phase 1 (`load_fda_from_json`, `_resolve_arg`, `_build_transition_lambda`, `init_flags` pattern), Phase 2 (`UPDATE_FDA` hot-reload path), Phase 9 (hardware_libs storage + AST extractor — for 23-02), Phase 3/12 (StateBodyPanel, ActionEditor, ConditionBuilder, TaskEditor — for 23-03).
+
+---
+
 ## Dependency Graph
 
 ```
@@ -441,9 +531,66 @@ Phase 12 (Hardware-Aware FDA Builder)
 Phase 13 (Pre-Run Cross-Check + End-to-End)
     ↓ pilot_hardware_config schema + preflight-validate endpoint
 Phase 17 (Free-Form Pilot Hardware Config)
+
+Phase 1 (Pi Foundation) + Phase 2 (UPDATE_FDA hot-reload)
+    ↓ load_fda_from_json, _resolve_arg, init_flags pattern
+Phase 23 (Compute Primitives + Variables) — 3 plans:
+    23-01 Pi runtime: variables + compute + primitives   (wave 1)
+        ↓ variables registry + compute branch + output binding
+    23-02 Backend validation + compute-library storage   (wave 2 ← also Phase 9)
+        ↓ shapes accepted + compute-lib AST served
+    23-03 GUI: compute state builder + var wiring         (wave 3 ← also Phase 3/12)
+    (expr escape hatch decoupled/deferred — see Phase 23 note)
 ```
 
 **Phase 1 can start today.** Phase 5 can also start in parallel with Phase 1 — they are fully independent. **Phase 9 can start after Phase 4 is complete** — it is independent of Phases 5–8.
+
+### Phase 24: Trigger Assignment Action Lists
+
+**Goal:** A hardware trigger fires the *same action vocabulary* a state's `entry_actions` uses (hardware / flag / timer / view / special / method / if), assigned from the task-editor UI instead of hard-coded in Python. Reference case to replicate and prove on the rig: `learning_cage.detectedLick`. Plus the missing backend validation layer for `trigger_assignments`.
+
+**Requirements**: TRIGA-01 through TRIGA-11
+**Depends on:** Phase 1 (`load_fda_from_json`, `_build_action_callable`, `_resolve_arg`), Phase 12 (StateBodyPanel / ActionEditor — the action editor UI to reuse). *Not* dependent on Phase 23; the two share the `output` value-capture idea and should be kept consistent.
+**Plans:** 7 plans (4 waves)
+
+Plans:
+- [ ] 24-01-PLAN.md — Pi runtime: variables registry, `output` capture, `view` action, `{"trigger"}` arg form, shared `fda_vocabulary` module (wave 1)
+- [ ] 24-02-PLAN.md — Backend: trigger ref scanning + new `api/fda_validation.py` hard-422 on save (wave 1)
+- [ ] 24-03-PLAN.md — React: schema types, ArgInput trigger mode, ActionEditor `view`/`output` support (wave 1)
+- [ ] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, additive `actions` branch, corrected `touch_detector` handler, single-sourced `validate_fda.py` (wave 2)
+- [ ] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
+- [ ] 24-06-PLAN.md — Remove `detectedLick` from `learning_cage`; write `.claude/docs/trigger_action_lists.md` (wave 3)
+- [ ] 24-07-PLAN.md — Checkpoints: UI round-trip, save-time 422 negative case, rig proof (wave 4)
+
+**Design decisions settled during planning (24-CONTEXT.md Open Decisions):**
+1. Dynamic tracker naming → **option (a)**: return-value capture (`output`) + new `view` action + `{name}` key templating. Option (b) ruled out by the user; option (c) rejected because it stands on the latent `_build_touch_detector_callback` bug.
+2. **Additive**, not replacement — `trigger_assignments[*].actions` sits alongside the existing `handler` enum; actions win when present.
+3. `level`/`tick` → composed callable declares them as named params; per-invocation stash on `self`, already serialized by `trigger_lock`.
+4. Validation → **new** `api/fda_validation.py` with a hard-422 posture called from POST/PUT. The soft `_validate_task_definition` path is untouched.
+5. Value capture → build Phase 23's `variables` registry **now**; Phase 23's `compute` writes into the same slots via the same `output` field.
+
+**Current state (verified 2026-07-26):**
+- UI panel exists — `web_ui/react-src/src/components/TriggerAssignmentPanel.tsx` (161 lines), wired into `TaskEditor.tsx:739`.
+- Pi runtime exists — `apply_trigger_assignments()` (`mics_task.py:1037`) plus `_build_touch_detector_callback` / `_build_digital_input_callback`; unit tests in `~/pi-mirror/tests/test_trigger_assignments.py` (12 KB).
+- Backend validation does **not** exist — `grep -rn "trigger" api/` returns nothing. `trigger_assignments` is the only FDA-JSON section the API never validates; a bad handler or `hardware_ref` raises `ValueError` on the Pi at session start.
+- Feature has never been exercised end-to-end on the rig.
+
+**Legacy behaviour to preserve/replace:**
+- `execute_trigger()` (`task.py:286`) normalises `self.triggers[pin]` to a list and calls each callback with `level=` / `tick=` **if the signature declares them** (`inspect.signature`).
+- `detectedLick` (`learning_cage.py:162`): `pin_number, level = MPR121.detect_change()` → `device_str = f"{device_name}{pin_number}"` → `self.view.view[device_str].set(level, pi_timestamp=tick)`.
+
+**Pi-side gaps to resolve during planning:**
+1. **No `view` action type.** `_build_action_callable` (`mics_task.py:524`) handles hardware/flag/timer/special/method/if. Touch-channel trackers are created by `check_for_detectors` via `view.add_Tracker` (`mics_task.py:266`) and live **only** in `self.view.view` — `init_flags` is what writes both `self.flags` and `self.view.view`, so no existing action can write a licker tracker.
+2. **Hardware actions discard return values.** `_hw_call` calls `getattr(hw, method)(*args)` and drops the result; `detect_change()`'s return *is* the payload. Needs an `output` capture (keep consistent with Phase 23 `variables`).
+3. **No trigger context in `_resolve_arg`.** Supports `{param}` / `{flag}` / `{now}` only — needs `{"trigger": "level"|"tick"}`, and the built callable must declare those parameters so `execute_trigger` passes them.
+4. **Dynamic tracker naming.** `device_str` is derived from the returned channel index — a flat declarative list cannot express "index into the return value to pick the tracker". Main open design decision (see 24-CONTEXT.md).
+
+**Also in scope:**
+- `api/fda_utils.py` reference scanner must cover trigger `hardware_ref`s so hw-lib version changes flag affected task definitions.
+- UI and Pi handler lists are two independently hard-coded arrays (`default`, `log_only`, `touch_detector`, `digital_input`) that can silently diverge — serve from backend or cross-check.
+- Migration posture for existing `handler`-based assignments (additive vs replacement) — decide in discuss-phase.
+
+**Success gate:** the lick-detection path runs on the rig driven by a UI-assigned action list, with no `detectedLick` method in the task class.
 
 ---
 *Created: 2026-03-15*

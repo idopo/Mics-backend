@@ -559,7 +559,7 @@ Plans:
 - [ ] 24-03-PLAN.md — React: schema types, ArgInput trigger mode, ActionEditor `view`/`output` support (wave 1)
 - [ ] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, additive `actions` branch, corrected `touch_detector` handler, single-sourced `validate_fda.py` (wave 2)
 - [ ] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
-- [ ] 24-06-PLAN.md — Remove `detectedLick` from `learning_cage`; write `.claude/docs/trigger_action_lists.md` (wave 3)
+- [ ] 24-06-PLAN.md — Unregister `TOUCH_INT` in `learning_cage` (method retained); write `.claude/docs/trigger_action_lists.md` (wave 3)
 - [ ] 24-07-PLAN.md — Checkpoints: UI round-trip, save-time 422 negative case, rig proof (wave 4)
 
 **Design decisions settled during planning (24-CONTEXT.md Open Decisions):**
@@ -590,7 +590,7 @@ Plans:
 - UI and Pi handler lists are two independently hard-coded arrays (`default`, `log_only`, `touch_detector`, `digital_input`) that can silently diverge — serve from backend or cross-check.
 - Migration posture for existing `handler`-based assignments (additive vs replacement) — decide in discuss-phase.
 
-**Success gate:** the lick-detection path runs on the rig driven by a UI-assigned action list, with no `detectedLick` method in the task class.
+**Success gate:** the lick-detection path runs on the rig driven by a UI-assigned action list, with **no Python callback registered for `TOUCH_INT`** (`learning_cage` no longer assigns `self.triggers['TOUCH_INT']`). The `detectedLick` method is retained as reference + one-line rollback — registration is the property under test, not existence.
 
 ---
 *Created: 2026-03-15*

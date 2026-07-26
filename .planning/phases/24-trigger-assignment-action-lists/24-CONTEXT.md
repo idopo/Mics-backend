@@ -37,7 +37,28 @@ if pin_number is None: return
 device_str = f"{self.hardware['I2C']['MPR121'].device_name}{pin_number}"
 self.view.view[device_str].set(level, pi_timestamp=tick)
 ```
-**Success gate:** this behaviour runs on the rig from a UI-assigned action list, with **no `detectedLick` method in the task class.**
+**Success gate:** this behaviour runs on the rig from a UI-assigned action list, with **no Python
+callback registered for `TOUCH_INT`** — `learning_cage` no longer assigns `self.triggers['TOUCH_INT']`.
+
+**The `detectedLick` METHOD IS RETAINED** (user, 2026-07-26). Removing the *registration* is necessary
+and sufficient. Deleting the method proves nothing extra: unregistered it is unreachable — `learning_cage`
+has no `CALLABLE_METHODS`, so FDA JSON cannot invoke it either. It stays as the reference implementation
+and as a one-line rollback if the rig proof fails. Note also that `RecordingBox.py:80` and
+`mics_cage_task.py:286` each keep their own `detectedLick` + `self.triggers['TOUCH_INT']` registration
+and are **out of scope** — so any "no `detectedLick` anywhere in the mirror" check is unsatisfiable by
+construction and must not be used as a gate.
+
+### Focus is the `mics_task` BASE CLASS (user, 2026-07-26)
+> *"We are currently working on the mics_task base class, since all other flags and FDA are received
+> from the backend — so this should be where we are focusing our intention and understanding."*
+
+The mechanism lives in `mics_task.py`. Concrete task classes (`learning_cage`, `RecordingBox`,
+`mics_cage_task`) are hardware declarations plus legacy helpers; flags, FDA and trigger assignments all
+arrive from the backend. Consequences for planning:
+- The separation-principle gates belong on `mics_task.py` (Plan 04 already asserts zero
+  `touch_detector`/`digital_input` identifiers there).
+- `learning_cage`'s change is a **single line** — unregister `TOUCH_INT`. It is not where the work is.
+- Anything that would push task-specific behaviour back into a concrete class is going the wrong way.
 
 ### THE SEPARATION PRINCIPLE (user, 2026-07-26) — the organising idea of this phase
 > *"I want to make the separation between the touch detector turning into a tracker, and the actual

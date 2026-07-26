@@ -39,6 +39,53 @@ self.view.view[device_str].set(level, pi_timestamp=tick)
 ```
 **Success gate:** this behaviour runs on the rig from a UI-assigned action list, with **no `detectedLick` method in the task class.**
 
+### THE SEPARATION PRINCIPLE (user, 2026-07-26) — the organising idea of this phase
+> *"I want to make the separation between the touch detector turning into a tracker, and the actual
+> assign-trigger which is a broader thing. Obviously I chose to implement the lick as a test for the
+> trigger, so we need both. I want to be able to declare the trigger — what triggers, and what are the
+> actions done in the trigger… and the part of constructing the actual callback function should not be
+> any more different than adding actions to states. So when primitives come we will be able to use this
+> once implemented."*
+
+Three consequences, all binding:
+
+1. **The mechanism is: declare a trigger = (what fires, what actions run).** Hardware-agnostic. Nothing
+   about touch, licks or MPR121 belongs in the trigger runtime.
+2. **Callback construction MUST go through the same `_build_action_callable` a state body uses.** Not
+   an equivalent implementation — the same one. The test of this: when Phase 23's `compute` action
+   lands, it must work inside a trigger with **zero** Phase 24 rework.
+3. **The licker is a test case, not part of the mechanism.** For it to be usable it must appear in the
+   toolbox — hence the `learning_cage.SEMANTIC_HARDWARE` prerequisite — so the researcher picks MPR121
+   as an ordinary hardware action, exactly like a valve or an LED. "Touch detector → tracker" is then
+   just an action list, expressed in the UI, with no runtime special case.
+
+### DECISION REVERSED 2026-07-26 — the `handler` enum is DROPPED, not kept alongside `actions`
+Supersedes the earlier "additive" decision. `trigger_assignments` entries carry **`actions` only**.
+
+**Evidence that made this safe** (orchestrator, live DB query, 2026-07-26): exactly ONE
+`task_definitions` row has a non-empty `trigger_assignments` — id **185**, three entries, all
+`handler: "touch_detector"`, two with an empty `trigger_name`, and **none with a `config` key**. It is
+referenced by **no** `protocol_step_templates` row — an orphan scratch record. It would also crash the
+Pi if ever started (`config["hardware_ref"]` → `KeyError` inside `load_fda_from_json`). There is no real
+handler usage to preserve.
+
+Consequences:
+- **Delete** `_build_touch_detector_callback` and `_build_digital_input_callback` rather than correcting
+  them. The buggy code goes away instead of being fixed.
+- `digital_input` is redundant — copying `hardware_state` into a view key is
+  `{"type":"view", …, "args":[{"hardware": …}]}` in the general vocabulary.
+- One vocabulary instead of two, so TRIGA-10's divergence risk largely evaporates.
+- Legacy Python tasks that assign `self.triggers[...]` directly are unaffected — `apply_trigger_assignments`
+  only ever *adds* callbacks and still no-ops when `trigger_assignments` is absent/empty.
+- Clean up the three junk entries in task definition 185.
+
+### No legacy non-FDA protocols remain (user, 2026-07-26)
+> *"No legacy, just FDA now."*
+
+This closes the Plan 06 risk: removing `self.triggers['TOUCH_INT'] = [self.detectedLick]` cannot strand
+a non-FDA `learning_cage` session, because every session now carries an FDA task definition. Plan 07's
+rig-proof checkpoint no longer needs to block on confirming legacy usage.
+
 ### Backward compatibility is required
 Task definitions already stored in the DB must keep loading and running. `apply_trigger_assignments` already documents the contract that an absent/empty `trigger_assignments` leaves `self.triggers` untouched — that must survive.
 

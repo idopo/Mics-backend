@@ -69,7 +69,7 @@ running container. Verified command: `docker exec -w /app mics_api python -m pyt
 | TRIGA-03 | `view` action writes `self.view.view[key]`, accepts `pi_timestamp` | unit (Pi) | `pytest tests/test_trigger_assignments.py -k view_action -q` | ❌ W0 |
 | TRIGA-04 | `output` capture (single name + list-unpack for tuple returns) | unit (Pi) | `pytest tests/test_load_fda_from_json.py -k variables -q` | ❌ W0 |
 | TRIGA-05 | `detectedLick` equivalence: `(idx, level)` → `LICKER{idx}.set(level, pi_timestamp=tick)` | unit (Pi) | `pytest tests/test_trigger_assignments.py -k detect_lick -q` | ❌ W0 |
-| TRIGA-06 | Backward compat: every existing test in `test_trigger_assignments.py` still passes **unmodified**, except the one asserting the wrong `detect_change` contract (see below) | unit (Pi) | `pytest tests/test_trigger_assignments.py -q` | ✅ exists (346 lines) |
+| TRIGA-06 | Handler enum deleted. Of the 18 existing tests: **7** `_build_transition_lambda` tests unmodified; **8** handler-specific tests deleted with the enum; **3** general-contract tests kept — `no_assignments` and `missing_key` unmodified, `normalizes_scalar_trigger` rewritten to the same assertions driven by `actions` | unit (Pi) | `pytest tests/test_trigger_assignments.py -q` | ✅ exists (346 lines) |
 | TRIGA-07 | PUT/POST with invalid `trigger_assignments` → **422** | unit (backend) | `pytest tests/test_task_definitions_validation.py -k trigger -q` | ❌ W0 |
 | TRIGA-08 | `scan_fda_for_refs` includes trigger action refs | unit (backend) | `pytest tests/test_fda_utils.py -q` | ❌ W0 |
 | TRIGA-09 | Trigger panel hosts `ActionEditor` per action | manual + typecheck | `npx tsc --noEmit` + visual check | n/a |
@@ -83,7 +83,7 @@ running container. Verified command: `docker exec -w /app mics_api python -m pyt
 ## Wave 0 Requirements
 
 - [ ] `~/pi-mirror/tests/test_trigger_assignments.py` — **extend** with the `actions` branch, `view` action, `output` capture, `{"trigger":…}` resolution, and a `detectedLick`-equivalence test. Do not delete existing tests (TRIGA-06).
-- [ ] `~/pi-mirror/tests/test_trigger_assignments.py:317-345` — **correct** `test_apply_trigger_assignments_touch_detector_callback_updates_view`: its mock (`detect_change.return_value = [1, 0]`) encodes a contract the hardware never had. Real return is `(changed_index, new_value)` per `hardware/i2c.py:842`. **Fix the test and the handler — never `i2c.py`.**
+- [ ] `~/pi-mirror/tests/test_trigger_assignments.py` — **delete** the 8 handler-specific tests along with the enum (`default_handler`, `log_only_handler`, `unknown_handler_raises`, both `digital_input` tests, all three `touch_detector` tests). This supersedes the earlier "correct the wrong mock" item: `test_..._touch_detector_callback_updates_view` mocked `detect_change.return_value = [1, 0]`, a contract the hardware never had (real return is `(changed_index, new_value)`, `hardware/i2c.py:842`) — but the handler it tested is being deleted, so the test goes with it rather than being fixed. **`i2c.py` is never touched.**
 - [ ] `~/pi-mirror/tests/test_load_fda_from_json.py` — extend with `variables` registry instantiation tests.
 - [ ] `api/tests/test_fda_utils.py` — **new file**; `scan_fda_for_refs` has zero tests today.
 - [ ] `api/tests/test_task_definitions_validation.py` — **new file**; hard-422 trigger validation.

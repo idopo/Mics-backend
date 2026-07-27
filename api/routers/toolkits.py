@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 from auth import verify_token
 from db import engine
 from fda_utils import ref_label, scan_fda_for_refs
+from fda_validation import reject_if_hard_errors
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
@@ -540,6 +541,8 @@ def create_task_definition(payload: TaskDefinitionCreate, _: dict = Depends(veri
 
     db: OrmSession = _SA_SessionLocal()
     try:
+        reject_if_hard_errors(db, payload.fda_json, payload.toolkit_id)
+
         fda_bytes = json.dumps(payload.fda_json, sort_keys=True).encode()
         fda_hash = _hl.sha256(fda_bytes).hexdigest()
 
@@ -794,6 +797,9 @@ def update_task_definition(defn_id: int, payload: TaskDefinitionUpdate, _: dict 
                 )
 
         effective_toolkit_id = payload.toolkit_id if payload.toolkit_id is not None else defn.toolkit_id
+        if effective_fda:
+            reject_if_hard_errors(db, effective_fda, effective_toolkit_id)
+
         v_status, v_msg = _validate_task_definition(db, effective_fda or {}, effective_toolkit_id, defn_id)
         updates["validation_status"] = v_status
         updates["validation_message"] = v_msg

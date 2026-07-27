@@ -21,6 +21,10 @@ reads pilot_hardware_config — the only place that knows a given pilot's hardwa
 """
 import re
 
+from fastapi import HTTPException
+
+from models import TaskToolkit
+
 VALID_ACTION_TYPES = {"hardware", "flag", "timer", "special", "method", "if", "view"}
 VALID_SPECIALS = {"INC_TRIAL_COUNTER"}
 VALID_TRIGGER_CONTEXT_KEYS = {"level", "tick"}
@@ -103,6 +107,20 @@ def collect_hard_errors(fda_json: dict, toolkit) -> list[str]:
     if not fda_json or toolkit is None:
         return []
     return validate_variables(fda_json, toolkit) + validate_trigger_assignments(fda_json, toolkit)
+
+
+def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
+    """Raise HTTPException(422) if fda_json has hard trigger-assignment/variable errors.
+
+    Looks up the toolkit itself so both POST and PUT call sites in routers/toolkits.py stay to
+    a single line each — toolkits.py's net-growth budget for this plan is tight (<=15 lines).
+    """
+    if not fda_json:
+        return
+    toolkit = db.query(TaskToolkit).filter(TaskToolkit.id == toolkit_id).one_or_none() if toolkit_id else None
+    errors = collect_hard_errors(fda_json, toolkit)
+    if errors:
+        raise HTTPException(422, detail={"errors": errors})
 
 
 def _valid_flag_names(fda_json: dict, toolkit) -> set[str]:

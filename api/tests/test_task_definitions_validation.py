@@ -1,9 +1,14 @@
-"""Hard-422 trigger-assignment and variables validation (Plan 24-02 Task 2).
+"""Hard-422 trigger-assignment and variables validation (Plan 24-02 Task 2 + 3).
 
-Pure unit tests against fda_validation functions directly — no DB, no TestClient.
-Route-level (POST/PUT 422) tests are added in Task 3.
+Task 2: pure unit tests against fda_validation functions directly — no DB, no TestClient.
+Task 3: route-level (POST/PUT 422) tests, following the fixture style of
+test_toolkits_router.py.
 """
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
 
 from fda_validation import collect_hard_errors, validate_trigger_assignments, validate_variables
 
@@ -381,3 +386,171 @@ def test_variables_no_collision_is_ok():
 def test_canonical_lick_payload_against_toolkit_with_mpr121_returns_no_errors():
     toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
     assert collect_hard_errors(CANONICAL_PAYLOAD, toolkit) == []
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — route-level 422 tests (PUT/POST /api/task-definitions)
+# ---------------------------------------------------------------------------
+
+def auth_headers():
+    return {"Authorization": "Bearer test-token"}
+
+
+@pytest.fixture
+def client():
+    from auth import verify_token
+    from main import app
+    app.dependency_overrides[verify_token] = lambda: {"sub": "test"}
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def make_db_mock(defn=None, toolkit=None):
+    """MagicMock standing in for the OrmSession `_SA_SessionLocal()` returns.
+
+    `db.query(Model)` is dispatched by model class so the route code's TaskDefinition lookup
+    and fda_validation.reject_if_hard_errors' TaskToolkit lookup each get the right stub.
+    """
+    from models import TaskDefinition, TaskToolkit
+
+    mock_db = MagicMock()
+
+    def _query(model):
+        q = MagicMock()
+        if model is TaskDefinition:
+            q.filter.return_value.one_or_none.return_value = defn
+        elif model is TaskToolkit:
+            q.filter.return_value.one_or_none.return_value = toolkit
+        else:
+            q.filter.return_value.one_or_none.return_value = None
+            q.filter.return_value.all.return_value = []
+        return q
+
+    mock_db.query.side_effect = _query
+    mock_db.execute.return_value.fetchone.return_value = None
+    mock_db.execute.return_value.fetchall.return_value = []
+    return mock_db
+
+
+def make_defn_mock(defn_id=1, toolkit_id=5):
+    defn = MagicMock()
+    defn.id = defn_id
+    defn.toolkit_id = toolkit_id
+    return defn
+
+
+def test_put_bad_trigger_hardware_ref_returns_422_not_200_broken(client):
+    defn = make_defn_mock()
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {
+        "fda_json": {
+            "states": {},
+            "trigger_assignments": [
+                {"trigger_name": "TOUCH_INT", "actions": [{"type": "hardware", "ref": "NOPE", "method": "x"}]}
+            ],
+        }
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "validation_status" not in body
+    assert any("NOPE" in e for e in body["detail"]["errors"])
+
+
+def test_post_unsupported_action_type_returns_422(client):
+    toolkit = make_toolkit()
+    mock_db = make_db_mock(defn=None, toolkit=toolkit)
+    payload = {
+        "display_name": "test",
+        "toolkit_name": "AppetitiveTaskReal",
+        "toolkit_id": 5,
+        "fda_json": {
+            "states": {},
+            "trigger_assignments": [
+                {"trigger_name": "TOUCH_INT", "actions": [{"type": "telepathy"}]}
+            ],
+        },
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.post("/api/task-definitions", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 422
+    assert any("telepathy" in e for e in resp.json()["detail"]["errors"])
+
+
+def test_put_legacy_handler_only_no_actions_returns_422(client):
+    defn = make_defn_mock()
+    toolkit = make_toolkit()
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {
+        "fda_json": {
+            "states": {},
+            "trigger_assignments": [
+                {"trigger_name": "TOUCH_INT", "handler": "touch_detector", "config": {"hardware_ref": "MPR121"}}
+            ],
+        }
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 422
+    assert any("actions" in e for e in resp.json()["detail"]["errors"])
+
+
+def test_put_empty_trigger_name_returns_422(client):
+    defn = make_defn_mock()
+    toolkit = make_toolkit()
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {
+        "fda_json": {
+            "states": {},
+            "trigger_assignments": [
+                {"trigger_name": "", "actions": [{"type": "special", "ref": "INC_TRIAL_COUNTER"}]}
+            ],
+        }
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 422
+    assert any("trigger_name" in e for e in resp.json()["detail"]["errors"])
+
+
+def test_put_absent_trigger_assignments_still_saves_200(client):
+    defn = make_defn_mock()
+    toolkit = make_toolkit()
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {"fda_json": {"states": {"idle": {}}}}
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 200
+    assert resp.json()["validation_status"] == "ok"
+
+
+def test_put_state_body_hw_drift_still_200_broken(client):
+    """Proves the soft _validate_task_definition path was not repurposed by the hard gate."""
+    defn = make_defn_mock()
+    toolkit = make_toolkit(flags={})
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {
+        "fda_json": {
+            "states": {
+                "reward": {"entry_actions": [{"type": "flag", "ref": "ghost_flag"}]},
+            }
+        }
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 200
+    assert resp.json()["validation_status"] == "broken"

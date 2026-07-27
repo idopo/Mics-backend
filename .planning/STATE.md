@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-27T13:28:10.000Z"
+last_updated: "2026-07-27T13:33:34.000Z"
 progress:
   total_phases: 19
   completed_phases: 5
   total_plans: 33
-  completed_plans: 21
+  completed_plans: 22
   percent: 66
 ---
 
@@ -114,6 +114,12 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - [Phase 24]: Plan 24-01: variables registry built now (shared with Phase 23); thread-local _trigger_ctx (not plain attrs); pi_timestamp injected implicitly by view action
 - [Phase 24-05]: TriggerAssignmentPanel rewritten — handler enum and all config fields deleted; an assignment is now exactly (trigger_name, actions), with each action list hosted by the SAME ActionEditor StateBodyPanel uses (allowTriggerContext passed only here). add() seeds non-colliding trigger1/trigger2/... placeholders instead of an empty trigger_name, matching VariablesPanel's variable1/variable2 pattern — a required field is never produced empty by construction
 - [Phase 24-05]: VariablesPanel rename commits onBlur (uncontrolled defaultValue input), not per-keystroke, to avoid remounting the row when its React key (the variable name) changes mid-edit; collision-checked against both existing variable names and toolkit.flags
+- [Phase 24-04]: apply_trigger_assignments is handler-free — (trigger_name, actions) only; both hard-coded handler builders (_build_touch_detector_callback, _build_digital_input_callback) deleted outright, not corrected, along with the mock-only test that encoded detect_change()'s wrong per-channel-array contract
+- [Phase 24-04]: _build_trigger_action_list is a thin composition over _build_action_callable with zero action-dispatch logic of its own — the trigger mechanism and the hardware-specific action list (licker) are now provably separate, verified by a detectedLick-equivalence test with no lick-specific runtime code
+- [Phase 24-04]: Idempotent hot-reload tracked via self._fda_trigger_callbacks (trigger_name -> callbacks appended by the last apply_trigger_assignments call), diffed/removed at the top of every call, placed after the absent/empty backward-compat guard
+- [Phase 24-04]: tools/validate_fda.py single-sourced against autopilot.tasks.fda_vocabulary (VALID_ACTION_TYPES/VALID_SPECIALS/VALID_TRIGGER_CONTEXT_KEYS); VALID_HANDLERS deleted outright; _validate_actions_list gained context_kind/allow_trigger_context params so ONE helper validates both state entry_actions and trigger actions
+- [Phase 24-04]: _resolve_renamed_trigger_refs left as a harmless legacy no-op (docstring corrected) rather than deleted — trigger_assignments no longer carry a config key for it to rewrite, but deleting it was out of this plan's scope
+- [Phase 24-04]: cmd_rename_hw_ref's TRIGGER_ASSIGNMENTS_SQL is now a no-op against current-format rows (no config.hardware_ref) — logged in deferred-items.md, not fixed (separate code path from validate(), out of Task 3 scope)
 
 ## Accumulated Context
 

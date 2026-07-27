@@ -243,7 +243,9 @@
 | BUG-05 through BUG-07 | Phase 14, Plan 3 (Toolkit Creation Modal UX Fixes) | Pending |
 | TRIGA-07 | Phase 24, Plan 02 (Trigger-Assignment Hard Validation) | Complete |
 | TRIGA-08 | Phase 24, Plan 02 (Trigger-Assignment Hard Validation) | Complete |
-| TRIGA-10 | Phase 24, Plan 02 (Trigger-Assignment Hard Validation) | Complete |
+| TRIGA-10 | Phase 24, Plan 02 (backend) + Plan 04 (Pi-side `fda_vocabulary.py` single-sourcing) | Complete |
+| TRIGA-01 | Phase 24, Plan 04 (Handler-Free Trigger Runtime) | Complete |
+| TRIGA-06 | Phase 24, Plan 04 (Handler-Free Trigger Runtime) | Complete |
 | TRIGA-02 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 | TRIGA-03 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 | TRIGA-04 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |

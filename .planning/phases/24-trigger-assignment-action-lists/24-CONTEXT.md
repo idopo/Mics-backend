@@ -1,8 +1,14 @@
 # Phase 24: Trigger Assignment Action Lists — Context
 
 **Gathered:** 2026-07-26
-**Status:** Ready for planning
+**Amended:** 2026-07-27 — re-plan of plans 06/07/08 after the sourceless-only scope change
+**Status:** Waves 1–2 executed and rig-proven; plans 06/07/08 ready for re-planning
 **Source:** Direct user direction in session + orchestrator code reading of the visual editor and Pi.
+
+> **Read the amendment first.** Section `<replan_2026_07_27>` below supersedes parts of the
+> original decisions. Where they disagree, the amendment wins. Supporting evidence:
+> `24-HARDWARE-VALIDATION.md` (what is proven on hardware, the 7 post-execution defects) and
+> `24-REPLAN-BRIEF.md` (requirement-by-requirement disposition).
 
 <domain>
 ## Phase Boundary
@@ -20,16 +26,210 @@ A hardware trigger must be able to run the **same action vocabulary a state's `e
 - Rig proof: lick detection driven entirely by a UI-assigned action list.
 
 **Out of scope:**
+- **(added 2026-07-27)** Backend derivation of detector view keys for the editor's pickers —
+  Phase 25 (DVK), scheduled to run immediately after this phase. See the amendment.
 - Phase 23 `variables` / `compute` primitives — separate phase, but any value-capture mechanism introduced here MUST be design-compatible with it (see Decisions).
 - New trigger *sources*. This phase changes what a trigger **does**, not what fires it.
 - Rewriting `execute_trigger` dispatch semantics in `task.py`.
 
 </domain>
 
+<replan_2026_07_27>
+## Amendment — Re-plan of Plans 06 / 07 / 08 (2026-07-27)
+
+**Why:** user decision — *"we are only working with sourceless toolkits from now on"*, with the
+clarification that `check_for_detectors` / `detect_change` functionality **must still exist**, just
+via the sourceless (backend-authored) path rather than the `learning_cage` Python class.
+
+**Plans 01–05 are unaffected** and are proven on hardware (run 475). This amendment governs 06/07/08.
+
+### The target, in the user's words (2026-07-27)
+
+> *"I want to emulate what happens today where num of detectors will derive the pins numbering and
+> create dedicated trackers for them, they will reside in the view so the user in UI can make
+> transitions and actions for trigger so it can set the appropriate tracker based on the pin the
+> trigger was calling in detect lick. So we need 1st action to be detect lick — this one returns a
+> value that will set the correct tracker. If it is too much for UI we can also leave less for the
+> user so it does not have the ability to take one pin and accidentally change another tracker in
+> the process. Basically I want the legacy functionality to be handled in the back end as all
+> things are according to our architecture."*
+
+### R1 — TRIGA-11 is DROPPED
+
+*"No Python callback registered for `TOUCH_INT`"* is vacuous on a sourceless toolkit — it dispatches
+to `mics_task` and never had a Python callback to unregister. The grep-based proof tests a property
+that cannot exist. Its rig-proof half is already superseded by run 475.
+
+**Consequence:** the `learning_cage.py` edits deployed by plan 24-01 (`SEMANTIC_HARDWARE`) are inert
+on this path and are left alone. `learning_cage` is not touched by plans 06/07/08.
+
+### R2 — The level comes from `detect_change`, NEVER from the trigger
+
+Reaffirmed with new evidence, because it was nearly reversed in discussion.
+
+`Touch_Detector.detect_change()` (`i2c.py:831-843`) returns `changes[0] if changes else (None, None)`
+— `(pin_number, level)` where `level` is **that electrode's new state** (1 on 0→1, 0 on 1→0).
+
+`execute_trigger`'s `level` is the **GPIO edge on the `TOUCH_INT` IRQ line**. The MPR121 holds IRQ
+asserted until its touch-status register is read — the documented cause of runs 473/474 firing only
+once. With `EITHER_EDGE` that yields **two** edges per real event: assert, then deassert when
+`detect_change` performs the read. Run 475's tidy alternating 0/1 is therefore the assert/deassert
+handshake, not touch/release — consistent with 140 `Mid_LED` calls for 47 firings.
+
+With one LED this looked plausible. With four electrodes, `{trigger: "level"}` would write IRQ
+polarity into whichever `LICKER` changed: **wrong data that looks correct in ES.**
+
+**Locked:** `pin_number` *and* `level` both come from action[0]'s captured `output`. Only
+`pi_timestamp` comes from the trigger context, injected silently (already locked, unchanged).
+
+### R3 — The editor gets a CONSTRAINED detector write, not free-hand wiring
+
+User chose *"leave less for the user"*. The editor offers the detector device as a **single pick**;
+the target key and the written value are both derived from that call's own return. The researcher
+**cannot** cross the wires — read electrode 2, write `LICKER0`.
+
+```
+Trigger: TOUCH_INT
+  [1] Read detector:  [ MPR121 ▾ ]
+      → writes LICKER0..3 from the changed electrode
+```
+
+No `key_template` text box, no operand wiring, on this path.
+
+**This is an editor-side affordance only.** It is a deliberate, contained exception to the
+separation principle — the Pi runtime stays fully generic and hardware-agnostic.
+
+### R4 — The widget is a UI MACRO over the general vocabulary
+
+The widget emits ordinary FDA JSON. Nothing new reaches the Pi as a concept, and Phase 23's
+`compute` keeps working inside triggers with zero rework (the TRIGA-10 / separation-principle test).
+
+```json
+[
+  {"type": "hardware", "ref": "MPR121", "method": "detect_change",
+   "output": ["pin_number", "level"]},
+  {"type": "view", "key_template": "{device_name}{pin_number}", "source_ref": "MPR121",
+   "value": {"flag": "level"}, "if": {"pin_number": "!= null"}}
+]
+```
+
+Rejected alternatives:
+- **New `detector` action type expanded on the Pi** — puts detector-specific code back into the
+  trigger runtime, precisely what TRIGA-06 deleted and run 475 proved unnecessary.
+- **Backend expands a compact stored form** — stored JSON ≠ dispatched JSON, and `validate_fda.py`
+  on the Pi would only ever see the expanded form.
+
+**Accepted cost:** the widget renders by *recognising* this shape. A hand-edited variant that no
+longer matches falls back to the raw action editor. That is graceful degradation, not failure, and
+the raw editor must stay reachable.
+
+### R5 — NEW Pi capability: a `{device_name}` token in `key_template`
+
+`LICKER` is `device_name` from `pilot_hardware_config` — **per-pilot data**, while task definitions
+are pilot-agnostic (TRIGA-07, DVK-02). Baking the literal `"LICKER{pin_number}"` in at save time
+would make the definition pilot-specific: on a pilot whose MPR121 is named `TONGUE` it writes into a
+view key that does not exist — a silent no-op, no exception, no data.
+
+**Locked:** the `view` action gains a `source_ref`, and `resolve_key_template` gains a
+`{device_name}` token resolved at runtime from that hardware object's own `device_name` attribute.
+
+- Generic, **not** detector-specific — any hardware has a name.
+- `resolve_key_template` (`fda_vocabulary.py`) substitutes only from the captured-values dict today,
+  so the resolver must be handed `device_name` alongside the captured variables.
+- Keeps the task definition pilot-agnostic, and means **Phase 25 never has to solve `device_name`
+  for the trigger path** — only for the editor's operand pickers.
+
+### R6 — TRIGA-12 is the load-bearing change
+
+Unchanged as written in REQUIREMENTS.md (capability-based discovery: `num_detectors` +
+`device_name` + `read()`), but its status changes from robustness fix to **the single thing standing
+between the current state and working lick detection.**
+
+Verified this session:
+- `check_for_detectors` (`mics_task.py:261`) filters with `isinstance(v, Touch_Detector)` against the
+  class imported at `mics_task.py:17`.
+- `_resolve_hardware_classes` (`mics_task.py:149`) `exec`s the registry's `source_code` into a fresh
+  namespace → a **different class object** → zero matches.
+- Result: no `add_Tracker`, no `LICKER0..3` in the view, and a `view` action writes a missing key
+  with **no exception and no data**.
+- `init_hardware` (`task.py:178-204`) stores instances at `self.hardware[group][id]`, so
+  `check_for_detectors`' two-level iteration **does** reach a `Modules`-group MPR121. The `isinstance`
+  identity check is the only breakage. This is a one-predicate fix.
+
+### R7 — Detector key derivation for the editor stays in PHASE 25
+
+Phase 25 (DVK-01…08) already specifies backend derivation, operand pickers, preflight resolution
+against a specific pilot, per-pilot disagreement, and unknown-key degradation.
+
+- Phase 24 does **not** derive keys. R3 removes the need on the trigger path; R5 removes the need
+  for `device_name`.
+- **Transitions on `LICKER2` are Phase 25**, which is scheduled to run **immediately after 24**.
+- Rationale: DVK-01 mandates *one derivation, one key format*. A minimal second derivation in 24
+  is the outcome to avoid.
+- TRIGA-13 as written (derive at HANDSHAKE from `prefs.HARDWARE`) is **void** — a registry-declared
+  detector never appears in `prefs.HARDWARE`; its config arrives per-run via `PREFS_HARDWARE` in the
+  START payload. The Pi structurally cannot do it. Reword or retire TRIGA-13 in favour of DVK.
+
+### R8 — TRIGA-15: dropdown over ALL `is_trigger` hardware, grouped
+
+`Digital_Out.is_trigger = True` (`gpio.py:343`), not only `Digital_In`, so every LED qualifies.
+**Report truthfully, grouped inputs vs outputs** — `init_hardware` really does call
+`assign_cb` on them, and filtering would make the UI understate what the runtime wires. The
+`Digital_Out` flag remains flagged as a probable wart for a later look, not silently hidden here.
+
+Justification for the requirement at all: a typo'd `trigger_name` is a **silent no-op** today —
+the assignment saves, `self.triggers["TOCH_INT"]` is created, and nothing ever fires it.
+
+### R9 — NEW requirement: validate a hardware action's `method`
+
+`fda_validation` checks `CALLABLE_METHODS` only for `type: "method"`. So
+`{"type":"hardware","ref":"MPR121","method":""}` returns **200** and is a silent no-op on the Pi —
+the exact failure class TRIGA-07 exists to prevent. The UI is currently the only guard, and three of
+the seven post-execution defects lived in that seam. AST metadata for hardware libs already exists,
+so the data is available. **In scope for this phase.** Needs a new TRIGA id.
+
+### R10 — Rig proof (plan 07′)
+
+- **Checkpoint 1 (UI round-trip) runs FIRST**, not last. Five of the seven post-execution defects
+  were in the UI↔API seam and surfaced only by using the editor. Evidence-backed, not preference.
+- **Checkpoint 2** (422 negative cases) survives; 8 live cases already pass.
+- **Checkpoint 3 replaces the old grep-based one:** build the detector write on toolkit 100, run,
+  touch **each of the four electrodes**, confirm the matching `LICKER{n}` updates with a
+  `pi_timestamp` — **and that touching electrode 2 never moves `LICKER0/1/3`.** The cross-talk
+  negative is the point of R3 and must be asserted, not assumed.
+
+Two stale mechanics to fix while rewriting 07:
+1. It specifies `git -C /home/ido/pi-mirror status --porcelain …/i2c.py`. **All git operations in
+   `pi-mirror` are forbidden.** Use:
+   `diff <(ssh -i ~/.ssh/pi_mics pi@132.77.72.28 'cat ~/Apps/.../i2c.py') /home/ido/pi-mirror/.../i2c.py`
+2. It says `cd ~/pi-mirror && python3 -m pytest` — that is the **dev host**, where `autopilot`
+   cannot import (`npyscreen` missing). Correct path is `cd ~/Apps/mice_interactive_home_cage`
+   **on the Pi**, user-run.
+
+### R11 — Sourceless tasks receive ONLY the `Modules` group (recorded, not scoped)
+
+`mics_task.py:94` does `self.HARDWARE = self._resolve_hardware_classes(kwargs["HARDWARE"])` — a
+**wholesale replace** — and `get_dispatch_spec` only ever emits `hardware["Modules"]`. A
+backend-authored task therefore has **no `GPIO`, `I2C`, `Timers` or `UNREAL` groups at all**.
+
+**Everything a sourceless task touches must be a registered hardware module.** This also makes
+`SEMANTIC_HARDWARE` on Pi classes irrelevant for this path.
+
+User decided **not** to make replace-vs-merge a work item in this phase. Recorded here as
+load-bearing ground truth; revisiting the semantic is deferred.
+
+</replan_2026_07_27>
+
 <decisions>
 ## Locked Decisions
 
 ### The reference case defines "done"
+
+> **SUPERSEDED 2026-07-27 by amendment R1.** The `learning_cage` *implementation* is no longer the
+> acceptance target — the same **pattern** must be reproduced on a backend-authored toolkit via
+> registered hardware modules. The "no Python callback registered for `TOUCH_INT`" gate (TRIGA-11)
+> is dropped as vacuous. The code reading below remains accurate and is still the behavioural spec.
+
 `learning_cage.py:162 detectedLick` is the acceptance target, not an example:
 ```python
 pin_number, level = self.hardware['I2C']['MPR121'].detect_change()
@@ -283,7 +483,16 @@ The allowed handlers are hard-coded **twice** — `HANDLERS` array in `TriggerAs
 </specifics>
 
 <open_decisions>
-## Open Decisions — the plan MUST resolve these explicitly
+## Open Decisions — ALL RESOLVED
+
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Dynamic tracker naming | **(a)** — return-value capture + `view` action + key templating. Executed in waves 1–2. Amended by **R3/R4/R5**: the researcher reaches it through a constrained one-pick widget that emits this JSON, and the key uses a runtime-resolved `{device_name}` token. |
+| 2 | Additive or replacement? | **Replacement** — the `handler` enum was dropped (TRIGA-06), delivered in plan 24-04, proven on the rig. |
+| 3 | How do `level` / `tick` reach the actions? | Composed callable declares them; thread-local `_trigger_ctx` for the duration of one action list. Delivered in plan 24-04. **See R2** — for the licker specifically, `level` must NOT come from here. |
+| 4 | Where does validation live? | New `api/fda_validation.py`, hard 422 on save. Delivered in plan 24-02. **Extended by R9** — it must also validate a hardware action's `method`. |
+
+*Original text retained below for the reasoning that produced these answers.*
 
 ### 1. How does an action list express `detectedLick`'s dynamic tracker naming?
 Candidate approaches (planner should pick one and justify, not enumerate):
@@ -309,9 +518,71 @@ The composed trigger callable must declare those parameter names for `execute_tr
 - New trigger sources / trigger creation from the UI.
 - Any change to the unconditional `Hardware_Event` logging path.
 
+**Added 2026-07-27:**
+- **Backend derivation of detector view keys for the editor's pickers** → **Phase 25 (DVK-01…08)**,
+  to run immediately after this phase. Includes transitions on `LICKER2`, `key_template` completion,
+  preflight resolution per pilot, and unknown-key degradation. (R7)
+- **`Digital_Out.is_trigger = True`** (`gpio.py:343`) — probable wart. Reported truthfully in this
+  phase (R8); narrowing the predicate is a later question.
+- **Duplicate `set` calls** — run 475 logged 140 `Mid_LED` calls for 47 trigger firings (~3×). Some
+  are `Digital_Out` callback bookkeeping, but genuine duplicates appear present. User chose not to
+  block the re-plan on it. **Must be understood before real data collection** — if each lick writes
+  its tracker more than once, the behavioural record is inflated.
+- **`HARDWARE` replace-vs-merge semantics for sourceless tasks** (R11) — recorded as ground truth,
+  not scoped as work.
+- **Legacy `trigger_assignments` rows** in task definitions 181 and 185 (185 is Gili's — ask before
+  touching). Re-run the query rather than trusting the recorded finding; TRIGA-06's claim that 185
+  was the only such row was wrong.
+
 </deferred>
+
+<code_context>
+## Existing Code Insights (verified 2026-07-27)
+
+### Reusable assets — waves 1–2 shipped these; 06/07/08 build on them, not beside them
+- `autopilot/autopilot/tasks/fda_vocabulary.py` — `VALID_ACTION_TYPES` (now includes `view`),
+  `VALID_TRIGGER_CONTEXT_KEYS`, `resolve_key_template`, `unpack_output`. Stdlib-only, shared by
+  `mics_task` and `tools/validate_fda.py`. **R5's `{device_name}` token lands here.**
+- `api/fda_validation.py` — hard-422 validation, 60 pytest cases. **R9 extends this.**
+- `web_ui/react-src/src/components/ActionEditor.tsx` (419 lines, `view`/`output` supported),
+  `ArgInput.tsx`, `ConditionBuilder.tsx`, `TriggerAssignmentPanel.tsx` (hosts the shared editor,
+  `HANDLERS` removed), `VariablesPanel`. **R3's widget sits alongside these, and the raw editor
+  must stay reachable as the R4 fallback.**
+
+### Established patterns that constrain this work
+- `check_for_detectors` iterates `self.hardware[group][id]` two levels deep; `init_hardware`
+  (`task.py:203`) stores instances there for every group including `Modules`. Reach is fine —
+  only `isinstance` identity fails (R6).
+- `resolve_key_template` substitutes solely from the captured-values dict, so R5 requires passing
+  `device_name` into the resolver, not just declaring a token.
+- `add_Tracker` (`View.py:18`) writes `self.view.view` **only**, unlike `init_flags` which writes
+  both. Detector keys are `{"view": …}`, never `{"flag": …}`.
+- `@log_action` records kwargs only — `hardware.set(x)` never logs `x`, and a `set` event's
+  envelope `level` is post-call hardware state. **An acceptance criterion of the form "confirm the
+  action passed value N" is unverifiable from ES.** Only `Tracker.set` logs `value` — which is what
+  makes R10's checkpoint 3 verifiable at all.
+
+### Integration points
+- Pi: `mics_task._build_trigger_action_list`, `_build_action_callable`, `check_for_detectors`.
+- Backend: `api/fda_validation.py`; HANDSHAKE processing in `orchestrator_station.py` for R8's
+  `trigger_sources`.
+- UI: `TriggerAssignmentPanel` → `ActionEditor`.
+
+### Environment facts that cost time in waves 1–2 — do not rediscover
+- **`mics_api` and `mics_web_ui` have no bind mounts.** `docker exec mics_api pytest` runs the
+  *image's* code. Test edits need `docker compose up --build -d api` first.
+- **`orchestrator/prefs.json` is baked into the image.** `up -d` silently reuses the old image;
+  credential rotation requires `--build`.
+- **Vite output is code-split** — task-editor strings live in `TaskEditor-<hash>.js`, not `main.js`.
+- Live ES/Kibana is **`132.77.73.217`** (`event_log_v2`). `.125` is a different cluster.
+- **The editor holds the save entirely while any assignment is incomplete** (`7cd2734`/`4ac5a18`),
+  reversing an earlier decision that caused data loss. Any new validation gate must account for the
+  autosave/refetch interaction — do not re-litigate this from code alone.
+
+</code_context>
 
 ---
 
 *Phase: 24-trigger-assignment-action-lists*
 *Context captured: 2026-07-26 from session direction + orchestrator code reading*
+*Amended: 2026-07-27 — re-plan of 06/07/08 for sourceless-only scope (see `<replan_2026_07_27>`)*

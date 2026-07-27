@@ -42,11 +42,27 @@ no `handler` enum). TRIGA-01/02/06 demonstrated on hardware.
 - `.planning/phases/24-trigger-assignment-action-lists/24-REPLAN-BRIEF.md` — what changes in
   plans 06/07/08 for the sourceless-only decision, requirement by requirement.
 
+**Re-plan discussion COMPLETE (2026-07-27).** Decisions R1–R11 are in `24-CONTEXT.md`
+§ `<replan_2026_07_27>`; REQUIREMENTS.md and ROADMAP.md are updated to match. Headlines:
+- **Constrained one-pick detector write** in the editor, emitting ordinary FDA JSON (UI macro).
+  The researcher cannot read electrode 2 and write `LICKER0`. No detector code on the Pi.
+- **`{device_name}` token** in `key_template` + `source_ref` on the `view` action, resolved at
+  runtime — task definitions stay pilot-agnostic.
+- **Level comes from `detect_change`'s return, never `{"trigger":"level"}`** — the trigger's level
+  is IRQ assert/deassert, not electrode state. Run 475's alternating 0/1 was that handshake.
+- **TRIGA-11 dropped** (vacuous on a sourceless toolkit) → **TRIGA-11a** rig proof.
+- **TRIGA-13 moved to Phase 25**, which now runs **immediately after 24, before 23**.
+- **New: TRIGA-16** (validate hardware action `method` — `method:""` currently 200s and silently
+  no-ops), **TRIGA-17/18/19**.
+
 **Outstanding:**
 1. 41 Pi tests have never run anywhere (`autopilot` unimportable on dev host) — USER-RUN:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
-2. Re-plan 06/07/08 via `/gsd:discuss-phase 24` (**not** `--gaps` — requirement-level drift).
+2. Re-plan the three plans: `/gsd:plan-phase 24` (context is ready; 06/07/08 are re-scoped in
+   ROADMAP.md but their PLAN.md files still contain the old, partly-forbidden steps).
 3. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
+4. Before real data collection: understand the 140 `Mid_LED` calls for 47 triggers in run 475
+   (~3×) — if each lick writes its tracker more than once the behavioural record is inflated.
 
 ---
 

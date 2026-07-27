@@ -1,7 +1,7 @@
 # Roadmap: MICS Backend
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor + Hardware Centralization
-**Status:** Phases 9–17 complete. Active scope is **24 → 23 → review → 18**. Phase 25 added 2026-07-27, depends on 24; its position relative to 23 is not yet agreed. Phases 1–4 archived, 5–8 deferred.
+**Status:** Phases 9–17 complete. Active scope is **24 → 23 → review → 18**. Phase 25 added 2026-07-27, depends on 24; **agreed 2026-07-27 to run immediately after 24, before 23** — phase 24 deliberately does not derive detector view keys, so transitions on `LICKER2` are unavailable until 25 lands. Phases 1–4 archived, 5–8 deferred.
 **Requirements:** 86 v1 requirements across 13 phases
 
 ---
@@ -560,9 +560,9 @@ Plans:
 - [x] 24-03-PLAN.md — React: schema types, ArgInput trigger mode, ActionEditor `view`/`output` support (wave 1)
 - [x] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, `actions`-only branch (handler enum deleted), single-sourced `validate_fda.py` (wave 2)
 - [x] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
-- [ ] ⛔ 24-06-PLAN.md — **NEEDS RE-PLAN.** TRIGA-11 (unregister `TOUCH_INT` in `learning_cage`) is void on the sourceless path; TRIGA-12 (capability-based `check_for_detectors`) survives and is now load-bearing (wave 3)
-- [ ] ⛔ 24-08-PLAN.md — **NEEDS RE-PLAN.** TRIGA-13 derives detector keys from `prefs.HARDWARE`, which a registry-declared detector never appears in — may belong in Phase 25 (wave 3)
-- [ ] ⛔ 24-07-PLAN.md — **NEEDS RE-PLAN.** Checkpoint 3 greps for an unregistered Python callback that a sourceless toolkit never had; checkpoint 1 should move to the front (wave 4)
+- [ ] 24-06-PLAN.md — **RE-SCOPED, awaiting re-plan.** Pi: TRIGA-12 capability-based `check_for_detectors` (load-bearing — the one predicate standing between now and working lick detection), TRIGA-18 `{device_name}` token + `source_ref`, TRIGA-19 level-source lock. TRIGA-11 dropped (wave 3)
+- [ ] 24-08-PLAN.md — **RE-SCOPED, awaiting re-plan.** UI + backend: TRIGA-17 constrained detector affordance, TRIGA-14 variables in operand pickers, TRIGA-15 `trigger_name` dropdown (all `is_trigger`, grouped), TRIGA-16 hardware-`method` validation. TRIGA-13 moved to Phase 25 (wave 3)
+- [ ] 24-07-PLAN.md — **RE-SCOPED, awaiting re-plan.** Rig proof TRIGA-11a: UI round-trip checkpoint **first**, then four electrodes → `LICKER0..3` with `pi_timestamp` and no cross-talk (wave 4)
 
 > **Scope change 2026-07-27 — sourceless toolkits only.** The reference case in the Goal above
 > (`learning_cage.detectedLick`) is no longer the acceptance target; the same *pattern* must be
@@ -570,10 +570,17 @@ Plans:
 > unaffected and were proven on the rig (run 475: 47 `TOUCH_INT` firings, alternating levels).
 > Full analysis: `.planning/phases/24-trigger-assignment-action-lists/24-REPLAN-BRIEF.md`.
 > Hardware evidence and 7 post-execution defect fixes: `24-HARDWARE-VALIDATION.md`.
+>
+> **Re-plan decisions taken 2026-07-27** (`24-CONTEXT.md` § `<replan_2026_07_27>`, R1–R11):
+> the researcher gets a **constrained one-pick detector write** that emits ordinary FDA JSON
+> (UI macro, no new Pi concept); `key_template` gains a runtime-resolved `{device_name}` token so
+> definitions stay pilot-agnostic; both `pin_number` **and** `level` come from `detect_change`'s
+> return, never from the trigger's GPIO edge; detector-key derivation for the editor's pickers
+> stays in **Phase 25, which runs immediately after 24**.
 
 **Design decisions settled during planning (24-CONTEXT.md Open Decisions):**
 1. Dynamic tracker naming → **option (a)**: return-value capture (`output`) + new `view` action + `{name}` key templating. Option (b) ruled out by the user; option (c) rejected because it stands on the latent `_build_touch_detector_callback` bug.
-2. **Additive**, not replacement — `trigger_assignments[*].actions` sits alongside the existing `handler` enum; actions win when present.
+2. ~~**Additive**, not replacement.~~ **Reversed and executed as REPLACEMENT** (TRIGA-06, plan 24-04): the `handler` enum is deleted, `actions` is the only vocabulary. Proven on the rig, run 475.
 3. `level`/`tick` → composed callable declares them as named params; per-invocation stash on `self`, already serialized by `trigger_lock`.
 4. Validation → **new** `api/fda_validation.py` with a hard-422 posture called from POST/PUT. The soft `_validate_task_definition` path is untouched.
 5. Value capture → build Phase 23's `variables` registry **now**; Phase 23's `compute` writes into the same slots via the same `output` field.
@@ -612,10 +619,20 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 25 to break down)
 
-**SCOPE REDUCED 2026-07-27** — user asked for the editor-visible keys inside Phase 24, so plan
-**24-08** now delivers the HANDSHAKE-derived path: the Pi computes `device_name` × `num_detectors`
-from `prefs.HARDWARE`, ships it with `flags`/`semantic_hardware`, and the editor offers the keys
-(TRIGA-13) along with declared variables in operand pickers (TRIGA-14). What remains for Phase 25:
+**SCOPE RESTORED 2026-07-27 (supersedes the "SCOPE REDUCED" note of the same day)** — the reduction
+assumed Phase 24 would deliver the HANDSHAKE-derived path via TRIGA-13. That mechanism is
+**structurally impossible**: a registry-declared detector never appears in `prefs.HARDWARE` (its
+config arrives per-run via `PREFS_HARDWARE` in the START payload, after HANDSHAKE), so the Pi cannot
+derive these keys for a sourceless toolkit at all. TRIGA-13 is retired into DVK-01/02/03 and **all of
+DVK-01…08 belongs to this phase**, which now runs immediately after 24.
+
+Phase 24 still delivers TRIGA-14 (variables in operand pickers) and, crucially, does **not** need
+detector keys itself: the constrained one-pick detector affordance (TRIGA-17) removes the need on the
+trigger path, and the runtime-resolved `{device_name}` token (TRIGA-18) removes the need for
+`device_name` — so this phase never has to solve `device_name` for the trigger path, only for the
+editor's pickers. **Transitions on `LICKER2` are unavailable until this phase lands.**
+
+Original notes on what this phase must solve, still accurate:
 1. **The registry-declared source (DVK-01/02).** HANDSHAKE reads `prefs.HARDWARE` at pilot startup; a
    detector declared as a backend hardware module gets its config merged only at task start
    (`_merge_prefs_hardware`), so its keys never reach HANDSHAKE. The backend holds that config in

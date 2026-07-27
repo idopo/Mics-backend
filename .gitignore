@@ -17,3 +17,31 @@ web_ui/static/react/
 
 # Docker
 *.env.local
+
+# Local scratch workspaces — not part of the backend
+first_cohort_analysis_noa/
+poster_figures/
+learning task/
+scratchpad/
+
+# analysis/: outputs are ignored, but the scripts and data stay version-controlled.
+# The `!analysis/**/` line is required — git cannot re-include a file whose parent
+# directory is excluded, so directories must be re-included before their contents.
+analysis/**
+!analysis/**/
+!analysis/**/*.py
+!analysis/**/*.csv
+!analysis/**/*.txt
+!analysis/**/*.md
+!analysis/**/*.yml
+!analysis/**/*.gitignore
+
+# Generated figures and documents anywhere in the tree
+*.png
+*.svg
+*.pdf
+*.pptx
+
+# ...except real app assets, which the web UI ships
+!web_ui/**/*.png
+!web_ui/**/*.svg

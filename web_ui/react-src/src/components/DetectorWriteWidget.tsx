@@ -122,7 +122,10 @@ export default function DetectorWriteWidget({ actions, toolkit, variables, onCha
         {detectorRefs.map(ref => <option key={ref} value={ref}>{ref}</option>)}
       </select>
       <p style={{ fontSize: '10px', color: 'var(--muted)', margin: 0 }}>
-        → writes {currentRef}0…N from the changed electrode, timestamped by the trigger
+        → on each interrupt, writes the tracker for whichever electrode changed, timestamped by
+        the trigger. Both the electrode and its level come from the device&apos;s own reply. The
+        tracker names are the device&apos;s <code>device_name</code> + index, resolved on the
+        pilot at run time — not <code>{currentRef}</code>, which is the module name.
       </p>
     </div>
   )

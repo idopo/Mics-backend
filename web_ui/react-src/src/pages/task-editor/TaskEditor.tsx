@@ -20,7 +20,7 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaOperand, FdaState, ToolkitRead, HardwareModule, ConditionGroup, ConditionNode } from '../../types'
+import type { FdaJson, FdaTransition, FdaCondition, FdaOperand, FdaState, ToolkitRead, HardwareModule, ConditionGroup, ConditionNode, FdaTriggerAssignment } from '../../types'
 import { isConditionBranch } from '../../types'
 import StateNode from '../../components/StateNode'
 import { operandLabel } from '../../components/ConditionBuilder'
@@ -106,8 +106,25 @@ function normaliseFda(fdaJson: FdaJson): FdaJson {
   return {
     ...fdaJson,
     transitions: (fdaJson.transitions ?? []).map(t => normaliseTransition(t as unknown as Record<string, unknown>)),
-    trigger_assignments: fdaJson.trigger_assignments ?? [],
+    trigger_assignments: (fdaJson.trigger_assignments ?? []).map(normaliseTriggerAssignment),
     variables: fdaJson.variables ?? {},
+  }
+}
+
+/**
+ * Heal a trigger assignment saved before the handler enum was removed.
+ *
+ * Legacy rows (e.g. task definitions 181 and 185) carry `handler` and no `actions`
+ * at all, so rendering `a.actions.length` throws and the whole editor fails to mount.
+ * `actions` is required in the current schema, so default it and drop the dead keys.
+ */
+function normaliseTriggerAssignment(a: FdaTriggerAssignment): FdaTriggerAssignment {
+  const { handler: _handler, config: _config, ...rest } =
+    a as FdaTriggerAssignment & { handler?: unknown; config?: unknown }
+  return {
+    ...rest,
+    trigger_name: rest.trigger_name ?? '',
+    actions: Array.isArray(rest.actions) ? rest.actions : [],
   }
 }
 

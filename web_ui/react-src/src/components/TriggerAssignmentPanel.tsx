@@ -3,6 +3,24 @@ import type { FdaTriggerAssignment, FdaAction, ToolkitRead, HardwareModule } fro
 import ActionEditor from './ActionEditor'
 import { typeChipStyle, actionSummary } from './StateBodyPanel'
 
+/** A trigger assignment the backend will accept: named, with at least one action. */
+export function isCompleteTrigger(a: FdaTriggerAssignment): boolean {
+  return Boolean(a.trigger_name?.trim()) && Array.isArray(a.actions) && a.actions.length > 0
+}
+
+/**
+ * Drop half-built trigger assignments from an FDA before saving.
+ *
+ * The editor autosaves 1.5s after any change, so a freshly-added assignment
+ * ({trigger_name: '', actions: []}) would otherwise be PUT while still empty and
+ * rejected with a 422 — blocking every later save until it is finished or removed.
+ * Incomplete assignments stay in editor state and are flagged "unsaved" in the panel.
+ */
+export function stripIncompleteTriggers<T extends { trigger_assignments?: FdaTriggerAssignment[] }>(fda: T): T {
+  if (!fda.trigger_assignments?.length) return fda
+  return { ...fda, trigger_assignments: fda.trigger_assignments.filter(isCompleteTrigger) }
+}
+
 interface Props {
   assignments: FdaTriggerAssignment[]
   toolkit: ToolkitRead | null
@@ -139,6 +157,11 @@ export default function TriggerAssignmentPanel({
               />
               {!a.trigger_name.trim() && (
                 <span style={{ fontSize: '10px', color: '#ef4444' }}>Trigger name is required</span>
+              )}
+              {!isCompleteTrigger(a) && (
+                <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                  {a.trigger_name.trim() ? 'Not saved — add at least one action' : 'Not saved — incomplete'}
+                </span>
               )}
 
               <button

@@ -26,7 +26,7 @@ import StateNode from '../../components/StateNode'
 import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
-import TriggerAssignmentPanel from '../../components/TriggerAssignmentPanel'
+import TriggerAssignmentPanel, { stripIncompleteTriggers } from '../../components/TriggerAssignmentPanel'
 import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 
@@ -279,7 +279,7 @@ export default function TaskEditor() {
   const saveMutation = useMutation({
     mutationFn: () => updateTaskDefinition(numId, {
       display_name: editName.trim() || undefined,
-      fda_json: fdaJson ?? undefined,
+      fda_json: fdaJson ? stripIncompleteTriggers(fdaJson) : undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task-definition', numId] })

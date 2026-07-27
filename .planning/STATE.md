@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-27T13:33:34.000Z"
+last_updated: "2026-07-27T16:32:51.216Z"
 progress:
   total_phases: 19
   completed_phases: 5
   total_plans: 33
-  completed_plans: 22
-  percent: 66
+  completed_plans: 23
+  percent: 74
 ---
 
 # STATE: MICS Backend
@@ -26,14 +26,22 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 24 — Trigger Assignment Action Lists — **waves 1–2 done (5/8 plans), waves 3–4 blocked on re-plan**
-**Progress:** [███████░░░] 66%
+**Phase:** 24 — Trigger Assignment Action Lists — **wave 3 done (6/8 plans); wave 4 (07/08) next**
+**Progress:** [███████░░░] 74%
 
 ### Phase 24 status (2026-07-27)
 
 Plans 01–05 executed, deployed, and **proven on the real rig** (run 475: 47 `TOUCH_INT`
 firings with alternating `level` 0/1, action list assembled in the UI, no `learning_cage`,
 no `handler` enum). TRIGA-01/02/06 demonstrated on hardware.
+
+**Plan 06 executed (2026-07-27):** TRIGA-12/18/19 delivered — capability-based
+`check_for_detectors` (fixes the isinstance-identity bug that made sourceless lick detection
+silently produce zero trackers), `source_ref` + runtime-resolved `{device_name}` on the `view`
+action (task definitions stay pilot-agnostic), and the value-source lock (level always from
+`detect_change()`'s own capture, never the trigger's IRQ-edge level). Deployed to the Pi,
+md5-verified. **Not yet USER-verified** — awaiting pilot restart + full test-suite run (below).
+See `24-06-SUMMARY.md`.
 
 **Read these two files first when resuming:**
 - `.planning/phases/24-trigger-assignment-action-lists/24-HARDWARE-VALIDATION.md` — what is
@@ -56,10 +64,13 @@ no `handler` enum). TRIGA-01/02/06 demonstrated on hardware.
   no-ops), **TRIGA-17/18/19**.
 
 **Outstanding:**
-1. 41 Pi tests have never run anywhere (`autopilot` unimportable on dev host) — USER-RUN:
-   `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
-2. Re-plan the three plans: `/gsd:plan-phase 24` (context is ready; 06/07/08 are re-scoped in
-   ROADMAP.md but their PLAN.md files still contain the old, partly-forbidden steps).
+1. **Pi tests still never run anywhere** (`autopilot` unimportable on dev host) — USER-RUN, now
+   including plan 06's new tests (`test_check_for_detectors.py` + additions to
+   `test_fda_vocabulary.py`/`test_trigger_assignments.py`/`test_validate_fda.py`):
+   `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` — restart the pilot
+   first (agent cannot do either step).
+2. Execute plan 07 (rig proof, TRIGA-11a) and plan 08 (constrained detector-write widget,
+   TRIGA-14/15/16/17) — both depend on plan 06 having landed.
 3. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
 4. Before real data collection: understand the 140 `Mid_LED` calls for 47 triggers in run 475
    (~3×) — if each lick writes its tracker more than once the behavioural record is inflated.
@@ -155,6 +166,9 @@ no `handler` enum). TRIGA-01/02/06 demonstrated on hardware.
 - [Phase 24-04]: tools/validate_fda.py single-sourced against autopilot.tasks.fda_vocabulary (VALID_ACTION_TYPES/VALID_SPECIALS/VALID_TRIGGER_CONTEXT_KEYS); VALID_HANDLERS deleted outright; _validate_actions_list gained context_kind/allow_trigger_context params so ONE helper validates both state entry_actions and trigger actions
 - [Phase 24-04]: _resolve_renamed_trigger_refs left as a harmless legacy no-op (docstring corrected) rather than deleted — trigger_assignments no longer carry a config key for it to rewrite, but deleting it was out of this plan's scope
 - [Phase 24-04]: cmd_rename_hw_ref's TRIGGER_ASSIGNMENTS_SQL is now a no-op against current-format rows (no config.hardware_ref) — logged in deferred-items.md, not fixed (separate code path from validate(), out of Task 3 scope)
+- [Phase 24-06]: check_for_detectors matches by capability (num_detectors:int-not-bool>0, device_name:non-empty-str, callable read()), not isinstance(v, Touch_Detector) — a hardware-module-registry detector's class is exec'd fresh by _resolve_hardware_classes and can never satisfy the identity check, so detection silently found zero LICKER trackers before this fix
+- [Phase 24-06]: view action gains source_ref + runtime-resolved {device_name} key_template token (RUNTIME_KEY_TEMPLATE_TOKENS, single-sourced in fda_vocabulary.py) — resolved from the source hardware object's own device_name attribute at call time, so one task definition writes LICKER2 on one pilot and TONGUE2 on another without hard-coding either name
+- [Phase 24-06]: the sourceless-lick canonical payload captures both pin_number and level from detect_change()'s own output — never {"trigger": "level"} — since execute_trigger's level is the TOUCH_INT IRQ edge (assert/deassert), not electrode state; wiring the trigger level would write interrupt polarity into whichever LICKER changed
 
 ## Accumulated Context
 

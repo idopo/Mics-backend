@@ -26,7 +26,7 @@ import StateNode from '../../components/StateNode'
 import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
-import TriggerAssignmentPanel, { stripIncompleteTriggers } from '../../components/TriggerAssignmentPanel'
+import TriggerAssignmentPanel, { isCompleteTrigger } from '../../components/TriggerAssignmentPanel'
 import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 
@@ -296,7 +296,7 @@ export default function TaskEditor() {
   const saveMutation = useMutation({
     mutationFn: () => updateTaskDefinition(numId, {
       display_name: editName.trim() || undefined,
-      fda_json: fdaJson ? stripIncompleteTriggers(fdaJson) : undefined,
+      fda_json: fdaJson ?? undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task-definition', numId] })
@@ -312,6 +312,15 @@ export default function TaskEditor() {
   useEffect(() => {
     if (!fdaJson || !canvasInited) return
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    // Never PUT while a trigger assignment is half-built. The backend rejects it with a
+    // 422, and filtering it out of the payload instead would DELETE an already-saved
+    // incomplete assignment on the next autosave. Hold the whole save until it's finished
+    // or removed — nothing invalid is sent, and nothing existing is silently dropped.
+    const incomplete = (fdaJson.trigger_assignments ?? []).filter(a => !isCompleteTrigger(a))
+    if (incomplete.length) {
+      setSavedMsg(`Not saved — finish or remove trigger '${incomplete[0].trigger_name || '(unnamed)'}'`)
+      return
+    }
     setSavedMsg('Unsaved…')
     autoSaveTimerRef.current = setTimeout(() => saveMutation.mutate(), 1500)
     return () => {

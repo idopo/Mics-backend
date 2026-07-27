@@ -561,9 +561,9 @@ Plans:
 - [x] 24-03-PLAN.md — React: schema types, ArgInput trigger mode, ActionEditor `view`/`output` support (wave 1)
 - [x] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, `actions`-only branch (handler enum deleted), single-sourced `validate_fda.py` (wave 2)
 - [x] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
-- [ ] 24-06-PLAN.md — **RE-SCOPED, awaiting re-plan.** Pi: TRIGA-12 capability-based `check_for_detectors` (load-bearing — the one predicate standing between now and working lick detection), TRIGA-18 `{device_name}` token + `source_ref`, TRIGA-19 level-source lock. TRIGA-11 dropped (wave 3)
-- [ ] 24-08-PLAN.md — **RE-SCOPED, awaiting re-plan.** UI + backend: TRIGA-17 constrained detector affordance, TRIGA-14 variables in operand pickers, TRIGA-15 `trigger_name` dropdown (all `is_trigger`, grouped), TRIGA-16 hardware-`method` validation. TRIGA-13 moved to Phase 25 (wave 3)
-- [ ] 24-07-PLAN.md — **RE-SCOPED, awaiting re-plan.** Rig proof TRIGA-11a: UI round-trip checkpoint **first**, then four electrodes → `LICKER0..3` with `pi_timestamp` and no cross-talk (wave 4)
+- [ ] 24-06-PLAN.md — **RE-PLANNED 2026-07-27.** Pi: TRIGA-12 capability-based `check_for_detectors` (load-bearing — the one predicate between now and working lick detection), TRIGA-18 `source_ref` + runtime-resolved `{device_name}`, TRIGA-19 value-source lock tests, then a scoped deploy (wave 3, 3 tasks)
+- [ ] 24-08-PLAN.md — **RE-PLANNED 2026-07-27.** Backend + UI: TRIGA-15 `trigger_sources` derived from the lib AST (`is_trigger`, grouped inputs/outputs) + dropdown, TRIGA-16 hard-422 on a method-less hardware action, TRIGA-14 variables in the operand pickers, TRIGA-17 constrained one-pick detector write (wave 3, 4 tasks — runs in parallel with 24-06, disjoint files)
+- [ ] 24-07-PLAN.md — **RE-PLANNED 2026-07-27.** Rig proof TRIGA-11a, `autonomous: false`: UI round-trip checkpoint **first**, then the 422 negative suite, then four electrodes → `LICKER0..3` with `pi_timestamp` and the cross-talk negative (wave 4, gates on 06 + 08)
 
 > **Scope change 2026-07-27 — sourceless toolkits only.** The reference case in the Goal above
 > (`learning_cage.detectedLick`) is no longer the acceptance target; the same *pattern* must be

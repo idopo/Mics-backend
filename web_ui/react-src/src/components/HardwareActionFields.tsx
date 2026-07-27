@@ -21,11 +21,13 @@ interface Props {
   hwModules: HardwareModule[]
   taskDefId?: number
   versionStamp?: string
+  /** Declared FdaJson.variables names — merged into ArgInput's flag-mode option list. */
+  variableNames?: string[]
   allowTriggerContext?: boolean
   onChange: (patch: Partial<FdaAction>) => void
 }
 
-export default function HardwareActionFields({ action, toolkit, hwModules, taskDefId, versionStamp, allowTriggerContext, onChange }: Props) {
+export default function HardwareActionFields({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, allowTriggerContext, onChange }: Props) {
   const isBackendAuthored = toolkit?.is_backend_authored ?? false
   const toolkitModules = hwModules.filter(m => toolkit?.hardware_module_ids?.includes(m.id))
   // Legacy semantic hardware keys
@@ -168,6 +170,7 @@ export default function HardwareActionFields({ action, toolkit, hwModules, taskD
             value={(action.args ?? [])[0] ?? 500}
             toolkit={toolkit}
             annotation="float"
+            variableNames={variableNames}
             allowTriggerContext={allowTriggerContext}
             onChange={v => onChange({ args: [v] })}
           />
@@ -187,6 +190,7 @@ export default function HardwareActionFields({ action, toolkit, hwModules, taskD
             value={(action.args ?? [])[i] ?? (arg.default !== undefined ? arg.default : 0)}
             toolkit={toolkit}
             annotation={arg.annotation ?? null}
+            variableNames={variableNames}
             allowTriggerContext={allowTriggerContext}
             onChange={v => {
               const newArgs = [...(action.args ?? [])]
@@ -205,6 +209,7 @@ export default function HardwareActionFields({ action, toolkit, hwModules, taskD
             value={(action.args ?? [])[0] ?? 1}
             toolkit={toolkit}
             annotation={null}
+            variableNames={variableNames}
             allowTriggerContext={allowTriggerContext}
             onChange={v => onChange({ args: [v] })}
           />

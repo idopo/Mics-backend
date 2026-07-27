@@ -11,6 +11,7 @@ const TYPE_COLORS: Record<string, string> = {
   method: '#a78bfa',
   if: '#22c55e',
   special: '#94a3b8',
+  view: '#ec4899',
 }
 
 function typeChipStyle(type: string): React.CSSProperties {

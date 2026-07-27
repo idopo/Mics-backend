@@ -3,6 +3,8 @@ import type { FdaAction, ToolkitRead, HardwareModule } from '../types'
 import ArgInput from './ArgInput'
 import IfActionEditor from './IfActionEditor'
 import HardwareActionFields from './HardwareActionFields'
+import ViewActionFields from './ViewActionFields'
+import OutputCapture from './OutputCapture'
 
 // ── Action type metadata ────────────────────────────────────────────────────
 
@@ -13,6 +15,7 @@ const TYPE_COLORS: Record<string, string> = {
   method:   '#a78bfa',
   if:       '#22c55e',
   special:  '#94a3b8',
+  view:     '#ec4899',
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -22,6 +25,7 @@ const TYPE_LABELS: Record<string, string> = {
   method:   'METHOD',
   if:       'IF',
   special:  'SPECIAL',
+  view:     'VIEW',
 }
 
 // ── Tracker method tables ────────────────────────────────────────────────────
@@ -123,12 +127,16 @@ interface Props {
   hwModules: HardwareModule[]
   taskDefId?: number
   versionStamp?: string
+  /** Declared FdaJson.variables names — valid `output` targets and key_template tokens. */
+  variableNames?: string[]
+  /** True only when this editor is inside a trigger's action list. */
+  allowTriggerContext?: boolean
   onChange: (updated: FdaAction) => void
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, onChange }: Props) {
+export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, allowTriggerContext, onChange }: Props) {
   const isBackendAuthored = toolkit?.is_backend_authored ?? false
 
   const flagKeys = Object.keys(toolkit?.flags ?? {})
@@ -171,6 +179,11 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
       onChange({ type: 'if', condition: undefined, then: [], else: undefined })
     } else if (t === 'method') {
       onChange({ type: 'method', ref: callableMethods[0] ?? '', args: [] })
+    } else if (t === 'view') {
+      // A brand-new action object (no spread of the previous type's fields) — switching
+      // AWAY from view naturally drops key_template/value/kwargs the same way every other
+      // branch here drops the previous type's ref/method/args.
+      onChange({ type: 'view', key_template: '', value: null, kwargs: {} })
     } else {
       onChange({ type: t as FdaAction['type'], ref: '', args: [] })
     }
@@ -229,6 +242,7 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           <option value="hardware">hardware</option>
           <option value="trial">trial counter</option>
           <option value="flag">flag</option>
+          <option value="view">view</option>
           <option value="method">method</option>
           <option value="if">if</option>
         </select>
@@ -242,6 +256,8 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           hwModules={hwModules}
           taskDefId={taskDefId}
           versionStamp={versionStamp}
+          allowTriggerContext={allowTriggerContext}
+          variableNames={variableNames}
           onChange={update}
         />
       )}
@@ -276,7 +292,14 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           {action.method === 'set' && (
             <div>
               <label style={labelStyle}>Value</label>
-              <ArgInput value={(action.args ?? [])[0] ?? 0} toolkit={toolkit} annotation="int" onChange={v => update({ args: [v] })} />
+              <ArgInput
+                value={(action.args ?? [])[0] ?? 0}
+                toolkit={toolkit}
+                annotation="int"
+                variableNames={variableNames}
+                allowTriggerContext={allowTriggerContext}
+                onChange={v => update({ args: [v] })}
+              />
             </div>
           )}
         </>
@@ -319,11 +342,24 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
                 value={(action.args ?? [])[0] ?? (flagTrackerType === 'Boolean_Tracker' ? false : 0)}
                 toolkit={toolkit}
                 annotation={flagTrackerType === 'Boolean_Tracker' ? 'bool' : null}
+                variableNames={variableNames}
+                allowTriggerContext={allowTriggerContext}
                 onChange={v => update({ args: [v] })}
               />
             </div>
           )}
         </>
+      )}
+
+      {/* ── View action ──────────────────────────────────────────────────── */}
+      {action.type === 'view' && (
+        <ViewActionFields
+          action={action}
+          toolkit={toolkit}
+          variableNames={variableNames}
+          allowTriggerContext={allowTriggerContext}
+          onChange={update}
+        />
       )}
 
       {/* ── Method action ────────────────────────────────────────────────── */}
@@ -343,19 +379,40 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           {(action.args ?? []).map((arg, i) => (
             <div key={i}>
               <label style={labelStyle}>Arg {i + 1}</label>
-              <ArgInput value={arg} toolkit={toolkit} annotation={null} onChange={v => {
-                const newArgs = [...(action.args ?? [])]
-                newArgs[i] = v
-                update({ args: newArgs })
-              }} />
+              <ArgInput
+                value={arg}
+                toolkit={toolkit}
+                annotation={null}
+                variableNames={variableNames}
+                allowTriggerContext={allowTriggerContext}
+                onChange={v => {
+                  const newArgs = [...(action.args ?? [])]
+                  newArgs[i] = v
+                  update({ args: newArgs })
+                }}
+              />
             </div>
           ))}
         </>
       )}
 
+      {/* ── Output capture (hardware/timer/method actions only) ───────────── */}
+      {(action.type === 'hardware' || action.type === 'timer' || action.type === 'method') && (
+        <OutputCapture action={action} variableNames={variableNames} onChange={update} />
+      )}
+
       {/* ── If action ─────────────────────────────────────────────────────── */}
       {action.type === 'if' && (
-        <IfActionEditor action={action} toolkit={toolkit} hwModules={hwModules} taskDefId={taskDefId} versionStamp={versionStamp} onChange={onChange} />
+        <IfActionEditor
+          action={action}
+          toolkit={toolkit}
+          hwModules={hwModules}
+          taskDefId={taskDefId}
+          versionStamp={versionStamp}
+          variableNames={variableNames}
+          allowTriggerContext={allowTriggerContext}
+          onChange={onChange}
+        />
       )}
     </div>
   )

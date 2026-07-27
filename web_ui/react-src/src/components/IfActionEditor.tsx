@@ -8,6 +8,10 @@ interface Props {
   hwModules: HardwareModule[]
   taskDefId?: number
   versionStamp?: string
+  /** Declared FdaJson.variables names — forwarded into both then/else recursion hops. */
+  variableNames?: string[]
+  /** True only when this editor is inside a trigger's action list. */
+  allowTriggerContext?: boolean
   onChange: (updated: FdaAction) => void
 }
 
@@ -24,7 +28,7 @@ const branchLabel: React.CSSProperties = {
   display: 'block',
 }
 
-export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, onChange }: Props) {
+export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, allowTriggerContext, onChange }: Props) {
   const thenActions: FdaAction[] = action.then ?? []
   const elseActions: FdaAction[] | undefined = action.else
 
@@ -99,6 +103,8 @@ export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, 
                   hwModules={hwModules}
                   taskDefId={taskDefId}
                   versionStamp={versionStamp}
+                  variableNames={variableNames}
+                  allowTriggerContext={allowTriggerContext}
                   onChange={upd => updateThen(i, upd)}
                 />
                 <button
@@ -171,6 +177,8 @@ export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, 
                       hwModules={hwModules}
                       taskDefId={taskDefId}
                       versionStamp={versionStamp}
+                      variableNames={variableNames}
+                      allowTriggerContext={allowTriggerContext}
                       onChange={upd => updateElse(i, upd)}
                     />
                     <button

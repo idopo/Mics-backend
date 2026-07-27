@@ -66,7 +66,7 @@ running container. Verified command: `docker exec -w /app mics_api python -m pyt
 |-----|----------|-----------|-------------------|-------------|
 | TRIGA-01 | `actions` list built via `_build_action_callable`; same load-time `ValueError` on bad type/ref | unit (Pi) | `pytest tests/test_trigger_assignments.py -k actions -q` | ❌ W0 |
 | TRIGA-02 | Composed callable declares `level`/`tick`; `{"trigger":…}` resolves via `_resolve_arg` | unit (Pi) | `pytest tests/test_trigger_assignments.py -k trigger_context -q` | ❌ W0 |
-| TRIGA-03 | `view` action writes `self.view.view[key]`, accepts `pi_timestamp` | unit (Pi) | `pytest tests/test_trigger_assignments.py -k view_action -q` | ❌ W0 |
+| TRIGA-03 | `view` action writes `self.view.view[key]`; `pi_timestamp` injected implicitly from the trigger tick, absent entirely outside a trigger, explicit kwarg wins | unit (Pi) | `pytest tests/test_trigger_assignments.py -k view_action -q` | ❌ W0 |
 | TRIGA-04 | `output` capture (single name + list-unpack for tuple returns) | unit (Pi) | `pytest tests/test_load_fda_from_json.py -k variables -q` | ❌ W0 |
 | TRIGA-05 | `detectedLick` equivalence: `(idx, level)` → `LICKER{idx}.set(level, pi_timestamp=tick)` | unit (Pi) | `pytest tests/test_trigger_assignments.py -k detect_lick -q` | ❌ W0 |
 | TRIGA-06 | Handler enum deleted. Of the 18 existing tests: **7** `_build_transition_lambda` tests unmodified; **8** handler-specific tests deleted with the enum; **3** general-contract tests kept — `no_assignments` and `missing_key` unmodified, `normalizes_scalar_trigger` rewritten to the same assertions driven by `actions` | unit (Pi) | `pytest tests/test_trigger_assignments.py -q` | ✅ exists (346 lines) |
@@ -75,8 +75,12 @@ running container. Verified command: `docker exec -w /app mics_api python -m pyt
 | TRIGA-09 | Trigger panel hosts `ActionEditor` per action | manual + typecheck | `npx tsc --noEmit` + visual check | n/a |
 | TRIGA-10 | Backend 422 fires on an action/handler type React shouldn't have sent | unit (backend) | covered by TRIGA-07 file | ❌ W0 |
 | TRIGA-11 | **Rig proof** — lick detection via UI action list, no `detectedLick` on the class | manual (hardware) | user-run session on the real pilot | n/a |
+| TRIGA-12 | `check_for_detectors` matches by capability; an exec'd non-`isinstance` detector class still yields `LICKER0…3`; per-group duplicate `ValueError` and key format unchanged | unit (Pi) | `pytest tests/test_check_for_detectors.py -q` | ❌ P06 |
+| TRIGA-13 | `derive_detector_view_keys` shape + HANDSHAKE payload; toolkit column round-trip (absent key preserves); keys reach `GET /api/toolkits`; editor lists them under a Detector-channels optgroup | unit (Pi) + unit (backend) + manual | `pytest tests/test_handshake_enrichment.py -q` · `pytest tests/test_detector_view_keys.py -q` · `npx tsc --noEmit` + Checkpoint 1 step 5 | ❌ P08 |
+| TRIGA-14 | `ArgInput` flag options and `ConditionBuilder` operand options = `toolkit.flags ∪ variables`; `pin_number` and `level` selectable | typecheck + manual | `npx tsc --noEmit` + Checkpoint 1 step 5 | ❌ P08 |
+| TRIGA-15 | `derive_trigger_sources` uses the `is_trigger` predicate (i2c excluded, GPIO included); `trigger_sources` reaches the toolkit API; panel renders a dropdown; backend 422s an unknown `trigger_name` when the set is known | unit (Pi) + unit (backend) + manual | `pytest tests/test_handshake_enrichment.py -q` · `pytest tests/test_task_definitions_validation.py -k trigger_name -q` · Checkpoint 1 step 3 | ❌ P08 |
 
-*Status legend: ⬜ pending · ✅ green · ❌ red · W0 = created in Wave 0*
+*Status legend: ⬜ pending · ✅ green · ❌ red · W0 = created in Wave 0 · P06/P08 = created by Plan 06 / Plan 08*
 
 ---
 

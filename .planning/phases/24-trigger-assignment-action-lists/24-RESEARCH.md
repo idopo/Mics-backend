@@ -1,5 +1,24 @@
 # Phase 24: Trigger Assignment Action Lists - Research
 
+> ⚠️ **SUPERSEDED IN PART (2026-07-27).** This research doc is the historical record that produced
+> the plans; Plans 01/04 are authoritative where they differ. Two specifics below are now WRONG and
+> must not be copied into code:
+> 1. The `view` action carries **no** `kwargs.pi_timestamp` — the Pi injects `pi_timestamp` from the
+>    trigger tick implicitly (Plan 01 `<implicit_pi_timestamp>`). The key prefix is `LICKER`, not
+>    `MPR121` (`device_name` × `num_detectors`, Plan 06).
+> 2. The trigger context is a **thread-local `self._trigger_ctx` cleared in a `finally`**, NOT plain
+>    `self._trigger_level` / `self._trigger_tick` attributes, and `trigger_lock` does NOT make the
+>    attribute version safe — it serialises trigger-vs-trigger only, while state bodies run on the
+>    stage thread (Plan 04 `<trigger_context_lifetime>`).
+> 3. There is **no `handler` field**. This doc predates the 2026-07-26 reversal that dropped the enum
+>    outright (24-CONTEXT.md); an entry is `trigger_name` + `actions` and nothing else, and a
+>    handler-only entry is a 422 at the API and a `ValueError` on the Pi. This also invalidates §1's
+>    `elif assignment.get("actions"):` snippet — `actions` is not an extra branch on a handler chain,
+>    it is the only path, and the chain itself is deleted (Plan 04).
+> 4. `trigger_name` is not free text: it must name hardware whose class sets `is_trigger` (the
+>    predicate `init_hardware` uses before `assign_cb`), reported in HANDSHAKE as `trigger_sources`
+>    and rendered as a dropdown (TRIGA-15, Plan 08).
+
 **Researched:** 2026-07-26
 **Domain:** Pi FDA runtime (action-callable dispatch) + FastAPI backend validation + React task-editor
 **Confidence:** HIGH (all findings verified by direct code read on both `~/pi-mirror/` and `~/mics-backend/`, not from training-data assumptions)
@@ -113,7 +132,6 @@ must not be repurposed for this).
   "trigger_assignments": [
     {
       "trigger_name": "TOUCH_INT",
-      "handler": "default",                          // legacy field — kept, unused when actions present
       "actions": [                                    // NEW — same schema as entry_actions
         {
           "type": "hardware", "group": "I2C", "ref": "MPR121", "method": "detect_change",
@@ -197,10 +215,11 @@ if "trigger" in arg:
     key = arg["trigger"]   # "level" or "tick"
     return getattr(self, f"_trigger_{key}", None)
 ```
-**Thread-safety:** `process_queue` (`task.py:262-266`) wraps the entire `execute_trigger()` call in
-`with self.trigger_lock:` — trigger dispatch is already fully serialized, so stashing `self._trigger_level`/
-`self._trigger_tick` right before running the action list and reading it back synchronously within the
-same call is safe with no new locking.
+**Thread-safety:** ⚠️ **this paragraph was wrong — see the SUPERSEDED note at the top.**
+`process_queue` (`task.py:262-266`) serialises trigger-vs-trigger only; state bodies run on the stage
+thread, and nothing cleared the stash between invocations, so a fired trigger's tick leaked into
+later state-body `view` writes. The shipped design is a thread-local context cleared in a `finally`
+(Plan 04 `<trigger_context_lifetime>`).
 
 ### §3 — New `view` action type: target is a *pre-existing* Tracker, not a new variable
 

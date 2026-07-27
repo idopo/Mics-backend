@@ -1,7 +1,7 @@
 # Roadmap: MICS Backend
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor + Hardware Centralization
-**Status:** Phases 9–17 complete. Active scope is **24 → 23 → review → 18**. Phases 1–4 archived, 5–8 deferred.
+**Status:** Phases 9–17 complete. Active scope is **24 → 23 → review → 18**. Phase 25 added 2026-07-27, depends on 24; its position relative to 23 is not yet agreed. Phases 1–4 archived, 5–8 deferred.
 **Requirements:** 86 v1 requirements across 13 phases
 
 ---
@@ -30,7 +30,8 @@
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
 | 18 | MICS-Link: Pi Transport + ExternalHardware | ZMQ ROUTER socket on Pi IOLoop + ExternalHardware base class with @signal/@event/@command + View Tracker auto-registration + stale policy + smoke test | EXTLINK-01–11 | ○ Pending |
 | 23 | Compute Primitives + Variables | FDA-JSON-v2 `variables` registry → Trackers in flags+view; `compute` entry-action + curated stdlib primitives (last-write-wins, hot-reload); backend variables/collision validation + compute-library storage via Phase-9 hw-lib infra; GUI compute state-builder + transition operand wiring. 3 plans. (expr escape-hatch decoupled/deferred) | CMP-01–06, CMP-10–15 | ○ Pending |
-| 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments` (currently none); rig-proof by replacing `detectedLick` with a UI-assigned action list | TRIGA-01–11 | ○ Pending — **next up** |
+| 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments` (currently none); rig-proof by replacing `detectedLick` with a UI-assigned action list; `LICKER0…LICKER3` derived at HANDSHAKE and pickable in the editor; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–15 | ○ Pending — **next up** |
+| 25 | Detector-Derived View Keys | `LICKER0…LICKER3` (`device_name` × `num_detectors`) derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight | DVK-01–08 | ○ Pending |
 
 **Execution order (agreed 2026-07-26):** Phase 24 → Phase 23 → review → Phase 18 → Open Ephys. See `.planning/STABILIZATION_PLAN.md`.
 
@@ -549,17 +550,18 @@ Phase 23 (Compute Primitives + Variables) — 3 plans:
 
 **Goal:** A hardware trigger fires the *same action vocabulary* a state's `entry_actions` uses (hardware / flag / timer / view / special / method / if), assigned from the task-editor UI instead of hard-coded in Python. Reference case to replicate and prove on the rig: `learning_cage.detectedLick`. Plus the missing backend validation layer for `trigger_assignments`.
 
-**Requirements**: TRIGA-01 through TRIGA-11
+**Requirements**: TRIGA-01 through TRIGA-15
 **Depends on:** Phase 1 (`load_fda_from_json`, `_build_action_callable`, `_resolve_arg`), Phase 12 (StateBodyPanel / ActionEditor — the action editor UI to reuse). *Not* dependent on Phase 23; the two share the `output` value-capture idea and should be kept consistent.
-**Plans:** 7 plans (4 waves)
+**Plans:** 8 plans (4 waves)
 
 Plans:
 - [ ] 24-01-PLAN.md — Pi runtime: variables registry, `output` capture, `view` action, `{"trigger"}` arg form, shared `fda_vocabulary` module (wave 1)
 - [ ] 24-02-PLAN.md — Backend: trigger ref scanning + new `api/fda_validation.py` hard-422 on save (wave 1)
 - [ ] 24-03-PLAN.md — React: schema types, ArgInput trigger mode, ActionEditor `view`/`output` support (wave 1)
-- [ ] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, additive `actions` branch, corrected `touch_detector` handler, single-sourced `validate_fda.py` (wave 2)
+- [ ] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, `actions`-only branch (handler enum deleted), single-sourced `validate_fda.py` (wave 2)
 - [ ] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
-- [ ] 24-06-PLAN.md — Unregister `TOUCH_INT` in `learning_cage` (method retained); write `.claude/docs/trigger_action_lists.md` (wave 3)
+- [ ] 24-06-PLAN.md — Unregister `TOUCH_INT` in `learning_cage` (method retained); capability-based `check_for_detectors` (TRIGA-12); write `.claude/docs/trigger_action_lists.md` (wave 3)
+- [ ] 24-08-PLAN.md — Detector view keys + trigger sources end-to-end: Pi HANDSHAKE derivation → toolkit columns/API → editor operand, key-template and trigger-name dropdowns; variables in operand lists (wave 3)
 - [ ] 24-07-PLAN.md — Checkpoints: UI round-trip, save-time 422 negative case, rig proof (wave 4)
 
 **Design decisions settled during planning (24-CONTEXT.md Open Decisions):**
@@ -591,6 +593,45 @@ Plans:
 - Migration posture for existing `handler`-based assignments (additive vs replacement) — decide in discuss-phase.
 
 **Success gate:** the lick-detection path runs on the rig driven by a UI-assigned action list, with **no Python callback registered for `TOUCH_INT`** (`learning_cage` no longer assigns `self.triggers['TOUCH_INT']`). The `detectedLick` method is retained as reference + one-line rollback — registration is the property under test, not existence.
+
+### Phase 25: Detector-derived view keys visible in the FDA editor
+
+**Goal:** Once a detector-bearing hardware module (MPR121) is attached to a toolkit, its per-electrode view keys — `LICKER0…LICKER3`, i.e. `device_name` × `num_detectors` — are derived by the backend and offered as **first-class pickable options in the FDA editor**: transition-condition view operands, state-body operands, and the trigger `view` action's `key_template`. The same derivation resolves keys against a *specific* pilot at preflight, so a wrong key fails before START instead of writing into a view that has no such tracker.
+
+**Requirements**: DVK-01 through DVK-08
+**Depends on:** Phase 24 (TRIGA-12 capability-based `check_for_detectors`; the `view` action + `key_template`), Phase 10 + 17 (hardware modules, name-keyed `pilot_hardware_config`), Phase 13 (`preflight_validate` — named by 24-02 as the home for view-key resolution).
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 25 to break down)
+
+**SCOPE REDUCED 2026-07-27** — user asked for the editor-visible keys inside Phase 24, so plan
+**24-08** now delivers the HANDSHAKE-derived path: the Pi computes `device_name` × `num_detectors`
+from `prefs.HARDWARE`, ships it with `flags`/`semantic_hardware`, and the editor offers the keys
+(TRIGA-13) along with declared variables in operand pickers (TRIGA-14). What remains for Phase 25:
+1. **The registry-declared source (DVK-01/02).** HANDSHAKE reads `prefs.HARDWARE` at pilot startup; a
+   detector declared as a backend hardware module gets its config merged only at task start
+   (`_merge_prefs_hardware`), so its keys never reach HANDSHAKE. The backend holds that config in
+   `pilot_hardware_config` and must derive from it — then merge both sources without duplicating the
+   key format.
+2. **Per-pilot truth (DVK-02/06).** HANDSHAKE writes a per-toolkit row, so two pilots running the
+   same toolkit with different `num_detectors` are last-handshake-wins. Phase 25 surfaces the
+   disagreement and resolves keys per pilot in `preflight_validate`.
+3. **DVK-05/07** (unknown keys degrade; detector keys never leak into flag validation) and **DVK-08**
+   for the registry path — 24-07 proves only the prefs path.
+DVK-03/04 are partially delivered by 24-08; Phase 25 extends the same pickers to the second source
+rather than building them.
+
+**Current state (verified 2026-07-27, before 24-08):**
+- **The backend and the UI know nothing about detectors.** `grep -rn "Touch_Detector|num_detectors|device_name" api/ web_ui/react-src/src` → **0 hits**. Every `LICKER` key in the system today exists only at Pi runtime, created by `check_for_detectors` (`mics_task.py:241-266`) from `prefs.HARDWARE`.
+- **The editor cannot even express a licker transition.** `ConditionBuilder.tsx:64-67` builds `viewOpts` as `semantic_hardware` keys + hardware-module names + toolkit flags; lines 79-87 render a `<select>` whenever that list is non-empty, so free text is unreachable. Adding MPR121 to a toolkit therefore surfaces `MPR121` — and never `LICKER0…LICKER3`. An already-stored unknown key survives only via the line-81 "keep current value" escape.
+- `hwModuleNames` comes from `toolkit.hardware_module_ids` → `getHardwareModule(id).name` (`TaskEditor.tsx:176-182`) and is passed to `ConditionRow` / `ConditionGroupsEditor` (`TaskEditor.tsx:766`).
+- **The numbers live per-pilot.** `hardware_modules` stores only `name` / `class_name` / `hardware_lib_id` / `description` — no default config. `device_name` and `num_detectors` live in `pilot_hardware_config.config` (free-form JSON, name-keyed since Phase 17).
+- 24-02 deliberately keeps view-key *resolution* out of save-time validation (task definitions are pilot-agnostic) and names Phase 13's `preflight_validate` as the future home — nothing has been added there yet; preflight only checks that a config row exists per module.
+
+**Central design tension to settle in planning:** task definitions are pilot-agnostic, but `device_name` × `num_detectors` is per-pilot data. The editor needs keys *before* a pilot is chosen. Candidate sources — union across pilots that have the module configured (surfacing disagreement rather than silently merging), a declared default on `hardware_modules`, or an explicit per-toolkit declaration. Pick one; do not invent a second source of truth for the key format — it must stay `f"{device_name}{i}"`, identical to `check_for_detectors`.
+
+**Success gate:** attach MPR121 to a toolkit, open the FDA editor, and pick `LICKER2` from the view-operand dropdown when declaring a transition; the definition saves, preflights clean against the configured pilot, and the transition fires on the rig.
 
 ---
 *Created: 2026-03-15*

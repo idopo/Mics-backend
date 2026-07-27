@@ -100,6 +100,83 @@ Consequences:
   only ever *adds* callbacks and still no-ops when `trigger_assignments` is absent/empty.
 - Clean up the three junk entries in task definition 185.
 
+### Detector keys are derived and shown in the GUI — inside this phase (user, 2026-07-27)
+> *"I want to be able to have the LICKER{pin} tracker derived from the MPR num of detectors within
+> phase 24 so I can add to the trigger tracker LICKER{num}.set(level) … make sure it is visible in
+> the GUI as well."*
+
+Plan **08** delivers it (TRIGA-13/14). Locked choices:
+- **Derive on the Pi, at HANDSHAKE, from `prefs.HARDWARE`.** The Pi is the only party that already
+  knows `device_name` × `num_detectors` at that moment, and HANDSHAKE is the existing channel for
+  exactly this class of metadata (`flags`, `semantic_hardware`, `callable_methods`). The keys travel
+  as finished strings; `api/` and React never compute a key and never learn what a detector is.
+- **Scope limits accepted, not overlooked:** prefs-declared hardware only (a registry-declared
+  detector's config is merged at task start, after HANDSHAKE) and last-handshake-wins per toolkit
+  row across pilots. Both go to Phase 25 (DVK-01/02/06).
+- **Variables join the operand pickers** (TRIGA-14, CMP-14 pulled forward from Phase 23) — without it
+  the canonical payload's `pin_number != null` guard and its `{"flag": "level"}` value are not
+  selectable, since both dropdowns are closed sets built from `toolkit.flags` alone.
+
+### A trigger source must be trigger-capable hardware, picked from a dropdown (user, 2026-07-27)
+> *"we need the assigned trigger to be a gpio class since this is the mechanism of the handle trigger
+> in the code with the assign_cb … in the ui there should be a dropdown from the available gpio that
+> are in the toolbox."*
+
+Verified against the runtime, and the rule is slightly tighter than "GPIO": the predicate is
+`hw.is_trigger`. `init_hardware` (`task.py`) calls
+`hw.assign_cb(partial(self.handle_trigger, hardware=hw))` for exactly those objects, and
+`handle_trigger` maps the firing BCM pin → board → `self.pin_id` back to the `HARDWARE[group][id]`
+key — which is what `self.triggers` is keyed by, and why `learning_cage` wrote
+`self.triggers['TOUCH_INT']`. `Hardware.is_trigger` is False by default and only `gpio.Digital_In`
+(gpio.py:843) and `gpio.Digital_Out` (gpio.py:343) set it True, so an i2c device — MPR121 included —
+can never be a trigger source, only the *target of an action inside one*.
+
+Consequences (TRIGA-15, plan 08):
+- The Pi reports `trigger_sources` in HANDSHAKE using that same `is_trigger` predicate, so the UI's
+  list and the runtime's wiring cannot drift.
+- `trigger_name` becomes a dropdown, with the usual unknown-value preservation and a free-text
+  fallback only when the list is absent (un-redeployed Pi).
+- The backend 422s a name outside the set when the set is known. This is not pedantry: an unknown
+  name is a **silent no-op** today — the assignment saves, `self.triggers["TOCH_INT"]` is created,
+  and nothing ever fires it.
+- `Digital_Out` carrying `is_trigger = True` looks like a wart, but it is reported truthfully rather
+  than filtered, because `init_hardware` really does wire it. Flagged in the plan for a later look.
+
+### `pi_timestamp` is passed silently by Python — no UI control (user, 2026-07-27)
+> *"the handle trigger passes onward the tick which is the pi timestamp — this should also be done
+> silently in the python code (no need in the UI)."*
+
+The `view` action injects `pi_timestamp` from the trigger's tick, read off the THREAD-LOCAL
+`self._trigger_ctx` published for the duration of one action list and cleared in a `finally`
+(Plan 04 `<trigger_context_lifetime>` — a plain attribute would leak a fired trigger's tick into
+later state-body writes and is read across two threads). Outside a trigger no kwarg is passed at
+all; an explicit `kwargs.pi_timestamp` still wins. The checkbox planned in 24-03 is removed and the canonical payload loses its `kwargs` block.
+Rationale: timestamp fidelity is not a per-action editorial choice, and `{"trigger": "tick"}` remains
+in the vocabulary for anything that genuinely needs the tick as a value.
+
+### The licker level comes from I2C, NOT from the trigger's `level`
+`execute_trigger(self, pin, level, tick, hardware)` (`task.py:286`) passes the **GPIO edge level of
+the `TOUCH_INT` interrupt line**. That is not the electrode's state: the interrupt says *something*
+changed, and only `detect_change()` says *which electrode* and *to what*. `detectedLick` accordingly
+takes `tick` only and reads the level from the I2C return. So the canonical payload's view value is
+`{"flag": "level"}` — the **captured** second element of `output: ["pin_number", "level"]` — and
+never `{"trigger": "level"}`. Wiring the trigger level here would record interrupt polarity and look
+plausible while being wrong. `{"trigger": "level"}` stays correct for GPIO inputs (beam-break, IR)
+where the edge level IS the payload.
+
+### Detector trackers stay in the view; `variables` are the flags (2026-07-27)
+Asked whether the write should go "via the flags dict" instead of `self.view.view[key].set(...)`:
+no, and the two halves of the design already sit on opposite sides of that line.
+- `init_flags` writes **both** `self.flags` and `self.view.view`; `check_for_detectors` →
+  `view.add_Tracker` writes **only** `self.view.view` (`View.py:18`). So `self.view.view` is the
+  superset and the only namespace that can address a detector channel at all — `self.flags["LICKER0"]`
+  does not exist and injecting it there would break the "flags = the declared `FLAGS` contract the
+  backend validates against" invariant, on top of the Boolean/Counter typing mismatch.
+- `variables` (`pin_number`, `level`) ARE created in `self.flags` (Plan 01), which is why they are
+  addressed as `{"flag": …}`. So the user's instinct is satisfied where it applies: the *captured
+  values* live in the flags dict; the *detector channel* is a view tracker. One `view` action with a
+  key template covers the dynamic-name requirement that a static `flag` ref cannot express.
+
 ### No legacy non-FDA protocols remain (user, 2026-07-26)
 > *"No legacy, just FDA now."*
 

@@ -114,6 +114,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - Phase 24 added (2026-07-26): Trigger Assignment Action Lists — triggers run the same action vocabulary as state `entry_actions`, assigned from the UI. Sequenced **before** Phase 23 per stabilization plan.
 - Execution order agreed 2026-07-26: **24 → 23 → review → 18 → Open Ephys**. Rationale and full scope in `.planning/STABILIZATION_PLAN.md`.
 - Phases 12–17 were validated manually on the live system; the "Human Verification Required" lists in their VERIFICATION.md files are stale bookkeeping, not open work.
+- Phase 25 added (2026-07-27): Detector-Derived View Keys (DVK-01–08) — backend derives `LICKER0…LICKER3` from `device_name` × `num_detectors` and the FDA editor offers them as view operands / `key_template` values; per-pilot resolution lands in Phase 13's `preflight_validate`. Runs **after** Phase 24, which it depends on.
+- TRIGA-12 added to Phase 24 (2026-07-27) and folded into plan 24-06: `check_for_detectors` matches detectors by capability instead of `isinstance(v, Touch_Detector)`. Identity matching silently yields zero `LICKER` trackers for a detector declared through the hardware-module registry, because `_resolve_hardware_classes` `exec`s the class from `source_code` into a fresh class object. `hardware/i2c.py` stays off-limits, so the fix lives in `check_for_detectors`. Plan 06's "do not touch `mics_task.py`" constraint is now scoped to that one method — safe because 06 is the only wave-3 plan and runs after 01 and 04.
 
 ## Blockers
 
@@ -147,6 +149,8 @@ Plan 01 depends on Plan 06 (`depends_on: [06]`, wave 2).
    the `handler` enum) before planning.
 2. `/gsd:plan-phase 24`
 3. Then Phase 23 (Compute Primitives + Variables) — already planned, 3 plans, not executed.
+4. `/gsd:plan-phase 25` — Detector-Derived View Keys. Depends on 24 landing first (the derived
+   keys are only worth surfacing once `check_for_detectors` reliably creates them, TRIGA-12).
 
 ---
 *Last updated: 2026-03-15 — corrections: hot-reload scope, SEMANTIC_HARDWARE naming source, FDA JSON persistence*

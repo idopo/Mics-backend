@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import type { FdaTriggerAssignment, FdaAction, ToolkitRead, HardwareModule, TriggerSource } from '../types'
+import type { FdaTriggerAssignment, FdaAction, FdaVariable, ToolkitRead, HardwareModule, TriggerSource } from '../types'
 import ActionEditor from './ActionEditor'
 import { typeChipStyle, actionSummary } from './StateBodyPanel'
+import DetectorWriteWidget, { matchesDetectorWrite, buildDetectorWrite } from './DetectorWriteWidget'
 
 /**
  * Is this action configured enough for the backend to accept it?
@@ -60,6 +61,8 @@ interface Props {
   taskDefId?: number
   versionStamp?: string
   variableNames: string[]
+  variables: Record<string, FdaVariable>
+  onVariablesChange: (updated: Record<string, FdaVariable>) => void
   onChange: (updated: FdaTriggerAssignment[]) => void
 }
 
@@ -107,6 +110,8 @@ export default function TriggerAssignmentPanel({
   taskDefId,
   versionStamp,
   variableNames,
+  variables,
+  onVariablesChange,
   onChange,
 }: Props): JSX.Element {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
@@ -134,6 +139,15 @@ export default function TriggerAssignmentPanel({
 
   const addAction = (i: number): void =>
     update(i, { actions: [...assignments[i].actions, { ...NEW_ACTION }] })
+
+  // The detector-write macro touches both actions and variables — emitted together through the
+  // panel's existing update() funnel and the onVariablesChange wire (4b-bis), so autosave stays
+  // the single existing debounced path rather than a second save mechanism.
+  const pickDetector = (i: number, ref: string): void => {
+    const built = buildDetectorWrite(ref, variables)
+    update(i, { actions: built.actions })
+    onVariablesChange(built.variables)
+  }
 
   const moveAction = (i: number, ai: number, direction: 'up' | 'down'): void => {
     const actions = assignments[i].actions
@@ -253,20 +267,40 @@ export default function TriggerAssignmentPanel({
                 </span>
               )}
 
-              <button
-                onClick={() => toggleExpand(i)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  fontSize: '11px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  padding: '4px 0',
-                }}
-              >
-                {expanded[i] ? '▾' : '▸'} Actions ({a.actions.length})
-              </button>
+              {matchesDetectorWrite(a.actions) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <DetectorWriteWidget
+                    actions={a.actions}
+                    toolkit={toolkit}
+                    variables={variables}
+                    onChange={(nextActions, nextVariables) => {
+                      update(i, { actions: nextActions })
+                      onVariablesChange(nextVariables)
+                    }}
+                  />
+                  <button
+                    onClick={() => toggleExpand(i)}
+                    style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '11px', textAlign: 'left', cursor: 'pointer', padding: '4px 0' }}
+                  >
+                    {expanded[i] ? '▾ Hide raw actions' : '▸ Edit as raw actions'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => toggleExpand(i)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--muted)',
+                    fontSize: '11px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                  }}
+                >
+                  {expanded[i] ? '▾' : '▸'} Actions ({a.actions.length})
+                </button>
+              )}
 
               {expanded[i] && (
                 <div>
@@ -321,9 +355,20 @@ export default function TriggerAssignmentPanel({
                       ))}
                     </div>
                   )}
-                  <button className="button-secondary" style={{ fontSize: '12px', width: '100%' }} onClick={() => addAction(i)}>
-                    + Add action
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {a.actions.length === 0 && (toolkit?.detector_refs?.length ?? 0) > 0 && (
+                      <button
+                        className="button-secondary"
+                        style={{ fontSize: '12px', flex: 1 }}
+                        onClick={() => pickDetector(i, toolkit!.detector_refs![0])}
+                      >
+                        + Read detector
+                      </button>
+                    )}
+                    <button className="button-secondary" style={{ fontSize: '12px', flex: 1 }} onClick={() => addAction(i)}>
+                      + Add action
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

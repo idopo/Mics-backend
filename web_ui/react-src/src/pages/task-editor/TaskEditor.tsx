@@ -782,6 +782,10 @@ export default function TaskEditor() {
                 taskDefId={numId}
                 versionStamp={versionStamp}
                 variableNames={variableNames}
+                variables={fdaJson.variables ?? {}}
+                onVariablesChange={updated =>
+                  setFdaJson(prev => prev ? { ...prev, variables: updated } : prev)
+                }
                 onChange={updated =>
                   setFdaJson(prev => prev ? { ...prev, trigger_assignments: updated } : prev)
                 }

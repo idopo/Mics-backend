@@ -240,6 +240,9 @@ export interface FdaAction {
   output?: string | string[]
   /** view action: target key in view.view; may contain {name} tokens resolved from variables/flags. */
   key_template?: string
+  /** view action: hardware ref whose device_name resolves a {device_name} token in key_template
+   *  at runtime — required whenever that runtime token is used (TRIGA-17/18, 24-CONTEXT.md R5). */
+  source_ref?: string
   /** view action: the value to write. */
   value?: unknown
   /** view action: keyword args forwarded to Tracker.set (e.g. { pi_timestamp: { trigger: 'tick' } }). */

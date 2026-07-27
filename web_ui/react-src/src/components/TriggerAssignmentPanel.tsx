@@ -12,8 +12,11 @@ import { typeChipStyle, actionSummary } from './StateBodyPanel'
  */
 function isCompleteAction(action: FdaAction): boolean {
   switch (action.type) {
+    // A hardware/timer call needs both the device and the method — `ref` alone would
+    // save an action that does nothing on the Pi.
     case 'hardware':
     case 'timer':
+      return Boolean(action.ref?.trim()) && Boolean(action.method?.trim())
     case 'method':
     case 'flag':
     case 'special':

@@ -750,6 +750,10 @@ export default function TaskEditor() {
               <TriggerAssignmentPanel
                 assignments={fdaJson.trigger_assignments}
                 toolkit={toolkit}
+                hwModules={hwModules}
+                taskDefId={numId}
+                versionStamp={versionStamp}
+                variableNames={variableNames}
                 onChange={updated =>
                   setFdaJson(prev => prev ? { ...prev, trigger_assignments: updated } : prev)
                 }

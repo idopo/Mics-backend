@@ -26,7 +26,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 24 — Trigger Assignment Action Lists — **7/8 plans done; only 07 (rig proof) remains**
+**Phase:** 24 — Trigger Assignment Action Lists — **8/8 plans done, rig-proven; Pi test suite outstanding**
 **Progress:** [████████░░] 76%
 
 ### Phase 24 status (2026-07-27)
@@ -73,18 +73,34 @@ method rule, none edited. See `24-08-SUMMARY.md`.
 - **New: TRIGA-16** (validate hardware action `method` — `method:""` currently 200s and silently
   no-ops), **TRIGA-17/18/19**.
 
+**Plan 07 executed (2026-07-27) — PHASE 24 IS FUNCTIONALLY COMPLETE, 8/8 plans.**
+TRIGA-11a proven on hardware across runs 478/480/481: **144 trigger firings, 63 licker writes,
+zero correctness errors** — every write hit the tracker matching the electrode `detect_change`
+reported, carried that call's own level (never the IRQ edge), and carried the triggering
+`TOUCH_INT` tick as `pi_timestamp`. The `pin_number != null` guard blocked all 72 no-change
+edges. Save-time negative suite: **8/8** (canonical 201, seven invalid payloads 422 with
+specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
+`24-HARDWARE-VALIDATION.md` §2b.
+
 **Outstanding:**
-1. **Pi tests still never run anywhere** (`autopilot` unimportable on dev host) — USER-RUN, now
-   including plan 06's new tests (`test_check_for_detectors.py` + additions to
-   `test_fda_vocabulary.py`/`test_trigger_assignments.py`/`test_validate_fda.py`):
-   `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` — restart the pilot
-   first (agent cannot do either step).
-2. Execute plan 07 (rig proof, TRIGA-11a) — the only plan left in phase 24, exercising the
-   `api`/`web_ui` built by plan 08 (dropdown, method gate, detector widget) against real
-   hardware.
-3. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
-4. Before real data collection: understand the 140 `Mid_LED` calls for 47 triggers in run 475
-   (~3×) — if each lick writes its tracker more than once the behavioural record is inflated.
+1. **Pi tests STILL never run anywhere** (`autopilot` unimportable on dev host) — the one real
+   gap in phase 24. ~60 tests now, including `test_check_for_detectors.py`,
+   `test_log_action_values.py` and additions to three existing files. USER-RUN:
+   `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
+2. **Phase 25 is next** (agreed order: 24 → 25 → 23). It now carries **DVK-09**, added from rig
+   evidence: the rig's four spouts sit on MPR121 channels **1–4**, so `range(0, num_detectors)`
+   builds a dead `LICKER0` and **silently discards channel 4** (9 real events lost in runs
+   480/481). Names cannot be offset — the key is `{device_name}{pin_number}` where `pin_number`
+   is the raw hardware index — so the channel range itself must become declarable.
+3. `process_queue` (`task.py:262-266`) has no exception handler: any trigger-callback exception
+   permanently disables all trigger processing with no operator-visible signal. Found via defect
+   8. User deferred it; not scoped.
+4. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
+   Note task defs 181/185/187 also hold state-body hardware actions with an empty `method` and
+   cannot be re-saved until fixed (TRIGA-16 blast radius).
+5. `detect_change` reports only `changes[0]`, so simultaneous multi-electrode transitions are
+   lost unrecoverably (`i2c.py`, off-limits, pre-existing). Bounds what concurrent multi-spout
+   licking can measure.
 
 ---
 

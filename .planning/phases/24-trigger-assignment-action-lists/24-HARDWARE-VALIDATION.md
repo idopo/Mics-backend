@@ -103,6 +103,90 @@ between individually-correct plans.**
 | 6 | `9218644` | Same filter accepted a hardware action with a `ref` but no `method`; a half-built action autosaved and **overwrote the working action list**. | as above |
 | 7 | `7cd2734` + `4ac5a18` | **Two-part data-loss bug.** (a) Filtering incomplete assignments out of the payload *deleted* an already-saved incomplete assignment on the next autosave. (b) The editor re-seeded `fdaJson` from the server on **every** React Query refetch (window focus, post-save), discarding in-progress edits. Once (a) was fixed so incomplete work correctly stopped saving, (b) became visible — the assignment "disappeared" repeatedly. | 24-05 save model vs pre-existing editor refetch behaviour |
 
+## 2b. Rig proof — TRIGA-11a (runs 478 / 480 / 481, 2026-07-27)
+
+Sourceless toolkit 100, task definition 186, action list assembled in the task editor via the
+one-pick **Read detector** widget. No `learning_cage`, no `handler` enum, no Python callback.
+
+### Aggregate correctness — 144 triggers, 63 writes, ZERO errors
+
+| Check | 478 | 480 | 481 |
+|---|---|---|---|
+| `TOUCH_INT` (assert / deassert) | 19 / 19 | 41 / 41 | 12 / 12 |
+| licker writes | 19 | 34 | 10 |
+| guard leaks (`pin_number is None` → wrote) | 0 | 0 | 0 |
+| wrong `LICKER` index | 0 | 0 | 0 |
+| written value ≠ captured `level` | 0 | 0 | 0 |
+| `pi_timestamp` ≠ triggering tick | 0 | 0 | 0 |
+
+**Requirements demonstrated on hardware:**
+- **TRIGA-12** — `LICKER*` trackers exist for a registry-declared detector. Capability matching
+  works; the `isinstance` identity bug is gone.
+- **TRIGA-17** — pin → tracker selection correct on every one of 63 writes, with three different
+  electrodes interleaved. The cross-talk negative is earned from real interleaving rather than a
+  staged phase.
+- **TRIGA-18** — `{device_name}` resolved at run time to `LICKER` from the device object. No
+  pilot-specific string in the stored JSON.
+- **TRIGA-19** — the written level always came from `detect_change`'s own reply, never the IRQ edge.
+- The `pin_number != null` guard blocked **all 72** no-change edges across the three runs.
+
+**The 50/50 assert/deassert split is now visible in data** and confirms the IRQ handshake: reading
+the touch-status register is itself what deasserts the line, so every touch yields one real change
+edge and one `(None, None)` edge. This is why the guard's `right` must be JSON `null` and not `0` —
+half of all interrupts depend on it, and `0` is a valid electrode.
+
+### Save-time negative suite — 8/8 (live API, 2026-07-27)
+
+Canonical payload → **201**. All seven invalid payloads → **422** with a specific message naming the
+offending element: empty `trigger_name`; unknown `trigger_name` (lists valid sources); hardware
+action with no `method` (**TRIGA-16**); unknown hardware ref; undeclared `output` slot; unknown
+action type; `{device_name}` without `source_ref`.
+
+### Finding A — one live electrode is silently discarded
+
+`pin_number` distribution over runs 480/481: **`{1, 2, 3, 4}` — never `0`.** The four spouts are
+wired to MPR121 channels **1–4**; channel 0 is unwired.
+
+`check_for_detectors` builds `f"{device_name}{i}" for i in range(num_detectors)`, so
+`num_detectors: 4` creates `LICKER0…LICKER3`: `LICKER0` can never fire, and **channel 4's writes go
+nowhere** — 9 events lost across the two runs, with no exception and no event.
+
+Not noise: channel 4 produced clean `1,0` pairs in its own dedicated ~0.6 s window matching the
+sequential touching order, in both runs. Not a dead electrode either — a dead electrode would leave
+three channels responding; four responded.
+
+**This is the phase's own failure class arriving through an out-of-range index rather than a wrong
+name, and it is the strongest existing argument for Phase 25's DVK-06 preflight key resolution.**
+
+Naming cannot simply be offset: the key is `{device_name}{pin_number}` where `pin_number` is the raw
+hardware index, so a tracker's name **must** equal its channel index. The fix is to create trackers
+only for the wired channels while keeping true-index names (`LICKER1…LICKER4`). Deferred to Phase 25
+as **DVK-09** — it is a derivation-format question, which is DVK-01's remit.
+
+### Finding B — `detect_change` reports only one electrode per interrupt
+
+`i2c.py:843` ends `return changes[0] if changes else (None, None)`, then updates `self.prev` to the
+full current state. When two electrodes change between reads the higher-index transition is
+**silently swallowed and unrecoverable**.
+
+Observed directly: in run 478 (electrodes touched together) `LICKER2` logged five `0`s and never a
+`1` — its rises were lost while `LICKER1` was changing. In runs 480/481 (one electrode at a time)
+every channel produced clean alternating `1,0` pairs.
+
+**Pre-existing and out of scope** — `i2c.py` is off-limits and unchanged, and legacy `detectedLick`
+had identical behaviour. Recorded because it presents as "that electrode is flaky" rather than as a
+software constraint, and because it bounds what simultaneous multi-spout licking can measure.
+
+### Operational note — runs end after ~20 s
+
+Every run of task definition 186 lasts **20.1 s** (5 trials × ~4 s), then stops. Runs 476/477/479
+logged zero touch events purely because touching began after the task had ended; the GPIO callbacks
+remain assigned afterwards, which is why run 476 produced a terminal traceback with no matching
+events. No hardware fault and nothing intermittent. Raise the protocol step's trial limit for longer
+test sessions.
+
+---
+
 ### Defect 8 — found on hardware, run 476 (2026-07-27, wave 3)
 
 **`int(None)` in `log_action` permanently killed the trigger worker thread.**

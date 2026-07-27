@@ -1,0 +1,210 @@
+# Phase 24 — Hardware Validation Log (waves 1–2)
+
+**Date:** 2026-07-27
+**Status:** waves 1–2 executed, deployed, and validated on the real rig
+**Scope of this document:** what was proven on hardware, the defects found by running the
+system (none were catchable by unit tests or typecheck), and the exact system state at handoff.
+
+---
+
+## 1. Execution status
+
+| Plan | Wave | Status | Verified by |
+|---|---|---|---|
+| 24-01 Pi value-capture substrate | 1 | ✅ done | 18/18 stdlib tests, `py_compile`, `i2c.py` byte-identical to Pi |
+| 24-02 backend hard-422 validation | 1 | ✅ done | 60 pytest, 8 live API cases |
+| 24-03 shared action editor vocabulary | 1 | ✅ done | `tsc --noEmit`, `ActionEditor.tsx` 419 lines (< 500) |
+| 24-04 handler-free trigger runtime | 2 | ✅ done | `py_compile`, 5 grep gates, `i2c.py`/`task.py` untouched |
+| 24-05 trigger panel hosts shared editor | 2 | ✅ done | `tsc --noEmit`, `HANDLERS` = 0, bundle served |
+| 24-06 / 24-07 / 24-08 | 3–4 | ⛔ **needs re-plan** | see `24-REPLAN-BRIEF.md` |
+
+**41 Pi tests have never been executed anywhere.** `autopilot` cannot be imported on the dev
+host (`npyscreen` missing), so `tests/test_load_fda_from_json.py` and
+`tests/test_trigger_assignments.py` are USER-RUN on the Pi:
+
+```bash
+cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q
+```
+
+Waves 1–2 are therefore **runtime-proven for the trigger path** (section 2) but
+**not unit-test-proven** on the Pi.
+
+---
+
+## 2. Rig proof — run 475
+
+Trigger action list assembled entirely in the task editor, on a **backend-authored
+("sourceless") toolkit**, with no `learning_cage` and no Python callback anywhere:
+
+| # | type | ref | method | args |
+|---|---|---|---|---|
+| 0 | hardware | `MPR121` | `detect_change` | — |
+| 1 | hardware | `Mid_LED` | `set` | `{trigger: "level"}` |
+
+### Results
+
+| Metric | run 473 | run 474 | **run 475** |
+|---|---|---|---|
+| `TOUCH_INT` firings | 1 | 1 | **47** |
+| Levels observed | `0` only | `0` only | **alternating `0` / `1`** |
+| `Mid_LED` calls | 1 | 1 | 140 |
+
+ES: `event_log_v2` on `132.77.73.217:9200`, query `run_id:475`.
+
+### Requirements demonstrated on hardware
+
+- **TRIGA-01** — a trigger runs an ordered `actions` list through the same
+  `_build_action_callable` a state body uses.
+- **TRIGA-02** — `{trigger: "level"}` resolves from the invocation context **and varies**
+  (0 on contact, 1 on release). Runs 473/474 could not establish this because only one
+  edge ever fired.
+- **TRIGA-06** — no `handler` enum, no `_build_touch_detector_callback`, no
+  hardware-specific code in the trigger runtime.
+- Full chain: UI → 422 gate → DB → orchestrator dispatch spec → `apply_trigger_assignments`
+  → `_build_trigger_action_list` → `handle_trigger` (GPIO 8 → BOARD → `pin_id` → `TOUCH_INT`)
+  → module method call. Trigger→action latency 1–3 ms.
+
+### Why 473/474 showed only one firing (resolved, not a defect)
+
+The MPR121 holds its IRQ line asserted until the touch-status register is read. With no
+`detect_change` in the action list nothing performed that read, so the line never returned
+high and no further edges could fire. Changing `trigger` `D`→`B` (EITHER_EDGE) made no
+difference for the same reason. Adding `MPR121.detect_change` as action[0] — which reads
+`self.mpr121.touched_pins` (`i2c.py:833`) — released the latch. **Configuration was never
+at fault.**
+
+### Open observations (not blocking, worth understanding)
+
+1. **140 `Mid_LED` calls for 47 triggers** (~3×). Some are `record_event` / `None`-func
+   entries from `Digital_Out`'s internal callback bookkeeping, but there appear to be
+   genuine duplicate `set` calls per trigger pair. Understand before this pattern is used
+   for real data collection.
+2. **Logs do not record positional call arguments.** `@log_action` captures kwargs, so
+   `hardware.set(x)` never records `x`. The envelope `level` on a `set` event is the
+   hardware state *after* the call, not the argument. Consequence: **you cannot verify from
+   ES which value an action passed.** Only `Tracker.set` records a `value`.
+3. `Digital_Out.is_trigger = True` (gpio.py:343) — not just `Digital_In`. Every LED
+   registers a trigger callback. Affects TRIGA-15's `trigger_sources` list.
+
+---
+
+## 3. Defects found by running the system
+
+Seven fixes, none of which unit tests or `tsc` could have caught. **All were in the seam
+between individually-correct plans.**
+
+| # | Commit | Defect | Seam |
+|---|---|---|---|
+| 1 | `b7e6c2b` | Unknown hardware ref saved with 201 instead of 422. `known_hw` was built from `semantic_hardware` only; plan 24-02 specified "plus module names when `is_backend_authored`" and that half was never implemented. A backend-authored toolkit has no `SEMANTIC_HARDWARE`, so `known_hw` was empty and the lenient posture accepted **every** ref. | 24-02 spec vs implementation |
+| 2 | `87a04ca` | Editor autosaves 1.5 s after any change and adds a new assignment as `{trigger_name:'', actions:[]}` — exactly the shape the hard gate rejects. Every intermediate state 422'd. | 24-02 gate vs 24-05 UI |
+| 3 | `e133641` | `apiFetch` assigned `json.detail` straight to `new Error()`. The gate returns `{errors:[...]}`, so the UI showed `[object Object]`, hiding the message the 422 exists to deliver. | 24-02 detail shape vs pre-existing client |
+| 4 | `0400028` | Legacy rows carry `{handler, trigger_name}` with **no `actions` key**; 24-05 made `actions` required and renders `a.actions.length` unguarded → editor crashed on mount for task def 181. | 24-05 schema vs live data |
+| 5 | `47b03d4` | Completeness filter required actions to *exist* but not be configured, so `{type:'hardware', ref:''}` was sent and rejected. | 24-02 gate vs 24-05 UI (deeper) |
+| 6 | `9218644` | Same filter accepted a hardware action with a `ref` but no `method`; a half-built action autosaved and **overwrote the working action list**. | as above |
+| 7 | `7cd2734` + `4ac5a18` | **Two-part data-loss bug.** (a) Filtering incomplete assignments out of the payload *deleted* an already-saved incomplete assignment on the next autosave. (b) The editor re-seeded `fdaJson` from the server on **every** React Query refetch (window focus, post-save), discarding in-progress edits. Once (a) was fixed so incomplete work correctly stopped saving, (b) became visible — the assignment "disappeared" repeatedly. | 24-05 save model vs pre-existing editor refetch behaviour |
+
+### Design decision recorded (reversal)
+
+Fix 7 **reversed** an earlier decision. When first asked how the editor should handle a
+half-built assignment, the chosen option was *"filter incomplete out of the save payload"*.
+That option's stated cost was "a partial assignment is lost on reload". The unforeseen and
+materially worse cost was that it **deleted already-saved incomplete assignments**. The
+rejected option — *hold the save entirely while anything is incomplete* — is what now ships.
+
+**Current semantics:** while any trigger assignment lacks a `trigger_name`, an action, or a
+configured `ref`+`method`, the editor performs **no PUT at all** and the status line reads
+`Not saved — finish or remove trigger '<name>'`. Unrelated edits pause too; that is the
+accepted cost, because it cannot destroy work.
+
+### Backend gap not yet fixed
+
+`fda_validation` does **not** validate a `hardware` action's `method` — `CALLABLE_METHODS`
+is only checked for `type:"method"`. So `method: ""` returns 200 and becomes a silent no-op
+on the Pi, the exact failure class TRIGA-07 exists to prevent. The UI is currently the only
+guard. AST metadata for hardware libs already exists, so the data is available. **Add to
+the re-plan.**
+
+---
+
+## 4. Infrastructure incidents (unrelated to phase 24 code)
+
+1. **Orchestrator ran a stale image with an expired JWT.** `prefs.json` is baked in at build
+   time (`build:` with no volume mount), so a token updated on the host on 2026-07-26 never
+   reached the container; the baked token expired 2026-07-15. Every `HANDSHAKE` backend sync
+   and every run start returned 401 for ~12 days. Fixed by `docker compose up --build -d
+   orchestrator`. **`docker compose up -d` silently reuses the old image — credential
+   rotation requires `--build`.** Consider bind-mounting `prefs.json`.
+
+2. **`mics_api` has no bind mount either.** `docker exec mics_api pytest` runs the *image's*
+   copy of the tests, not the working tree. Test edits require `docker compose up --build -d
+   api` first or results are meaningless.
+
+3. `KeyError: 'Modules'` on a legacy plugin (`elastic_test`) — pre-existing and unrelated.
+   `_inject_backend_toolkit_spec` returns early when `is_backend_authored` is false
+   (`orchestrator_station.py:833`), so source-based toolkits never receive `HARDWARE`.
+
+4. `TypeError: 1 << None` — `pilot_hardware_config` row for `Mid_LED` had `"pin": null`.
+   Data, not code. Nothing validates a null pin before dispatch (Phase 13 `preflight_validate`
+   territory).
+
+---
+
+## 5. System state at handoff
+
+**Deployed to Pi** (`~/Apps/mice_interactive_home_cage`, md5-verified, pilot restarted 16:57):
+```
+autopilot/autopilot/tasks/fda_vocabulary.py     (new)
+autopilot/autopilot/tasks/mics_task.py
+autopilot/autopilot/tasks/learning_cage.py
+tools/validate_fda.py
+tests/test_fda_vocabulary.py                    (new)
+tests/test_load_fda_from_json.py
+tests/test_trigger_assignments.py
+tests/test_validate_fda.py
+```
+`hardware/i2c.py` and `tasks/task.py` verified **byte-identical** to the mirror (non-git
+SSH diff — the `pi-deploy` skill forbids git in `pi-mirror`).
+
+**Containers:** all rebuilt and current (`api`, `web_ui`, `orchestrator`).
+
+**Registry additions (new this session):**
+
+| id | module | class | lib | pilot-1 config |
+|---|---|---|---|---|
+| 7 | `MPR121` | `Touch_Detector` | i2c.py | `{num_detectors:4, device_name:"LICKER", address:true}` |
+| 8 | `TOUCH_INT` | `Digital_In` | gpio.py | `{pin:8, pull:1, trigger:"B", polarity:1, record:false}` |
+
+Both attached to toolkit 100 (`source_less_toolkit`, `hardware_module_ids = [1,2,3,5,6,7,8]`).
+
+**Known config collisions on pilot 1:** `Left_LED` and `Right_LED` both pin 11;
+`Mid_LED` and `Solenoid` both pin 12.
+
+**Legacy DB rows still present** (both are inert `handler`-format assignments that 422 the
+save gate and crashed the editor before fix 4):
+
+| id | display_name | owner | content |
+|---|---|---|---|
+| 181 | source_less_toolkit FDA | — | 1 × `digital_input` |
+| 185 | GILI FDA | Gili | 3 × `touch_detector` |
+
+Cleanup (not run — 185 belongs to another user):
+```sql
+UPDATE task_definitions SET fda_json = jsonb_set(fda_json::jsonb, '{trigger_assignments}', '[]')
+WHERE id IN (181, 185);
+```
+
+> **TRIGA-06 asserted task def 185 was the only row with non-empty `trigger_assignments`,
+> based on a live DB check on 2026-07-26. That was wrong — 181 has one too, and it caused
+> three of the seven defects above. Re-run the query rather than trusting the recorded
+> finding.**
+
+---
+
+## 6. Immediate next steps
+
+1. **Run the 41 Pi tests** (user-only; `autopilot` unimportable on dev host).
+2. **Re-plan 06/07/08** — see `24-REPLAN-BRIEF.md`. Use `/gsd:discuss-phase 24`, not
+   `--gaps`: two requirements need rewording and one needs a new home, which is
+   requirement-level drift that `--gaps` does not handle.
+3. Optionally clear legacy rows 181/185.
+4. Decide on the duplicate-`set` observation (§2) before real data collection.

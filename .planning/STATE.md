@@ -26,8 +26,27 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** Not started (Phase 1 next)
+**Phase:** 24 — Trigger Assignment Action Lists — **waves 1–2 done (5/8 plans), waves 3–4 blocked on re-plan**
 **Progress:** [███████░░░] 66%
+
+### Phase 24 status (2026-07-27)
+
+Plans 01–05 executed, deployed, and **proven on the real rig** (run 475: 47 `TOUCH_INT`
+firings with alternating `level` 0/1, action list assembled in the UI, no `learning_cage`,
+no `handler` enum). TRIGA-01/02/06 demonstrated on hardware.
+
+**Read these two files first when resuming:**
+- `.planning/phases/24-trigger-assignment-action-lists/24-HARDWARE-VALIDATION.md` — what is
+  proven, the 7 post-execution defects and their commits, infrastructure incidents, and the
+  exact deployed/registry/DB state.
+- `.planning/phases/24-trigger-assignment-action-lists/24-REPLAN-BRIEF.md` — what changes in
+  plans 06/07/08 for the sourceless-only decision, requirement by requirement.
+
+**Outstanding:**
+1. 41 Pi tests have never run anywhere (`autopilot` unimportable on dev host) — USER-RUN:
+   `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
+2. Re-plan 06/07/08 via `/gsd:discuss-phase 24` (**not** `--gaps` — requirement-level drift).
+3. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
 
 ---
 
@@ -132,6 +151,23 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 - Phase 25 added (2026-07-27): Detector-Derived View Keys (DVK-01–08) — backend derives `LICKER0…LICKER3` from `device_name` × `num_detectors` and the FDA editor offers them as view operands / `key_template` values; per-pilot resolution lands in Phase 13's `preflight_validate`. Runs **after** Phase 24, which it depends on.
 - TRIGA-12 added to Phase 24 (2026-07-27) and folded into plan 24-06: `check_for_detectors` matches detectors by capability instead of `isinstance(v, Touch_Detector)`. Identity matching silently yields zero `LICKER` trackers for a detector declared through the hardware-module registry, because `_resolve_hardware_classes` `exec`s the class from `source_code` into a fresh class object. `hardware/i2c.py` stays off-limits, so the fix lives in `check_for_detectors`. Plan 06's "do not touch `mics_task.py`" constraint is now scoped to that one method — safe because 06 is the only wave-3 plan and runs after 01 and 04.
 
+- **Scope change (2026-07-27): sourceless toolkits only.** All future work targets
+  backend-authored ("sourceless") toolkits; the legacy `learning_cage`-backed toolkit is no
+  longer run. Detector/lick functionality must still exist — via registered hardware modules
+  on the sourceless path, not the `learning_cage` Python class. Invalidates plans 06/07/08 as
+  written; see `24-REPLAN-BRIEF.md`. Plans 01–05 unaffected.
+- **Constraint discovered (2026-07-27): a sourceless task receives ONLY the `Modules` group.**
+  `mics_task.py:94` replaces `self.HARDWARE` wholesale and `get_dispatch_spec` emits only
+  `hardware["Modules"]`, so there is no `GPIO`/`I2C`/`Timers` group. Everything a sourceless
+  task touches must be a registered hardware module. This makes Pi-class `SEMANTIC_HARDWARE`
+  irrelevant on that path, including the `learning_cage` entry added by plan 24-01.
+- **Correction (2026-07-27): TRIGA-06's DB claim is wrong.** It records task def 185 as the
+  only row with non-empty `trigger_assignments`. Task def **181** has one too, and it caused
+  three of the seven post-execution defects. Re-run the query; do not trust the recorded finding.
+- **Registry additions (2026-07-27):** hardware modules 7 (`MPR121`→`Touch_Detector`, i2c.py)
+  and 8 (`TOUCH_INT`→`Digital_In`, gpio.py) created with pilot-1 configs and attached to
+  toolkit 100. These were prerequisites for any sourceless detector work.
+
 ## Blockers
 
 None currently.
@@ -148,24 +184,44 @@ None currently.
 
 ## Pi Development Workflow
 
-All Pi code changes follow this sequence:
-1. **Edit** in `~/pi-mirror/autopilot/` (local mirror — never edit on Pi directly)
-2. **Local syntax check**: `python -m py_compile <file>` from `~/pi-mirror/`
-3. **Deploy to Pi**: `~/pi-mirror/tools/deploy_pi.sh` (rsync + pilot restart)
-4. **Test on Pi**: verify behavior via session start or SSH inspection
+Authoritative rules live in `.claude/skills/pi-deploy/SKILL.md`. They **override** any
+conflicting instruction inside a PLAN file.
 
-Plan 06 (deploy scripts) must be completed before Pi testing of any other plan.
-Plan 01 depends on Plan 06 (`depends_on: [06]`, wave 2).
+1. **Verify sync first** (Pi is source of truth). Read-only:
+   `rsync -avzi --dry-run --exclude='__pycache__' --exclude='.git' -e "ssh -i ~/.ssh/pi_mics" pi@132.77.72.28:~/Apps/mice_interactive_home_cage/ /home/ido/pi-mirror/`
+   Do **not** pull while an agent is mid-edit — it clobbers in-flight work.
+2. **Edit** in `/home/ido/pi-mirror/` only. Never edit on the Pi.
+3. **Syntax check**: `cd /home/ido/pi-mirror && python3 -m py_compile <file>`.
+   `autopilot` **cannot be imported** on this host (`npyscreen` missing), so only
+   stdlib-only tests (`tests/test_fda_vocabulary.py`) are agent-runnable.
+4. **Deploy only session-edited files**, never the whole mirror, never `--delete`:
+   `rsync -avz --relative -e "ssh -i ~/.ssh/pi_mics" /home/ido/pi-mirror/./<path> … pi@132.77.72.28:~/Apps/mice_interactive_home_cage/`
+5. **NO git in `/home/ido/pi-mirror`** — not even `status`. To prove a file is untouched:
+   `diff <(ssh -i ~/.ssh/pi_mics pi@132.77.72.28 'cat ~/Apps/.../f.py') /home/ido/pi-mirror/.../f.py`
+6. **Never start/stop the pilot; never run Python on the Pi.** Hand the user the command.
+7. Pi tests are USER-RUN, from `~/Apps/mice_interactive_home_cage` **on the Pi** — not from
+   `~/pi-mirror`, which is the dev host.
+
+> Plans 06/07/08 still contain the forbidden `git -C /home/ido/pi-mirror status` check and a
+> `cd ~/pi-mirror && pytest` step. Fix both during the re-plan.
 
 ## Next Actions
 
-1. `/gsd:discuss-phase 24` — settle the open design decisions for trigger action lists
-   (dynamic tracker naming from a returned channel index; additive `actions` vs replacing
-   the `handler` enum) before planning.
-2. `/gsd:plan-phase 24`
-3. Then Phase 23 (Compute Primitives + Variables) — already planned, 3 plans, not executed.
-4. `/gsd:plan-phase 25` — Detector-Derived View Keys. Depends on 24 landing first (the derived
-   keys are only worth surfacing once `check_for_detectors` reliably creates them, TRIGA-12).
+1. **Run the 41 Pi tests** (USER-RUN — `autopilot` unimportable on the dev host). These have
+   never executed anywhere; waves 1–2 are runtime-proven but not unit-test-proven:
+   `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
+2. `/gsd:discuss-phase 24` — re-plan 06/07/08 for the sourceless-only decision. Read
+   `24-REPLAN-BRIEF.md` first. **Not** `--gaps`: TRIGA-11 is dropped, TRIGA-13 needs a new
+   home, and two new requirements are proposed (hardware-`method` validation; the
+   `Modules`-only constraint). `--gaps` assumes requirements still hold.
+3. Execute waves 3–4, then the rewritten rig proof.
+4. Then Phase 23 (Compute Primitives + Variables) — **its 3 plans are stale.** They were
+   written before the 24→23 resequencing and still claim to build the `variables` registry
+   (CMP-01/02) and create `api/fda_validation.py`, both of which phase 24 already delivered.
+   Re-plan rather than execute as-is.
+5. `/gsd:plan-phase 25` — Detector-Derived View Keys. Depends on TRIGA-12 landing, and may
+   absorb TRIGA-13 (see re-plan brief).
 
 ---
-*Last updated: 2026-03-15 — corrections: hot-reload scope, SEMANTIC_HARDWARE naming source, FDA JSON persistence*
+*Last updated: 2026-07-27 — phase 24 waves 1–2 executed + rig-validated (run 475); sourceless-only
+scope change recorded; Pi workflow section corrected to match the `pi-deploy` skill.*

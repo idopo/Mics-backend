@@ -27,6 +27,7 @@ import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
 import TriggerAssignmentPanel from '../../components/TriggerAssignmentPanel'
+import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 
 const nodeTypes = { stateNode: StateNode }
@@ -106,6 +107,7 @@ function normaliseFda(fdaJson: FdaJson): FdaJson {
     ...fdaJson,
     transitions: (fdaJson.transitions ?? []).map(t => normaliseTransition(t as unknown as Record<string, unknown>)),
     trigger_assignments: fdaJson.trigger_assignments ?? [],
+    variables: fdaJson.variables ?? {},
   }
 }
 
@@ -182,6 +184,7 @@ export default function TaskEditor() {
   const hwModuleNames = hwModules.map(m => m.name)
 
   const [fdaJson, setFdaJson] = useState<FdaJson | null>(null)
+  const variableNames = Object.keys(fdaJson?.variables ?? {})
   const [selectedState, setSelectedState] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -357,6 +360,7 @@ export default function TaskEditor() {
       states: Object.fromEntries(toolkit.states.map(s => [s, {}])),
       transitions: [],
       trigger_assignments: [],
+      variables: {},
     })
     setCanvasInited(false)
   }
@@ -724,6 +728,7 @@ export default function TaskEditor() {
               hwModules={hwModules}
               taskDefId={numId}
               versionStamp={versionStamp}
+              variableNames={variableNames}
               onChange={updated => updateStateBody(selectedState, updated)}
             />
           ) : (
@@ -732,9 +737,15 @@ export default function TaskEditor() {
             </div>
           )}
 
-          {/* Bottom: trigger assignments always visible */}
+          {/* Bottom: variables + trigger assignments always visible */}
           {fdaJson && (
             <>
+              <div style={{ borderTop: `1px solid ${BORDER}`, margin: '4px 0' }} />
+              <VariablesPanel
+                variables={fdaJson.variables ?? {}}
+                toolkit={toolkit}
+                onChange={updated => setFdaJson(prev => prev ? { ...prev, variables: updated } : prev)}
+              />
               <div style={{ borderTop: `1px solid ${BORDER}`, margin: '4px 0' }} />
               <TriggerAssignmentPanel
                 assignments={fdaJson.trigger_assignments}

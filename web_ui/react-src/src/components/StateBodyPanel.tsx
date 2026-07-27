@@ -14,7 +14,7 @@ const TYPE_COLORS: Record<string, string> = {
   view: '#ec4899',
 }
 
-function typeChipStyle(type: string): React.CSSProperties {
+export function typeChipStyle(type: string): React.CSSProperties {
   const color = TYPE_COLORS[type] ?? '#94a3b8'
   return {
     display: 'inline-block',
@@ -31,13 +31,14 @@ function typeChipStyle(type: string): React.CSSProperties {
   }
 }
 
-function actionSummary(action: FdaAction): string {
+export function actionSummary(action: FdaAction): string {
   if (action.type === 'hardware') return action.ref ? `${action.ref}.${action.method ?? ''}` : 'hardware'
   if (action.type === 'flag') return action.ref ? `${action.ref}.${action.method ?? ''}` : 'flag'
   if (action.type === 'timer') return action.ref ? `${action.ref}.${action.method ?? ''}` : 'timer'
   if (action.type === 'method') return action.ref ?? 'method'
   if (action.type === 'if') return 'if (…)'
   if (action.type === 'special') return `special: ${action.action ?? ''}`
+  if (action.type === 'view') return `view: ${action.key_template ?? ''}`
   return action.type
 }
 
@@ -48,10 +49,12 @@ interface Props {
   hwModules: HardwareModule[]
   taskDefId?: number
   versionStamp?: string
+  /** Declared FdaJson.variables names — valid `output` targets and key_template tokens. */
+  variableNames?: string[]
   onChange: (updated: FdaState) => void
 }
 
-export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, onChange }: Props) {
+export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, variableNames, onChange }: Props) {
   const isPassthrough = !state.entry_actions?.length && (toolkit?.states?.includes(stateName) ?? false)
   const actions = state.entry_actions ?? []
 
@@ -136,6 +139,7 @@ export default function StateBodyPanel({ stateName, state, toolkit, hwModules, t
                     hwModules={hwModules}
                     taskDefId={taskDefId}
                     versionStamp={versionStamp}
+                    variableNames={variableNames}
                     onChange={updated => updateAction(i, updated)}
                   />
                   <button

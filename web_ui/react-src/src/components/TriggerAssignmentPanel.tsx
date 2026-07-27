@@ -3,9 +3,38 @@ import type { FdaTriggerAssignment, FdaAction, ToolkitRead, HardwareModule } fro
 import ActionEditor from './ActionEditor'
 import { typeChipStyle, actionSummary } from './StateBodyPanel'
 
-/** A trigger assignment the backend will accept: named, with at least one action. */
+/**
+ * Is this action configured enough for the backend to accept it?
+ *
+ * Deliberately shallow — only the identifier each action type cannot work without.
+ * The backend gate (api/fda_validation.py) stays authoritative for whether the ref
+ * actually resolves; duplicating that here would just create vocabulary drift.
+ */
+function isCompleteAction(action: FdaAction): boolean {
+  switch (action.type) {
+    case 'hardware':
+    case 'timer':
+    case 'method':
+    case 'flag':
+    case 'special':
+      return Boolean(action.ref?.trim())
+    case 'view':
+      return Boolean(action.key_template?.trim())
+    case 'if':
+      return [...(action.then ?? []), ...(action.else ?? [])].every(isCompleteAction)
+    default:
+      return false
+  }
+}
+
+/** A trigger assignment the backend will accept: named, with at least one configured action. */
 export function isCompleteTrigger(a: FdaTriggerAssignment): boolean {
-  return Boolean(a.trigger_name?.trim()) && Array.isArray(a.actions) && a.actions.length > 0
+  return (
+    Boolean(a.trigger_name?.trim()) &&
+    Array.isArray(a.actions) &&
+    a.actions.length > 0 &&
+    a.actions.every(isCompleteAction)
+  )
 }
 
 /**
@@ -160,7 +189,11 @@ export default function TriggerAssignmentPanel({
               )}
               {!isCompleteTrigger(a) && (
                 <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
-                  {a.trigger_name.trim() ? 'Not saved — add at least one action' : 'Not saved — incomplete'}
+                  {!a.trigger_name.trim()
+                    ? 'Not saved — incomplete'
+                    : a.actions.length === 0
+                      ? 'Not saved — add at least one action'
+                      : 'Not saved — finish configuring every action'}
                 </span>
               )}
 

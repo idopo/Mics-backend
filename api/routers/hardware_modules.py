@@ -10,7 +10,8 @@ from sqlalchemy.orm import sessionmaker
 
 from auth import verify_token
 from db import engine
-from models import HardwareLib, HardwareModule
+from hw_introspect import resolve_class_methods
+from models import HardwareLib, HardwareLibVersion, HardwareModule
 
 router = APIRouter(tags=["hardware-modules"])
 
@@ -150,6 +151,7 @@ def get_hardware_module_methods(
             raise HTTPException(status_code=404, detail="not found")
 
         ast_meta = None
+        source_code = None
 
         # When a task_def_id is provided, prefer the version assigned to that task def.
         if task_def_id:
@@ -161,17 +163,21 @@ def get_hardware_module_methods(
             sel_id = hw_versions.get(str(module.hardware_lib_id))
             if sel_id:
                 v_row = session.execute(
-                    sa_text("SELECT ast_metadata FROM hardware_lib_versions WHERE id = :id"),
+                    sa_text("SELECT ast_metadata, source_code FROM hardware_lib_versions WHERE id = :id"),
                     {"id": sel_id},
                 ).fetchone()
                 if v_row and v_row.ast_metadata:
                     ast_meta = v_row.ast_metadata if isinstance(v_row.ast_metadata, dict) else json.loads(v_row.ast_metadata)
+                    source_code = v_row.source_code
 
         if ast_meta is None:
             lib = session.get(HardwareLib, module.hardware_lib_id)
             if not lib:
                 raise HTTPException(status_code=404, detail="linked hardware lib not found")
             ast_meta = lib.ast_metadata or {}
+            if lib.active_version_id:
+                active_version = session.get(HardwareLibVersion, lib.active_version_id)
+                source_code = active_version.source_code if active_version else None
 
         class_info = _find_class_in_ast(ast_meta, module.class_name)
         if not class_info:
@@ -179,9 +185,19 @@ def get_hardware_module_methods(
                 status_code=422,
                 detail=f"class_name '{module.class_name}' not found in lib AST",
             )
+
+        # Union own AST methods with in-file-inherited ones (e.g. Touch_Detector gets MPR121's
+        # detect_change/read) so the editor's method dropdown offers them instead of falling
+        # back to a free-text box. Inherited entries carry no arg metadata the AST doesn't have.
+        merged: dict[str, dict] = {m["name"]: m for m in class_info.get("methods", [])}
+        if source_code:
+            inherited_names, _closed = resolve_class_methods(source_code, module.class_name)
+            for name in inherited_names:
+                merged.setdefault(name, {"name": name, "args": []})
+
         return {
             "module_id": module.id,
             "module_name": module.name,
             "class_name": module.class_name,
-            "methods": class_info.get("methods", []),
+            "methods": sorted(merged.values(), key=lambda m: m["name"]),
         }

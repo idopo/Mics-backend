@@ -14,6 +14,7 @@ from auth import verify_token
 from db import engine
 from fda_utils import ref_label, scan_fda_for_refs
 from fda_validation import reject_if_hard_errors
+from hw_introspect import toolkit_hw_capabilities
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
@@ -67,7 +68,9 @@ def _build_toolkit_row(
     t: TaskToolkit,
     origins_map: Dict[int, List[str]],
     fda_count: int,
+    caps: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
+    caps = caps or {"trigger_sources": [], "detector_refs": []}
     return {
         "id": t.id,
         "name": t.name,
@@ -87,6 +90,8 @@ def _build_toolkit_row(
         "locked_state_source": t.locked_state_source,
         "pilot_origins": sorted(origins_map.get(t.id, [])),
         "fda_count": fda_count,
+        "trigger_sources": caps["trigger_sources"],
+        "detector_refs": caps["detector_refs"],
     }
 
 
@@ -113,7 +118,10 @@ def list_toolkits(_: dict = Depends(verify_token)):
         fda_count_by_name: Dict[str, int] = {row[0]: row[1] for row in fda_counts_rows}
 
         return [
-            _build_toolkit_row(t, origins_map, fda_count_by_name.get(t.name, 0))
+            _build_toolkit_row(
+                t, origins_map, fda_count_by_name.get(t.name, 0),
+                toolkit_hw_capabilities(db, t.hardware_module_ids or []),
+            )
             for t in toolkits
         ]
     finally:
@@ -154,7 +162,10 @@ def get_toolkits_by_name(name: str, _: dict = Depends(verify_token)):
             "SELECT COUNT(id) FROM task_definitions WHERE toolkit_name = :name"
         ), {"name": name}).scalar() or 0
 
-        return [_build_toolkit_row(t, origins_map, fda_count) for t in toolkits]
+        return [
+            _build_toolkit_row(t, origins_map, fda_count, toolkit_hw_capabilities(db, t.hardware_module_ids or []))
+            for t in toolkits
+        ]
     finally:
         db.close()
 
@@ -181,7 +192,8 @@ def get_toolkit(toolkit_id: int, _: dict = Depends(verify_token)):
         ), {"name": toolkit.name}).scalar() or 0
 
         origins_map = {toolkit_id: pilot_names}
-        return _build_toolkit_row(toolkit, origins_map, fda_count)
+        caps = toolkit_hw_capabilities(db, toolkit.hardware_module_ids or [])
+        return _build_toolkit_row(toolkit, origins_map, fda_count, caps)
     finally:
         db.close()
 

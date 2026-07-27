@@ -22,6 +22,7 @@ reads pilot_hardware_config — the only place that knows a given pilot's hardwa
 import re
 
 from fastapi import HTTPException
+from sqlalchemy import text as sa_text
 
 from models import TaskToolkit
 
@@ -49,8 +50,14 @@ def validate_variables(fda_json: dict, toolkit) -> list[str]:
     ]
 
 
-def validate_trigger_assignments(fda_json: dict, toolkit) -> list[str]:
-    """Validate `trigger_assignments`. Absent/null/[] is backward-compatible and returns []."""
+def validate_trigger_assignments(fda_json: dict, toolkit, module_names: set[str] | None = None) -> list[str]:
+    """Validate `trigger_assignments`. Absent/null/[] is backward-compatible and returns [].
+
+    `module_names` carries the toolkit's backend-authored Modules hardware (resolved by the
+    caller, which owns the DB session). A backend-authored toolkit declares hardware as
+    hardware_modules rows rather than SEMANTIC_HARDWARE, so without these `known_hw` is empty
+    and the lenient posture lets every hardware ref through.
+    """
     if toolkit is None:
         return []
     trigger_assignments = fda_json.get("trigger_assignments")
@@ -59,7 +66,7 @@ def validate_trigger_assignments(fda_json: dict, toolkit) -> list[str]:
     if not isinstance(trigger_assignments, list):
         return [f"trigger_assignments must be a list, got {type(trigger_assignments).__name__}"]
 
-    known_hw = set((toolkit.semantic_hardware or {}).keys())
+    known_hw = set((toolkit.semantic_hardware or {}).keys()) | (module_names or set())
     callable_methods = set(getattr(toolkit, "callable_methods", None) or [])
     valid_names = _valid_flag_names(fda_json, toolkit)
     # Enforce only when the toolkit reports trigger_sources (Plan 08's column) AND it is
@@ -102,11 +109,13 @@ def validate_trigger_assignments(fda_json: dict, toolkit) -> list[str]:
     return errors
 
 
-def collect_hard_errors(fda_json: dict, toolkit) -> list[str]:
+def collect_hard_errors(fda_json: dict, toolkit, module_names: set[str] | None = None) -> list[str]:
     """Every hard (422-worthy) error for this FDA. Phase 23 appends its compute checks here."""
     if not fda_json or toolkit is None:
         return []
-    return validate_variables(fda_json, toolkit) + validate_trigger_assignments(fda_json, toolkit)
+    return validate_variables(fda_json, toolkit) + validate_trigger_assignments(
+        fda_json, toolkit, module_names
+    )
 
 
 def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
@@ -118,9 +127,25 @@ def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
     if not fda_json:
         return
     toolkit = db.query(TaskToolkit).filter(TaskToolkit.id == toolkit_id).one_or_none() if toolkit_id else None
-    errors = collect_hard_errors(fda_json, toolkit)
+    errors = collect_hard_errors(fda_json, toolkit, _module_names(db, toolkit))
     if errors:
         raise HTTPException(422, detail={"errors": errors})
+
+
+def _module_names(db, toolkit) -> set[str]:
+    """Names of the toolkit's backend-authored hardware Modules, as the Pi will see them.
+
+    Mirrors toolkit_dispatch.get_dispatch_spec, which keys HARDWARE["Modules"] by
+    hardware_modules.name — so a ref valid here is a ref the Pi can resolve.
+    """
+    module_ids = getattr(toolkit, "hardware_module_ids", None) if toolkit is not None else None
+    if not module_ids:
+        return set()
+    rows = db.execute(
+        sa_text("SELECT name FROM hardware_modules WHERE id = ANY(:ids)"),
+        {"ids": list(module_ids)},
+    ).fetchall()
+    return {r.name for r in rows}
 
 
 def _valid_flag_names(fda_json: dict, toolkit) -> set[str]:

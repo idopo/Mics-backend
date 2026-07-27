@@ -554,3 +554,46 @@ def test_put_state_body_hw_drift_still_200_broken(client):
 
     assert resp.status_code == 200
     assert resp.json()["validation_status"] == "broken"
+
+
+# --- Backend-authored module refs (TRIGA-07 gap found during live validation) ---
+# A backend-authored toolkit declares its hardware as Modules rows, not SEMANTIC_HARDWARE.
+# Without these, known_hw was empty for such a toolkit and EVERY hardware ref passed.
+
+def _trigger_fda(ref):
+    return {
+        "version": 2, "initial_state": "s", "states": {"s": {}}, "transitions": [],
+        "trigger_assignments": [
+            {"trigger_name": "TOUCH_INT",
+             "actions": [{"type": "hardware", "ref": ref, "method": "set"}]}
+        ],
+    }
+
+
+def test_backend_authored_unknown_module_ref_rejected():
+    toolkit = make_toolkit(is_backend_authored=True, hardware_module_ids=[1, 2])
+    errors = validate_trigger_assignments(
+        _trigger_fda("NOPE_NOT_REAL"), toolkit, module_names={"Right_LED", "Solenoid"}
+    )
+    assert any("unknown hardware ref 'NOPE_NOT_REAL'" in e for e in errors), errors
+
+
+def test_backend_authored_known_module_ref_accepted():
+    toolkit = make_toolkit(is_backend_authored=True, hardware_module_ids=[1, 2])
+    errors = validate_trigger_assignments(
+        _trigger_fda("Right_LED"), toolkit, module_names={"Right_LED", "Solenoid"}
+    )
+    assert errors == [], errors
+
+
+def test_module_names_union_with_semantic_hardware():
+    """Both naming schemes resolve — a toolkit may carry SEMANTIC_HARDWARE and Modules."""
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]}, is_backend_authored=True)
+    assert validate_trigger_assignments(_trigger_fda("MPR121"), toolkit, module_names={"Right_LED"}) == []
+    assert validate_trigger_assignments(_trigger_fda("Right_LED"), toolkit, module_names={"Right_LED"}) == []
+
+
+def test_no_known_hardware_at_all_still_permissive():
+    """Classic toolkit with neither semantic_hardware nor modules keeps the lenient posture."""
+    toolkit = make_toolkit()
+    assert validate_trigger_assignments(_trigger_fda("anything"), toolkit) == []

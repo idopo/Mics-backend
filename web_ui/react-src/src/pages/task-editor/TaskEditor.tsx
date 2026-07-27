@@ -807,6 +807,7 @@ export default function TaskEditor() {
                 tree={condModalTree}
                 toolkit={toolkit}
                 hwModuleNames={hwModuleNames}
+                variableNames={variableNames}
                 onChange={setCondModalTree}
               />
             </div>

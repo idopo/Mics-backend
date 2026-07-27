@@ -83,10 +83,11 @@ interface Props {
   tree: ConditionNode | null
   toolkit: ToolkitRead | null
   hwModuleNames?: string[]
+  variableNames?: string[]
   onChange: (tree: ConditionNode | null) => void
 }
 
-export function ConditionGroupsEditor({ tree, toolkit, hwModuleNames, onChange }: Props) {
+export function ConditionGroupsEditor({ tree, toolkit, hwModuleNames, variableNames, onChange }: Props) {
 
   function renderNode(node: ConditionNode, path: Path): React.ReactNode {
     if (isConditionBranch(node)) {
@@ -155,6 +156,7 @@ export function ConditionGroupsEditor({ tree, toolkit, hwModuleNames, onChange }
               condition={leaf}
               toolkit={toolkit}
               hwModuleNames={hwModuleNames}
+              variableNames={variableNames}
               onChange={updated => onChange(updateNode(tree!, path, updated))}
             />
           </div>

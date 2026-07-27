@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FdaTriggerAssignment, FdaAction, ToolkitRead, HardwareModule } from '../types'
+import type { FdaTriggerAssignment, FdaAction, ToolkitRead, HardwareModule, TriggerSource } from '../types'
 import ActionEditor from './ActionEditor'
 import { typeChipStyle, actionSummary } from './StateBodyPanel'
 
@@ -87,6 +87,13 @@ function nextTriggerName(existing: string[]): string {
   return `trigger${n}`
 }
 
+/** First trigger source not already assigned, so a fresh assignment starts valid by
+ *  construction — mirrors nextTriggerName's placeholder-seeding pattern for the free-text
+ *  fallback (plan 05). */
+function nextTriggerSourceId(sources: TriggerSource[], existing: string[]): string | null {
+  return sources.find(s => !existing.includes(s.hw_id))?.hw_id ?? null
+}
+
 /**
  * A trigger assignment is exactly (trigger_name, actions) — the separation principle from
  * 24-CONTEXT.md: nothing hardware-specific lives here. A licker is reached by picking MPR121
@@ -109,9 +116,12 @@ export default function TriggerAssignmentPanel({
 
   const remove = (i: number): void => onChange(assignments.filter((_, idx) => idx !== i))
 
+  const triggerSources = toolkit?.trigger_sources ?? []
+
   const add = (): void => {
     const existingNames = assignments.map(a => a.trigger_name)
-    onChange([...assignments, { trigger_name: nextTriggerName(existingNames), actions: [] }])
+    const seeded = nextTriggerSourceId(triggerSources, existingNames) ?? nextTriggerName(existingNames)
+    onChange([...assignments, { trigger_name: seeded, actions: [] }])
   }
 
   const toggleExpand = (i: number): void => setExpanded(prev => ({ ...prev, [i]: !prev[i] }))
@@ -174,22 +184,65 @@ export default function TriggerAssignmentPanel({
                   ✕
                 </button>
               </div>
-              <input
-                type="text"
-                required
-                value={a.trigger_name}
-                onChange={e => update(i, { trigger_name: e.target.value })}
-                placeholder="e.g. TOUCH_INT"
-                style={{
-                  width: '100%',
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  fontSize: '12px',
-                  borderColor: a.trigger_name.trim() ? undefined : '#ef4444',
-                }}
-              />
+              {triggerSources.length > 0 ? (
+                <select
+                  required
+                  value={a.trigger_name}
+                  onChange={e => update(i, { trigger_name: e.target.value })}
+                  style={{
+                    width: '100%',
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: '12px',
+                    borderColor: a.trigger_name.trim() ? undefined : '#ef4444',
+                  }}
+                >
+                  <option value="">— pick —</option>
+                  {!triggerSources.some(s => s.hw_id === a.trigger_name) && a.trigger_name && (
+                    <option value={a.trigger_name}>{a.trigger_name} (unknown)</option>
+                  )}
+                  {triggerSources.some(s => s.direction === 'input') && (
+                    <optgroup label="Inputs">
+                      {triggerSources.filter(s => s.direction === 'input').map(s => (
+                        <option key={s.hw_id} value={s.hw_id}>{s.hw_id}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {triggerSources.some(s => s.direction === 'output') && (
+                    <optgroup label="Outputs">
+                      {triggerSources.filter(s => s.direction === 'output').map(s => (
+                        <option key={s.hw_id} value={s.hw_id}>{s.hw_id}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {triggerSources.some(s => s.direction === null) && (
+                    <optgroup label="Other">
+                      {triggerSources.filter(s => s.direction === null).map(s => (
+                        <option key={s.hw_id} value={s.hw_id}>{s.hw_id}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  required
+                  value={a.trigger_name}
+                  onChange={e => update(i, { trigger_name: e.target.value })}
+                  placeholder="e.g. TOUCH_INT"
+                  style={{
+                    width: '100%',
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: '12px',
+                    borderColor: a.trigger_name.trim() ? undefined : '#ef4444',
+                  }}
+                />
+              )}
               {!a.trigger_name.trim() && (
                 <span style={{ fontSize: '10px', color: '#ef4444' }}>Trigger name is required</span>
               )}
+              <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                Only hardware whose class sets is_trigger can carry a trigger — that is what the Pi wires with assign_cb.
+              </span>
               {!isCompleteTrigger(a) && (
                 <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
                   {!a.trigger_name.trim()

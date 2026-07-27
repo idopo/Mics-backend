@@ -49,10 +49,14 @@ interface OperandEditorProps {
   operand: FdaOperand
   toolkit: ToolkitRead | null
   hwModuleNames?: string[]
+  /** Declared FdaJson.variables names — one namespace with toolkit.flags (both live in
+   *  self.flags on the Pi), so they join the same flag/view option lists rather than a
+   *  separate operand type. */
+  variableNames?: string[]
   onChange: (updated: FdaOperand) => void
 }
 
-function OperandEditor({ operand, toolkit, hwModuleNames, onChange }: OperandEditorProps) {
+function OperandEditor({ operand, toolkit, hwModuleNames, variableNames, onChange }: OperandEditorProps) {
   const type = getOperandType(operand)
   const key = getOperandKey(operand)
 
@@ -62,7 +66,7 @@ function OperandEditor({ operand, toolkit, hwModuleNames, onChange }: OperandEdi
   const ss: React.CSSProperties = { width: '100%', fontSize: '12px', padding: '4px 7px' }
 
   const hwOpts = [...Object.keys(toolkit?.semantic_hardware ?? {}), ...(hwModuleNames ?? [])]
-  const flagOpts = Object.keys(toolkit?.flags ?? {})
+  const flagOpts = [...new Set([...Object.keys(toolkit?.flags ?? {}), ...(variableNames ?? [])])]
   const paramOpts = getParamKeys(toolkit)
   const viewOpts = [...new Set([...hwOpts, ...flagOpts])]
 
@@ -127,6 +131,7 @@ export interface ConditionBuilderProps {
   condition: FdaCondition
   toolkit: ToolkitRead | null
   hwModuleNames?: string[]
+  variableNames?: string[]
   onChange: (updated: FdaCondition) => void
 }
 
@@ -134,18 +139,19 @@ export interface ConditionRowProps {
   condition: FdaCondition
   toolkit: ToolkitRead | null
   hwModuleNames?: string[]
+  variableNames?: string[]
   onChange: (c: FdaCondition) => void
   onDelete?: () => void
 }
 
 export function ConditionRow({
-  condition, toolkit, hwModuleNames, onChange, onDelete
+  condition, toolkit, hwModuleNames, variableNames, onChange, onDelete
 }: ConditionRowProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div>
         <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Left</div>
-        <OperandEditor operand={condition.left} toolkit={toolkit} hwModuleNames={hwModuleNames} onChange={left => onChange({ ...condition, left })} />
+        <OperandEditor operand={condition.left} toolkit={toolkit} hwModuleNames={hwModuleNames} variableNames={variableNames} onChange={left => onChange({ ...condition, left })} />
       </div>
       <div>
         <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Op</div>
@@ -160,7 +166,7 @@ export function ConditionRow({
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Right</div>
-          <OperandEditor operand={condition.right} toolkit={toolkit} hwModuleNames={hwModuleNames} onChange={right => onChange({ ...condition, right })} />
+          <OperandEditor operand={condition.right} toolkit={toolkit} hwModuleNames={hwModuleNames} variableNames={variableNames} onChange={right => onChange({ ...condition, right })} />
         </div>
         {onDelete && (
           <button

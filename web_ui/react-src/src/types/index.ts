@@ -315,6 +315,14 @@ export interface ToolkitFlag {
   initial_value: number | boolean
 }
 
+/** A hardware module whose class sets `is_trigger` — reported truthfully, grouped by direction. */
+export interface TriggerSource {
+  hw_id: string
+  module_id: number
+  class_name: string
+  direction: 'input' | 'output' | null
+}
+
 export interface ToolkitRead {
   id: number
   name: string
@@ -332,6 +340,9 @@ export interface ToolkitRead {
   locked_state_source: string | null
   created_at: string
   updated_at: string
+  /** Older API responses predate this column — always optional. */
+  trigger_sources?: TriggerSource[]
+  detector_refs?: string[]
 }
 
 // Locked states (Phase 11)

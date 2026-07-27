@@ -29,18 +29,23 @@ export default function ViewActionFields({ action, toolkit, variableNames, allow
   return (
     <>
       <div>
-        <label style={labelStyle} title="The view.view key to write, e.g. LICKER{pin_number}.">
+        <label
+          style={labelStyle}
+          title="The view.view key to write. Prefer {device_name}{pin_number} over a literal name — a hardcoded prefix only works on pilots that happen to use it."
+        >
           Target key ⓘ
         </label>
         <input
           type="text"
           value={action.key_template ?? ''}
           onChange={e => onChange({ key_template: e.target.value })}
-          placeholder="LICKER{pin_number}"
+          placeholder="{device_name}{pin_number}"
           style={{ width: '100%', fontFamily: "'IBM Plex Mono', monospace" }}
         />
         <p style={{ fontSize: '10px', color: 'var(--muted)', margin: '4px 0 0' }}>
-          {'{name}'} tokens are replaced with the current value of that variable
+          {'{name}'} tokens are replaced with the current value of that variable.{' '}
+          {'{device_name}'} resolves at run time from the action&apos;s source device, so the
+          definition stays pilot-agnostic — prefer it over typing a literal prefix.
         </p>
         {names.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>

@@ -78,7 +78,7 @@ REWARD_DEDUPE_GAP_S = 0.3
 # stacked-bar order: bottom (best) -> top (worst/noise); (key, label, color)
 CATEGORIES = [
     ("complete_sequence_rewarded", "complete: poke -> lick -> reward", "#2ca02c"),
-    ("cue_poke_lick_no_reward", "poke + lick, no reward", "#fee08b"),
+    ("cue_poke_lick_no_reward", "catch: on-cue poke + lick, no reward", "#fee08b"),
     ("cue_poke_no_lick", "on-cue poke, no lick", "#fdae6b"),
     ("no_response", "no response (cue, no on-cue poke)", "#bdbdbd"),
     ("offcue_poke_only", "off-cue poke only", "#6baed6"),
@@ -122,24 +122,54 @@ def _generalization_cue(window: list[dict], fallback: float) -> tuple[float, flo
 
 
 def _classify(engaged: bool, licked: bool, rewarded: bool, has_offcue: bool) -> str:
-    """One of the five mutually-exclusive chain categories (see module docstring)."""
+    """One of the five mutually-exclusive chain categories (see module docstring).
+    `licked` is the canonical response-window lick (see _build_trial), so the
+    engaged+licked+no-reward slice is a genuine catch trial."""
     if engaged:
         if rewarded and licked:
             return "complete_sequence_rewarded"
         if licked:
-            return "cue_poke_lick_no_reward"
+            return "cue_poke_lick_no_reward"  # catch: on-cue poke + response lick, no reward
         return "cue_poke_no_lick"
     return "offcue_poke_only" if has_offcue else "no_response"
 
 
-def _build_trial(t0: float, dur: float, pokes: list[float],
-                 licks: list[float], rewards: list[float]) -> dict:
-    """Compute every per-trial metric from cue-relative event times."""
+def _consummatory_licks(on_cue: list[float], poke_outs: list[float], licks: list[float],
+                        reward_time: float, rewarded: bool, iti_start: float) -> int:
+    """Licks made while the nose stays in the port during the response poke bout,
+    i.e. from the response poke-in until the matching poke-out. On rewarded trials
+    the bout is anchored on the poke during which reward arrived (so it captures
+    reward consumption); otherwise on the first on-cue poke. Falls back to ITI
+    start if no poke-out is logged before the trial window ends."""
+    if not on_cue:
+        return 0
+    if rewarded and not np.isnan(reward_time):
+        before_reward = [p for p in on_cue if p <= reward_time]
+        bout_start = max(before_reward) if before_reward else on_cue[0]
+    else:
+        bout_start = on_cue[0]
+    outs = [po for po in poke_outs if po > bout_start]
+    bout_end = min(outs) if outs else iti_start
+    if bout_end < bout_start:  # unlogged/misordered poke-out — degrade gracefully
+        bout_end = iti_start
+    return sum(1 for lk in licks if bout_start <= lk <= bout_end)
+
+
+def _build_trial(t0: float, dur: float, iti_start: float, pokes: list[float],
+                 poke_outs: list[float], licks: list[float], rewards: list[float]) -> dict:
+    """Compute every per-trial metric from cue-relative event times. iti_start is
+    the cue-relative time the ITI countdown begins; licks in [0, iti_start) are
+    response/consummatory licks, licks at/after it are impulsive ITI licks."""
     on_cue = sorted(p for p in pokes if 0 <= p <= dur)
     off_cue = sorted(p for p in pokes if p < 0 or p > dur)  # before cue or after offset/ITI
     # off-cue licks: symmetric with off-cue pokes (outside the cue window). NOTE
     # these include reward-consumption licks during the post-cue/ITI period.
     off_cue_licks = [lk for lk in licks if lk < 0 or lk > dur]
+    # response licks = licks in the response window (cue onset -> ITI start), the
+    # canonical definition shared with trial_engagement_licks. A catch is an on-cue
+    # poke with a response lick but no reward, so the chain "lick" must be one of
+    # these (not a stray impulsive ITI lick).
+    response_licks = [lk for lk in licks if 0 <= lk < iti_start]
     first_on = on_cue[0] if on_cue else NAN
     first_off = off_cue[0] if off_cue else NAN
     licks_after = [lk for lk in licks if on_cue and lk >= first_on]
@@ -147,11 +177,13 @@ def _build_trial(t0: float, dur: float, pokes: list[float],
     reward_time = min(rewards) if rewards else NAN
 
     engaged = bool(on_cue)
-    licked_after = bool(licks_after)
+    licked_response = bool(response_licks)  # response-window lick -> drives classification
+    licked_after = bool(licks_after)  # any lick after the poke -> pairs with the latency metrics
     rewarded = bool(rewards)
     return {
         "cue_on_time": t0,
         "cue_duration": dur,
+        "iti_start": iti_start,
         "n_oncue_pokes": len(on_cue),
         "n_offcue_pokes": len(off_cue),
         "n_offcue_licks": len(off_cue_licks),
@@ -159,10 +191,11 @@ def _build_trial(t0: float, dur: float, pokes: list[float],
         "first_offcue_poke_time": first_off,
         "first_lick_after_oncue_poke_time": first_lick_after,
         "reward_time": reward_time,
-        "action_sequence_category": _classify(engaged, licked_after, rewarded, bool(off_cue)),
+        "action_sequence_category": _classify(engaged, licked_response, rewarded, bool(off_cue)),
         "engaged": engaged,
-        "licked_after_poke": licked_after,
+        "licked_after_poke": licked_response,
         "rewarded": rewarded,
+        "bout_licks": _consummatory_licks(on_cue, poke_outs, licks, reward_time, rewarded, iti_start),
         "mixed": engaged and bool(off_cue),  # overlapping diagnostic, not a stack slice
         "cue_to_first_oncue_poke_latency": first_on,  # cue onset is t=0
         "poke_to_first_lick_latency": (first_lick_after - first_on) if (engaged and licked_after) else NAN,
@@ -183,16 +216,23 @@ def enrich_trials(events: list[dict], find_cue, fallback_dur: float) -> list[dic
     for k in range(len(onsets)):
         window = events[bounds[k]:bounds[k + 1]]
         t0, dur = find_cue(window, fallback_dur)
-        pokes, licks, rewards = [], [], []
+        # ITI countdown start (cue-relative); licks before it are response licks,
+        # after it are impulsive ITI licks. Falls back to cue offset if unlogged.
+        iti_evt = next((e for e in window if e["etype"] == A.ET_STATE and e["epoch"] > t0
+                        and e["state"] in ("start_timer_ITI", "state_ITI")), None)
+        iti_start = (iti_evt["epoch"] - t0) if iti_evt else dur
+        pokes, poke_outs, licks, rewards = [], [], [], []
         for e in window:
             if e["etype"] == A.ET_DIGITAL_IN and e["id"] == ID_NOSEPOKE and e["level"] == 1:
                 pokes.append(e["epoch"] - t0)
+            elif e["etype"] == A.ET_DIGITAL_IN and e["id"] == ID_NOSEPOKE and e["level"] == 0:
+                poke_outs.append(e["epoch"] - t0)  # nose-withdrawal (IR1 falling edge)
             elif e["etype"] == A.ET_DIGITAL_IN and e["id"] == ID_LICK:
                 licks.append(e["epoch"] - t0)
             elif (e["etype"] == A.ET_SOLENOID and e["id"] == ID_REWARD
                   and e["func"] == "store_series"):
                 rewards.append(e["epoch"] - t0)
-        trials.append(_build_trial(t0, dur, pokes, licks, _dedupe(rewards)))
+        trials.append(_build_trial(t0, dur, iti_start, pokes, poke_outs, licks, _dedupe(rewards)))
     _add_history(trials)
     return trials
 
@@ -209,13 +249,13 @@ def _add_history(trials: list[dict]) -> None:
 # --- per-task loaders (reuse existing ES access + ordering) ----------------
 def load_appetitive(only_mouse: str | None) -> list[dict]:
     """Session records for the appetitive task; reuses A.discover_subjects /
-    A.fetch_events / A.group_by_session. training_day = qualifying-session index."""
+    A.fetch_events / A.group_by_day_session. training_day = qualifying-session index."""
     records: list[dict] = []
     for subject in A.discover_subjects():
         mouse = A.short_name(subject)
         if only_mouse and mouse != only_mouse:
             continue
-        by_session = A.group_by_session(A.fetch_events(subject))
+        by_session = A.group_by_day_session(A.fetch_events(subject))
         day = 0
         for sess in sorted(by_session):
             trials = enrich_trials(by_session[sess], _appetitive_cue, A.TONE_FILE_LENGTH_S)
@@ -238,9 +278,7 @@ def load_generalization(only_mouse: str | None) -> list[dict]:
             continue
         sessions: list[dict] = []
         for subject in subjects:
-            by_session: dict[int, list[dict]] = {}
-            for e in G.fetch_events(subject):
-                by_session.setdefault(e["session"], []).append(e)
+            by_session = A.group_by_day_session(G.fetch_events(subject))
             for evs in by_session.values():
                 trials = enrich_trials(evs, _generalization_cue, G.LED_WINDOW_S)
                 if not G.session_len_ok(len(trials)):

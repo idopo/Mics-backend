@@ -818,7 +818,7 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
       <div id="suggest-drop"></div>
     </div>
   </div>
-  <span class="version-badge">v1.0 · 2026</span>
+  <span class="version-badge">M1 · 2026</span>
   <img src="yizhar-lab.jpg" alt="Yizhar Lab" style="width:32px;height:auto;border-radius:3px;opacity:0.95;margin-left:12px;mix-blend-mode:screen" title="Yizhar Lab · Weizmann Institute of Science" />
 </header>
 
@@ -830,10 +830,17 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
   <a href="#overview"><span class="dot"></span>System Overview</a>
   <a href="#pi-setup"><span class="dot"></span>Pi Setup &amp; Onboarding</a>
   <a href="#subjects"><span class="dot"></span>Managing Subjects</a>
+  <a href="#authoring"><span class="dot"></span>Authoring a Task</a>
+  <a href="#hardware-libs"><span class="dot"></span>Hardware Libraries</a>
+  <a href="#hardware-modules"><span class="dot"></span>Hardware Modules</a>
+  <a href="#pilot-config"><span class="dot"></span>Pilot Hardware Config</a>
+  <a href="#toolkits"><span class="dot"></span>Toolkits</a>
+  <a href="#tasks"><span class="dot"></span>Task Definitions (FDA)</a>
   <a href="#protocols"><span class="dot"></span>Managing Protocols</a>
   <a href="#sessions"><span class="dot"></span>Running Sessions</a>
   <a href="#monitoring"><span class="dot"></span>Monitoring Pilots</a>
   <a href="#history"><span class="dot"></span>Session History</a>
+  <a href="#projects"><span class="dot"></span>Projects &amp; Experiments</a>
   <a href="#researchers"><span class="dot"></span>Researchers</a>
   <a href="#iacuc"><span class="dot"></span>IACUC Protocols</a>
 
@@ -843,18 +850,20 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
   <a href="#architecture"><span class="dot"></span>Architecture</a>
   <a href="#services"><span class="dot"></span>Services</a>
   <a href="#configuration"><span class="dot"></span>Configuration</a>
+  <a href="#task-model"><span class="dot"></span>Backend-Driven Task Model</a>
   <a href="#database"><span class="dot"></span>Database Schema</a>
   <a href="#zmq"><span class="dot"></span>ZMQ Protocol</a>
-  <a href="#pi-tasks"><span class="dot"></span>Pi Task System</a>
+  <a href="#pi-runtime"><span class="dot"></span>Pi Runtime</a>
   <a href="#run-modes"><span class="dot"></span>Session Run Modes</a>
   <a href="#api-ref"><span class="dot"></span>API Reference</a>
   <a href="#backup"><span class="dot"></span>Backup &amp; Recovery</a>
 
   <div class="nav-divider"></div>
   <div class="nav-section-label">Future Plans</div>
-  <a href="#future-overview"><span class="dot"></span>M1 Roadmap Overview</a>
-  <a href="#fda-redesign"><span class="dot"></span>ToolKit + FDA Redesign</a>
+  <a href="#future-overview"><span class="dot"></span>Roadmap Overview</a>
   <a href="#pi-code-editor"><span class="dot"></span>Pi Code Editor</a>
+  <a href="#mics-link"><span class="dot"></span>MICS-Link (Phase 18)</a>
+  <a href="#compute-primitives"><span class="dot"></span>Compute &amp; Variables (Phase 23)</a>
 </nav>
 
 <!-- MAIN -->
@@ -898,6 +907,14 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     <p>Experimental flow is executed through finite state machine logic — called <strong>Blueprints</strong> — running on dedicated Raspberry Pi controllers ("pilots"). This provides deterministic control at millisecond resolution while supporting adaptive task progression driven by subject behavior. A central orchestration layer coordinates experiment definition, live monitoring, and cohort-level data integration across all setups simultaneously.</p>
 
     <p>MICS is designed for seamless integration with neuroscience technologies including optogenetics, electrophysiology, calcium imaging, and video-based behavioral tracking. Event-locked triggers and closed-loop interactions can be embedded directly in task logic, allowing behavioral contingencies to interact dynamically with external measurement or stimulation systems. The same infrastructure supports purely behavioral studies, chronic home-cage monitoring, circadian-scale experiments, and large-cohort automated training.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Everything is defined in the backend — no Pi code editing</strong>
+        Hardware drivers, hardware wiring, task capabilities, and the state-machine flow itself are all authored in the web UI and stored in the database. When a session starts, the backend pushes the driver code, the per-pilot hardware configuration, and the state machine to the Pi. The Pi <em>interprets</em> what it is sent at runtime — you no longer edit Python files on the Pi to change a task.
+      </div>
+    </div>
 
     <h3>The Four Services</h3>
     <div class="services-grid">
@@ -1079,11 +1096,190 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     </div>
   </section>
 
+  <!-- AUTHORING PIPELINE INTRO -->
+  <section class="doc-section" id="authoring">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Authoring a Task — the Big Picture</h2>
+    <p>The next five pages are how you <strong>build a behavioral task entirely in the browser</strong>. They are all reachable from the left sidebar of the MICS app, and they build on each other in order — each layer is the input to the next.</p>
+    <div class="arch-diagram">
+<pre>Hardware Libs   →   Hardware Modules   →   Pilot Hardware Config
+(driver .py)        (name → lib class)     (per-pilot pins)
+      │                    │                      │
+      └──────────── feed into ──────────┐         │
+                                         ▼         ▼
+                                  Toolkit  ──────► (preflight checks pins at start)
+                            (capabilities: states,
+                             modules, flags, params)
+                                         │
+                                         ▼
+                              Task Definition (FDA)
+                          (states + entry actions + transitions)
+                                         │
+                                         ▼
+                                   Protocol step</pre>
+    </div>
+    <p>Read them top to bottom the first time. Day to day you will mostly live in the last two — <strong>Toolkits</strong> and <strong>Task Definitions</strong> — and only revisit the hardware pages when the rig changes.</p>
+  </section>
+
+  <!-- HARDWARE LIBRARIES -->
+  <section class="doc-section" id="hardware-libs">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Hardware Libraries</h2>
+    <p>A <em>hardware library</em> is a Python driver file (e.g. <code class="inline">gpio.py</code>) that defines hardware classes — <code class="inline">Digital_Out</code>, <code class="inline">Solenoid</code>, <code class="inline">LickSensor</code>, and so on. Libraries live in the database, not baked into the Pi image, and are pushed to a pilot only when a task that needs them starts.</p>
+
+    <h3>Uploading a library</h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Open Hardware Libs</strong><p>Click <em>Hardware Libs</em> in the sidebar or go to <code class="inline">/react/hardware-libs-ui</code>.</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Upload the driver file</strong><p>Paste or upload the <code class="inline">.py</code> source. On submit the backend parses it with Python's AST (it is <em>not</em> executed) and extracts every class, its methods, and its constructor arguments.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>Fix any errors</strong><p>If the file has a syntax error it is rejected with the offending line number. Valid files return their extracted class/method metadata, which you can confirm on the library's detail page.</p></div></li>
+    </ol>
+
+    <h3>Versions, stability and rollback</h3>
+    <p>Every save creates a new immutable <em>version</em>. A version moves through three states:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">unvalidated</code></td><td>Newly uploaded; not yet proven on hardware</td></tr>
+          <tr><td><code class="inline">beta</code></td><td>In testing</td></tr>
+          <tr><td><code class="inline">stable</code></td><td>Marked stable by a user, or promoted automatically after a successful protocol run</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Open a library's detail page (<code class="inline">/react/hardware-libs/:id</code>) to see its version history, <em>diff</em> any two versions (the AST diff highlights added / removed / changed classes and methods), mark a version stable, or roll the active version back.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Why store drivers centrally?</strong>
+        Because the backend knows every class and method a driver exposes, the rest of the system can offer them as dropdowns (when you build modules and FDA actions) and can warn you when a change breaks a task that used a now-removed method.
+      </div>
+    </div>
+  </section>
+
+  <!-- HARDWARE MODULES -->
+  <section class="doc-section" id="hardware-modules">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Hardware Modules</h2>
+    <p>A <em>hardware module</em> is a named, reusable hardware instance — the friendly name a task refers to, bound to a concrete class from a hardware library. For example <code class="inline">Left_LED → gpio.Digital_Out</code>. Modules are global (shared across all pilots); the actual pins are filled in per-pilot on the next page.</p>
+
+    <h3>Declaring a module</h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Open HW Modules</strong><p>Click <em>HW Modules</em> in the sidebar or go to <code class="inline">/react/hardware-modules-ui</code>.</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Name the module</strong><p>Give it a friendly name (e.g. <code class="inline">Left_LED</code>) and an optional display name and description.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>Pick the library and class</strong><p>Choose a hardware library, then a class from it. The class dropdown is populated from that library's AST metadata, so you can only select classes that actually exist in the driver.</p></div></li>
+      <li><span class="step-num">4</span><div class="step-content"><strong>Save</strong><p>The module is now selectable when assembling a toolkit, and its methods become available in the FDA state builder.</p></div></li>
+    </ol>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Module = capability, not wiring</strong>
+        A module says "this task has a Left LED of this type". It deliberately does <em>not</em> say which GPIO pin — that is rig-specific and lives in each pilot's hardware config, so the same module works across differently-wired cages.
+      </div>
+    </div>
+  </section>
+
+  <!-- PILOT HARDWARE CONFIG -->
+  <section class="doc-section" id="pilot-config">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Pilot Hardware Config</h2>
+    <p>This page records which physical pins each named piece of hardware uses on <em>one specific Pi</em>. It is a <strong>free-form, name-keyed</strong> table that mirrors the Pi's old <code class="inline">prefs.json</code> HARDWARE section — each row has a name and a <code class="inline">config</code> dict (<code class="inline">pin</code>, <code class="inline">polarity</code>, <code class="inline">class_name</code>, …).</p>
+
+    <h3>Editing a pilot's hardware</h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Open the pilot's config</strong><p>From the pilot grid, open a pilot and go to its hardware config (<code class="inline">/react/pilots/:pilot/hardware-config</code>).</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Add an entry by name</strong><p>Type any name and fill in its config. The name is the only identity key — the entry does <em>not</em> need to exist in the module registry.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>(Optional) pre-fill from a module</strong><p>Use the module-registry picker to pre-fill <code class="inline">class_name</code> and default params. This is a convenience only — it creates no permanent link to the module.</p></div></li>
+    </ol>
+    <p>Renaming an entry is a delete + re-add (the name is the identity). When a task starts, a <strong>pre-run cross-check</strong> compares the names the toolkit needs against the names configured here, and blocks the start if anything is missing.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>First boot seeds itself</strong>
+        The first time a Pi sends its HANDSHAKE, its existing <code class="inline">prefs.json</code> HARDWARE section is copied into this table automatically — so existing rigs work without manual entry.
+      </div>
+    </div>
+  </section>
+
+  <!-- TOOLKITS -->
+  <section class="doc-section" id="toolkits">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Toolkits</h2>
+    <p>A <em>toolkit</em> defines a task's <strong>capabilities</strong> — what it <em>can</em> do — separately from its flow (the flow lives in the task definition, next page). You assemble a toolkit on <code class="inline">/react/toolkits-ui</code> from four ingredients.</p>
+
+    <h3>Building a toolkit</h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Open Toolkits</strong><p>Click <em>Toolkits</em> in the sidebar. The list groups toolkits by name; click <em>New Toolkit</em> to start a backend-authored one.</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Pick locked states</strong><p>Choose from the state methods the task file on the Pi exposes (reported via HANDSHAKE). These are reusable Python method bodies the state machine can <em>call</em> but never rewrite — the trusted building blocks.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>Select hardware modules</strong><p>Add the named hardware (from the module registry) this task uses. These determine which hardware the FDA editor lets you act on.</p></div></li>
+      <li><span class="step-num">4</span><div class="step-content"><strong>Declare flags</strong><p>Flags are tracker variables the task reads and writes — booleans, counts, timers (e.g. <code class="inline">hit_trial</code>, <code class="inline">lick_count</code>). They become readable in transition conditions and settable in state entry actions.</p></div></li>
+      <li><span class="step-num">5</span><div class="step-content"><strong>Declare params</strong><p>Params are tunable values with defaults (e.g. <code class="inline">reward_duration_ms</code>, <code class="inline">iti_ms</code>). They surface later in the protocol builder and the per-run overrides modal, so a protocol can retune a task without editing it.</p></div></li>
+      <li><span class="step-num">6</span><div class="step-content"><strong>Save</strong><p>Unknown state names or hardware modules are rejected (422). The toolkit is now available as the basis for task definitions.</p></div></li>
+    </ol>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Toolkit identity = (name, hardware)</strong>
+        A toolkit is keyed by its class name <em>and</em> a hash of its hardware. The same task wired two different ways (e.g. two rig layouts) appears as two <em>variants</em> you can pick between, with a hardware diff. Toolkits auto-discovered from an older HANDSHAKE show a <span class="status-pill">legacy</span> badge; ones you build in the UI are flagged <code class="inline">is_backend_authored</code>.
+      </div>
+    </div>
+  </section>
+
+  <!-- TASK DEFINITIONS / FDA EDITOR -->
+  <section class="doc-section" id="tasks">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Task Definitions — Visual FDA Editor</h2>
+    <p>A <em>task definition</em> is the behavioral state machine itself: which states exist, what happens in each, and what makes the task move between them. It is bound to a toolkit, stored as an <strong>FDA JSON</strong> document, and built visually — no Python, no Pi restart.</p>
+
+    <h3>Creating one</h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Open Tasks</strong><p>Click <em>Tasks</em> in the sidebar (<code class="inline">/react/task-definitions-ui</code>). The list shows every task definition; broken ones (see below) carry a warning badge.</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Create from a toolkit</strong><p>Start a new task definition, pick its toolkit, and you land in the editor at <code class="inline">/react/task-editor/:id</code> with a react-flow canvas.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>Lay out states</strong><p>States are draggable nodes. Add them, position them, and connect them by dragging between node handles to create transitions.</p></div></li>
+      <li><span class="step-num">4</span><div class="step-content"><strong>Edit a state, edit a transition</strong><p>Select a node to open the <em>State Builder</em>; select an edge to open the <em>Condition Builder</em> (both below).</p></div></li>
+      <li><span class="step-num">5</span><div class="step-content"><strong>Save</strong><p>Saving serializes the canvas to FDA JSON and writes it to the database. It does <em>not</em> touch any Pi.</p></div></li>
+    </ol>
+
+    <h3>The State Builder (a node is selected)</h3>
+    <p>Each state has an ordered list of <em>entry actions</em> that run when the state is entered. Add, remove and reorder them; each action has a type:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Action type</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Hardware</strong></td><td>Call a method on one of the toolkit's hardware modules. You pick module → method → args; method and arg fields come from the driver's AST, with type hints.</td></tr>
+          <tr><td><strong>Flag</strong></td><td>Set one of the toolkit's flags to a value (literal, a param, or another flag).</td></tr>
+          <tr><td><strong>Timer</strong></td><td>Start / reset a timer referenced later in transition conditions.</td></tr>
+          <tr><td><strong>Special</strong></td><td><code class="inline">INC_TRIAL_COUNTER</code> — the explicit trial-complete signal that drives graduation.</td></tr>
+          <tr><td><strong>Custom method</strong></td><td>Call one of the toolkit's callable methods by name.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Locked / passthrough states</strong> (backed by a Pi Python method, with no editable entry actions) show a <code class="inline">{py}</code> lock badge and are read-only — they reuse the trusted method body as-is.</p>
+
+    <h3>The Condition Builder (an edge is selected)</h3>
+    <p>A transition fires when its condition is true. A single condition is <em>operand → operator → value</em>: the operand is a view key or a toolkit flag/variable, the operator is <code class="inline">eq / ne / gt / lt</code>, and the value is a literal, a param-ref, or a flag-ref.</p>
+    <p>Conditions are not limited to one comparison. Using per-row <strong>+AND</strong> / <strong>+OR</strong> buttons (Kibana-style) you build an arbitrarily nested boolean tree, so <code class="inline">(A OR B) AND C</code> is expressible and renders on the edge as <code class="inline">(A ∨ B) ∧ C</code>.</p>
+
+    <h3>Push to a running pilot (hot-reload)</h3>
+    <p>If a pilot is currently running this task definition, the <em>Push to Pilot</em> button hot-reloads it via the <code class="inline">UPDATE_FDA</code> message — no restart. The change takes effect the next time the affected state is entered, so the running state is never interrupted.</p>
+
+    <div class="callout warn">
+      <span class="callout-icon">⚠</span>
+      <div class="callout-body">
+        <strong>Broken-definition badges</strong>
+        If a hardware library changes so a method a task used no longer exists, that task definition is flagged <code class="inline">broken</code> — a badge in the Tasks list and a banner in the editor name the offending state and method, so you can fix it before running.
+      </div>
+    </div>
+  </section>
+
   <!-- PROTOCOLS -->
   <section class="doc-section" id="protocols">
     <div class="section-eyebrow">User Guide</div>
     <h2>Managing Protocols</h2>
-    <p>A <em>protocol</em> (also called a blueprint) is a sequence of task steps. Each step specifies a task type, display name, parameters, and a graduation rule that determines when the subject advances to the next step.</p>
+    <p>A <em>protocol</em> (also called a blueprint) is a sequence of task steps. Each step references a <strong>task definition</strong>, sets a display name and parameter overrides, and carries a graduation rule that determines when the subject advances to the next step.</p>
 
     <h3>Creating a Protocol</h3>
     <ol class="steps">
@@ -1091,14 +1287,14 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
         <div class="step-num">1</div>
         <div class="step-content">
           <strong>Open the Protocol Builder</strong>
-          <p>Navigate to <code class="inline">/react/protocols-create</code>. You'll see a two-panel view: available task types on the left, protocol builder on the right.</p>
+          <p>Navigate to <code class="inline">/react/protocols-create</code>. You'll see a two-panel view: available <em>task definitions</em> (by display name) on the left, protocol builder on the right.</p>
         </div>
       </li>
       <li>
         <div class="step-num">2</div>
         <div class="step-content">
           <strong>Add steps from the palette</strong>
-          <p>Click a task type in the left panel to add it as a step. Set the step name and any parameter overrides. Steps run in order from top to bottom.</p>
+          <p>Click a task definition in the left panel to add it as a step. Set the step name and any parameter overrides. Steps run in order from top to bottom.</p>
         </div>
       </li>
       <li>
@@ -1118,7 +1314,7 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     </ol>
 
     <h3>Step Parameters</h3>
-    <p>Parameters control task behavior (timing, thresholds, reward amounts). Each task type exposes its own parameter schema — the UI shows the available fields automatically when a task type is selected. The <code class="inline">graduation</code>, <code class="inline">step_name</code>, and <code class="inline">task_type</code> keys are reserved and shown separately.</p>
+    <p>Parameters control task behavior (timing, thresholds, reward amounts). Each task definition exposes its own parameter schema — inherited from its toolkit — and the UI shows the available fields automatically when a step is selected. The <code class="inline">graduation</code>, <code class="inline">step_name</code>, and <code class="inline">task_type</code> keys are reserved and shown separately.</p>
   </section>
 
   <!-- SESSIONS -->
@@ -1251,6 +1447,23 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     <p>The modal is 560 px wide and anchored near the top of the viewport so it does not jump when switching between tabs of different heights.</p>
   </section>
 
+  <!-- PROJECTS -->
+  <section class="doc-section" id="projects">
+    <div class="section-eyebrow">User Guide</div>
+    <h2>Projects &amp; Experiments</h2>
+    <p>Projects and experiments organize subjects and protocols into the research hierarchy your lab actually works in. A <em>project</em> groups related work; an <em>experiment</em> within a project ties a cohort of subjects to the protocols they run.</p>
+
+    <h3>Projects <span class="route">/react/projects-ui</span></h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Open Projects</strong><p>Click <em>Projects</em> in the sidebar or go to <code class="inline">/react/projects-ui</code>.</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Create a project</strong><p>Use the create form to add a project with a name and description. It appears in the list immediately.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>Open the detail view</strong><p>Click a project to go to <code class="inline">/react/projects/:id</code> — its experiments are listed there, and you can add new ones.</p></div></li>
+    </ol>
+
+    <h3>Experiments <span class="route">/react/experiments/:id</span></h3>
+    <p>An experiment detail page lets you assign protocols to the experiment and associate the subjects (cohort) taking part. Subject membership also surfaces in the <em>Projects</em> tab of the Subject Detail Modal, so you can see at a glance which work a given animal belongs to.</p>
+  </section>
+
   <!-- RESEARCHERS -->
   <section class="doc-section" id="researchers">
     <div class="section-eyebrow">User Guide</div>
@@ -1328,7 +1541,7 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
   <section class="doc-section" id="architecture">
     <div class="section-eyebrow">Technical Reference</div>
     <h2>Architecture</h2>
-    <p>MICS is a set of five Docker containers orchestrated by Compose, plus supporting infrastructure (PostgreSQL, Redis, Elasticsearch) and one or more Raspberry Pi devices on the local network.</p>
+    <p>MICS is a set of Docker services orchestrated by Compose — <code class="inline">db</code> (PostgreSQL), <code class="inline">api</code>, <code class="inline">orchestrator</code>, <code class="inline">web_ui</code>, <code class="inline">backup</code>, and <code class="inline">docs</code> (this site, on <code class="inline">:8888</code>) — plus supporting infrastructure (Redis, Elasticsearch) and one or more Raspberry Pi devices on the local network.</p>
 
     <div class="arch-diagram">
 <pre>┌───────────────────────────────────────────────────────────────────┐
@@ -1436,6 +1649,51 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     </div>
   </section>
 
+  <!-- BACKEND-DRIVEN TASK MODEL -->
+  <section class="doc-section" id="task-model">
+    <div class="section-eyebrow">Technical Reference</div>
+    <h2>Backend-Driven Task Model</h2>
+    <p>The defining property of the current system: a task's <em>drivers</em>, <em>hardware wiring</em>, <em>capabilities</em>, and <em>state-machine flow</em> all live in the database and are authored in the browser. The Pi is an interpreter. Nothing about a task is edited on the Pi itself.</p>
+
+    <h3>The five layers</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>Table</th><th>What it holds</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Hardware Library</strong></td><td><code class="inline">hardware_libs</code> + <code class="inline">hardware_lib_versions</code></td><td>Driver <code class="inline">.py</code> source (e.g. <code class="inline">gpio.py</code>), versioned, with AST-extracted class/method metadata.</td></tr>
+          <tr><td><strong>Hardware Module</strong></td><td><code class="inline">hardware_modules</code></td><td>A named instance binding a friendly name → a class in a library (<code class="inline">Left_LED → gpio.Digital_Out</code>).</td></tr>
+          <tr><td><strong>Pilot Config</strong></td><td><code class="inline">pilot_hardware_config</code></td><td>Per-pilot, name-keyed pin bindings (free-form <code class="inline">config</code> dict). Mirrors the Pi's <code class="inline">prefs.json</code> HARDWARE section.</td></tr>
+          <tr><td><strong>Toolkit</strong></td><td><code class="inline">task_toolkits</code></td><td>Capabilities: locked states + hardware modules + flags + params schema. Keyed by <code class="inline">(name, hw_hash)</code>.</td></tr>
+          <tr><td><strong>Task Definition</strong></td><td><code class="inline">task_definitions</code></td><td>The FDA JSON state machine bound to a toolkit. Built in the visual editor.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>End-to-end: from upload to running task</h3>
+    <ol class="steps">
+      <li><span class="step-num">1</span><div class="step-content"><strong>Upload a hardware library</strong><p>Driver <code class="inline">.py</code> is stored and AST-validated; a version row is created.</p></div></li>
+      <li><span class="step-num">2</span><div class="step-content"><strong>Register hardware modules</strong><p>Name each hardware instance and bind it to a class from the library.</p></div></li>
+      <li><span class="step-num">3</span><div class="step-content"><strong>Configure each pilot</strong><p>Give the pilot the pins/params for each named hardware entry.</p></div></li>
+      <li><span class="step-num">4</span><div class="step-content"><strong>Assemble a toolkit</strong><p>Pick locked states + modules + flags + params. Validated against the pilot's <code class="inline">available_locked_states</code> and the module registry.</p></div></li>
+      <li><span class="step-num">5</span><div class="step-content"><strong>Build a task definition</strong><p>Draw the state machine (states, entry actions, transition conditions) in the visual editor → FDA JSON.</p></div></li>
+      <li><span class="step-num">6</span><div class="step-content"><strong>Add it as a protocol step &amp; assign to a subject</strong><p>The protocol step stores a <code class="inline">task_definition_id</code>.</p></div></li>
+      <li><span class="step-num">7</span><div class="step-content"><strong>Start a session</strong><p>A <strong>pre-run cross-check</strong> verifies the pilot has every required hardware entry configured (by name). If something is missing, the UI blocks the start and links to the pilot's hardware config.</p></div></li>
+      <li><span class="step-num">8</span><div class="step-content"><strong>Orchestrator dispatches</strong><p>It sends <code class="inline">LOAD_HARDWARE_LIBS</code> (driver source) then <code class="inline">START</code> carrying the resolved <code class="inline">HARDWARE</code> config dict and the <code class="inline">state_machine</code> (FDA JSON).</p></div></li>
+      <li><span class="step-num">9</span><div class="step-content"><strong>Pi interprets</strong><p>It writes the libs to an override directory, builds hardware instances from the received config, and constructs the running state machine via <code class="inline">load_fda_from_json()</code>.</p></div></li>
+    </ol>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>FDA JSON v2 — the document the Pi interprets</strong>
+        Each state declares <code class="inline">entry_actions</code> (hardware calls, flag/timer updates, <code class="inline">INC_TRIAL_COUNTER</code>, custom methods) and <code class="inline">transitions</code>. A transition's condition can be a single comparison or a recursive AND/OR <code class="inline">condition_tree</code>. Hardware is referenced by semantic name, never raw GPIO — the same JSON runs on differently-wired rigs.
+      </div>
+    </div>
+
+    <h3>Versioning &amp; impact detection</h3>
+    <p>Hardware libraries are versioned (<code class="inline">unvalidated → beta → stable</code>); a version goes stable when a user marks it or after a successful protocol run. When a library changes (e.g. a method is removed), the backend AST-diffs the versions and flags any task definition that referenced the now-missing method — those definitions get <code class="inline">validation_status: 'broken'</code>, surfaced as a warning badge in the Tasks list and a banner in the editor.</p>
+  </section>
+
   <!-- DATABASE -->
   <section class="doc-section" id="database">
     <div class="section-eyebrow">Technical Reference</div>
@@ -1508,12 +1766,62 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
           </tr>
           <tr>
             <td><code class="inline">task_definitions</code></td>
-            <td><code class="inline">id, task_name, module, params (JSON), hardware (JSON), file_hash</code></td>
-            <td>Pi-discovered task classes. Populated automatically via HANDSHAKE</td>
+            <td><code class="inline">id, task_name, base_class_name, module, params, hardware, file_hash, toolkit_id, fda_json (JSONB), needs_migration, validation_status, validation_message</code></td>
+            <td>A task's state machine bound to a toolkit. <code class="inline">fda_json</code> holds the FDA JSON v2 built in the visual editor; <code class="inline">validation_status</code> is <code class="inline">ok</code> or <code class="inline">broken</code></td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <h3>Backend Task Model Tables (hardware centralization)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Key Columns</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="inline">hardware_libs</code></td>
+            <td><code class="inline">id, name, filename, ast_metadata (JSON), active_version_id, stable_version_id</code></td>
+            <td>A stored driver <code class="inline">.py</code> file. <code class="inline">ast_metadata</code> lists classes, methods, and constructor args</td>
+          </tr>
+          <tr>
+            <td><code class="inline">hardware_lib_versions</code></td>
+            <td><code class="inline">id, hardware_lib_id, version_number, source_code, sha256_hash, state, ast_metadata, stable_reason</code></td>
+            <td>Immutable version of a lib. <code class="inline">state</code>: <code class="inline">unvalidated / beta / stable</code></td>
+          </tr>
+          <tr>
+            <td><code class="inline">hardware_modules</code></td>
+            <td><code class="inline">id, name (unique), display_name, hardware_lib_id, class_name, description</code></td>
+            <td>Named hardware instance → a class in a library</td>
+          </tr>
+          <tr>
+            <td><code class="inline">pilot_hardware_config</code></td>
+            <td><code class="inline">id, pilot_id, name, config (JSON), hardware_module_id?</code> — unique <code class="inline">(pilot_id, name)</code></td>
+            <td>Per-pilot, free-form pin/param bindings keyed by name. No required FK to modules</td>
+          </tr>
+          <tr>
+            <td><code class="inline">task_toolkits</code></td>
+            <td><code class="inline">id, name, hw_hash, states, flags, params_schema, semantic_hardware, callable_methods, required_packages, hardware_module_ids, locked_state_source, is_backend_authored, is_canonical</code> — unique <code class="inline">(name, hw_hash)</code></td>
+            <td>A task's capabilities. <code class="inline">is_backend_authored = true</code> for UI-built toolkits; <code class="inline">false</code> for HANDSHAKE-discovered (legacy) ones</td>
+          </tr>
+          <tr>
+            <td><code class="inline">toolkit_hardware_libs</code></td>
+            <td><code class="inline">toolkit_id, hardware_lib_id, default_version_id</code></td>
+            <td>Which lib versions a toolkit pins (sent to the Pi on START)</td>
+          </tr>
+          <tr>
+            <td><code class="inline">toolkit_pilot_origins</code></td>
+            <td><code class="inline">toolkit_id, pilot_id, first_seen_at, last_seen_at</code></td>
+            <td>Which pilot each toolkit variant was seen on (upserted on HANDSHAKE)</td>
+          </tr>
+          <tr>
+            <td><code class="inline">available_locked_states</code></td>
+            <td><code class="inline">id, pilot_id, task_filename, state_names (JSON), is_legacy_filename</code></td>
+            <td>State method names a task file exposes; populated by HANDSHAKE, used when assembling toolkits</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--text-2);font-size:.88rem">Tables are created at API startup via <code class="inline">create_all()</code>; additive column/constraint changes are applied by small idempotent migrations in <code class="inline">api/db.py</code> (e.g. <code class="inline">ALTER TABLE … ADD COLUMN IF NOT EXISTS</code>). There is no separate migration step to run.</p>
   </section>
 
   <!-- ZMQ -->
@@ -1527,7 +1835,7 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     <div class="msg-grid">
       <div class="msg-card">
         <span class="msg-key">HANDSHAKE</span>
-        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Sent on pilot startup. Contains the pilot's name, available task classes (with PARAMS, HARDWARE, FLAGS), and hardware configuration. The orchestrator upserts the pilot in PostgreSQL and populates <code class="inline">task_definitions</code>.</div>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Sent on pilot startup. Enriched payload: pilot name, task classes, plus <code class="inline">FLAGS</code>, <code class="inline">SEMANTIC_HARDWARE</code>, <code class="inline">STAGE_NAMES</code>, <code class="inline">CALLABLE_METHODS</code>, <code class="inline">REQUIRED_PACKAGES</code>, and the <code class="inline">prefs.json</code> HARDWARE section. The orchestrator upserts the pilot, populates <code class="inline">task_toolkits</code> / <code class="inline">toolkit_pilot_origins</code> / <code class="inline">available_locked_states</code>, and (first boot) seeds <code class="inline">pilot_hardware_config</code>.</div>
       </div>
       <div class="msg-card">
         <span class="msg-key">PING</span>
@@ -1546,8 +1854,32 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
         <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Sent explicitly by the task when a trial completes. Triggers the graduation check: the orchestrator calls the API to increment the trial count and checks if the subject should advance to the next protocol step.</div>
       </div>
       <div class="msg-card">
-        <span class="msg-key">DONE</span>
-        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Task has finished all its work cleanly. Marks the session run as <code class="inline">completed</code>.</div>
+        <span class="msg-key">TASK_ERROR</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> The task raised an error. The orchestrator marks the run <code class="inline">error</code> so it can be resumed or restarted.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">HARDWARE_LIB_TEST_RESULT</span>
+        <div class="msg-desc"><strong>Pi → Orchestrator.</strong> Result of validating a pushed hardware library on the Pi — used to promote a lib version toward <code class="inline">stable</code>.</div>
+      </div>
+    </div>
+
+    <h3>Orchestrator → Pi</h3>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <span class="msg-key">START</span>
+        <div class="msg-desc"><strong>Orchestrator → Pi.</strong> Begins a task. The payload carries merged params, the resolved <code class="inline">HARDWARE</code> config dict for this pilot, and — for task-definition-backed steps — the <code class="inline">state_machine</code> key (the FDA JSON the Pi interprets).</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">LOAD_HARDWARE_LIBS</span>
+        <div class="msg-desc"><strong>Orchestrator → Pi.</strong> Sent just before <code class="inline">START</code> when the toolkit pins hardware libs. Carries driver source; the Pi writes each to its override directory and imports it.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">UPDATE_FDA</span>
+        <div class="msg-desc"><strong>Orchestrator → Pi.</strong> Hot-reload. Pushes a new FDA JSON to a running pilot (from the editor's "Push to Pilot"). Takes effect on next entry into an affected state — never interrupts the current state.</div>
+      </div>
+      <div class="msg-card">
+        <span class="msg-key">STOP / PING</span>
+        <div class="msg-desc"><strong>Orchestrator → Pi.</strong> <code class="inline">STOP</code> halts the running task; <code class="inline">PING</code> is the keepalive the orchestrator sends on its heartbeat loop.</div>
       </div>
     </div>
 
@@ -1560,78 +1892,33 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
     </div>
   </section>
 
-  <!-- PI TASKS -->
-  <section class="doc-section" id="pi-tasks">
+  <!-- PI RUNTIME -->
+  <section class="doc-section" id="pi-runtime">
     <div class="section-eyebrow">Technical Reference</div>
-    <h2>Pi Task System</h2>
-    <p>Each behavioral task runs on the Pi as a Python class. Tasks are discovered automatically via HANDSHAKE — no manual registration required. All task files live in <code class="inline">~/Apps/mice_interactive_home_cage/terminal/plugins/</code> on the Pi.</p>
+    <h2>Pi Runtime</h2>
+    <p>The Pi runs an autopilot process that acts as an <strong>interpreter</strong> for what the backend sends it. On <code class="inline">START</code> it receives the FDA JSON (in the <code class="inline">state_machine</code> key) and a hardware-config dict, then builds the running task at runtime via <code class="inline">load_fda_from_json()</code> — it does not hold a hardcoded copy of the task.</p>
 
-    <h3>Class Hierarchy</h3>
-    <div class="code-block">
-      <div class="code-header"><span class="code-lang">python</span><button class="copy-btn">copy</button></div>
-      <pre><span class="cls">Task</span>  <span class="cm">(autopilot base)</span>
-  └── <span class="cls">mics_task</span>  <span class="cm">(ZMQ comms, HANDSHAKE auto-registration)</span>
-        └── <span class="cls">learning_cage</span>  <span class="cm">(standard cage hardware defaults)</span>
-              └── <span class="cls">YourConcreteTask</span>  <span class="cm">(in terminal/plugins/)</span></pre>
-    </div>
+    <h3>What the Pi builds at START</h3>
+    <ul style="margin:8px 0 14px 20px;color:var(--text-2);font-size:.88rem;line-height:1.8">
+      <li><strong>Hardware</strong> — instances are created from the received config dict, using driver classes from the pushed hardware libs (written to an override directory by <code class="inline">LOAD_HARDWARE_LIBS</code>) rather than the autopilot package.</li>
+      <li><strong>States</strong> — each state's <code class="inline">entry_actions</code> are compiled into a callable; <em>passthrough</em> states with no actions reuse a locked Python method by name.</li>
+      <li><strong>Transitions</strong> — each condition (single comparison or recursive AND/OR tree) is compiled into a lambda over the live <code class="inline">view</code>; the state blocks on <code class="inline">wait_for_condition()</code> until one fires.</li>
+      <li><strong>Hardware is referenced semantically</strong> — the FDA JSON names hardware by friendly name (resolved via <code class="inline">SEMANTIC_HARDWARE</code>), so the same JSON runs on differently-wired rigs.</li>
+    </ul>
 
-    <h3>Task Declaration</h3>
-    <p>Every task class declares three class-level dicts that are read at HANDSHAKE time and stored in the DB:</p>
-    <div class="code-block">
-      <div class="code-header"><span class="code-lang">python</span><button class="copy-btn">copy</button></div>
-      <pre><span class="kw">class</span> <span class="cls">AppetitiveTask</span>(<span class="cls">learning_cage</span>):
-
-    <span class="cm"># Tunable parameters — shown in the UI param editor</span>
-    PARAMS = {
-        <span class="str">'open_duration'</span>:  {<span class="str">'tag'</span>: <span class="str">'Reward open (ms)'</span>,    <span class="str">'type'</span>: <span class="fn">float</span>, <span class="str">'default'</span>: <span class="num">50</span>},
-        <span class="str">'iti_duration'</span>:   {<span class="str">'tag'</span>: <span class="str">'ITI duration (ms)'</span>,    <span class="str">'type'</span>: <span class="fn">float</span>, <span class="str">'default'</span>: <span class="num">5000</span>},
-        <span class="str">'lick_threshold'</span>: {<span class="str">'tag'</span>: <span class="str">'Lick count to reward'</span>, <span class="str">'type'</span>: <span class="fn">int</span>,   <span class="str">'default'</span>: <span class="num">3</span>},
-    }
-
-    <span class="cm"># Physical hardware — GPIO pins, I2C devices</span>
-    HARDWARE = {
-        <span class="str">'REWARD'</span>: {<span class="str">'type'</span>: <span class="str">'Solenoid'</span>,   <span class="str">'pin'</span>: <span class="num">11</span>},
-        <span class="str">'LICKER'</span>: {<span class="str">'type'</span>: <span class="str">'LickSensor'</span>, <span class="str">'pin'</span>: <span class="num">7</span>},
-        <span class="str">'IR2'</span>:    {<span class="str">'type'</span>: <span class="str">'Beambreak'</span>,  <span class="str">'pin'</span>: <span class="num">13</span>},
-    }
-
-    <span class="cm"># Tracker flags — binary/counted state (lick count, hit/miss, etc.)</span>
-    FLAGS = {
-        <span class="str">'hit_trial'</span>:    <span class="cls">BooleanTracker</span>,
-        <span class="str">'lick_count'</span>:   <span class="cls">CountTracker</span>,
-    }</pre>
-    </div>
-
-    <h3>State Machine (FDA)</h3>
-    <p>Task flow is a <code class="inline">FiniteDeterministicAutomaton</code>. Each stage method ends with <code class="inline">return self.wait_for_condition()</code>, which blocks until a registered transition fires. Transitions are declared as lists of lambda conditions over <code class="inline">self.view</code>:</p>
-    <div class="code-block">
-      <div class="code-header"><span class="code-lang">python</span><button class="copy-btn">copy</button></div>
-      <pre><span class="kw">def</span> <span class="fn">__init__</span>(self, **kwargs):
-    <span class="fn">super</span>().__init__(**kwargs)
-
-    self.stages = <span class="cls">FiniteDeterministicAutomaton</span>()
-    self.stages.add_method(self.wait_for_lick)
-    self.stages.add_method(self.deliver_reward)
-    self.stages.add_method(self.iti)
-
-    <span class="cm"># Transition: wait_for_lick → deliver_reward when LICKER fires</span>
-    self.stages.add_transition(
-        self.wait_for_lick, self.deliver_reward,
-        [<span class="kw">lambda</span>: self.view.get_value(<span class="str">'LICKER'</span>) == <span class="kw">True</span>]
-    )
-
-<span class="kw">def</span> <span class="fn">wait_for_lick</span>(self):
-    self.hardware[<span class="str">'REWARD'</span>].trigger()   <span class="cm"># auto-logged via @log_action</span>
-    <span class="kw">return</span> self.wait_for_condition()     <span class="cm"># blocks here</span>
-
-<span class="kw">def</span> <span class="fn">deliver_reward</span>(self):
-    <span class="cm"># Graduation check — must be sent explicitly</span>
-    self.node.send(<span class="str">'T'</span>, <span class="str">'INC_TRIAL_COUNTER'</span>, {<span class="str">'n_trials'</span>: self.trial_counter})
-    <span class="kw">return</span> self.wait_for_condition()</pre>
-    </div>
+    <h3>Locked states</h3>
+    <p>The only task-specific Python that lives on the Pi is a set of <em>locked states</em> — reusable method bodies in a task file (e.g. <code class="inline">appetitive.py</code>). Their names are reported via HANDSHAKE (<code class="inline">available_locked_states</code>) and the FDA references them by name. The state-machine flow that wires them together comes entirely from the backend.</p>
 
     <h3>Auto-logging</h3>
-    <p>All methods on <code class="inline">Hardware</code> and <code class="inline">Tracker</code> classes are decorated with <code class="inline">@log_action</code>. This automatically dispatches a <code class="inline">CONTINUOUS</code> ZMQ event whenever hardware is activated — no manual logging code required in task methods.</p>
+    <p>All methods on <code class="inline">Hardware</code> and <code class="inline">Tracker</code> classes are decorated with <code class="inline">@log_action</code>, which automatically dispatches a <code class="inline">CONTINUOUS</code> ZMQ event whenever hardware is activated — no manual logging code in task methods. <code class="inline">INC_TRIAL_COUNTER</code> is the one exception: it must be emitted explicitly (as a <code class="inline">special</code> entry action in the FDA JSON) to trigger the graduation check.</p>
+
+    <div class="callout warn">
+      <span class="callout-icon">⚠</span>
+      <div class="callout-body">
+        <strong>Legacy declarative tasks still exist</strong>
+        Earlier MICS tasks declared everything in Python — class-level <code class="inline">PARAMS</code> / <code class="inline">HARDWARE</code> / <code class="inline">FLAGS</code> dicts and a hardcoded <code class="inline">FiniteDeterministicAutomaton</code>. That path remains for backward compatibility (a task started without a <code class="inline">state_machine</code> kwarg falls back to its Python FDA), but it is <strong>legacy</strong>. New tasks are defined entirely in the backend — do not author task logic on the Pi.
+      </div>
+    </div>
   </section>
 
   <!-- RUN MODES -->
@@ -1730,8 +2017,54 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
         <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><span class="route"><span class="method get">GET</span>/api/pilots</span></td><td>List all registered pilots</td></tr>
-          <tr><td><span class="route"><span class="method get">GET</span>/api/tasks/leaf</span></td><td>List task types available on connected pilots (from HANDSHAKE). Returns <code class="inline">[{task_name, default_params}]</code></td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/tasks/leaf</span></td><td>Legacy: task types from HANDSHAKE. Superseded by <code class="inline">GET /api/task-definitions</code></td></tr>
           <tr><td><span class="route"><span class="method get">GET</span>/orchestrator/pilots/live</span></td><td>Live pilot state from Redis (used by Web UI WebSocket poller)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Hardware Libraries</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/hardware-libs</span></td><td>Upload a driver <code class="inline">.py</code>; returns AST metadata (classes, methods, args). 422 with line number on broken Python</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/hardware-libs</span> · <span class="route"><span class="method get">GET</span>/api/hardware-libs/{id}</span></td><td>List / detail</td></tr>
+          <tr><td><span class="route"><span class="method put">PUT</span>/api/hardware-libs/{id}</span> · <span class="route"><span class="method delete">DELETE</span>/api/hardware-libs/{id}</span></td><td>Edit (creates a new version) / delete</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/hardware-libs/{id}/versions</span> · <span class="route"><span class="method get">GET</span>…/versions/diff</span></td><td>Version history and AST diff between two versions</td></tr>
+          <tr><td><span class="route"><span class="method patch">PATCH</span>/api/hardware-libs/{id}/mark-stable</span> · <span class="route"><span class="method post">POST</span>…/rollback</span></td><td>Promote a version to stable / roll back the active version</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Hardware Modules &amp; Pilot Config</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span> <span class="method post">POST</span>/api/hardware-modules</span></td><td>List / create modules (name → lib class). Validates the class exists in the lib's AST</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span> <span class="method put">PUT</span> <span class="method delete">DELETE</span>/api/hardware-modules/{id}</span></td><td>Module CRUD</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/hardware-modules/{id}/methods</span></td><td>Methods + arg signatures from the module's class (for the FDA editor)</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/pilots/{id}/hardware-config</span></td><td>This pilot's name-keyed hardware entries</td></tr>
+          <tr><td><span class="route"><span class="method put">PUT</span> <span class="method delete">DELETE</span>/api/pilots/{id}/hardware-config/{name}</span></td><td>Upsert / remove an entry by name</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/pilots/{id}/hardware-config/seed</span></td><td>Seed from the Pi's <code class="inline">prefs.json</code> HARDWARE section</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Toolkits &amp; Task Definitions</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/toolkits</span> · <span class="route"><span class="method get">GET</span>/api/toolkits/{id}</span> · <span class="route"><span class="method get">GET</span>/api/toolkits/by-name/{name}</span></td><td>List (grouped by name, variants per <code class="inline">hw_hash</code>) / detail</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span> <span class="method patch">PATCH</span>/api/toolkits</span></td><td>Create / edit a backend-authored toolkit (locked states + modules + flags + params). 422 on unknown state or module</td></tr>
+          <tr><td><span class="route"><span class="method patch">PATCH</span>/api/toolkits/{id}/set-canonical</span> · <span class="route"><span class="method get">GET</span>/api/toolkits/{id}/diff/{other}</span></td><td>Mark canonical variant / diff two variants' hardware</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/locked-states</span></td><td>State names each task file exposes (from HANDSHAKE)</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span> <span class="method post">POST</span>/api/task-definitions</span></td><td>List / create. Body includes <code class="inline">toolkit_id</code> + <code class="inline">fda_json</code></td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span> <span class="method put">PUT</span> <span class="method delete">DELETE</span>/api/task-definitions/{id}</span></td><td>Full CRUD with FDA JSON round-trip integrity</td></tr>
+          <tr><td><span class="route"><span class="method post">POST</span>/api/task-definitions/{id}/push</span></td><td>Hot-reload: forwards <code class="inline">UPDATE_FDA</code> to a named pilot via the orchestrator</td></tr>
+          <tr><td><span class="route"><span class="method get">GET</span>/api/toolkits/{id}/dispatch-spec</span> · <span class="route"><span class="method post">POST</span>/api/sessions/{id}/preflight-validate/{pilot_id}</span></td><td>Dispatch spec (HARDWARE the Pi will receive) / pre-run hardware cross-check</td></tr>
         </tbody>
       </table>
     </div>
@@ -1774,6 +2107,13 @@ footer p{color:var(--text-3);font-size:.78rem;font-family:var(--font-mono);margi
           <tr><td><code class="inline">/react/subjects/:subject/sessions-ui</code></td><td>Sessions for a specific subject — pilot selector, START / STOP controls</td></tr>
           <tr><td><code class="inline">/react/researchers-ui</code></td><td>Researchers list, create form, inline edit and soft-remove</td></tr>
           <tr><td><code class="inline">/react/iacuc-ui</code></td><td>IACUC protocol list, create form, inline edit and soft-remove</td></tr>
+          <tr><td><code class="inline">/react/projects-ui</code> · <code class="inline">/react/projects/:id</code> · <code class="inline">/react/experiments/:id</code></td><td>Project / experiment hierarchy</td></tr>
+          <tr><td><code class="inline">/react/hardware-libs-ui</code> · <code class="inline">/react/hardware-libs/:id</code></td><td>Hardware library list + upload; version history and diff</td></tr>
+          <tr><td><code class="inline">/react/hardware-modules-ui</code></td><td>Hardware modules list + create (name → lib class)</td></tr>
+          <tr><td><code class="inline">/react/pilots/:pilot/hardware-config</code></td><td>Per-pilot free-form hardware config table</td></tr>
+          <tr><td><code class="inline">/react/toolkits-ui</code></td><td>Toolkits list + backend-authored toolkit builder</td></tr>
+          <tr><td><code class="inline">/react/task-definitions-ui</code></td><td>Task definitions list (with broken-validation badges)</td></tr>
+          <tr><td><code class="inline">/react/task-editor/:id</code></td><td>Visual FDA editor — react-flow canvas, state body + condition panels, Push to Pilot</td></tr>
         </tbody>
       </table>
     </div>
@@ -1844,384 +2184,30 @@ curl -X POST http://localhost:9200/_snapshot/org_repo/&lt;snapshot_name&gt;/_res
 
   <div class="section-divider"></div>
 
-  <!-- M1 ROADMAP OVERVIEW -->
+  <!-- ROADMAP OVERVIEW -->
   <section class="doc-section" id="future-overview">
     <div class="section-eyebrow">Future Plans</div>
-    <h2>Milestone 1 — Roadmap Overview <span class="status-pill planned">○ Planned</span></h2>
+    <h2>Where the System Is Going</h2>
 
-    <p>Milestone 1 adds two major capabilities to MICS. The core value: <strong>researchers can define, modify, and deploy behavioral task logic — including state machine flows, hardware actions, and trigger callbacks — without writing Python or restarting the Pi.</strong></p>
+    <p>Everything described in the User Guide and Technical Reference above is the system <em>as it works today</em>: hardware drivers, wiring, task capabilities, and the state-machine flow are all authored in the browser and interpreted on the Pi. The roadmap below builds on that same paradigm rather than changing it — each future capability slots into the existing hardware-library → module → toolkit → task-definition pipeline.</p>
 
-    <div class="callout info">
-      <span class="callout-icon">ℹ</span>
-      <div class="callout-body">
-        <strong>Status: Planning complete — not started</strong>
-        All 56 v1 requirements are documented, phased, and traceable. Phase 1 has no blockers and can begin immediately. Phase 5 (Pi Editor: Viewer) can start in parallel with Phase 1 — they are fully independent.
+    <p>Three directions are planned. None of them ask the Pi to become smarter or require a researcher to write Python; they extend what can be expressed in the backend and how the Pi talks to the outside world.</p>
+
+    <div class="phase-cards">
+      <div class="phase-card">
+        <div class="phase-card-title">Pi Code Editor</div>
+        <div class="phase-card-goal">For developers: browse, edit, and restart Pi code from the browser — read-only viewer first, then a gated terminal, edit + restart, and package management. A convenience layer over SSH, not a change to how tasks are defined.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-card-title">MICS-Link — External Hardware</div>
+        <div class="phase-card-goal">Lets external software (DeepLabCut, OpenEphys, photometry) appear to a task as just another hardware module — its data flows into the same <code class="inline">view</code> that GPIO and I2C use, so transitions can gate on it with no new concepts.</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-card-title">Compute &amp; Variables</div>
+        <div class="phase-card-goal">Adds named variables and a small library of compute primitives (random draws, arithmetic) to the FDA editor, so tasks can derive values at state entry and branch on them — closing the loop on no-code task design.</div>
       </div>
     </div>
-
-    <h3>Phase Summary</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th><th>Phase</th><th>Goal</th><th>Requirements</th><th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code class="inline">01</code></td>
-            <td><strong>Pi Foundation</strong></td>
-            <td>Pi loads and hot-reloads a complete FDA state machine from JSON without restart</td>
-            <td>FDA-01–14, TRIG-01–05, HOT-02 <em>(24 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">02</code></td>
-            <td><strong>DB + API</strong></td>
-            <td>Toolkit metadata stored from HANDSHAKE; task definitions created/pushed via REST API</td>
-            <td>DB-01–08, VAR-01–05 <em>(13 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">03</code></td>
-            <td><strong>Visual FDA Editor</strong></td>
-            <td>Non-technical researchers build task state machines visually in the browser</td>
-            <td>UI-01–10, VAR-06 <em>(11 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">04</code></td>
-            <td><strong>Protocol Integration</strong></td>
-            <td>Protocol steps reference task definitions; FDA JSON flows end-to-end to Pi</td>
-            <td>PROTO-01–03, VAR-07 <em>(4 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">05</code></td>
-            <td><strong>Pi Editor: Viewer</strong></td>
-            <td>Any lab member can browse Pi task source files in the browser without SSH access</td>
-            <td>EDIT-01–06 <em>(6 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">06</code></td>
-            <td><strong>Pi Editor: Terminal</strong></td>
-            <td>Developers can run commands on the Pi from a browser terminal</td>
-            <td>EDIT-07–10 <em>(4 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">07</code></td>
-            <td><strong>Pi Editor: Edit + Restart</strong></td>
-            <td>Developers can edit toolkit Python files and restart the pilot without SSH</td>
-            <td>EDIT-11–14 <em>(4 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-          <tr>
-            <td><code class="inline">08</code></td>
-            <td><strong>Pi Editor: Packages</strong></td>
-            <td>Developers can sync code and manage Pi dependencies from the browser</td>
-            <td>EDIT-15–17 <em>(3 reqs)</em></td>
-            <td><span class="status-pill planned">○ Pending</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Dependency Graph</h3>
-    <div class="arch-diagram">
-<pre>Feature 1 — ToolKit + FDA Redesign        Feature 2 — Pi Code Editor
-─────────────────────────────────         ────────────────────────────────────
-
-Phase 1 (Pi Foundation)                   Phase 5 (Pi Editor: Viewer)
-    │  FLAGS + SEMANTIC_HARDWARE               │  pi_ssh.py + page scaffold
-    │  in HANDSHAKE payload                    │
-    ▼                                          ▼
-Phase 2 (DB + API)                        Phase 6 (Pi Editor: Terminal)
-    │  toolkits + task-definitions API         │  exec infrastructure + ALLOW_PI_EXEC gate
-    │                                          │
-    ▼                                          ▼
-Phase 3 (Visual FDA Editor)               Phase 7 (Pi Editor: Edit + Restart)
-    │  task definitions with valid fda_json    │  exec infra + Phase 2 (required_packages)
-    │                                          │
-    ▼                                          ▼
-Phase 4 (Protocol Integration)            Phase 8 (Pi Editor: Packages)
-
-Phase 5 is independent — starts in parallel with Phase 1.</pre>
-    </div>
-  </section>
-
-  <!-- TOOLKIT + FDA REDESIGN -->
-  <section class="doc-section" id="fda-redesign">
-    <div class="section-eyebrow">Future Plans</div>
-    <h2>ToolKit + FDA Redesign</h2>
-
-    <p>Today, every behavioral state machine is hardcoded in Python. Changing a state action, adding a transition, or rewiring a hardware trigger requires editing Pi source files and restarting the pilot process. The ToolKit + FDA redesign decouples <em>what a task does</em> (defined in a ToolKit Python class) from <em>how it flows</em> (defined in an FDA JSON document stored in the database and editable in the browser).</p>
-
-    <h3>Key concepts</h3>
-    <div class="msg-grid">
-      <div class="msg-card">
-        <span class="msg-key">ToolKit</span>
-        <div class="msg-desc">A Python class on the Pi that exposes hardware, flags, params, and callable methods. Defines <em>capabilities</em> — not flow. Declares <code class="inline">SEMANTIC_HARDWARE</code> (friendly names → physical GPIO), <code class="inline">FLAGS</code>, and <code class="inline">CALLABLE_METHODS</code>. Sent to the server via an enriched HANDSHAKE.</div>
-      </div>
-      <div class="msg-card">
-        <span class="msg-key">FDA JSON v2</span>
-        <div class="msg-desc">A JSON document stored in the <code class="inline">task_definitions</code> table. Declares states with <code class="inline">entry_actions</code> (hardware calls, flag updates, timer triggers, custom methods), transitions with conditions, and trigger assignments. Interpreted at runtime by <code class="inline">load_fda_from_json()</code> in <code class="inline">mics_task</code>.</div>
-      </div>
-      <div class="msg-card">
-        <span class="msg-key">Hot-Reload</span>
-        <div class="msg-desc">A <code class="inline">UPDATE_FDA</code> ZMQ message pushes updated state body / transition changes to a running Pi without restart. Changes take effect on the next entry into the affected state — the currently-executing state is never interrupted.</div>
-      </div>
-      <div class="msg-card">
-        <span class="msg-key">Semantic Hardware</span>
-        <div class="msg-desc">The <code class="inline">SEMANTIC_HARDWARE</code> dict maps friendly names (<code class="inline">"reward_port"</code>, <code class="inline">"lick_sensor"</code>) to <code class="inline">(group, id)</code> tuples. FDA JSON references semantic names, never raw GPIO IDs — the same JSON runs on different rig configurations.</div>
-      </div>
-    </div>
-
-    <h3>FDA JSON v2 — structure example</h3>
-    <div class="code-block">
-      <div class="code-header"><span class="code-lang">json</span><button class="copy-btn">copy</button></div>
-      <pre>{
-  <span class="str">"states"</span>: {
-    <span class="str">"wait_lick"</span>: {
-      <span class="str">"entry_actions"</span>: [
-        { <span class="str">"type"</span>: <span class="str">"hardware"</span>, <span class="str">"ref"</span>: <span class="str">"reward_port"</span>, <span class="str">"method"</span>: <span class="str">"set_light"</span>, <span class="str">"args"</span>: [<span class="kw">true</span>] },
-        { <span class="str">"type"</span>: <span class="str">"flag"</span>,     <span class="str">"ref"</span>: <span class="str">"in_trial"</span>,    <span class="str">"value"</span>: <span class="kw">true</span> },
-        { <span class="str">"type"</span>: <span class="str">"timer"</span>,    <span class="str">"ref"</span>: <span class="str">"trial_timer"</span>, <span class="str">"method"</span>: <span class="str">"start"</span> }
-      ],
-      <span class="str">"blocking"</span>: <span class="str">"stage_block"</span>,
-      <span class="str">"transitions"</span>: [
-        { <span class="str">"to"</span>: <span class="str">"reward"</span>,   <span class="str">"condition"</span>: { <span class="str">"view_key"</span>: <span class="str">"LICKER1"</span>, <span class="str">"op"</span>: <span class="str">"eq"</span>, <span class="str">"value"</span>: <span class="num">1</span> } },
-        { <span class="str">"to"</span>: <span class="str">"timeout"</span>, <span class="str">"condition"</span>: { <span class="str">"view_key"</span>: <span class="str">"TRIAL_TIME"</span>, <span class="str">"op"</span>: <span class="str">"gt"</span>, <span class="str">"value"</span>: { <span class="str">"param"</span>: <span class="str">"max_wait_s"</span> } } }
-      ]
-    },
-    <span class="str">"reward"</span>: {
-      <span class="str">"entry_actions"</span>: [
-        { <span class="str">"type"</span>: <span class="str">"hardware"</span>, <span class="str">"ref"</span>: <span class="str">"reward_port"</span>, <span class="str">"method"</span>: <span class="str">"dispense"</span>, <span class="str">"args"</span>: [{ <span class="str">"param"</span>: <span class="str">"reward_volume_ul"</span> }] },
-        { <span class="str">"type"</span>: <span class="str">"special"</span>,  <span class="str">"ref"</span>: <span class="str">"INC_TRIAL_COUNTER"</span> }
-      ],
-      <span class="str">"return_data"</span>: { <span class="str">"lick_rt_ms"</span>: { <span class="str">"flag"</span>: <span class="str">"reaction_time"</span> } }
-    }
-  },
-  <span class="str">"trigger_assignments"</span>: {
-    <span class="str">"TOUCH_INT"</span>: { <span class="str">"type"</span>: <span class="str">"touch_detector"</span>, <span class="str">"view_key"</span>: <span class="str">"LICKER1"</span> }
-  }
-}</pre>
-    </div>
-
-    <!-- PHASE 1 -->
-    <div class="phase-divider">Phase 1</div>
-    <div class="part-header">
-      <div class="part-num">01</div>
-      <div>
-        <div class="part-label">Pi Foundation</div>
-        <div class="part-sub">FDA-01–14 · TRIG-01–05 · HOT-02 · 24 requirements</div>
-      </div>
-    </div>
-    <p><strong>Goal:</strong> Pi can load and hot-reload a complete FDA state machine from JSON without restarting the pilot process. Backward compatible — tasks without a <code class="inline">state_machine</code> kwarg continue to use their hardcoded Python FDA.</p>
-
-    <h3>Deliverables</h3>
-    <ul class="steps">
-      <li>
-        <span class="step-num">1</span>
-        <div class="step-content">
-          <strong><code class="inline">load_fda_from_json()</code> in <code class="inline">mics_task.py</code></strong>
-          <p>Handles both v1 (states list) and v2 (states object with entry_actions) formats. Builds state methods dynamically via <code class="inline">_build_state_method()</code>. Passthrough states (no entry_actions) use the existing Python toolkit method directly.</p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">2</span>
-        <div class="step-content">
-          <strong>SEMANTIC_HARDWARE + arg resolution</strong>
-          <p><code class="inline">SEMANTIC_HARDWARE</code> dict maps friendly names to <code class="inline">(group, id)</code> tuples. Entry action args resolve to literal values, <code class="inline">{"param": "name"}</code>, or <code class="inline">{"flag": "name"}</code> at runtime.</p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">3</span>
-        <div class="step-content">
-          <strong>Trigger assignments</strong>
-          <p><code class="inline">apply_trigger_assignments()</code> reads <code class="inline">trigger_assignments</code> from FDA JSON and appends semantic view-update callbacks to <code class="inline">self.triggers[pin]</code>. Hardware logging via <code class="inline">execute_trigger()</code> is unconditional and unaffected.</p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">4</span>
-        <div class="step-content">
-          <strong>Enriched HANDSHAKE payload</strong>
-          <p>Pilot sends FLAGS, SEMANTIC_HARDWARE, SEMANTIC_HARDWARE_RENAMES, STAGE_NAMES, CALLABLE_METHODS, and REQUIRED_PACKAGES in every HANDSHAKE. Enables Phase 2 to populate <code class="inline">task_toolkits</code> from live Pi metadata.</p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">5</span>
-        <div class="step-content">
-          <strong><code class="inline">validate_fda.py</code> CLI tool</strong>
-          <p>Exits 0 on valid JSON; exits 1 with a specific error for unknown state names, unknown refs, unknown params, or unknown callable_method refs. Subcommand <code class="inline">rename-hw-ref &lt;old&gt; &lt;new&gt;</code> performs SQL UPDATE on all <code class="inline">task_definitions.fda_json</code> rows that reference the old semantic name.</p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">6</span>
-        <div class="step-content">
-          <strong>Deploy scripts</strong>
-          <p><code class="inline">tools/sync_pi.sh</code> rsyncs <code class="inline">autopilot/</code> to the Pi. <code class="inline">tools/deploy_pi.sh</code> syncs and restarts the pilot process.</p>
-        </div>
-      </li>
-    </ul>
-
-    <h3>Backward compatibility</h3>
-    <p><code class="inline">SEMANTIC_HARDWARE_RENAMES</code> maps deprecated semantic names to their current replacement. <code class="inline">load_fda_from_json()</code> resolves old refs transparently — existing stored FDA JSON documents with stale names continue to work. <code class="inline">validate_fda.py</code> emits a deprecation warning (not an error) for renamed refs.</p>
-
-    <!-- PHASE 2 -->
-    <div class="phase-divider">Phase 2</div>
-    <div class="part-header">
-      <div class="part-num">02</div>
-      <div>
-        <div class="part-label">DB + API</div>
-        <div class="part-sub">DB-01–08 · VAR-01–05 · 13 requirements · Depends on Phase 1</div>
-      </div>
-    </div>
-    <p><strong>Goal:</strong> Toolkit metadata is automatically captured from every Pi HANDSHAKE and stored in the database. Task definitions (FDA JSON + params) can be created, edited, and pushed to pilots via the REST API.</p>
-
-    <h3>New DB tables</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr></thead>
-        <tbody>
-          <tr>
-            <td><code class="inline">task_toolkits</code></td>
-            <td><code class="inline">id, name, hw_hash, states, flags, params_schema, semantic_hardware, callable_methods, required_packages, file_hash</code></td>
-            <td>Auto-populated on HANDSHAKE. Toolkit identity is <code class="inline">(name, hw_hash)</code> — same name + same SEMANTIC_HARDWARE = same record; different hardware = separate variant.</td>
-          </tr>
-          <tr>
-            <td><code class="inline">toolkit_pilot_origins</code></td>
-            <td><code class="inline">toolkit_id, pilot_id, first_seen_at, last_seen_at</code></td>
-            <td>Tracks which pilot each toolkit variant was seen on. Upserted on every HANDSHAKE.</td>
-          </tr>
-          <tr>
-            <td><code class="inline">task_definitions</code> <em>(extended)</em></td>
-            <td><code class="inline">+ toolkit_name, fda_json (JSONB), display_name</code></td>
-            <td>Stores the user-authored FDA JSON document bound to a specific toolkit variant.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>New API endpoints</h3>
-    <div class="msg-grid">
-      <div class="msg-card">
-        <span class="route"><span class="method get">GET</span>/api/toolkits</span>
-        <div class="msg-desc">Returns toolkits grouped by name; each variant includes hw_hash, pilot_origins, fda_count. <span class="req-tag">DB-03</span> <span class="req-tag">VAR-04</span></div>
-      </div>
-      <div class="msg-card">
-        <span class="route"><span class="method get">GET</span>/api/toolkits/:name</span>
-        <div class="msg-desc">Full toolkit detail: all metadata fields needed by the Visual FDA Editor. <span class="req-tag">DB-04</span></div>
-      </div>
-      <div class="msg-card">
-        <span class="route"><span class="method post">POST</span>/api/task-definitions</span>
-        <div class="msg-desc">Create a task definition from a toolkit + FDA JSON + default_params. <span class="req-tag">DB-05</span></div>
-      </div>
-      <div class="msg-card">
-        <span class="route"><span class="method get">GET</span> <span class="method patch">PATCH</span> <span class="method delete">DELETE</span>/api/task-definitions/:id</span>
-        <div class="msg-desc">Full CRUD with fda_json round-trip integrity. <span class="req-tag">DB-06</span></div>
-      </div>
-      <div class="msg-card">
-        <span class="route"><span class="method post">POST</span>/api/task-definitions/:id/push</span>
-        <div class="msg-desc">Forwards <code class="inline">UPDATE_FDA</code> ZMQ message to a named pilot via the orchestrator. Returns <code class="inline">HOT_RELOAD_ACK</code> status. <span class="req-tag">DB-07</span></div>
-      </div>
-    </div>
-
-    <!-- PHASE 3 -->
-    <div class="phase-divider">Phase 3</div>
-    <div class="part-header">
-      <div class="part-num">03</div>
-      <div>
-        <div class="part-label">Visual FDA Editor</div>
-        <div class="part-sub">UI-01–10 · VAR-06 · 11 requirements · Depends on Phase 2</div>
-      </div>
-    </div>
-    <p><strong>Goal:</strong> Non-technical researchers can build and modify complete task state machines in the browser — no Python, no file editing, no Pi restart. Changes can be pushed to a running pilot instantly via hot-reload.</p>
-
-    <div class="callout info">
-      <span class="callout-icon">ℹ</span>
-      <div class="callout-body">
-        <strong>This is the primary user-facing deliverable of Milestone 1.</strong>
-        All prior phases (Pi Foundation, DB + API) exist to make this page possible. The Visual FDA Editor is the moment researchers become self-sufficient.
-      </div>
-    </div>
-
-    <h3>Page: <code class="inline">/react/task-editor/:id</code></h3>
-    <ul class="steps">
-      <li>
-        <span class="step-num">1</span>
-        <div class="step-content">
-          <strong>react-flow canvas — states + transitions</strong>
-          <p>States rendered as draggable nodes. Transitions as directed edges between node handles. Drag between two handles to create a new transition. <span class="req-tag">UI-02</span></p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">2</span>
-        <div class="step-content">
-          <strong>Condition builder (right panel — edge selected)</strong>
-          <p>View key dropdown (populated from toolkit's state names and FDA view keys) + operator dropdown (<code class="inline">eq / gt / lt / ne</code>) + smart value input (toggle literal / param-ref / flag-ref). <span class="req-tag">UI-03</span> <span class="req-tag">UI-06</span></p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">3</span>
-        <div class="step-content">
-          <strong>State body editor (right panel — node selected)</strong>
-          <p>Entry actions list with add / remove / reorder. Each action has a type picker: hardware (semantic ref + method + args), flag, timer, special (<code class="inline">INC_TRIAL_COUNTER</code>), custom method (callable_methods dropdown). Blocking toggle. Return data list. Passthrough states show a <code class="inline">{py}</code> lock badge and are read-only. <span class="req-tag">UI-04</span> <span class="req-tag">UI-05</span> <span class="req-tag">UI-05a</span></p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">4</span>
-        <div class="step-content">
-          <strong>Trigger assignment panel (separate tab)</strong>
-          <p>All trigger hardware listed. Per-trigger: dropdown for handler type (default / touch_detector / digital_input) + config fields. Note shown that hardware logging is always automatic via <code class="inline">execute_trigger()</code>. <span class="req-tag">UI-07</span></p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">5</span>
-        <div class="step-content">
-          <strong>Push to Pilot button</strong>
-          <p>Enabled only when a pilot is currently running this task definition. Calls <code class="inline">POST /api/task-definitions/:id/push</code>. Shows a success toast within 2 s of Pi confirming <code class="inline">HOT_RELOAD_ACK</code>. <span class="req-tag">UI-09</span></p>
-        </div>
-      </li>
-      <li>
-        <span class="step-num">6</span>
-        <div class="step-content">
-          <strong>Save</strong>
-          <p>Serializes canvas (nodes + edges), state body editor, and trigger assignments into FDA JSON v2 and calls <code class="inline">PUT /api/task-definitions/:id</code>. <span class="req-tag">UI-10</span></p>
-        </div>
-      </li>
-    </ul>
-
-    <h3>Toolkit variant picker</h3>
-    <p>When two or more variants exist for a toolkit name (same Python class, different <code class="inline">SEMANTIC_HARDWARE</code> — e.g. different rig wiring), the editor shows an explicit variant picker with a hardware diff table highlighting added, removed, and changed semantic keys. <span class="req-tag">VAR-06</span></p>
-
-    <!-- PHASE 4 -->
-    <div class="phase-divider">Phase 4</div>
-    <div class="part-header">
-      <div class="part-num">04</div>
-      <div>
-        <div class="part-label">Protocol Integration</div>
-        <div class="part-sub">PROTO-01–03 · VAR-07 · 4 requirements · Depends on Phase 3</div>
-      </div>
-    </div>
-    <p><strong>Goal:</strong> Protocol steps reference named task definitions instead of raw <code class="inline">task_type</code> strings. The FDA JSON flows end-to-end from the database to the Pi on every session start — without any manual file editing.</p>
-
-    <h3>Changes</h3>
-    <div class="msg-grid">
-      <div class="msg-card">
-        <span class="msg-key">Protocol builder</span>
-        <div class="msg-desc">The task palette in <code class="inline">/react/protocols-create</code> shows named task definitions (with display names) instead of raw <code class="inline">task_type</code> strings. Each protocol step stores a <code class="inline">task_definition_id</code>. <span class="req-tag">PROTO-01</span></div>
-      </div>
-      <div class="msg-card">
-        <span class="msg-key">Session start</span>
-        <div class="msg-desc">The orchestrator's <code class="inline">_build_step_task()</code> resolves <code class="inline">fda_json</code> from the task definition and includes it in the <code class="inline">state_machine</code> key of the START payload. Pi calls <code class="inline">load_fda_from_json()</code> at task start. <span class="req-tag">PROTO-02</span></div>
-      </div>
-      <div class="msg-card">
-        <span class="msg-key">Deprecation</span>
-        <div class="msg-desc"><code class="inline">GET /api/tasks/leaf</code> is deprecated in favour of <code class="inline">GET /api/task-definitions</code>. Existing protocol UI flows continue to work without 404s during transition. <span class="req-tag">PROTO-03</span></div>
-      </div>
-    </div>
+    <p style="color:var(--text-2);font-size:.88rem">Each is explained below in terms of the design idea behind it.</p>
   </section>
 
   <!-- PI CODE EDITOR -->
@@ -2235,7 +2221,7 @@ Phase 5 is independent — starts in parallel with Phase 1.</pre>
       <span class="callout-icon">⚠</span>
       <div class="callout-body">
         <strong>Phase 5 (Viewer) is deployment-safe at any time</strong>
-        Phase 5 is fully read-only and has no execution risk. It can be deployed to production immediately in parallel with Feature 1 work. Phases 6–8 involve remote code execution and require <code class="inline">ALLOW_PI_EXEC=true</code> to be set explicitly.
+        Phase 5 is fully read-only and has no execution risk — it can ship to production immediately. Phases 6–8 involve remote code execution and require <code class="inline">ALLOW_PI_EXEC=true</code> to be set explicitly.
       </div>
     </div>
 
@@ -2301,13 +2287,60 @@ Phase 5 is independent — starts in parallel with Phase 1.</pre>
     </ul>
   </section>
 
+  <!-- MICS-LINK -->
+  <section class="doc-section" id="mics-link">
+    <div class="section-eyebrow">Future Plans</div>
+    <h2>MICS-Link — External Hardware <span class="status-pill planned">○ Planned</span></h2>
+
+    <p>Today a task reads sensors through the <code class="inline">view</code>: a GPIO edge or an I2C reading lands in <code class="inline">view.get_value("LICKER1")</code>, and a transition gates on it. MICS-Link extends that exact idea to <em>software</em> running off the Pi — a pose-tracker like DeepLabCut, an ephys rig like OpenEphys, a photometry stream. The design goal is that none of these should feel special to a task author.</p>
+
+    <h3>The core idea: an external source <em>is</em> a hardware module</h3>
+    <p>Instead of inventing a new ingestion path, MICS-Link makes external software look like any other piece of hardware. An author writes one <code class="inline">ExternalHardware</code> subclass and decorates its fields with <code class="inline">@signal</code> (a continuously-updated value), <code class="inline">@event</code> (a discrete occurrence), and <code class="inline">@command</code> (something the task can send back). That class is uploaded as an ordinary <strong>hardware library</strong>, registered as a <strong>hardware module</strong>, and selected by a <strong>toolkit</strong> — the same pipeline used for GPIO drivers. Its per-pilot network settings (<code class="inline">listen_port</code>, <code class="inline">source_id</code>, <code class="inline">stale_ms</code>) live in the free-form <code class="inline">pilot_hardware_config</code> — no schema change, no new tables.</p>
+
+    <h3>What changes on the Pi — almost nothing</h3>
+    <p>At task start, each external-hardware instance binds its own ZMQ ROUTER socket on its configured port and accepts only the one configured DEALER identity. Inbound values are written into a <code class="inline">view</code> Tracker, auto-registered under the source's name. From there a transition reads <code class="inline">view.get_value("dlc_cam1.left_paw_x") &gt; 0.5</code> through the same API as a lick sensor — <strong>zero new call sites, zero new message shapes</strong>. Liveness is built in: if heartbeats stop, the source flips to "not alive" after its stale window and per-signal defaults kick in, so a dropped camera never silently freezes a task.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Why this shape</strong>
+        Closed-loop neuroscience (trigger a stim when a paw crosses a line, reward on a detected behavior) needs external measurement to drive task logic in real time. By routing it through the existing hardware + View abstraction rather than a bespoke pipeline, the entire visual FDA editor, preflight check, and logging stack work on external data for free.
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPUTE PRIMITIVES + VARIABLES -->
+  <section class="doc-section" id="compute-primitives">
+    <div class="section-eyebrow">Future Plans</div>
+    <h2>Compute &amp; Variables <span class="status-pill planned">○ Planned</span></h2>
+
+    <p>The visual FDA editor lets you wire states and gate transitions, but a task often needs to <em>decide something</em> at runtime — pick a random target side, count up a running value, derive a threshold. Today that decision has to be baked into a locked Python state. Compute &amp; Variables closes the last no-code gap by letting a GUI-assembled task produce computed values and branch on them.</p>
+
+    <h3>Two small additions, kept deliberately simple</h3>
+    <ul style="margin:8px 0 14px 20px;color:var(--text-2);font-size:.88rem;line-height:1.8">
+      <li><strong>A <code class="inline">variables</code> registry</strong> declared at the top of the FDA JSON. Each variable becomes a Tracker that lives in both <code class="inline">flags</code> and the <code class="inline">view</code> — so it is readable by transitions exactly like a sensor value.</li>
+      <li><strong>A <code class="inline">compute</code> entry action</strong> that calls one curated primitive (<code class="inline">random_choice</code>, <code class="inline">random_bool</code>, <code class="inline">add</code>, <code class="inline">clamp</code>, …) and writes the result into a named variable. Recomputed once per state entry, last-write-wins.</li>
+    </ul>
+
+    <h3>The paradigm guardrail: branching stays in transitions</h3>
+    <p>The primitives only <em>produce values</em> — they intentionally include no boolean-logic operators. All branching continues to live in transition conditions (the same AND/OR condition trees you already build). A trial-onset state computes <code class="inline">target = random_bool(0.5)</code>; two transitions then gate on <code class="inline">target == true</code> and <code class="inline">target == false</code>. This keeps the control flow visible on the canvas instead of hidden inside an expression, and keeps the Pi's determinism guarantees intact (compute actions are pure reads + one write).</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ</span>
+      <div class="callout-body">
+        <strong>Library-backed, not a scripting language</strong>
+        The primitives are stored and versioned through the same hardware-library + AST mechanism as drivers, so the editor can offer each primitive's signature with type hints. A free-form expression escape-hatch was considered and deliberately deferred — the curated library covers current needs without opening a sandbox-evaluation surface.
+      </div>
+    </div>
+  </section>
+
 </main>
 </div>
 
 <footer>
   <img src="yizhar-lab.jpg" alt="Yizhar Lab" style="width:48px;height:auto;border-radius:4px;opacity:0.95;flex-shrink:0;mix-blend-mode:screen" />
   <p>MICS Documentation · Yizhar Lab · Weizmann Institute of Science</p>
-  <p style="margin-left:auto">Built with MICS v1.0</p>
+  <p style="margin-left:auto">MICS · Milestone 1</p>
 </footer>
 
 <script>

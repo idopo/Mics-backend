@@ -1,0 +1,14 @@
+Hit/false-alarm trajectory: per-mouse first -> last session
+(accuracy = hits/(hits+FA); success = hits/trials; lick-bout based)
+
+## Appetitive (tone)
+  m90    accuracy  18.7 ->  14.0   success  80.0 ->  41.7   (13 sessions)
+  m92    accuracy  22.0 ->  18.5   success  73.3 ->  25.0   (11 sessions)
+  m93    accuracy  23.5 ->  21.9   success  59.3 ->  11.7   (12 sessions)
+  m97    accuracy  27.6 ->  18.1   success  35.0 ->  68.3   (8 sessions)
+  m98    accuracy  15.6 ->  25.0   success  16.4 ->  26.2   (12 sessions)
+  m100   accuracy  11.7 ->  15.1   success  14.8 ->  54.1   (4 sessions)
+  m101   accuracy   9.7 ->  19.0   success   5.0 ->  39.3   (12 sessions)
+  m102   accuracy  13.6 ->  14.3   success  50.8 ->  52.5   (11 sessions)
+  m103   accuracy  15.0 ->  19.2   success  26.2 ->  67.2   (12 sessions)
+  m104   accuracy  17.0 ->  19.1   success  46.7 ->  15.0   (12 sessions)

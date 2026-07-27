@@ -30,7 +30,7 @@ both` comparison). `overview/` has only `appetitive` and `generalization`;
 |---|---|---|
 | `overview/` | `appetitive_analysis.py`, `generalization_analysis.py` | Did they learn? Rasters, hit-rate + lick-hit-rate learning curves, poke breakdown |
 | `learner_criterion/` | `learner_criterion_analysis.py` | Who is a learner? Formal classification — participation vs competence, never hit rate alone |
-| `learning_trajectories/` | `learning_trajectories_analysis.py` | How does the phenotype move over sessions? Per-metric trajectories, radar, cue→first-poke latency |
+| `learning_trajectories/` | `learning_trajectories_analysis.py` | How does the phenotype move over sessions? Per-metric trajectories, radar, cue→first-poke latency, per-mouse participation (any-poke %) vs correct-engagement (on-cue poke + lick %) 2-D trajectory |
 | `action_sequence/` | `action_sequence_analysis.py` | Where in cue→poke→lick→reward does behaviour break? Chain decomposition, funnel, transition matrix |
 | `trial_history/` | `trial_history_analysis.py` | Does behaviour depend on the recent past? Reward-gating / persistence / off-cue, logistic models |
 | `on_off_cue/` | `on_off_cue_analysis.py` | On-cue vs off-cue licking, lick-density PSTH, ITI timing |

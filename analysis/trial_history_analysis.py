@@ -108,6 +108,16 @@ def base_fields(trial: dict, dur_key: str) -> dict:
         "n_licks": len(trial["licks"]),
         "cue_to_poke_latency": first_on,
         "poke_to_lick_latency": (first_lick - first_on) if (engaged and licks_after) else NAN,
+        # raw event times (cue-relative) retained so downstream analyses can compute
+        # poke->lick-bout timing themselves; not emitted to the trial CSV.
+        "cue_dur": dur,
+        # ITI onset/end (cue-relative); response window is [0, iti_start), ITI is
+        # [iti_start, iti_end]. Falls back to cue_dur if the trial lacks ITI timing.
+        "iti_start": trial.get("iti_start", dur),
+        "iti_end": trial.get("iti_end", dur),
+        "nose_pokes": list(trial["nose_pokes"]),
+        "licks": list(trial["licks"]),
+        "n_false_alarms": trial.get("n_false_alarms", 0),  # ITI pokes → timer resets
     }
 
 
@@ -150,21 +160,24 @@ def _enrich_session(trials: list[dict], dur_key: str) -> list[dict]:
 
 def load_appetitive(only_mouse: str | None) -> list[dict]:
     """Records {task, mouse, subject, session, training_day, trials} for the tone
-    task; reuses A.discover_subjects / fetch_events / group_by_session / segment."""
+    task. Sessions are segmented by LAB-DAY (A.group_by_day), not the unreliable ES
+    `session` counter which sometimes merged two days' runs into one (~120 trials).
+    A.keep_main_run then trims any same-day aborted false-start, leaving the full
+    session. `session` holds the calendar date and `training_day` the 1..N ordinal."""
     records = []
     for subject in A.discover_subjects():
         mouse = A.short_name(subject)
         if only_mouse and mouse != only_mouse:
             continue
-        by_session = A.group_by_session(A.fetch_events(subject))
+        by_day = A.group_by_day(A.fetch_events(subject))
         day = 0
-        for sess in sorted(by_session):
-            trials = A.segment_trials(by_session[sess])
+        for daykey in sorted(by_day):
+            trials = A.segment_trials(A.keep_main_run(by_day[daykey]))
             if not A.session_len_ok(len(trials)):
                 continue
             day += 1
             records.append({"task": TASK_APP, "mouse": mouse, "subject": subject,
-                            "session": sess, "training_day": day,
+                            "session": daykey, "training_day": day,
                             "trials": _enrich_session(trials, "tone_dur")})
     return records
 

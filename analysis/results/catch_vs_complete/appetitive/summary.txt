@@ -1,0 +1,8 @@
+CATCH vs COMPLETE — Appetitive (tone)
+============================================================
+
+1. Consummatory licking (licks per response poke bout):
+   pooled complete n=1233 mean=11.30; catch n=76 mean=5.54; perm p=0.0000; 10/10 mice complete>catch
+
+2. Next-trial engagement:
+   after_complete: P(engage)=0.375 (n=1232); after_catch: P(engage)=0.307 (n=75)

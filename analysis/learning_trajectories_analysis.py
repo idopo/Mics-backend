@@ -22,6 +22,11 @@ Figures (results/learning_trajectories/<area>/):
   first_vs_last_slopes.png         early-phase vs late-phase per mouse, per metric
   phenotype_radar.png              group phenotype shape, early vs late overlaid
   learning_index_heatmap.png       per-mouse composite maturity across sessions
+  poke_vs_oncue_lick_trajectory.png  participation/engagement map (styled like the
+                                   learner-criterion map) — x = % trials with any
+                                   nose poke, y = % trials with an on-cue poke +
+                                   following lick, one early->late arrow per mouse
+  poke_vs_oncue_lick_by_session.csv  per-session (task, mouse) poke% and on-cue+lick%
   cue_to_first_poke_latency_group.png       mean cue->first-on-cue-poke latency,
                                    group mean +- SEM per session, one line per task
   cue_to_first_poke_latency.csv    per-session mean latency + n engaged trials
@@ -59,6 +64,31 @@ _ENV_OUT = os.environ.get("MICS_TRAJ_OUT")
 OUT_ROOT = _ENV_OUT or str(_RESULTS_ROOT / "learning_trajectories" / "cross_task")
 
 MIN_BOUT = int(os.environ.get("MICS_MIN_BOUT", "4"))
+# gap (s) between consecutive licks that ends a consummatory lick bout — same
+# definition as on_off_cue_analysis (MICS_LICK_BOUT_GAP), kept consistent here.
+LICK_BOUT_GAP = float(os.environ.get("MICS_LICK_BOUT_GAP", "1.0"))
+
+
+def _lick_bout_onsets(licks: list[float]) -> list[float]:
+    """Onset time of each lick bout: the first lick, plus any lick that follows a
+    gap longer than LICK_BOUT_GAP. A run of licks within the gap is one bout."""
+    ordered = sorted(licks)
+    if not ordered:
+        return []
+    onsets = [ordered[0]]
+    for prev, cur in zip(ordered, ordered[1:]):
+        if cur - prev > LICK_BOUT_GAP:
+            onsets.append(cur)
+    return onsets
+
+
+def _poke_then_lick_bout(pokes: list[float], bout_onsets: list[float]) -> bool:
+    """True if the mouse STARTED a lick bout after poking — a lick-bout onset at or
+    after the earliest poke (poke -> drink), not merely a lick mid-bout."""
+    if not pokes or not bout_onsets:
+        return False
+    first_poke = min(pokes)
+    return any(onset >= first_poke for onset in bout_onsets)
 
 # (key, display label, mature_high) — mature_high=False means lower is "more learned"
 # (latency, off-cue), which is inverted when orienting the radar / learning index.
@@ -94,6 +124,25 @@ def session_metrics(trials: list[dict]) -> dict:
     n = len(trials)
     eng = [bool(t["engaged"]) for t in trials]
     n_eng = sum(eng)
+    # Poke + lick uses lick BOUTS (a run of licks; gap > LICK_BOUT_GAP ends one) and
+    # requires the lick bout to FOLLOW the poke (poke -> drink):
+    #   HIT (numerator)     : an on-cue poke followed by a lick-bout onset.
+    #   poke+lick (denom)   : any poke (on/off-cue) followed by a lick-bout onset.
+    # x's "any nose poke" = on-cue poke OR off-cue poke (partition all nose_pokes).
+    n_any_poke = 0
+    n_oncue_lick = 0
+    n_poke_and_lick = 0
+    for t in trials:
+        dur = t["cue_dur"]
+        on_cue = [p for p in t["nose_pokes"] if 0 <= p <= dur]
+        all_pokes = t["nose_pokes"]
+        if all_pokes:
+            n_any_poke += 1
+        bout_onsets = _lick_bout_onsets(t["licks"])
+        if _poke_then_lick_bout(all_pokes, bout_onsets):
+            n_poke_and_lick += 1
+        if on_cue and _poke_then_lick_bout(on_cue, bout_onsets):
+            n_oncue_lick += 1
     eng_rew = [t["rewarded"] for t in trials if t["engaged"]]
     lat = [t["cue_to_poke_latency"] for t in trials
            if t["engaged"] and not np.isnan(t["cue_to_poke_latency"])]
@@ -110,6 +159,10 @@ def session_metrics(trials: list[dict]) -> dict:
         "latency": float(np.median(lat)) if lat else NAN,
         "offcue": float(np.mean([t["offcue_pokes_count"] for t in trials])) if n else NAN,
         "win_stay": float(win_stay),
+        "poke_rate": 100.0 * n_any_poke / n if n else NAN,
+        "oncue_lick_rate": 100.0 * n_oncue_lick / n if n else NAN,
+        "poke_lick_hit_rate": 100.0 * n_oncue_lick / n_poke_and_lick
+        if n_poke_and_lick else NAN,
     }
 
 
@@ -395,7 +448,134 @@ def fig_latency_group(lat_bt: dict, out_path: str) -> None:
     plt.close(fig)
 
 
+# quadrant guides shared with the learner-criterion map (ENGAGE_THRESH / ACC_STRONG):
+# x >= this counts the mouse as "participating"; y >= this as "accurate" HIT precision.
+POKE_PARTICIPATE_THRESH = 50.0
+HIT_PRECISION_THRESH = 50.0
+
+
+def _place_labels(ax, items: list[tuple], min_dx: float = 8.5, min_dy: float = 4.6) -> None:
+    """Greedy non-overlapping placement of point labels. `items` = (x, y, text,
+    color). Each label is nudged to the first candidate offset that clears already-
+    placed labels AND every point; a thin leader line is drawn when the offset is
+    large. Candidates fan outward at growing radius so dense clusters get pushed
+    apart with short leaders instead of stacking."""
+    pts = [(x, y) for x, y, _, _ in items]
+    cands = [(3, 1.6), (3, -3.8), (-10, 1.6), (3, 5.4), (3, -7.6), (-10, -3.8),
+             (3, 9.4), (-10, 5.4), (-13, -7.6), (3, -12), (-13, 8), (7, 13),
+             (-15, 0), (3, 15), (-16, -12), (10, -13)]
+    placed: list[tuple] = []
+    for x, y, text, color in sorted(items, key=lambda it: -it[1]):
+        anchor = None
+        for dx, dy in cands:
+            lx, ly = x + dx, y + dy
+            if not (1 <= lx <= 98 and 1 <= ly <= 99):
+                continue
+            clear_labels = all(abs(lx - px) > min_dx or abs(ly - py) > min_dy
+                               for px, py in placed)
+            clear_points = all(abs(lx - px) > 3.5 or abs(ly - py) > 3.0
+                               for px, py in pts if (px, py) != (x, y))
+            if clear_labels and clear_points:
+                anchor = (lx, ly, dx, dy)
+                break
+        if anchor is None:
+            anchor = (x + cands[0][0], y + cands[0][1], *cands[0])
+        lx, ly, dx, dy = anchor
+        placed.append((lx, ly))
+        if abs(dx) > 4.5 or abs(dy) > 4.5:  # leader line for far-nudged labels
+            ax.plot([x, lx], [y, ly], color=color, lw=0.5, alpha=0.5, zorder=4)
+        ax.annotate(text, (lx, ly), fontsize=7.5, color=color, fontweight="bold",
+                    zorder=6, ha="left" if dx >= 0 else "right", va="center")
+
+
+def fig_poke_vs_oncuelick(by_task: dict, out_path: str) -> None:
+    """Participation vs HIT-precision MAP, styled like the learner-criterion
+    engagement/competence map but with this section's axes and an early->late change
+    per mouse:
+        x = % of trials with ANY nose poke                       (participation)
+        y = on-cue poke followed by a lick bout (HIT) as % of all trials where a
+            poke was followed by a lick bout                     (HIT precision)
+    A lick bout = a run of licks (gap > LICK_BOUT_GAP ends it); "followed by" means
+    the bout STARTS after the poke (poke -> drink). y is thus the fraction of the
+    mouse's poke->drink ACTIONS that were correctly timed to the cue — a
+    competence/accuracy axis, largely decoupled from how much the mouse participates.
+    One wide panel per task; each mouse is a single arrow
+    from its EARLY-window point (first quarter of its sessions, open marker) to its
+    LATE-window point (last quarter, filled marker), labelled at the head. Dashed
+    lines = participation / HIT-precision thresholds (the map's quadrant guides).
+    Learning = arrows pointing toward the top-right quadrant."""
+    tasks = list(by_task)
+    if not tasks:
+        return
+    mcolors, _ = _mouse_colors(by_task)
+    single = len(tasks) == 1
+    fig, axes = plt.subplots(1, len(tasks), figsize=(6.8 * len(tasks), 6.2),
+                             squeeze=False, sharey=True)
+    for ax, task in zip(axes[0], tasks):
+        ax.axvline(POKE_PARTICIPATE_THRESH, color="grey", ls="--", lw=1, zorder=1)
+        ax.axhline(HIT_PRECISION_THRESH, color="grey", ls="--", lw=1, zorder=1)
+        ls = "-" if single else _TASK_LS.get(task, "-")
+        label_items = []
+        for m in _sorted_mice(by_task[task]):
+            sess = by_task[task][m]
+            xe, xl = early_late(sess, "poke_rate")
+            ye, yl = early_late(sess, "poke_lick_hit_rate")
+            if np.isnan(xe) or np.isnan(xl) or np.isnan(ye) or np.isnan(yl):
+                continue
+            ax.annotate("", xy=(xl, yl), xytext=(xe, ye),
+                        arrowprops=dict(arrowstyle="-|>", color=mcolors[m], lw=1.8,
+                                        ls=ls, shrinkA=4, shrinkB=6), zorder=3)
+            ax.scatter([xe], [ye], s=55, facecolor="white", edgecolor=mcolors[m],
+                       linewidths=1.5, zorder=4)  # early = open marker
+            ax.scatter([xl], [yl], s=90, color=mcolors[m], edgecolor="white",
+                       linewidths=0.8, zorder=5)  # late = filled marker
+            label_items.append((xl, yl, m, mcolors[m]))
+        _place_labels(ax, label_items)
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, 100)
+        ax.set_aspect("equal")
+        ax.grid(alpha=0.3)
+        ax.set_xlabel("trials with any nose poke (%)  →  participation")
+        ax.set_title(TH.TASK_LABELS.get(task, task))
+        ax.text(75, 96, "participates &\naccurate (learned)", fontsize=8,
+                color="#2ca02c", ha="center")
+        ax.text(24, 96, "accurate but\nlow participation", fontsize=8, color="#1f77b4",
+                ha="center")
+        ax.text(25, 8, "poke+lick rarely\non-cue (inaccurate)", fontsize=8,
+                color="#d62728", ha="center")
+    axes[0][0].set_ylabel("on-cue poke → lick-bout (HIT) as % of all poke → lick-bout trials  →  competence")
+    phase_handles = [
+        Line2D([], [], marker="o", ls="None", markerfacecolor="white",
+               markeredgecolor="#666", markeredgewidth=1.5, ms=7, label="early (first ¼)"),
+        Line2D([], [], marker="o", ls="None", color="#666", markeredgecolor="white",
+               ms=8, label="late (last ¼)"),
+    ]
+    fig.legend(handles=phase_handles, loc="upper center", ncol=2, fontsize=8,
+               frameon=False, bbox_to_anchor=(0.5, 0.93))
+    tasklabel = " / ".join(TH.TASK_LABELS.get(t, t) for t in tasks)
+    fig.suptitle(f"Participation vs HIT precision, early→late — {tasklabel}\n"
+                 "(arrow tail = early sessions, head = late sessions, label = mouse)",
+                 fontsize=13, y=0.99)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
 # --- writers ---------------------------------------------------------------
+def write_poke_lick_csv(by_task: dict, path: str) -> None:
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["task", "mouse", "session", "any_poke_rate_pct",
+                    "oncue_poke_plus_lick_rate_pct", "hit_precision_pct"])
+        for task in by_task:
+            for m in _sorted_mice(by_task[task]):
+                for s in by_task[task][m]:
+                    w.writerow([task, m, s["session"],
+                                f"{s['poke_rate']:.3f}" if not np.isnan(s["poke_rate"]) else "",
+                                f"{s['oncue_lick_rate']:.3f}" if not np.isnan(s["oncue_lick_rate"]) else "",
+                                f"{s['poke_lick_hit_rate']:.3f}" if not np.isnan(s["poke_lick_hit_rate"]) else ""])
+
+
 def write_latency_csv(lat_bt: dict, path: str) -> None:
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -485,6 +665,8 @@ def main() -> int:
     fig_slopes(by_task, os.path.join(OUT_ROOT, "first_vs_last_slopes.png"))
     fig_radar(by_task, os.path.join(OUT_ROOT, "phenotype_radar.png"))
     fig_learning_index(by_task, os.path.join(OUT_ROOT, "learning_index_heatmap.png"))
+    fig_poke_vs_oncuelick(by_task, os.path.join(OUT_ROOT, "poke_vs_oncue_lick_trajectory.png"))
+    write_poke_lick_csv(by_task, os.path.join(OUT_ROOT, "poke_vs_oncue_lick_by_session.csv"))
 
     lat_bt = first_poke_latency(records)
     fig_latency_group(lat_bt, os.path.join(OUT_ROOT, "cue_to_first_poke_latency_group.png"))
@@ -493,7 +675,7 @@ def main() -> int:
     write_summary(by_task, os.path.join(OUT_ROOT, "learning_trajectories_summary.txt"))
 
     n_sess = sum(len(s) for by_mouse in by_task.values() for s in by_mouse.values())
-    print(f"\nWrote 3 CSVs, 7 figures, and summary.txt under '{OUT_ROOT}/' "
+    print(f"\nWrote 4 CSVs, 8 figures, and summary.txt under '{OUT_ROOT}/' "
           f"({n_sess} sessions).")
     return 0
 

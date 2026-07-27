@@ -103,7 +103,7 @@ def load_appetitive(only_mouse: str | None) -> list[dict]:
         mouse = A.short_name(subject)
         if only_mouse and mouse != only_mouse:
             continue
-        by_session = A.group_by_session(A.fetch_events(subject))
+        by_session = A.group_by_day_session(A.fetch_events(subject))
         day = 0
         for sess in sorted(by_session):
             trials = A.segment_trials(by_session[sess])

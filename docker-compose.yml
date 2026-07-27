@@ -60,7 +60,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      MICS_API_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtaWNzLXRlcm1pbmFsIiwiYXVkIjoibWljcy1jbGllbnRzIiwiaXNzIjoibWljcy1hcGkiLCJzY29wZSI6Im1pY3MiLCJpYXQiOjE3NjgzOTMwNjMsImV4cCI6MTc4NDE1NzQ2M30.FERdrcYd5BvbMqAPFBWGH7q_86CkRbjP2Np-SfRYCEg"
+      MICS_API_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtaWNzLXRlcm1pbmFsIiwiYXVkIjoibWljcy1jbGllbnRzIiwiaXNzIjoibWljcy1hcGkiLCJzY29wZSI6Im1pY3MiLCJpYXQiOjE3ODUwNjQ5MzksImV4cCI6MTk0Mjc0NDkzOX0.w7yXUIvPfCMWIixXL6itOMAFSPyZGUULX6uAha_N1PE"
       REDIS_URL: redis://127.0.0.1:6379/0
   redis:
     image: redis:7

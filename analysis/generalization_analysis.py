@@ -49,6 +49,7 @@ import numpy as np
 import requests
 
 import participation
+import appetitive_analysis as A  # canonical day-based session grouping
 
 from config import ES_URL, ES_INDEX  # ES host/index, env-overridable (see config.py)
 
@@ -94,11 +95,16 @@ def _iso_to_epoch(ts: str) -> float:
     return datetime.fromisoformat(ts).timestamp()
 
 
-def fetch_events(subject: str, page: int = 5000) -> list[dict]:
-    """Scroll the relevant events for one ES subject, sorted by (session, time)."""
+def fetch_events(subject: str, page: int = 5000, task_type: str = TASK_TYPE,
+                 pilot: str = PILOT) -> list[dict]:
+    """Scroll the relevant events for one ES subject, sorted by (session, time).
+
+    ``task_type``/``pilot`` default to the generalization task but are overridable
+    so the LED-cued extinction task (a Generalization clone) can reuse this loader.
+    """
     query = {"bool": {"must": [
-        {"term": {"task_type.keyword": TASK_TYPE}},
-        {"term": {"pilot.keyword": PILOT}},
+        {"term": {"task_type.keyword": task_type}},
+        {"term": {"pilot.keyword": pilot}},
         {"term": {"subject.keyword": subject}},
         {"terms": {"event.event_type.keyword": RELEVANT_EVENT_TYPES}},
     ]}}
@@ -242,10 +248,7 @@ def collect_mouse(subjects: list[str]) -> list[dict]:
     chronologically into session # 1..N. Each row keeps its trial list."""
     rows: list[dict] = []
     for subject in subjects:
-        events = fetch_events(subject)
-        by_session: dict[int, list[dict]] = {}
-        for e in events:
-            by_session.setdefault(e["session"], []).append(e)
+        by_session = A.group_by_day_session(fetch_events(subject))
         for sess, evs in by_session.items():
             trials = segment_trials(evs)
             if not session_len_ok(len(trials)):

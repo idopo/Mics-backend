@@ -6,3 +6,5 @@ dependencies:
   - requests
   - numpy
   - matplotlib
+  - pandas       # level1_characterization.py (master trial table + summaries)
+  - seaborn      # optional; level1 figures fall back to matplotlib if absent

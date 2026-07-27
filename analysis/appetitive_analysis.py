@@ -41,6 +41,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import matplotlib
 
@@ -75,6 +76,17 @@ REWARD_LICK_WINDOW_S = 0.5  # a lick within this much before a reward = the HIT 
 # and are excluded from every analysis. Override the band via env if needed.
 MIN_TRIALS = int(os.environ.get("MICS_MIN_TRIALS", "50"))
 MAX_TRIALS = int(os.environ.get("MICS_MAX_TRIALS", "72"))
+# Lab-local timezone: sessions are one-per-day, so the calendar day a trial ran
+# is the true session boundary. The ES `session` counter is unreliable (it
+# sometimes fails to advance, merging two days' runs under one number — e.g.
+# m100 sessions 3-6 each held two days = 122 trials). Binning by lab-day recovers
+# the real structure. Override via env if the rig moves timezones.
+LAB_TZ = ZoneInfo(os.environ.get("MICS_LAB_TZ", "Asia/Jerusalem"))
+# A same-day aborted false-start (a handful of trials, then the experimenter
+# restarts) is separated from the real session by a large gap. Normal
+# within-session onset gaps top out ~260s (a long ITI); real false-starts are
+# >=560s apart. 300s cleanly separates the two. See keep_main_run.
+FALSE_START_GAP_S = float(os.environ.get("MICS_FALSE_START_GAP_S", "300"))
 
 
 def session_len_ok(n_trials: int) -> bool:
@@ -187,11 +199,64 @@ def fetch_events(subject: str, page: int = 5000) -> list[dict]:
     return out
 
 
-def group_by_session(events: list[dict]) -> dict[int, list[dict]]:
-    by_session: dict[int, list[dict]] = {}
+def group_by_day_session(events: list[dict]) -> dict[int, list[dict]]:
+    """Canonical session grouping: one session == one lab-local day for a subject.
+
+    Same-day files are merged into a single session (they share a calendar day),
+    and a same-day aborted false-start is trimmed via keep_main_run. The result is
+    keyed by chronological session index (1..N) so callers' `sorted(by_session)`
+    and integer session labels keep working unchanged.
+
+    Use this instead of the ES `session` counter, which sometimes fails to advance
+    and merges two different days' runs under one number (see LAB_TZ)."""
+    by_day = group_by_day(events)
+    return {i: keep_main_run(by_day[day])
+            for i, day in enumerate(sorted(by_day), start=1)}
+
+
+def _lab_day(epoch: float) -> str:
+    """Lab-local calendar day (YYYY-MM-DD) for a POSIX-seconds timestamp."""
+    return datetime.fromtimestamp(epoch, tz=LAB_TZ).strftime("%Y-%m-%d")
+
+
+def group_by_day(events: list[dict]) -> dict[str, list[dict]]:
+    """Group events by the lab-local day they occurred, each day's events sorted
+    chronologically. This is the true session boundary (one session per day);
+    see LAB_TZ for why the ES `session` field is not used here."""
+    by_day: dict[str, list[dict]] = {}
     for e in events:
-        by_session.setdefault(e["session"], []).append(e)
-    return by_session
+        by_day.setdefault(_lab_day(e["epoch"]), []).append(e)
+    for day in by_day:
+        by_day[day].sort(key=lambda e: e["epoch"])
+    return by_day
+
+
+def keep_main_run(events: list[dict]) -> list[dict]:
+    """Drop a same-day aborted false-start when a full session also ran that day.
+
+    Trials in one day's events are split into runs separated by a gap larger than
+    FALSE_START_GAP_S. If exactly ONE run has a valid session length, only that
+    run's events are returned (the small fragment is discarded). Days with no
+    single clean main run — or with no large gap at all — are returned unchanged."""
+    onset_pos = [i for i, e in enumerate(events)
+                 if e["etype"] == ET_STATE and e["state"] == "trial_onset"]
+    if len(onset_pos) < 2:
+        return events
+    onsets = [events[i]["epoch"] for i in onset_pos]
+    runs = [[0]]  # each run is a list of indices into `onsets`
+    for k in range(1, len(onsets)):
+        (runs.append([k]) if onsets[k] - onsets[k - 1] > FALSE_START_GAP_S
+         else runs[-1].append(k))
+    if len(runs) < 2:
+        return events
+    valid = [r for r in runs if session_len_ok(len(r))]
+    if len(valid) != 1:
+        return events  # ambiguous (0 or >1 full runs) — keep the whole day
+    main = valid[0]
+    lo = onsets[main[0]]                                  # first onset of main run
+    after = onsets[main[-1] + 1:]                         # onsets of any later run
+    hi = after[0] if after else float("inf")             # boundary to next run
+    return [e for e in events if lo <= e["epoch"] < hi]
 
 
 # --- trial segmentation ---------------------------------------------------
@@ -573,7 +638,7 @@ def run(args: argparse.Namespace) -> int:
     n_rasters = 0
     for subject in subjects:
         print(f"{short_name(subject)} ...")
-        by_session = group_by_session(fetch_events(subject))  # one fetch, both analyses
+        by_session = group_by_day_session(fetch_events(subject))  # one fetch, both analyses
         # segment every session once and reuse for rasters + hit rates
         trials_by_session = {s: segment_trials(evs) for s, evs in by_session.items()}
 

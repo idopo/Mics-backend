@@ -44,7 +44,7 @@ export default function TriggerAssignmentPanel({ assignments, toolkit, onChange 
 
   const remove = (i: number) => onChange(assignments.filter((_, idx) => idx !== i))
 
-  const add = () => onChange([...assignments, { trigger_name: '', handler: 'touch_detector' }])
+  const add = () => onChange([...assignments, { trigger_name: '', handler: 'touch_detector', actions: [] }])
 
   return (
     <div>

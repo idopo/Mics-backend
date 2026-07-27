@@ -219,6 +219,7 @@ export type FdaOperand =
   | { flag: string }
   | { param: string }
   | { hardware: string }
+  | { trigger: 'level' | 'tick' }
   | number | boolean | string | null
 
 export interface FdaCondition {
@@ -228,12 +229,21 @@ export interface FdaCondition {
 }
 
 export interface FdaAction {
-  type: 'hardware' | 'flag' | 'timer' | 'special' | 'method' | 'if'
+  type: 'hardware' | 'flag' | 'timer' | 'special' | 'method' | 'if' | 'view'
   ref?: string
   method?: string
   args?: unknown[]
   action?: string
   duration?: unknown
+  /** Capture the call's return value: string = whole value, string[] = positional tuple unpack.
+   *  Targets must be declared in FdaJson.variables (or be an existing toolkit flag). */
+  output?: string | string[]
+  /** view action: target key in view.view; may contain {name} tokens resolved from variables/flags. */
+  key_template?: string
+  /** view action: the value to write. */
+  value?: unknown
+  /** view action: keyword args forwarded to Tracker.set (e.g. { pi_timestamp: { trigger: 'tick' } }). */
+  kwargs?: Record<string, unknown>
   // if-action fields:
   condition?: FdaCondition
   then?: FdaAction[]
@@ -270,9 +280,19 @@ export interface FdaTransition {
   description?: string
 }
 
+/** A named value slot shared between task.flags and view.view on the Pi. */
+export interface FdaVariable {
+  initial_value?: unknown
+}
+
 export interface FdaTriggerAssignment {
   trigger_name: string   // hardware key that fires the interrupt, e.g. "TOUCH_INT"
-  handler: 'touch_detector' | 'digital_input' | 'default' | 'log_only'
+  /** Ordered action list using the same schema as a state's entry_actions. The ONLY vocabulary. */
+  actions: FdaAction[]
+  /** @deprecated Phase 24 dropped the handler enum. Optional only so stored rows still parse;
+   *  normaliseFda strips it. Never write it. */
+  handler?: string
+  /** @deprecated Belonged to the handler enum. Stripped by normaliseFda. Never write it. */
   config?: {
     hardware_ref?: string  // semantic hw key; used by touch_detector to pick which device to read
     view_key?: string      // view key to update; used by digital_input
@@ -285,6 +305,8 @@ export interface FdaJson {
   states: Record<string, FdaState>
   transitions: FdaTransition[]
   trigger_assignments: FdaTriggerAssignment[]  // array — NOT a dict
+  /** Phase 24 value-capture registry; Phase 23's `compute` writes into the same slots. */
+  variables?: Record<string, FdaVariable>
   hw_overrides?: Record<string, unknown>       // optional; legacy field — pass through unchanged, never write or display
 }
 

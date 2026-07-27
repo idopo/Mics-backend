@@ -1,6 +1,6 @@
 import type { ToolkitRead } from '../types'
 
-type ArgMode = 'literal' | 'param' | 'flag'
+type ArgMode = 'literal' | 'param' | 'flag' | 'trigger'
 
 /** Handles both array [{name}] and dict {name:{}} shapes for params_schema. */
 export function getParamKeys(toolkit: ToolkitRead | null | undefined): string[] {
@@ -24,6 +24,10 @@ interface Props {
   value: unknown
   toolkit: ToolkitRead | null
   annotation?: string | null
+  /** Declared FdaJson.variables names — merged into the flag-mode option list. */
+  variableNames?: string[]
+  /** Only true inside a trigger's action list — gates the `trigger` mode pill. */
+  allowTriggerContext?: boolean
   onChange: (updated: unknown) => void
 }
 
@@ -31,6 +35,7 @@ function detectMode(value: unknown): ArgMode {
   if (value !== null && typeof value === 'object') {
     if ('param' in (value as object)) return 'param'
     if ('flag' in (value as object)) return 'flag'
+    if ('trigger' in (value as object)) return 'trigger'
   }
   return 'literal'
 }
@@ -40,25 +45,35 @@ const MODE_COLORS: Record<ArgMode, string> = {
   literal: '#6b7280',
   param: '#22c55e',
   flag: '#f59e0b',
+  trigger: '#38bdf8',
 }
 
 const MODE_LABELS: Record<ArgMode, string> = {
   literal: '# Literal',
   param: '$ Param',
   flag: '! Flag',
+  trigger: '@ Trigger',
 }
 
 const MODE_TOOLTIPS: Record<ArgMode, string> = {
   literal: 'A fixed value baked into the FDA. Does not change between runs.',
   param: 'Resolved from a protocol parameter at runtime. Set in the protocol step config.',
   flag: "Resolved from a flag's current value at runtime. Changes during the session.",
+  trigger: 'The level or timestamp of the hardware event that fired this trigger. Only available inside a trigger action list.',
 }
 
-export default function ArgInput({ value, toolkit, annotation, onChange }: Props) {
+const ALL_MODES: ArgMode[] = ['literal', 'param', 'flag', 'trigger']
+
+export default function ArgInput({ value, toolkit, annotation, variableNames, allowTriggerContext, onChange }: Props) {
   const mode = detectMode(value)
   const paramKeys = getParamKeys(toolkit)
-  const flagKeys = Object.keys(toolkit?.flags ?? {})
+  const flagKeys = [...new Set([...Object.keys(toolkit?.flags ?? {}), ...(variableNames ?? [])])]
   const inputKind = annotationToInputKind(annotation)
+
+  // Defensive: if the stored value is already a trigger operand, keep offering the trigger
+  // pill even when this editor wasn't opted into it (e.g. a state body re-opened after edits
+  // made inside a trigger's action list) — never silently corrupt the stored value.
+  const visibleModes = allowTriggerContext || mode === 'trigger' ? ALL_MODES : ALL_MODES.filter(m => m !== 'trigger')
 
   const switchMode = (next: ArgMode) => {
     if (next === 'literal') {
@@ -67,8 +82,10 @@ export default function ArgInput({ value, toolkit, annotation, onChange }: Props
       else onChange('')
     } else if (next === 'param') {
       onChange({ param: paramKeys[0] ?? '' })
-    } else {
+    } else if (next === 'flag') {
       onChange({ flag: flagKeys[0] ?? '' })
+    } else {
+      onChange({ trigger: 'tick' })
     }
   }
 
@@ -91,7 +108,7 @@ export default function ArgInput({ value, toolkit, annotation, onChange }: Props
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       <div style={{ display: 'flex', gap: '4px' }}>
-        {(['literal', 'param', 'flag'] as ArgMode[]).map(m => (
+        {visibleModes.map(m => (
           <button
             key={m}
             style={btnStyle(m)}
@@ -160,7 +177,11 @@ export default function ArgInput({ value, toolkit, annotation, onChange }: Props
             onChange={e => onChange({ flag: e.target.value })}
             style={{ width: '100%' }}
           >
-            {flagKeys.map(k => <option key={k} value={k}>!{k}</option>)}
+            {flagKeys.map(k => (
+              <option key={k} value={k}>
+                !{k}{(variableNames ?? []).includes(k) && !(toolkit?.flags && k in toolkit.flags) ? ' (variable)' : ''}
+              </option>
+            ))}
           </select>
         ) : (
           <input
@@ -171,6 +192,17 @@ export default function ArgInput({ value, toolkit, annotation, onChange }: Props
             style={{ width: '100%' }}
           />
         )
+      )}
+
+      {mode === 'trigger' && (
+        <select
+          value={(value as { trigger: string }).trigger ?? 'tick'}
+          onChange={e => onChange({ trigger: e.target.value })}
+          style={{ width: '100%' }}
+        >
+          <option value="level">level</option>
+          <option value="tick">tick</option>
+        </select>
       )}
     </div>
   )

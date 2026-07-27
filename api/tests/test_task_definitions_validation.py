@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from fda_validation import collect_hard_errors, validate_trigger_assignments, validate_variables
+from fda_validation import (
+    collect_hard_errors,
+    validate_state_actions,
+    validate_trigger_assignments,
+    validate_variables,
+)
 
 
 def make_toolkit(
@@ -53,7 +58,10 @@ CANONICAL_PAYLOAD = {
                     "type": "if",
                     "condition": {"left": {"flag": "pin_number"}, "op": "!=", "right": None},
                     "then": [
-                        {"type": "view", "key_template": "LICKER{pin_number}", "value": {"flag": "level"}},
+                        {
+                            "type": "view", "key_template": "{device_name}{pin_number}",
+                            "source_ref": "MPR121", "value": {"flag": "level"},
+                        },
                     ],
                     "else": [],
                 },
@@ -597,3 +605,194 @@ def test_no_known_hardware_at_all_still_permissive():
     """Classic toolkit with neither semantic_hardware nor modules keeps the lenient posture."""
     toolkit = make_toolkit()
     assert validate_trigger_assignments(_trigger_fda("anything"), toolkit) == []
+
+
+# ---------------------------------------------------------------------------
+# TRIGA-16 (Plan 08 Task 2): hardware/timer action `method` validation
+# ---------------------------------------------------------------------------
+
+def _hw_action(ref="MPR121", method="detect_change", action_type="hardware"):
+    return {"type": action_type, "ref": ref, "method": method}
+
+
+def test_empty_method_string_errors_naming_ref_and_trigger():
+    toolkit = make_toolkit()
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [_hw_action(method="")]}]}
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("MPR121" in e and "TOUCH_INT" in e for e in errors)
+
+
+def test_missing_method_key_errors():
+    toolkit = make_toolkit()
+    action = {"type": "hardware", "ref": "MPR121"}
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [action]}]}
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("MPR121" in e for e in errors)
+
+
+def test_whitespace_only_method_errors():
+    toolkit = make_toolkit()
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [_hw_action(method="   ")]}]}
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("MPR121" in e for e in errors)
+
+
+def test_non_string_method_errors():
+    toolkit = make_toolkit()
+    action = {"type": "hardware", "ref": "MPR121", "method": 42}
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [action]}]}
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("MPR121" in e for e in errors)
+
+
+def test_timer_action_empty_method_errors():
+    toolkit = make_toolkit()
+    fda = {
+        "trigger_assignments": [
+            {"trigger_name": "TOUCH_INT", "actions": [_hw_action(action_type="timer", method="")]}
+        ]
+    }
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("MPR121" in e for e in errors)
+
+
+def test_known_good_hardware_action_passes():
+    toolkit = make_toolkit()
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [_hw_action()]}]}
+    assert validate_trigger_assignments(fda, toolkit) == []
+
+
+def test_state_entry_action_empty_method_errors_naming_state_and_index():
+    toolkit = make_toolkit()
+    fda = {"states": {"reward": {"entry_actions": [_hw_action(method="")]}}}
+    errors = validate_state_actions(fda, toolkit)
+    assert any("reward" in e and "action[0]" in e and "MPR121" in e for e in errors)
+
+
+def test_state_entry_actions_supports_both_dict_and_list_states_shapes():
+    toolkit = make_toolkit()
+    dict_fda = {"states": {"idle": {"entry_actions": []}, "reward": {"entry_actions": [_hw_action(method="")]}}}
+    list_fda = {"states": [{"name": "idle", "entry_actions": []}, {"name": "reward", "entry_actions": [_hw_action(method="")]}]}
+    assert any("reward" in e for e in validate_state_actions(dict_fda, toolkit))
+    assert any("reward" in e for e in validate_state_actions(list_fda, toolkit))
+
+
+def test_state_entry_action_good_method_passes():
+    toolkit = make_toolkit()
+    fda = {"states": {"reward": {"entry_actions": [_hw_action()]}}}
+    assert validate_state_actions(fda, toolkit) == []
+
+
+def test_state_entry_action_unrelated_flag_ref_stays_soft_not_hard():
+    """method_only scoping: a broken flag ref in a state body must NOT hard-422 here — that
+    stays with the soft drift-badge path (_validate_task_definition)."""
+    toolkit = make_toolkit()
+    fda = {"states": {"reward": {"entry_actions": [{"type": "flag", "ref": "ghost_flag"}]}}}
+    assert validate_state_actions(fda, toolkit) == []
+
+
+def test_unknown_method_accepted_when_class_open():
+    toolkit = make_toolkit()
+    module_methods = {"MPR121": ({"detect_change", "read"}, False)}  # closed=False: imported base
+    fda = {
+        "trigger_assignments": [
+            {"trigger_name": "TOUCH_INT", "actions": [_hw_action(method="mystery_method")]}
+        ]
+    }
+    assert validate_trigger_assignments(fda, toolkit, module_methods=module_methods) == []
+
+
+def test_unknown_method_rejected_when_class_closed():
+    toolkit = make_toolkit()
+    module_methods = {"MPR121": ({"detect_change", "read"}, True)}  # closed=True: no external base
+    fda = {
+        "trigger_assignments": [
+            {"trigger_name": "TOUCH_INT", "actions": [_hw_action(method="mystery_method")]}
+        ]
+    }
+    errors = validate_trigger_assignments(fda, toolkit, module_methods=module_methods)
+    assert any("mystery_method" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# {device_name} runtime token + source_ref (TRIGA-17/18, Plan 08 Task 2)
+# ---------------------------------------------------------------------------
+
+def test_device_name_token_with_source_ref_and_declared_variable_is_ok():
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
+    fda = {
+        "variables": {"pin_number": {}},
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {"type": "view", "key_template": "{device_name}{pin_number}", "source_ref": "MPR121", "value": 1},
+                ],
+            }
+        ],
+    }
+    assert validate_trigger_assignments(fda, toolkit) == []
+
+
+def test_device_name_token_without_source_ref_errors_naming_device_name():
+    toolkit = make_toolkit()
+    fda = {
+        "variables": {"pin_number": {}},
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [{"type": "view", "key_template": "{device_name}{pin_number}", "value": 1}],
+            }
+        ],
+    }
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("device_name" in e for e in errors)
+
+
+def test_source_ref_naming_unknown_hardware_errors():
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
+    fda = {
+        "variables": {"pin_number": {}},
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {
+                        "type": "view", "key_template": "{device_name}{pin_number}",
+                        "source_ref": "GHOST_DEVICE", "value": 1,
+                    },
+                ],
+            }
+        ],
+    }
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("GHOST_DEVICE" in e for e in errors)
+
+
+def test_canonical_payload_with_device_name_token_validates_clean():
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
+    assert collect_hard_errors(CANONICAL_PAYLOAD, toolkit) == []
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (Plan 08) — route-level: method-less hardware action returns 422
+# ---------------------------------------------------------------------------
+
+def test_put_method_less_hardware_action_returns_422_not_200_broken(client):
+    defn = make_defn_mock()
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {
+        "fda_json": {
+            "states": {},
+            "trigger_assignments": [
+                {"trigger_name": "TOUCH_INT", "actions": [{"type": "hardware", "ref": "MPR121", "method": ""}]}
+            ],
+        }
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 422
+    assert any("MPR121" in e for e in resp.json()["detail"]["errors"])

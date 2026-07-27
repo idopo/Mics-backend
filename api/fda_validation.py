@@ -24,7 +24,13 @@ import re
 from fastapi import HTTPException
 from sqlalchemy import text as sa_text
 
+from hw_introspect import toolkit_hw_capabilities
 from models import TaskToolkit
+
+# {device_name} is resolved on the Pi at runtime from the source hardware's own attribute
+# (fda_vocabulary.RUNTIME_KEY_TEMPLATE_TOKENS is the source of truth; the two languages cannot
+# import from each other, so the token is listed here explicitly rather than inferred).
+RUNTIME_KEY_TEMPLATE_TOKENS = {"device_name"}
 
 VALID_ACTION_TYPES = {"hardware", "flag", "timer", "special", "method", "if", "view"}
 VALID_SPECIALS = {"INC_TRIAL_COUNTER"}
@@ -50,13 +56,25 @@ def validate_variables(fda_json: dict, toolkit) -> list[str]:
     ]
 
 
-def validate_trigger_assignments(fda_json: dict, toolkit, module_names: set[str] | None = None) -> list[str]:
+def validate_trigger_assignments(
+    fda_json: dict,
+    toolkit,
+    module_names: set[str] | None = None,
+    module_methods: dict[str, tuple[set[str], bool]] | None = None,
+    trigger_sources: set[str] | None = None,
+) -> list[str]:
     """Validate `trigger_assignments`. Absent/null/[] is backward-compatible and returns [].
 
     `module_names` carries the toolkit's backend-authored Modules hardware (resolved by the
     caller, which owns the DB session). A backend-authored toolkit declares hardware as
     hardware_modules rows rather than SEMANTIC_HARDWARE, so without these `known_hw` is empty
     and the lenient posture lets every hardware ref through.
+
+    `module_methods` (name -> (resolved method set, closed)) and `trigger_sources` (hw_id set)
+    are resolved by the caller via hw_introspect, which needs a DB session this module
+    deliberately never opens itself. When omitted, `trigger_sources` falls back to
+    getattr(toolkit, "trigger_sources", None) for backward compat with callers/tests that stub
+    it directly onto the toolkit object.
     """
     if toolkit is None:
         return []
@@ -69,10 +87,10 @@ def validate_trigger_assignments(fda_json: dict, toolkit, module_names: set[str]
     known_hw = set((toolkit.semantic_hardware or {}).keys()) | (module_names or set())
     callable_methods = set(getattr(toolkit, "callable_methods", None) or [])
     valid_names = _valid_flag_names(fda_json, toolkit)
-    # Enforce only when the toolkit reports trigger_sources (Plan 08's column) AND it is
-    # non-empty — same posture as callable_methods. getattr(..., None) so this works on a
-    # toolkit predating the column entirely.
-    trigger_sources = {t["hw_id"] for t in (getattr(toolkit, "trigger_sources", None) or [])}
+    # Enforce only when trigger_sources is known AND non-empty — same posture as
+    # callable_methods, so a toolkit predating Plan 08's derivation is never falsely rejected.
+    if trigger_sources is None:
+        trigger_sources = {t["hw_id"] for t in (getattr(toolkit, "trigger_sources", None) or [])}
 
     errors: list[str] = []
     for i, ta in enumerate(trigger_assignments):
@@ -104,17 +122,59 @@ def validate_trigger_assignments(fda_json: dict, toolkit, module_names: set[str]
             continue
 
         for j, action in enumerate(actions):
-            errors.extend(_validate_action(label, j, action, known_hw, callable_methods, valid_names))
+            errors.extend(
+                _validate_action(f"Trigger '{label}'", j, action, known_hw, callable_methods, valid_names, module_methods)
+            )
 
     return errors
 
 
-def collect_hard_errors(fda_json: dict, toolkit, module_names: set[str] | None = None) -> list[str]:
+def validate_state_actions(
+    fda_json: dict, toolkit, module_methods: dict[str, tuple[set[str], bool]] | None = None
+) -> list[str]:
+    """Hard-validate every state's entry_actions against the SAME method rule TRIGA-16 applies
+    to trigger actions (empty/unresolvable method = silent no-op on the Pi).
+
+    Deliberately narrower than validate_trigger_assignments: ref/flag/view/output checks stay
+    with the soft drift-badge path (_validate_task_definition in routers/toolkits.py) — widening
+    those into a hard gate is out of scope here, so `_validate_action` is called with
+    method_only=True.
+    """
+    if toolkit is None:
+        return []
+    states = fda_json.get("states")
+    if isinstance(states, dict):
+        items = list(states.items())
+    elif isinstance(states, list):
+        items = [(s.get("name") or f"[{i}]", s) for i, s in enumerate(states) if isinstance(s, dict)]
+    else:
+        return []
+
+    errors: list[str] = []
+    for name, state in items:
+        if not isinstance(state, dict):
+            continue
+        for j, action in enumerate(state.get("entry_actions") or []):
+            errors.extend(
+                _validate_action(f"State '{name}'", j, action, set(), set(), set(), module_methods, method_only=True)
+            )
+    return errors
+
+
+def collect_hard_errors(
+    fda_json: dict,
+    toolkit,
+    module_names: set[str] | None = None,
+    module_methods: dict[str, tuple[set[str], bool]] | None = None,
+    trigger_sources: set[str] | None = None,
+) -> list[str]:
     """Every hard (422-worthy) error for this FDA. Phase 23 appends its compute checks here."""
     if not fda_json or toolkit is None:
         return []
-    return validate_variables(fda_json, toolkit) + validate_trigger_assignments(
-        fda_json, toolkit, module_names
+    return (
+        validate_variables(fda_json, toolkit)
+        + validate_trigger_assignments(fda_json, toolkit, module_names, module_methods, trigger_sources)
+        + validate_state_actions(fda_json, toolkit, module_methods)
     )
 
 
@@ -127,7 +187,10 @@ def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
     if not fda_json:
         return
     toolkit = db.query(TaskToolkit).filter(TaskToolkit.id == toolkit_id).one_or_none() if toolkit_id else None
-    errors = collect_hard_errors(fda_json, toolkit, _module_names(db, toolkit))
+    caps = toolkit_hw_capabilities(db, getattr(toolkit, "hardware_module_ids", None) or []) if toolkit else None
+    module_methods = caps["module_methods"] if caps else None
+    trigger_sources = {t["hw_id"] for t in caps["trigger_sources"]} if caps else None
+    errors = collect_hard_errors(fda_json, toolkit, _module_names(db, toolkit), module_methods, trigger_sources)
     if errors:
         raise HTTPException(422, detail={"errors": errors})
 
@@ -157,24 +220,51 @@ def _valid_flag_names(fda_json: dict, toolkit) -> set[str]:
     )
 
 
-def _validate_action(trigger_label, idx, action, known_hw, callable_methods, valid_names) -> list[str]:
+def _validate_action_method(context_label, idx, action, module_methods) -> list[str]:
+    """The TRIGA-16 rule: a hardware/timer action's `method` must be a non-empty string, and —
+    only when the resolved method set is provably closed — a known one. Shared by the trigger
+    path and validate_state_actions' method_only path so the rule can never drift between them.
+    """
+    ref = action.get("ref")
+    method = action.get("method")
+    if not isinstance(method, str) or not method.strip():
+        return [
+            f"{context_label} action[{idx}]: hardware ref '{ref}' has no method — "
+            f"this saves cleanly and does nothing on the Pi"
+        ]
+    if module_methods is not None:
+        allowed, closed = module_methods.get(ref, (set(), False))
+        if closed and method not in allowed:
+            return [f"{context_label} action[{idx}]: '{ref}' has no method '{method}'. Known: {sorted(allowed)}"]
+    return []
+
+
+def _validate_action(
+    context_label, idx, action, known_hw, callable_methods, valid_names, module_methods=None, method_only=False
+) -> list[str]:
     if not isinstance(action, dict):
-        return [f"Trigger '{trigger_label}' action[{idx}]: action must be an object"]
+        return [] if method_only else [f"{context_label} action[{idx}]: action must be an object"]
 
     action_type = action.get("type")
-    if action_type not in VALID_ACTION_TYPES:
-        return [
-            f"Trigger '{trigger_label}' action[{idx}]: unknown action type '{action_type}'. "
-            f"Allowed: {', '.join(sorted(VALID_ACTION_TYPES))}"
-        ]
 
     if action_type == "if":
         errors: list[str] = []
         for j, sub in enumerate(action.get("then") or []):
-            errors.extend(_validate_action(trigger_label, f"{idx}.then[{j}]", sub, known_hw, callable_methods, valid_names))
+            errors.extend(_validate_action(context_label, f"{idx}.then[{j}]", sub, known_hw, callable_methods, valid_names, module_methods, method_only))
         for j, sub in enumerate(action.get("else") or []):
-            errors.extend(_validate_action(trigger_label, f"{idx}.else[{j}]", sub, known_hw, callable_methods, valid_names))
+            errors.extend(_validate_action(context_label, f"{idx}.else[{j}]", sub, known_hw, callable_methods, valid_names, module_methods, method_only))
         return errors
+
+    if method_only:
+        # State-body hard validation is scoped to the method rule only — ref/flag/view/output
+        # checks stay with the soft drift path. Non-hardware actions have nothing to check here.
+        return _validate_action_method(context_label, idx, action, module_methods) if action_type in ("hardware", "timer") else []
+
+    if action_type not in VALID_ACTION_TYPES:
+        return [
+            f"{context_label} action[{idx}]: unknown action type '{action_type}'. "
+            f"Allowed: {', '.join(sorted(VALID_ACTION_TYPES))}"
+        ]
 
     errors = []
     ref = action.get("ref")
@@ -184,43 +274,48 @@ def _validate_action(trigger_label, idx, action, known_hw, callable_methods, val
         # resolves it via self.hardware[group][ref], which this module cannot verify without
         # a DB join to hardware_modules. Skip, matching _validate_fda_against_toolkit's posture.
         if "group" not in action and known_hw and ref not in known_hw:
-            errors.append(f"Trigger '{trigger_label}' action[{idx}]: unknown hardware ref '{ref}'")
+            errors.append(f"{context_label} action[{idx}]: unknown hardware ref '{ref}'")
+        errors.extend(_validate_action_method(context_label, idx, action, module_methods))
     elif action_type == "method":
         if callable_methods and ref not in callable_methods:
-            errors.append(f"Trigger '{trigger_label}' action[{idx}]: method '{ref}' not in toolkit callable_methods")
+            errors.append(f"{context_label} action[{idx}]: method '{ref}' not in toolkit callable_methods")
     elif action_type == "special":
         if ref not in VALID_SPECIALS:
             errors.append(
-                f"Trigger '{trigger_label}' action[{idx}]: unknown special '{ref}'. "
+                f"{context_label} action[{idx}]: unknown special '{ref}'. "
                 f"Allowed: {', '.join(sorted(VALID_SPECIALS))}"
             )
     elif action_type == "flag":
         if ref not in valid_names:
-            errors.append(f"Trigger '{trigger_label}' action[{idx}]: flag '{ref}' not declared")
+            errors.append(f"{context_label} action[{idx}]: flag '{ref}' not declared")
     elif action_type == "view":
         key_template = action.get("key_template")
         if not key_template or not isinstance(key_template, str):
-            errors.append(f"Trigger '{trigger_label}' action[{idx}]: view action requires a key_template")
+            errors.append(f"{context_label} action[{idx}]: view action requires a key_template")
         else:
-            for token in re.findall(r"\{(\w+)\}", key_template):
+            source_ref = action.get("source_ref")
+            tokens = set(re.findall(r"\{(\w+)\}", key_template))
+            for token in tokens - RUNTIME_KEY_TEMPLATE_TOKENS:
                 if token not in valid_names:
-                    errors.append(
-                        f"Trigger '{trigger_label}' action[{idx}]: key_template token '{token}' not declared"
-                    )
+                    errors.append(f"{context_label} action[{idx}]: key_template token '{token}' not declared")
+            if tokens & RUNTIME_KEY_TEMPLATE_TOKENS and not (isinstance(source_ref, str) and source_ref.strip()):
+                errors.append(f"{context_label} action[{idx}]: key_template uses {{device_name}} but source_ref is missing")
+            if isinstance(source_ref, str) and source_ref.strip() and known_hw and source_ref not in known_hw:
+                errors.append(f"{context_label} action[{idx}]: unknown source_ref '{source_ref}'")
 
     output = action.get("output")
     if output is not None:
         names = output if isinstance(output, list) else [output]
         for name in names:
             if name not in valid_names:
-                errors.append(f"Trigger '{trigger_label}' action[{idx}]: output slot '{name}' not declared")
+                errors.append(f"{context_label} action[{idx}]: output slot '{name}' not declared")
 
     for operand in list(action.get("args") or []) + list((action.get("kwargs") or {}).values()):
         if isinstance(operand, dict) and "trigger" in operand:
             key = operand["trigger"]
             if key not in VALID_TRIGGER_CONTEXT_KEYS:
                 errors.append(
-                    f"Trigger '{trigger_label}' action[{idx}]: unknown trigger context key '{key}'. "
+                    f"{context_label} action[{idx}]: unknown trigger context key '{key}'. "
                     f"Allowed: {', '.join(sorted(VALID_TRIGGER_CONTEXT_KEYS))}"
                 )
 

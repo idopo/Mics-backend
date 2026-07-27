@@ -550,7 +550,8 @@ Phase 23 (Compute Primitives + Variables) — 3 plans:
 
 **Goal:** A hardware trigger fires the *same action vocabulary* a state's `entry_actions` uses (hardware / flag / timer / view / special / method / if), assigned from the task-editor UI instead of hard-coded in Python. Reference case to replicate and prove on the rig: `learning_cage.detectedLick`. Plus the missing backend validation layer for `trigger_assignments`.
 
-**Requirements**: TRIGA-01 through TRIGA-15
+**Requirements**: TRIGA-01 through TRIGA-10 (done), TRIGA-11a, TRIGA-12, TRIGA-14 through TRIGA-19. *TRIGA-11 dropped; TRIGA-13 moved to Phase 25.*
+**Remaining for plans 06/07/08:** TRIGA-11a, TRIGA-12, TRIGA-14, TRIGA-15, TRIGA-16, TRIGA-17, TRIGA-18, TRIGA-19
 **Depends on:** Phase 1 (`load_fda_from_json`, `_build_action_callable`, `_resolve_arg`), Phase 12 (StateBodyPanel / ActionEditor — the action editor UI to reuse). *Not* dependent on Phase 23; the two share the `output` value-capture idea and should be kept consistent.
 **Plans:** 5/8 plans executed
 

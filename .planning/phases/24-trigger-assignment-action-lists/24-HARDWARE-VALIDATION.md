@@ -103,6 +103,46 @@ between individually-correct plans.**
 | 6 | `9218644` | Same filter accepted a hardware action with a `ref` but no `method`; a half-built action autosaved and **overwrote the working action list**. | as above |
 | 7 | `7cd2734` + `4ac5a18` | **Two-part data-loss bug.** (a) Filtering incomplete assignments out of the payload *deleted* an already-saved incomplete assignment on the next autosave. (b) The editor re-seeded `fdaJson` from the server on **every** React Query refetch (window focus, post-save), discarding in-progress edits. Once (a) was fixed so incomplete work correctly stopped saving, (b) became visible — the assignment "disappeared" repeatedly. | 24-05 save model vs pre-existing editor refetch behaviour |
 
+### Defect 8 — found on hardware, run 476 (2026-07-27, wave 3)
+
+**`int(None)` in `log_action` permanently killed the trigger worker thread.**
+
+```
+mics_task.py:506  _capture_output   -> self.flags[name].set(value)
+logging_utils.py:32  wrapper        -> value = int(args[0]) if args else self.value
+TypeError: int() argument must be ... not 'NoneType'
+```
+
+Chain: `detect_change()` returns `(None, None)` when the IRQ fired but no electrode changed →
+`unpack_output` writes `pin_number=None` → `Tracker.set(None)` → `@log_action` coerces with a bare
+`int()` → TypeError.
+
+**Severity is the thread death, not the exception.** `Task.process_queue` (`task.py:262-266`) is a
+bare `for ... in iter(queue.get, 'END')` loop with **no exception handler**, so the raise escapes
+the loop and the worker dies. Every subsequent trigger is silently dropped for the rest of the
+session. Run 476 produced **zero** `LICKER` events and zero touch events in 39 documents — just a
+clean 5-second `trial_onset → play_led` loop.
+
+With `EITHER_EDGE` this is not an edge case but **half of all interrupts**: reading the touch-status
+register is itself what deasserts the IRQ line, so every real touch yields one change edge and one
+no-change edge.
+
+**Why no test caught it.** `test_trigger_assignments.py` stubs flags with `_FlagTracker`, which
+exists specifically to avoid the `@log_action` path ("requires a working event_dispatcher"). The
+decorator was therefore never exercised on a captured value. New `tests/test_log_action_values.py`
+tests the real decorator on a real `Tracker`, including the `None` sentinel and electrode 0.
+
+**Fix** (`logging_utils.py`, deployed + md5-verified): coerce inside `try/except (TypeError,
+ValueError)` and log the raw value when coercion fails. Preserves int coercion for existing
+consumers, and also covers the wider class opened by FDA `output` capture — a float or string
+return value would have raised identically.
+
+**Not fixed, recommended:** `process_queue` has no exception handler at all. Any exception in any
+trigger callback permanently disables all trigger processing with no operator-visible signal. That
+is a systemic fragility in `task.py`, outside this phase's scope — flagged for a decision.
+
+---
+
 ### Design decision recorded (reversal)
 
 Fix 7 **reversed** an earlier decision. When first asked how the editor should handle a

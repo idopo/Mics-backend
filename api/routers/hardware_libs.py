@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from auth import verify_token
 from db import engine
-from fda_utils import scan_fda_for_refs
+from fda_utils import ref_label, scan_fda_for_refs
 from models import (
     HardwareLib,
     HardwareLibVersion,
@@ -312,7 +312,7 @@ def _flag_broken_task_defs(db, lib_id: int, removed_methods: dict[str, set[str]]
             for cls_name, removed in removed_methods.items():
                 if ref_method in removed:
                     msg = (
-                        f"State '{ref_entry['state_name']}': "
+                        f"{ref_label(ref_entry)}: "
                         f"{ref_entry['ref']}.{ref_method} removed from lib (class {cls_name})"
                     )
                     db.execute(sa_text(

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 # Imports from parent package (api/ is on sys.path in Docker)
 from auth import verify_token
 from db import engine
-from fda_utils import scan_fda_for_refs
+from fda_utils import ref_label, scan_fda_for_refs
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
@@ -383,12 +383,12 @@ def _flag_broken_defs_for_toolkit(
         for ref_entry in refs:
             action_type = ref_entry["action_type"]
             ref = ref_entry.get("ref")
-            state = ref_entry["state_name"]
+            label = ref_label(ref_entry)
 
             if action_type == "flag" and ref in removed_flag_names:
-                broken_msgs.append(f"State '{state}': flag '{ref}' removed from toolkit")
+                broken_msgs.append(f"{label}: flag '{ref}' removed from toolkit")
             if action_type in ("hardware", "timer") and ref in removed_module_names:
-                broken_msgs.append(f"State '{state}': hardware module '{ref}' removed from toolkit")
+                broken_msgs.append(f"{label}: hardware module '{ref}' removed from toolkit")
 
         if broken_msgs:
             db.execute(sa_text(
@@ -736,21 +736,21 @@ def _validate_task_definition(
         action_type = ref_entry["action_type"]
         ref = ref_entry.get("ref")
         method = ref_entry.get("method")
-        state = ref_entry["state_name"]
+        label = ref_label(ref_entry)
 
         if action_type == "flag" and ref not in current_flag_names:
-            errors.append(f"State '{state}': flag '{ref}' not in toolkit flags")
+            errors.append(f"{label}: flag '{ref}' not in toolkit flags")
 
         if action_type == "hardware" and ref is not None:
             if hw_module_map and ref not in hw_module_map:
-                errors.append(f"State '{state}': hardware module '{ref}' not in toolkit modules")
+                errors.append(f"{label}: hardware module '{ref}' not in toolkit modules")
             elif ref in hw_module_map and method is not None:
                 cls_name, lib_id = hw_module_map[ref]
                 if lib_id in libs_with_ast:
                     if cls_name not in lib_class_methods:
-                        errors.append(f"State '{state}': class '{cls_name}' not found in lib AST")
+                        errors.append(f"{label}: class '{cls_name}' not found in lib AST")
                     elif method not in lib_class_methods[cls_name]:
-                        errors.append(f"State '{state}': {ref}.{method} not found in lib (class {cls_name})")
+                        errors.append(f"{label}: {ref}.{method} not found in lib (class {cls_name})")
 
     if errors:
         return "broken", "\n".join(errors)

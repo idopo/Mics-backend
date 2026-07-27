@@ -247,6 +247,7 @@
 | TRIGA-02 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 | TRIGA-03 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 | TRIGA-04 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
+| TRIGA-09 | Phase 24, Plan 05 (Trigger Panel: Shared Action Editor) | Complete |
 
 ### Compound Transition Conditions
 

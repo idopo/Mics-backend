@@ -30,7 +30,7 @@
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
 | 18 | MICS-Link: Pi Transport + ExternalHardware | ZMQ ROUTER socket on Pi IOLoop + ExternalHardware base class with @signal/@event/@command + View Tracker auto-registration + stale policy + smoke test | EXTLINK-01–11 | ○ Pending |
 | 23 | Compute Primitives + Variables | FDA-JSON-v2 `variables` registry → Trackers in flags+view; `compute` entry-action + curated stdlib primitives (last-write-wins, hot-reload); backend variables/collision validation + compute-library storage via Phase-9 hw-lib infra; GUI compute state-builder + transition operand wiring. 3 plans. (expr escape-hatch decoupled/deferred) | CMP-01–06, CMP-10–15 | ○ Pending |
-| 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments` (currently none); rig-proof by replacing `detectedLick` with a UI-assigned action list; `LICKER0…LICKER3` derived at HANDSHAKE and pickable in the editor; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–15 | ◐ In Progress (3/8 plans) |
+| 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments` (currently none); rig-proof by replacing `detectedLick` with a UI-assigned action list; `LICKER0…LICKER3` derived at HANDSHAKE and pickable in the editor; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–15 | ◐ In Progress (4/8 plans) |
 | 25 | Detector-Derived View Keys | `LICKER0…LICKER3` (`device_name` × `num_detectors`) derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight | DVK-01–08 | ○ Pending |
 
 **Execution order (agreed 2026-07-26):** Phase 24 → Phase 23 → review → Phase 18 → Open Ephys. See `.planning/STABILIZATION_PLAN.md`.
@@ -552,14 +552,14 @@ Phase 23 (Compute Primitives + Variables) — 3 plans:
 
 **Requirements**: TRIGA-01 through TRIGA-15
 **Depends on:** Phase 1 (`load_fda_from_json`, `_build_action_callable`, `_resolve_arg`), Phase 12 (StateBodyPanel / ActionEditor — the action editor UI to reuse). *Not* dependent on Phase 23; the two share the `output` value-capture idea and should be kept consistent.
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 - [ ] 24-01-PLAN.md — Pi runtime: variables registry, `output` capture, `view` action, `{"trigger"}` arg form, shared `fda_vocabulary` module (wave 1)
 - [ ] 24-02-PLAN.md — Backend: trigger ref scanning + new `api/fda_validation.py` hard-422 on save (wave 1)
 - [ ] 24-03-PLAN.md — React: schema types, ArgInput trigger mode, ActionEditor `view`/`output` support (wave 1)
 - [ ] 24-04-PLAN.md — Pi: `_build_trigger_action_list`, `actions`-only branch (handler enum deleted), single-sourced `validate_fda.py` (wave 2)
-- [ ] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
+- [x] 24-05-PLAN.md — React: VariablesPanel + TriggerAssignmentPanel hosting the shared ActionEditor (wave 2)
 - [ ] 24-06-PLAN.md — Unregister `TOUCH_INT` in `learning_cage` (method retained); capability-based `check_for_detectors` (TRIGA-12); write `.claude/docs/trigger_action_lists.md` (wave 3)
 - [ ] 24-08-PLAN.md — Detector view keys + trigger sources end-to-end: Pi HANDSHAKE derivation → toolkit columns/API → editor operand, key-template and trigger-name dropdowns; variables in operand lists (wave 3)
 - [ ] 24-07-PLAN.md — Checkpoints: UI round-trip, save-time 422 negative case, rig proof (wave 4)

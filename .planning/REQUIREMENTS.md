@@ -250,6 +250,10 @@
 | TRIGA-03 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 | TRIGA-04 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 | TRIGA-09 | Phase 24, Plan 05 (Trigger Panel: Shared Action Editor) | Complete |
+| TRIGA-14 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
+| TRIGA-15 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
+| TRIGA-16 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
+| TRIGA-17 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
 
 ### Compound Transition Conditions
 

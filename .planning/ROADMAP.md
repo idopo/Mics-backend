@@ -30,7 +30,7 @@
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
 | 18 | MICS-Link: Pi Transport + ExternalHardware | ZMQ ROUTER socket on Pi IOLoop + ExternalHardware base class with @signal/@event/@command + View Tracker auto-registration + stale policy + smoke test | EXTLINK-01–11 | ○ Pending |
 | 23 | Compute Primitives + Variables | FDA-JSON-v2 `variables` registry → Trackers in flags+view; `compute` entry-action + curated stdlib primitives (last-write-wins, hot-reload); backend variables/collision validation + compute-library storage via Phase-9 hw-lib infra; GUI compute state-builder + transition operand wiring. 3 plans. (expr escape-hatch decoupled/deferred) | CMP-01–06, CMP-10–15 | ○ Pending |
-| 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments` (currently none); on a **sourceless** toolkit, a constrained one-pick detector write drives `LICKER0…LICKER3` with no way to cross pin and tracker; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–10, 11a, 12, 14–19 | ◐ In Progress (6/8 plans) — waves 1–2 done + rig-proven (run 475); **wave 3 (plan 06 — TRIGA-12/18/19) executed 2026-07-27**, deployed + md5-verified, awaiting user pytest run; plans 07/08 next |
+| 24 | 7/8 | In Progress|  | ◐ In Progress (6/8 plans) — waves 1–2 done + rig-proven (run 475); **wave 3 (plan 06 — TRIGA-12/18/19) executed 2026-07-27**, deployed + md5-verified, awaiting user pytest run; plans 07/08 next |
 | 25 | Detector-Derived View Keys | `LICKER0…LICKER3` (`device_name` × `num_detectors`) derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight. **Absorbs TRIGA-13.** Transitions on `LICKER2` are unavailable until this lands | DVK-01–08 | ○ Pending |
 
 **Execution order (amended 2026-07-27):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → Open Ephys. Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. See `.planning/STABILIZATION_PLAN.md`.
@@ -553,7 +553,7 @@ Phase 23 (Compute Primitives + Variables) — 3 plans:
 **Requirements**: TRIGA-01 through TRIGA-10 (done), TRIGA-11a, TRIGA-12, TRIGA-14 through TRIGA-19. *TRIGA-11 dropped; TRIGA-13 moved to Phase 25.*
 **Remaining for plans 06/07/08:** TRIGA-11a, TRIGA-12, TRIGA-14, TRIGA-15, TRIGA-16, TRIGA-17, TRIGA-18, TRIGA-19
 **Depends on:** Phase 1 (`load_fda_from_json`, `_build_action_callable`, `_resolve_arg`), Phase 12 (StateBodyPanel / ActionEditor — the action editor UI to reuse). *Not* dependent on Phase 23; the two share the `output` value-capture idea and should be kept consistent.
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 - [x] 24-01-PLAN.md — Pi runtime: variables registry, `output` capture, `view` action, `{"trigger"}` arg form, shared `fda_vocabulary` module (wave 1)

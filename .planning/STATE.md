@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-27T16:32:51.216Z"
+last_updated: "2026-07-27T16:45:50.406Z"
 progress:
   total_phases: 19
   completed_phases: 5
   total_plans: 33
-  completed_plans: 23
-  percent: 74
+  completed_plans: 24
+  percent: 76
 ---
 
 # STATE: MICS Backend
@@ -26,8 +26,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 24 — Trigger Assignment Action Lists — **wave 3 done (6/8 plans); wave 4 (07/08) next**
-**Progress:** [███████░░░] 74%
+**Phase:** 24 — Trigger Assignment Action Lists — **7/8 plans done; only 07 (rig proof) remains**
+**Progress:** [████████░░] 76%
 
 ### Phase 24 status (2026-07-27)
 
@@ -42,6 +42,16 @@ action (task definitions stay pilot-agnostic), and the value-source lock (level 
 `detect_change()`'s own capture, never the trigger's IRQ-edge level). Deployed to the Pi,
 md5-verified. **Not yet USER-verified** — awaiting pilot restart + full test-suite run (below).
 See `24-06-SUMMARY.md`.
+
+**Plan 08 executed (2026-07-27):** TRIGA-14/15/16/17 delivered — `api/hw_introspect.py` derives
+`trigger_sources`/`detector_refs` from the lib AST (verified live on toolkit 100/module 7); a
+hardware/timer action with no `method` is now a hard 422 in triggers AND state `entry_actions`;
+the `view` action accepts the runtime `{device_name}` token when paired with a resolvable
+`source_ref`; `trigger_name` is a grouped dropdown; declared `variables` join the condition
+operand pickers; new `DetectorWriteWidget.tsx` is the constrained one-pick detector write UI
+macro (emits ordinary FDA JSON, no Pi-side change). `api`/`web_ui` rebuilt and verified live.
+Blast-radius re-confirmed unchanged: task defs 181/185(Gili's)/187 blocked from re-save by the
+method rule, none edited. See `24-08-SUMMARY.md`.
 
 **Read these two files first when resuming:**
 - `.planning/phases/24-trigger-assignment-action-lists/24-HARDWARE-VALIDATION.md` — what is
@@ -69,8 +79,9 @@ See `24-06-SUMMARY.md`.
    `test_fda_vocabulary.py`/`test_trigger_assignments.py`/`test_validate_fda.py`):
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` — restart the pilot
    first (agent cannot do either step).
-2. Execute plan 07 (rig proof, TRIGA-11a) and plan 08 (constrained detector-write widget,
-   TRIGA-14/15/16/17) — both depend on plan 06 having landed.
+2. Execute plan 07 (rig proof, TRIGA-11a) — the only plan left in phase 24, exercising the
+   `api`/`web_ui` built by plan 08 (dropdown, method gate, detector widget) against real
+   hardware.
 3. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
 4. Before real data collection: understand the 140 `Mid_LED` calls for 47 triggers in run 475
    (~3×) — if each lick writes its tracker more than once the behavioural record is inflated.
@@ -169,6 +180,7 @@ See `24-06-SUMMARY.md`.
 - [Phase 24-06]: check_for_detectors matches by capability (num_detectors:int-not-bool>0, device_name:non-empty-str, callable read()), not isinstance(v, Touch_Detector) — a hardware-module-registry detector's class is exec'd fresh by _resolve_hardware_classes and can never satisfy the identity check, so detection silently found zero LICKER trackers before this fix
 - [Phase 24-06]: view action gains source_ref + runtime-resolved {device_name} key_template token (RUNTIME_KEY_TEMPLATE_TOKENS, single-sourced in fda_vocabulary.py) — resolved from the source hardware object's own device_name attribute at call time, so one task definition writes LICKER2 on one pilot and TONGUE2 on another without hard-coding either name
 - [Phase 24-06]: the sourceless-lick canonical payload captures both pin_number and level from detect_change()'s own output — never {"trigger": "level"} — since execute_trigger's level is the TOUCH_INT IRQ edge (assert/deassert), not electrode state; wiring the trigger level would write interrupt polarity into whichever LICKER changed
+- [Phase 24]: Plan 08: trigger_sources/detector_refs derived from lib AST; hard-422 on method-less hardware/timer actions in triggers and state bodies; constrained one-pick DetectorWriteWidget UI macro
 
 ## Accumulated Context
 

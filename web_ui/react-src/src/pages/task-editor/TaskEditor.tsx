@@ -221,19 +221,21 @@ export default function TaskEditor() {
     [taskDef?.validation_status, taskDef?.validation_message],
   )
 
+  // Seed the editor from the server ONCE per task definition. React Query refetches on
+  // window focus and after every save; re-seeding on each refetch would overwrite whatever
+  // the user is midway through building — a half-built trigger assignment (which correctly
+  // does not autosave) vanished on the next refocus. After seeding, local state is
+  // authoritative until the id changes.
+  const seededIdRef = useRef<number | null>(null)
   useEffect(() => {
-    if (taskDef) {
-      if (taskDef.fda_json) {
-        const normalised = normaliseFda(taskDef.fda_json)
-        setFdaJson(prev => {
-          // Avoid triggering auto-save when server round-trips identical content
-          if (prev && JSON.stringify(prev) === JSON.stringify(normalised)) return prev
-          return normalised
-        })
-      }
-      setEditName(taskDef.display_name ?? taskDef.task_name ?? '')
+    if (!taskDef) return
+    setEditName(taskDef.display_name ?? taskDef.task_name ?? '')
+    if (seededIdRef.current === numId) return
+    if (taskDef.fda_json) {
+      seededIdRef.current = numId
+      setFdaJson(normaliseFda(taskDef.fda_json))
     }
-  }, [taskDef])
+  }, [taskDef, numId])
 
   // Only sync canvas on initial FDA load or toolkit change — NOT on every edit
   const [canvasInited, setCanvasInited] = useState(false)

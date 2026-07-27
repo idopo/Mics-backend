@@ -241,6 +241,12 @@
 | BUG-01 through BUG-02 | Phase 14, Plan 1 (Small Bug Fixes Batch 1) | Complete |
 | BUG-03 through BUG-04 | Phase 14, Plan 2 (Hw-lib Warning Badge Fixes) | Complete |
 | BUG-05 through BUG-07 | Phase 14, Plan 3 (Toolkit Creation Modal UX Fixes) | Pending |
+| TRIGA-07 | Phase 24, Plan 02 (Trigger-Assignment Hard Validation) | Complete |
+| TRIGA-08 | Phase 24, Plan 02 (Trigger-Assignment Hard Validation) | Complete |
+| TRIGA-10 | Phase 24, Plan 02 (Trigger-Assignment Hard Validation) | Complete |
+| TRIGA-02 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
+| TRIGA-03 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
+| TRIGA-04 | Phase 24, Plan 01 (Pi Value-Capture Substrate) | Complete |
 
 ### Compound Transition Conditions
 

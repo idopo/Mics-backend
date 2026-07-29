@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from fda_validation import (
     collect_hard_errors,
+    validate_condition_operands,
     validate_state_actions,
     validate_trigger_assignments,
     validate_variables,
@@ -777,6 +778,191 @@ def test_canonical_payload_with_device_name_token_validates_clean():
 # ---------------------------------------------------------------------------
 # Task 3 (Plan 08) — route-level: method-less hardware action returns 422
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# DVK-07: detector keys are view-only, never flags (Plan 25-01 Task 4)
+# ---------------------------------------------------------------------------
+
+def test_flag_ref_named_licker1_still_hard_errors_not_silently_allowed():
+    toolkit = make_toolkit()
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [{"type": "flag", "ref": "LICKER1"}]}]}
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("LICKER1" in e for e in errors)
+
+
+def test_view_action_literal_key_template_licker1_validates_clean_at_save_time():
+    """key_template SHAPE only — resolution (does LICKER1 exist on this pilot) is preflight's
+    job, per fda_validation.py's module docstring."""
+    toolkit = make_toolkit()
+    fda = {
+        "trigger_assignments": [
+            {"trigger_name": "TOUCH_INT", "actions": [{"type": "view", "key_template": "LICKER1", "value": 1}]}
+        ]
+    }
+    assert validate_trigger_assignments(fda, toolkit) == []
+
+
+def test_output_slot_named_licker1_rejected_unless_declared_as_variable():
+    toolkit = make_toolkit()
+    fda = {
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [{"type": "special", "ref": "INC_TRIAL_COUNTER", "output": "LICKER1"}],
+            }
+        ]
+    }
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("LICKER1" in e for e in errors)
+
+
+def test_output_slot_named_licker1_accepted_when_declared_as_variable():
+    toolkit = make_toolkit()
+    fda = {
+        "variables": {"LICKER1": {}},
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [{"type": "special", "ref": "INC_TRIAL_COUNTER", "output": "LICKER1"}],
+            }
+        ],
+    }
+    assert validate_trigger_assignments(fda, toolkit) == []
+
+
+def test_valid_flag_names_pinned_to_toolkit_flags_union_variables_union_trial_counter():
+    """A later plan (03/04) must not quietly union detector keys or channels into this set."""
+    from fda_validation import _valid_flag_names
+
+    toolkit = make_toolkit(flags={"lever_pressed": {}, "trial_counter": {}})
+    fda = {"variables": {"pin_number": {}, "level": {}}}
+    assert _valid_flag_names(fda, toolkit) == {"lever_pressed", "trial_counter", "pin_number", "level"}
+
+
+# ---------------------------------------------------------------------------
+# DVK-11: view_detector condition operand — save-time REF + SHAPE gate
+# (Plan 25-01 Task 4). Channel RANGE stays with preflight, not here.
+# ---------------------------------------------------------------------------
+
+def _transition_view_detector(ref="MPR121", channel=2):
+    return {
+        "transitions": [
+            {"condition_tree": {"left": {"view_detector": {"ref": ref, "channel": channel}}, "op": "==", "right": 1}}
+        ]
+    }
+
+
+def test_valid_view_detector_ref_and_channel_no_error():
+    fda = _transition_view_detector(ref="MPR121", channel=2)
+    assert validate_condition_operands(fda, detector_refs={"MPR121"}) == []
+
+
+def test_view_detector_ref_not_a_detector_errors_naming_ref_and_listing_available():
+    fda = _transition_view_detector(ref="Mixer", channel=0)
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert len(errors) == 1
+    assert "Mixer" in errors[0]
+    assert "MPR121" in errors[0]
+
+
+def test_detector_refs_none_skips_ref_check_shape_checks_still_run():
+    fda = _transition_view_detector(ref="AnythingAtAll", channel=2)
+    assert validate_condition_operands(fda, detector_refs=None) == []
+
+
+def test_detector_refs_empty_skips_ref_check_shape_checks_still_run():
+    fda = _transition_view_detector(ref="AnythingAtAll", channel=2)
+    assert validate_condition_operands(fda, detector_refs=set()) == []
+
+
+@pytest.mark.parametrize("channel", [-1, "2", 2.5, True])
+def test_bad_channel_shape_errors(channel):
+    fda = _transition_view_detector(ref="MPR121", channel=channel)
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert len(errors) == 1
+    assert "channel" in errors[0]
+
+
+def test_channel_missing_errors():
+    fda = {"transitions": [{"condition_tree": {"left": {"view_detector": {"ref": "MPR121"}}, "op": "==", "right": 1}}]}
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert len(errors) == 1
+    assert "channel" in errors[0]
+
+
+def test_channel_is_dict_errors():
+    fda = _transition_view_detector(ref="MPR121", channel={"nested": 1})
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert len(errors) == 1
+    assert "channel" in errors[0]
+
+
+@pytest.mark.parametrize("ref", [None, "", 42])
+def test_bad_ref_shape_errors(ref):
+    fda = _transition_view_detector(ref=ref, channel=2)
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert any("ref" in e for e in errors)
+
+
+def test_view_detector_value_not_a_dict_errors():
+    fda = {"transitions": [{"condition_tree": {"left": {"view_detector": "MPR121"}, "op": "==", "right": 1}}]}
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert len(errors) == 1
+    assert "view_detector" in errors[0]
+
+
+def test_view_detector_fires_for_transition_wait_condition_and_if_action_alike():
+    fda = {
+        "states": {
+            "idle": {
+                "wait_condition": {"left": {"view_detector": {"ref": "Mixer", "channel": 0}}, "op": "==", "right": 1},
+                "entry_actions": [
+                    {
+                        "type": "if",
+                        "condition": {"left": {"view_detector": {"ref": "Mixer", "channel": 0}}, "op": "==", "right": 1},
+                        "then": [], "else": [],
+                    }
+                ],
+            }
+        },
+        "transitions": [
+            {"condition_tree": {"left": {"view_detector": {"ref": "Mixer", "channel": 0}}, "op": "==", "right": 1}}
+        ],
+    }
+    errors = validate_condition_operands(fda, detector_refs={"MPR121"})
+    assert len(errors) == 3
+
+
+def test_channel_out_of_range_for_no_pilot_is_not_a_save_time_error():
+    """P5: range is preflight's job. A valid ref with an absurd channel must still save clean."""
+    fda = _transition_view_detector(ref="MPR121", channel=99)
+    assert validate_condition_operands(fda, detector_refs={"MPR121"}) == []
+
+
+def test_collect_hard_errors_toolkit_none_or_empty_fda_still_returns_empty():
+    assert collect_hard_errors({}, None) == []
+    assert collect_hard_errors(None, make_toolkit()) == []
+
+
+def test_collect_hard_errors_wires_view_detector_check_through():
+    toolkit = make_toolkit()
+    fda = _transition_view_detector(ref="Mixer", channel=0)
+    errors = collect_hard_errors(fda, toolkit, detector_refs={"MPR121"})
+    assert any("Mixer" in e for e in errors)
+
+
+def test_flag_and_view_and_literal_operands_ignored_by_view_detector_pass():
+    fda = {
+        "transitions": [
+            {"condition_tree": {"op": "AND", "children": [
+                {"left": {"flag": "pin_number"}, "op": "==", "right": 1},
+                {"left": {"view": "LICKER0"}, "op": "==", "right": 1},
+                {"left": 5, "op": "==", "right": None},
+            ]}}
+        ]
+    }
+    assert validate_condition_operands(fda, detector_refs={"MPR121"}) == []
+
 
 def test_put_method_less_hardware_action_returns_422_not_200_broken(client):
     defn = make_defn_mock()

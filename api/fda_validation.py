@@ -18,12 +18,19 @@ check_for_detectors), so resolving here would falsely reject a definition target
 differently configured pilot. Authoritative resolution belongs to Phase 13's pilot-specific
 preflight (api/routers/toolkit_dispatch.py::preflight_validate), which keys off pilot_id and
 reads pilot_hardware_config — the only place that knows a given pilot's hardware shape.
+
+DVK-11 (Plan 25-01) draws the identical split for a `view_detector` condition operand
+({"view_detector": {"ref": "MPR121", "channel": 2}}): REF + SHAPE are checked here (is `ref` a
+detector on this toolkit at all, is `channel` a non-negative int) via validate_condition_operands,
+because those are toolkit facts, not pilot facts. Whether `channel` is in range for a SPECIFIC
+pilot's wiring stays with preflight, same reason as key_template resolution above.
 """
 import re
 
 from fastapi import HTTPException
 from sqlalchemy import text as sa_text
 
+from fda_utils import scan_fda_condition_operands
 from hw_introspect import toolkit_hw_capabilities
 from models import TaskToolkit
 
@@ -161,12 +168,49 @@ def validate_state_actions(
     return errors
 
 
+def validate_condition_operands(fda_json: dict, detector_refs: set[str] | None = None) -> list[str]:
+    """DVK-11: hard-validate every `view_detector` condition operand
+    ({"view_detector": {"ref": <detector name>, "channel": <non-negative int>}}).
+
+    Every other operand shape ({"view": ...}, {"flag": ...}, literals) is ignored here — this
+    pass adds exactly one rule and must not become a general operand validator. `channel` RANGE
+    (is it valid for a specific pilot's wiring) is preflight's job, not this pass's — see the
+    module docstring's DVK-11 paragraph.
+    """
+    errors: list[str] = []
+    for entry in scan_fda_condition_operands(fda_json):
+        operand = entry["operand"]
+        if not isinstance(operand, dict) or "view_detector" not in operand:
+            continue
+        location = entry["location"]
+        value = operand["view_detector"]
+        if not isinstance(value, dict):
+            errors.append(f"{location}: view_detector must be an object with 'ref' and 'channel'")
+            continue
+
+        ref = value.get("ref")
+        if not isinstance(ref, str) or not ref:
+            errors.append(f"{location}: view_detector.ref must be a non-empty string")
+
+        channel = value.get("channel")
+        if isinstance(channel, bool) or not isinstance(channel, int) or channel < 0:
+            errors.append(f"{location}: view_detector.channel must be a non-negative integer")
+
+        if detector_refs and isinstance(ref, str) and ref and ref not in detector_refs:
+            errors.append(
+                f"{location}: view_detector ref '{ref}' is not a detector on this toolkit. "
+                f"Detectors: {sorted(detector_refs)}"
+            )
+    return errors
+
+
 def collect_hard_errors(
     fda_json: dict,
     toolkit,
     module_names: set[str] | None = None,
     module_methods: dict[str, tuple[set[str], bool]] | None = None,
     trigger_sources: set[str] | None = None,
+    detector_refs: set[str] | None = None,
 ) -> list[str]:
     """Every hard (422-worthy) error for this FDA. Phase 23 appends its compute checks here."""
     if not fda_json or toolkit is None:
@@ -175,6 +219,7 @@ def collect_hard_errors(
         validate_variables(fda_json, toolkit)
         + validate_trigger_assignments(fda_json, toolkit, module_names, module_methods, trigger_sources)
         + validate_state_actions(fda_json, toolkit, module_methods)
+        + validate_condition_operands(fda_json, detector_refs)
     )
 
 
@@ -190,7 +235,10 @@ def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
     caps = toolkit_hw_capabilities(db, getattr(toolkit, "hardware_module_ids", None) or []) if toolkit else None
     module_methods = caps["module_methods"] if caps else None
     trigger_sources = {t["hw_id"] for t in caps["trigger_sources"]} if caps else None
-    errors = collect_hard_errors(fda_json, toolkit, _module_names(db, toolkit), module_methods, trigger_sources)
+    detector_refs = set(caps["detector_refs"]) if caps else None
+    errors = collect_hard_errors(
+        fda_json, toolkit, _module_names(db, toolkit), module_methods, trigger_sources, detector_refs
+    )
     if errors:
         raise HTTPException(422, detail={"errors": errors})
 

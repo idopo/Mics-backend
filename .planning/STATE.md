@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-29T11:51:38.259Z"
+last_updated: "2026-07-29T11:59:23.000Z"
 progress:
   total_phases: 19
   completed_phases: 6
   total_plans: 39
-  completed_plans: 29
+  completed_plans: 30
   percent: 77
 ---
 
@@ -26,7 +26,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **4/6 plans done**
+**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **5/6 plans done**
 **Progress:** [████████░░] 77%
 
 ### Phase 25 status (2026-07-29)
@@ -109,6 +109,35 @@ task early; `ViewActionFields` wiring deferred a task late) documented in `25-04
 both to keep each task's own `tsc` green — no scope change from the plan. Behavioural
 verification of the rendered pickers is manual, deferred to plan 06's checkpoint. See
 `25-04-SUMMARY.md`.
+
+**Plan 05 executed (2026-07-29):** DVK-06/09/11 delivered on the FDA editor's two preflight-facing
+surfaces. `HardwareCheckModal.tsx`'s `PreflightIssue` union gained `view_key_unresolved` plus the
+optional `location`/`key`/`available_keys`/`detector`/`available_channels` fields from plan 03's
+two issue shapes; a new `ViewKeyIssueDetail` read-only component renders both (leading with
+`MPR121 — channel 5` + an `available_channels` pill row for the DVK-11 shape, the offending `key`
+for the literal shape, `detail` alone when only that field is present) — the issue that previously
+rendered as `null` and left the researcher unable to tell why start was gated. `handleStart` and
+the `pendingEdits` initialiser both skip `view_key_unresolved` — it names no config row, so it can
+no longer trigger a destructive PUT (overwriting a good config with `{}`, or hitting an empty path
+segment). The `issues.map` React key, previously `module_name` alone, is now
+`${issue.issue}:${issue.module_name}:${issue.location ?? i}` — fixes a real duplicate-key
+collision (two bad channels on one MPR121 previously shared a key). No start gate added; preflight
+stays advisory per Phase 13. Separately, `PilotHardwareConfig.tsx` now offers a `first_channel`
+number input (empty = key absent, via new `setJsonKey` helper) plus a live derived-key preview
+(new `DetectorChannelFields.tsx`, comment-pinned to `api/detector_keys.py::derive_view_keys` as the
+real authority) on a detector module's **edit** row — resolved by module **name** against
+`listHardwareModules` since `PilotHardwareConfigRow` carries no `module_id` (Phase 17).
+`handleModulePick`'s existing template fetch was rerouted through `qc.fetchQuery` on the same
+`['hardware-module-methods', id]` key the new `is_detector` `useQuery` hooks use, so the add and
+edit flows share one fetch, not two. `HardwareModuleMethods` gained `is_detector: boolean`
+(already shipped on the backend response by plan 03). `tsc --noEmit` clean; `npm run build`
+succeeds (bundles `dist/HardwareCheckModal-DKJUfoGY.js`, `dist/PilotHardwareConfig-B09He_Dl.js` —
+`npx vite build` itself failed in this environment with `npm error Missing script: "vite"`,
+apparently the rtk command-rewriting hook misinterpreting `npx <bin>`; `npm run build`, the
+project's own script, produced the identical build unaffected). No deviations from plan. No
+hardcoded `LICKER` in any rendered string — verified by grep. Behavioural verification (both issue
+shapes against the rig pilot, the edit-flow `first_channel` round-trip) is plan 06's, per this
+plan's own note not to claim DVK-06/09/11 proven here. See `25-05-SUMMARY.md`.
 
 ### Phase 24 status (2026-07-27)
 
@@ -292,6 +321,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 25]: Plan 25-01: derive_channels/derive_view_keys single-source the detector key format; module_detector_channels surfaces cross-pilot conflict instead of merging
 - [Phase 25]: Plan 02: Pi-side DVK-09/10/11 fixes (check_for_detectors first_channel, execute_trigger error containment, view_detector build-time resolution) landed in pi-mirror; no git commits made there per pi_rules
 - [Phase 25]: Plan 25-03: preflight step 8 nested inside step 7's fda_json guard (not after) to reuse already_flagged as skip_modules without risking a swallowed NameError; key_template device_name resolution does not consult skip_modules per the plan's literal resolution-rules table
+- [Phase 25]: Plan 25-05: view_key_unresolved is excluded from HardwareCheckModal's PUT loop and pendingEdits initialiser (it names no config row); is_detector resolved by module NAME (not module_id, which pilot_hardware_config rows don't carry) at both the PilotHardwareConfig add and edit entry points, sharing one ['hardware-module-methods', id] query key so no second fetch is introduced
 
 ## Accumulated Context
 
@@ -360,21 +390,20 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Execute Phase 25 Plan 05** — render `preflight_validate`'s `view_key_unresolved` issues in
-   `HardwareCheckModal` (both shapes: with and without the `detector` field, per R1) and the
-   `first_channel` config affordance (DVK-06/09).
-2. Then Plan 06 — **deploy** plan 02's seven pi-mirror files
-   (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files — see
-   `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list) AND the plan 04 React
-   rebuild (confirm the deployed bundle is `dist/TaskEditor-B6-dKcPk.js` — see `25-04-SUMMARY.md`
-   "Next Phase Readiness" for the exact operand JSON to look for in
-   `GET /api/task-definitions/<id>`), run the three new USER-RUN Pi test files plus the
-   pre-existing suite, and rig-prove DVK-09 (channel 4 lands in `LICKER4`) and DVK-11 (a
-   transition on "MPR121 — channel 2" fires, then re-fires unchanged after a `device_name`
-   rename). Also owns the manual/behavioural verification of plan 04's editor pickers (grouped
-   `<optgroup>`s, the "(unknown)" flag, the S3 type-switch guard) — deferred from plan 04 per its
-   own `<verification>` note.
-3. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
+1. **Execute Phase 25 Plan 06** (last plan in phase 25) — **deploy** plan 02's seven pi-mirror
+   files (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files — see
+   `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list) AND the plan 04/05 React
+   rebuild (confirm the deployed bundles are `dist/TaskEditor-B6-dKcPk.js`,
+   `dist/HardwareCheckModal-DKJUfoGY.js`, `dist/PilotHardwareConfig-B09He_Dl.js` — see
+   `25-04-SUMMARY.md` and `25-05-SUMMARY.md` "Next Phase Readiness" for the exact operand JSON /
+   config round-trip to look for), run the three new USER-RUN Pi test files plus the pre-existing
+   suite, and rig-prove DVK-09 (channel 4 lands in `LICKER4`) and DVK-11 (a transition on "MPR121
+   — channel 2" fires, then re-fires unchanged after a `device_name` rename). Also owns the
+   manual/behavioural verification of plan 04's editor pickers (grouped `<optgroup>`s, the
+   "(unknown)" flag, the S3 type-switch guard) and plan 05's `HardwareCheckModal`/
+   `PilotHardwareConfig` rendering (both `view_key_unresolved` shapes, the edit-flow
+   `first_channel` round-trip) — both deferred per their own `<verification>` notes.
+2. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
    outstanding from phase 24 and now larger after plan 02's additions:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
 
@@ -394,13 +423,12 @@ established pattern for plans 01/02/03. `state advance-plan` additionally wrote 
 04's execution.
 
 ---
-*Last updated: 2026-07-29 — phase 25 plan 04 executed: detector channels are first-class
-pickable FDA-editor operands. New `detectorOptions.mts` (pure, node:test-covered, zero new
-npm deps) is the single option-assembly + operand-encoding module behind every view-operand
-picker; `ConditionBuilder.tsx`'s grouped `<optgroup>` picker emits `{"view_detector":
-{"ref","channel"}}` for a picked channel (DVK-11), never a resolved per-pilot key, with the
-keep-current-value escape preserved and flagged `(unknown)` (DVK-05). `detectorChannels`
-threaded end to end through the state-body/if-condition/trigger-action-list chain (DVK-03/07).
-`ViewActionFields`' `key_template` field offers pickable completions from the same builder
-while staying free text (DVK-04). `tsc`/`vite build` clean; bundle
-`dist/TaskEditor-B6-dKcPk.js`. Next: plan 05 (HardwareCheckModal preflight rendering).*
+*Last updated: 2026-07-29 — phase 25 plan 05 executed: `HardwareCheckModal` now renders
+`preflight_validate`'s `view_key_unresolved` issues (both the DVK-11 detector-channel shape and
+the literal-key shape) instead of `null`, provably skips the PUT loop for that issue kind, and
+fixes a real duplicate React-key collision the new issue kind introduced. `PilotHardwareConfig`
+gained a `first_channel` affordance with a live derived-key preview on a detector module's edit
+row, resolved by module name since pilot-hardware-config rows carry no `module_id`. No start gate
+added — preflight stays advisory per Phase 13. `tsc --noEmit` clean; `npm run build` succeeds;
+bundles `dist/HardwareCheckModal-DKJUfoGY.js`, `dist/PilotHardwareConfig-B09He_Dl.js`. No
+deviations. Next: plan 06 (deploy + rig proof — the last plan in phase 25).*

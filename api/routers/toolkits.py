@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 # Imports from parent package (api/ is on sys.path in Docker)
 from auth import verify_token
 from db import engine
+from detector_keys import module_detector_channels
 from fda_utils import ref_label, scan_fda_for_refs
 from fda_validation import reject_if_hard_errors
 from hw_introspect import toolkit_hw_capabilities
@@ -69,7 +70,13 @@ def _build_toolkit_row(
     origins_map: Dict[int, List[str]],
     fda_count: int,
     caps: Dict[str, Any] | None = None,
+    detector_channels: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
+    """`detector_channels` is derived at the CALL SITE, not here — `db` is not a parameter of
+    this function (see the three caps-bearing call sites below), so `module_detector_channels`
+    can never be invoked from inside it. Always a list, even when the caller passes nothing
+    (the three caps-less write-path sites: set-canonical/create/patch — see Plan 25-03 summary
+    for why those three are deliberately not fed)."""
     caps = caps or {"trigger_sources": [], "detector_refs": []}
     return {
         "id": t.id,
@@ -92,6 +99,7 @@ def _build_toolkit_row(
         "fda_count": fda_count,
         "trigger_sources": caps["trigger_sources"],
         "detector_refs": caps["detector_refs"],
+        "detector_channels": detector_channels or [],
     }
 
 
@@ -117,10 +125,27 @@ def list_toolkits(_: dict = Depends(verify_token)):
         )).fetchall()
         fda_count_by_name: Dict[str, int] = {row[0]: row[1] for row in fda_counts_rows}
 
+        # ONE module_detector_channels call across every toolkit's module names combined, not
+        # one per toolkit — module_detector_channels already takes the full name list at once,
+        # so this route stays at a fixed extra-query count regardless of how many of the ~112
+        # toolkits are read (98 of them are module-less and contribute nothing to the union).
+        caps_by_toolkit = {t.id: toolkit_hw_capabilities(db, t.hardware_module_ids or []) for t in toolkits}
+        all_module_names = sorted({
+            name for caps in caps_by_toolkit.values() for name in (caps.get("module_names") or [])
+        })
+        detector_channels_by_module = {
+            d["module_name"]: d for d in module_detector_channels(db, all_module_names)
+        }
+
         return [
             _build_toolkit_row(
                 t, origins_map, fda_count_by_name.get(t.name, 0),
-                toolkit_hw_capabilities(db, t.hardware_module_ids or []),
+                caps_by_toolkit[t.id],
+                detector_channels=[
+                    detector_channels_by_module[name]
+                    for name in (caps_by_toolkit[t.id].get("module_names") or [])
+                    if name in detector_channels_by_module
+                ],
             )
             for t in toolkits
         ]
@@ -162,10 +187,14 @@ def get_toolkits_by_name(name: str, _: dict = Depends(verify_token)):
             "SELECT COUNT(id) FROM task_definitions WHERE toolkit_name = :name"
         ), {"name": name}).scalar() or 0
 
-        return [
-            _build_toolkit_row(t, origins_map, fda_count, toolkit_hw_capabilities(db, t.hardware_module_ids or []))
-            for t in toolkits
-        ]
+        # This is the route TaskEditor.tsx:176-183 actually calls to load its toolkit — the
+        # detector_channels wiring here is the phase's headline deliverable, not list_toolkits'.
+        rows = []
+        for t in toolkits:
+            caps = toolkit_hw_capabilities(db, t.hardware_module_ids or [])
+            detector_channels = module_detector_channels(db, caps.get("module_names") or [])
+            rows.append(_build_toolkit_row(t, origins_map, fda_count, caps, detector_channels=detector_channels))
+        return rows
     finally:
         db.close()
 
@@ -193,7 +222,8 @@ def get_toolkit(toolkit_id: int, _: dict = Depends(verify_token)):
 
         origins_map = {toolkit_id: pilot_names}
         caps = toolkit_hw_capabilities(db, toolkit.hardware_module_ids or [])
-        return _build_toolkit_row(toolkit, origins_map, fda_count, caps)
+        detector_channels = module_detector_channels(db, caps.get("module_names") or [])
+        return _build_toolkit_row(toolkit, origins_map, fda_count, caps, detector_channels=detector_channels)
     finally:
         db.close()
 

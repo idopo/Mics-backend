@@ -121,15 +121,23 @@ def class_capabilities(source_code: str, class_name: str) -> dict:
 
 
 def toolkit_hw_capabilities(db, hardware_module_ids: list[int]) -> dict:
-    """{"trigger_sources": [...], "detector_refs": [...], "module_methods": {name: (methods, closed)}}
+    """{"trigger_sources": [...], "detector_refs": [...], "module_methods": {name: (methods,
+    closed)}, "module_names": [...]}
 
     One SQL join over hardware_modules -> hardware_libs -> hardware_lib_versions
     (active_version_id.source_code), parsing each distinct version once per call (memoised by
     _parse_classes across calls). A module whose lib has no active version, or whose class is
     missing from that version's source, is skipped silently — never a 500 on a toolkit read.
+
+    `module_names` is every module NAME this toolkit has (regardless of whether its source
+    resolved), so a caller can feed it straight to `detector_keys.module_detector_channels`
+    without a second query. Plan 25-03: it must be present on BOTH returns below — the early
+    return (98 of 112 task_toolkits rows have no hardware_module_ids and take it) is the one
+    that matters most; dropping the key there turns `caps["module_names"]` into a `KeyError`
+    on every module-less toolkit read.
     """
     if not hardware_module_ids:
-        return {"trigger_sources": [], "detector_refs": [], "module_methods": {}}
+        return {"trigger_sources": [], "detector_refs": [], "module_methods": {}, "module_names": []}
 
     rows = db.execute(
         sa_text(
@@ -141,6 +149,11 @@ def toolkit_hw_capabilities(db, hardware_module_ids: list[int]) -> dict:
         ),
         {"ids": list(hardware_module_ids)},
     ).fetchall()
+
+    # Collected from `rows` before the per-row `source_code` guard below — a module whose lib
+    # has no active version still HAS a name, and dropping it here would silently make its
+    # detector channels vanish from module_detector_channels' input.
+    module_names = [row.name for row in rows]
 
     trigger_sources: list[dict] = []
     detector_refs: list[str] = []
@@ -167,4 +180,5 @@ def toolkit_hw_capabilities(db, hardware_module_ids: list[int]) -> dict:
         "trigger_sources": trigger_sources,
         "detector_refs": detector_refs,
         "module_methods": module_methods,
+        "module_names": module_names,
     }

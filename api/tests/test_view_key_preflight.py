@@ -598,3 +598,71 @@ def test_malformed_toolkit_flags_row_returns_200_with_step6_issues_only_and_logs
     assert body["ok"] is True
     assert body["issues"] == []
     mock_warn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — detector_channels on the toolkit read; is_detector on the module read;
+# toolkit_hw_capabilities carrying module_names on BOTH returns
+# ---------------------------------------------------------------------------
+
+
+def test_build_toolkit_row_detector_channels_is_a_list_even_with_default_caps():
+    from routers.toolkits import _build_toolkit_row
+
+    t = SimpleNamespace(
+        id=1, name="X", hw_hash="h", states=[], flags={}, params_schema={}, semantic_hardware={},
+        callable_methods=[], required_packages=[], file_hash="f", created_at=None, updated_at=None,
+        is_canonical=False, is_backend_authored=False, hardware_module_ids=[], locked_state_source=None,
+    )
+    row = _build_toolkit_row(t, {}, 0)  # no caps, no detector_channels passed
+    assert row["detector_channels"] == []
+
+
+def test_toolkit_hw_capabilities_module_names_survives_row_with_no_source_code():
+    from hw_introspect import toolkit_hw_capabilities
+
+    class _FakeRows:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
+
+    class _FakeDb:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def execute(self, *_a, **_kw):
+            return _FakeRows(self._rows)
+
+    rows = [SimpleNamespace(id=1, name="TOUCH_INT", class_name="Digital_In", source_code=None)]
+    caps = toolkit_hw_capabilities(_FakeDb(rows), [1])
+    assert caps["module_names"] == ["TOUCH_INT"]
+    assert caps["module_methods"] == {}  # source_code=None -> skipped by the per-row guard
+
+
+def test_toolkit_hw_capabilities_module_names_present_on_both_returns():
+    from hw_introspect import toolkit_hw_capabilities
+
+    empty_path = toolkit_hw_capabilities(None, [])
+    assert "module_names" in empty_path
+    assert empty_path["module_names"] == []
+
+    class _FakeRows:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
+
+    class _FakeDb:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def execute(self, *_a, **_kw):
+            return _FakeRows(self._rows)
+
+    rows = [SimpleNamespace(id=7, name="MPR121", class_name="Touch_Detector", source_code="class Touch_Detector:\n    pass\n")]
+    non_empty_path = toolkit_hw_capabilities(_FakeDb(rows), [7])
+    assert "module_names" in non_empty_path
+    assert non_empty_path["module_names"] == ["MPR121"]

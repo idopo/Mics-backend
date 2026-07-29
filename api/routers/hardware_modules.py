@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from auth import verify_token
 from db import engine
-from hw_introspect import resolve_class_methods
+from hw_introspect import class_capabilities, resolve_class_methods
 from models import HardwareLib, HardwareLibVersion, HardwareModule
 
 router = APIRouter(tags=["hardware-modules"])
@@ -195,9 +195,15 @@ def get_hardware_module_methods(
             for name in inherited_names:
                 merged.setdefault(name, {"name": name, "args": []})
 
+        # Reuse, do not duplicate: hw_introspect.class_capabilities is the one detector-capability
+        # predicate on the backend — see its docstring for why it is a capability check, not the
+        # Pi's runtime check_for_detectors.
+        is_detector = class_capabilities(source_code, module.class_name)["is_detector"] if source_code else False
+
         return {
             "module_id": module.id,
             "module_name": module.name,
             "class_name": module.class_name,
             "methods": sorted(merged.values(), key=lambda m: m["name"]),
+            "is_detector": is_detector,
         }

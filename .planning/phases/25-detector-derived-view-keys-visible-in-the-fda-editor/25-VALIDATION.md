@@ -5,7 +5,7 @@ status: planned
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-29
-updated: 2026-07-29  # revised after plan-check iteration 1
+updated: 2026-07-29  # revised after plan-check iteration 1, then after the DVK-11 design change (iteration 2)
 ---
 
 # Phase 25 — Validation Strategy
@@ -110,23 +110,25 @@ remain manual.
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 01-T1 `derive_view_keys` | 25-01 | 1 | DVK-01, DVK-09 | unit (pure) | `docker exec mics_api python3 -m pytest /app/tests/test_detector_keys.py -q` | created by task | ⬜ pending |
+| 01-T1 `derive_channels` + `derive_view_keys` | 25-01 | 1 | DVK-01, DVK-09 | unit (pure) | `docker exec mics_api python3 -m pytest /app/tests/test_detector_keys.py -q` | created by task | ⬜ pending |
 | 01-T2 `module_detector_channels` | 25-01 | 1 | DVK-02 | unit (fake db) | `docker exec mics_api python3 -m pytest /app/tests/test_detector_keys.py -q` | created by task | ⬜ pending |
-| 01-T3 DVK-07 regression | 25-01 | 1 | DVK-07 | unit | `docker exec mics_api python3 -m pytest /app/tests/ -q` | extends existing | ⬜ pending |
-| 02-T1 `detector_view_keys` (Pi) | 25-02 | 1 | DVK-01, DVK-09 | unit (stdlib, **agent-runnable**) | `cd /home/ido/pi-mirror && python3 -m pytest tests/test_detector_view_keys.py tests/test_fda_vocabulary.py -q` | created by task | ⬜ pending |
+| 01-T3 `scan_fda_condition_operands` (the ONE walker) | 25-01 | 1 | DVK-06, DVK-11 | unit (pure) | `docker exec mics_api python3 -m pytest /app/tests/ -q` | extends `api/fda_utils.py` | ⬜ pending |
+| 01-T4 DVK-11 save gate + DVK-07 regression | 25-01 | 1 | DVK-07, DVK-11 | unit | `docker exec mics_api python3 -m pytest /app/tests/ -q` | extends existing | ⬜ pending |
+| 02-T1 `detector_view_keys` + `detector_channel_key` (Pi) | 25-02 | 1 | DVK-01, DVK-09 | unit (stdlib, **agent-runnable**) | `cd /home/ido/pi-mirror && python3 -m pytest tests/test_detector_view_keys.py tests/test_fda_vocabulary.py -q` | created by task | ⬜ pending |
 | 02-T2 `check_for_detectors` | 25-02 | 1 | DVK-09 | py_compile (agent) + **user-run Pi suite** | `cd /home/ido/pi-mirror && python3 -m py_compile autopilot/autopilot/tasks/mics_task.py` | extends existing | ⬜ pending |
 | 02-T3 `execute_trigger` guard | 25-02 | 1 | DVK-10 | py_compile (agent) + **user-run Pi suite** | `cd /home/ido/pi-mirror && python3 -m py_compile autopilot/autopilot/tasks/task.py` | created by task | ⬜ pending |
-| 03-T1 scanner + resolver | 25-03 | 2 | DVK-06 | unit (pure) | `docker exec mics_api python3 -m pytest /app/tests/test_view_key_preflight.py -q` | created by task | ⬜ pending |
-| 03-T2 preflight wiring | 25-03 | 2 | DVK-06 | route (mocked db) | `docker exec mics_api python3 -m pytest /app/tests/ -q` | extends 03-T1 file | ⬜ pending |
-| 03-T3 `detector_channels` + `is_detector` | 25-03 | 2 | DVK-02 | unit + live assert on **both** read routes | `docker exec mics_api python3 -m pytest /app/tests/ -q` then an inline python assert that `detector_channels` carries MPR121 keys on `/api/toolkits/100` **and** `/api/toolkits/by-name/source_less_toolkit` (full command in 25-03 task 3) | extends existing | ⬜ pending |
-| 04-T1 `detectorOptions.mts` | 25-04 | 3 | DVK-03, DVK-04, DVK-05, DVK-07 | unit (**node:test**) | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit` | created by task | ⬜ pending |
-| 04-T2 grouped picker + threading | 25-04 | 3 | DVK-03, DVK-05, DVK-07 | unit + typecheck + build | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit && npx vite build` | extends 04-T1 file | ⬜ pending |
+| 02-T4 `view_detector` operand branch | 25-02 | 1 | DVK-11 | unit (stdlib, **agent-runnable**: `parse_view_detector_operand`) + **user-run Pi suite** (resolution) | `cd /home/ido/pi-mirror && python3 -m pytest tests/test_detector_view_keys.py tests/test_fda_vocabulary.py -q` | extends 02-T1 file + created by task | ⬜ pending |
+| 03-T1 scanner + resolver | 25-03 | 2 | DVK-06, DVK-11 | unit (pure) | `docker exec mics_api python3 -m pytest /app/tests/test_view_key_preflight.py -q` | created by task | ⬜ pending |
+| 03-T2 preflight wiring | 25-03 | 2 | DVK-06, DVK-11 | route (mocked db) | `docker exec mics_api python3 -m pytest /app/tests/ -q` | extends 03-T1 file | ⬜ pending |
+| 03-T3 `detector_channels` + `is_detector` | 25-03 | 2 | DVK-02 | unit + live assert on **both** read routes (must show `channels`) | `docker exec mics_api python3 -m pytest /app/tests/ -q` then an inline python assert that `detector_channels` carries MPR121 `channels`+`keys`+`device_names` on `/api/toolkits/100` **and** `/api/toolkits/by-name/source_less_toolkit` (full command in 25-03 task 3) | extends existing | ⬜ pending |
+| 04-T1 `detectorOptions.mts` | 25-04 | 3 | DVK-03, DVK-04, DVK-05, DVK-07, DVK-11 | unit (**node:test**), incl. the operand round trip | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit` | created by task | ⬜ pending |
+| 04-T2 grouped picker + threading | 25-04 | 3 | DVK-03, DVK-05, DVK-07, DVK-11 | unit + typecheck + build | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit && npx vite build` | extends 04-T1 file | ⬜ pending |
 | 04-T3 `key_template` suggestions | 25-04 | 3 | DVK-04, DVK-05 | unit + typecheck + build | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit && npx vite build` | extends 04-T1 file | ⬜ pending |
-| 05-T1 `view_key_unresolved` render | 25-05 | 3 | DVK-06 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
+| 05-T1 `view_key_unresolved` render (both shapes) | 25-05 | 3 | DVK-06, DVK-11 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
 | 05-T2 `first_channel` affordance | 25-05 | 3 | DVK-09 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
 | 06-T1 deploy + rebuild | 25-06 | 4 | DVK-08 | full suites | `docker exec mics_api python3 -m pytest /app/tests/ -q && cd web_ui/react-src && npm run test:unit && npx tsc --noEmit` | n/a | ⬜ pending |
-| 06-T2 Pi suite + restart | 25-06 | 4 | DVK-09, DVK-10 | **checkpoint: human-action** | USER-RUN: `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` | n/a | ⬜ pending |
-| 06-T3 rig proof | 25-06 | 4 | DVK-03, DVK-04, DVK-05, DVK-06, DVK-08, DVK-09, DVK-10 | **checkpoint: human-verify** | none — live hardware | n/a | ⬜ pending |
+| 06-T2 Pi suite + restart | 25-06 | 4 | DVK-09, DVK-10, DVK-11 | **checkpoint: human-action** | USER-RUN: `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` | n/a | ⬜ pending |
+| 06-T3 rig proof (incl. the `device_name` rename) | 25-06 | 4 | DVK-03, DVK-04, DVK-05, DVK-06, DVK-08, DVK-09, DVK-10, DVK-11 | **checkpoint: human-verify** | none — live hardware | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -150,6 +152,9 @@ remain manual.
       `tests/detectorOptions.test.mts`, run by Node's built-in test runner with native type
       stripping. Zero dependencies, no Docker/vite/tsconfig change. Verified working this session.
       **Plan 04 task 1 must complete before 04-T2/T3 and before plan 05's UI work is trusted.**
+      After the DVK-11 design change this module also owns the operand round trip
+      (`viewOperandToOptionValue` / `optionValueToViewOperand`), which is the riskiest logic in the
+      phase and is therefore the piece with the strongest automated signal.
 
 ---
 
@@ -157,16 +162,18 @@ remain manual.
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Detector keys render in the view-operand `<select>`, grouped as channels | DVK-03 | Rendering has no automated path; the *option-building logic* IS covered by `detectorOptions.test.mts` | Plan 06 task 3 step 2: open the FDA editor on toolkit 100, confirm a "MPR121 channels" group listing `LICKER1…LICKER4`, separate from the hardware group holding `MPR121` |
+| Detector channels render in the view-operand `<select>`, grouped and labelled by `device_name` | DVK-03 | Rendering has no automated path; the *option-building logic* IS covered by `detectorOptions.test.mts` | Plan 06 task 3 step 2: open the FDA editor on toolkit 100, confirm a **"LICKER channels"** group (from `device_name`, not the module name) listing "MPR121 — channel 1…4 (→ LICKER1…4)", separate from the hardware group holding `MPR121` |
+| Picking a channel stores `{"view_detector": {ref, channel}}` and no per-pilot name | DVK-11 | The encode/decode pair IS unit-tested; that the *rendered picker* wires to it is not | Plan 06 task 3 step 2: read the saved definition back via `GET /api/task-definitions/<id>` and confirm the operand shape and that `LICKER` appears nowhere in that transition |
+| A stored definition survives a `device_name` rename byte-identical and still fires | DVK-11 | Requires a live pilot config change + a rig run | Plan 06 task 3 step 5: rename `LICKER`→`TONGUE`, do not touch the definition, compare `fda_json` SHAs, re-run and confirm `TONGUE2` moves and the transition fires |
 | `key_template` suggestion pills render and insert | DVK-04 | Rendering only; suggestion *contents* covered by `buildKeyTemplateSuggestions` tests | Plan 06 task 3 step 2: confirm `{device_name}`, the variables, and the literal keys are pickable, and the input is still typeable |
-| Stored unknown key stays editable, shows "(unknown)", and survives a save round trip | DVK-05 | Rendering only; `isKnownViewKey` covered by unit test. **This is DVK-05's only behavioural proof** — the unit test proves the predicate, not the round trip | Plan 06 task 3 step 2, final bullet (written out in full there): after step 1 sets `first_channel: 1`, a stored `LICKER0` is an unknown key. Confirm it is still selected, labelled "(unknown)", still present after save+reopen, and still verbatim in the definition JSON via `GET /api/task-definitions/<id>` |
-| `view_key_unresolved` issue renders in `HardwareCheckModal` | DVK-06 | No React render test | Plan 06 task 3 step 3 |
+| Stored unknown key stays editable, shows "(unknown)", and survives a save round trip | DVK-05 | Rendering only; `isKnownViewOption` covered by unit test. **This is DVK-05's only behavioural proof** — the unit test proves the predicate, not the round trip | Plan 06 task 3 step 2, final bullet. **Scope narrowed 2026-07-29:** DVK-05 covers keys the backend cannot model, **not** legacy detector keys — all 149 rows were walked and none stores one. The proof therefore uses a free-text key the toolkit does not declare (`SOME_PY_TRACKER`), not a stale `LICKER0` |
+| `view_key_unresolved` issue renders in `HardwareCheckModal` — BOTH shapes | DVK-06, DVK-11 | No React render test | Plan 06 task 3 step 3: one out-of-range detector channel (detector-led form) and one literal unknown key (key-led form) |
 | The preflight modal writes no config for a view-key issue | DVK-06 | Requires a live PUT path | Plan 06 task 3 step 3: after cancelling the modal, re-read the MPR121 row and confirm it is unchanged |
 | `first_channel` field + live key preview | DVK-09 | No React render test | Plan 06 task 3 step 1, confirmed by reading the DB row back |
 | Pi suite green after the `mics_task` / `task.py` changes | DVK-09, DVK-10 | `autopilot` unimportable on the dev host | USER-RUN: `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` |
 | Channel 4's writes land in `LICKER4`; no cross-talk | DVK-09 | Requires live MPR121 + spouts | Plan 06 task 3 step 4 |
 | A failing trigger action logs an error naming the key | DVK-10 | Requires a live trigger firing | Plan 06 task 3 step 5 |
-| Rig proof: a transition on a licker key fires | DVK-08 | Requires live MPR121 + spouts | Plan 06 task 3 step 4 |
+| Rig proof: a transition declared as "MPR121 — channel 2" fires | DVK-08, DVK-11 | Requires live MPR121 + spouts | Plan 06 task 3 step 4 |
 
 ---
 
@@ -175,10 +182,16 @@ remain manual.
 - [x] All tasks have an `<automated>` verify or an explicit manual-only justification with a named
       checkpoint that covers it
 - [x] **Sampling continuity:** no 3 consecutive tasks without an automated verify.
-      Longest run without a *behavioural* automated check is plan 05's two tasks (typecheck +
-      build only), immediately followed by plan 06 task 1's three full suites — 2 tasks, under the
-      limit. Plan 02's tasks 2 and 3 have `py_compile` plus a same-plan stdlib suite, and are
-      bracketed by 02-T1's real unit tests and 06-T2's user-run suite.
+      Longest run without a *behavioural* automated check is **2**, in two places:
+      (a) plan 02's tasks 2 and 3 (`py_compile` only), bracketed by 02-T1's real stdlib unit tests
+      before and 02-T4's real stdlib unit tests after;
+      (b) plan 05's two tasks (typecheck + build only), immediately followed by plan 06 task 1's
+      three full suites.
+      **This was the binding constraint on the DVK-11 revision.** Adding 02-T4 naively would have
+      made 02-T2/T3/T4 three consecutive `py_compile`-only tasks. It was resolved by moving the
+      operand's shape rules into `fda_vocabulary.parse_view_detector_operand` — stdlib-only,
+      loadable by file path, therefore agent-runnable — so 02-T4 carries real unit tests. The
+      constraint changed the design, not the claim.
 - [x] Wave 0 covers all MISSING references — no task's verify command references a test file that
       no plan creates
 - [x] No watch-mode flags
@@ -224,4 +237,27 @@ continuity argument is unchanged — plan 05's two typecheck-only tasks remain t
 without a behavioural automated check, still bracketed by 04-T3 before and 06-T1's three full
 suites after.
 
-**Approval:** planner-signed 2026-07-29 · revised after plan-check iteration 1, 2026-07-29
+**Iteration 2 (2026-07-29) — DVK-11 design change (user-rejected the stored-literal-key design).**
+A condition operand now stores `{"view_detector": {"ref", "channel"}}`; the Pi resolves the name.
+Authority: `25-CONTEXT.md` D1-D6.
+
+| Ref | Change | Files |
+|---|---|---|
+| D-01 | `module_detector_channels` gains `channels` (the indices) alongside `keys` — an index is what is stored, and the editor must not recover it by stripping digits (CONTEXT D6) | 25-01, 25-03, 25-04, 25-06 |
+| D-02 | New task 01-T3: `scan_fda_condition_operands` in `api/fda_utils.py` — ONE condition walker for both the 422 pass and preflight. Verified this session: `scan_fda_for_refs` walks actions only and **never sees transition conditions** | 25-01, 25-03 |
+| D-03 | New task 01-T4: DVK-11 save-time 422 in `api/fda_validation.py`. Placed there, not in preflight, because "is `ref` a detector" is a **toolkit** fact and `toolkit_hw_capabilities` already returns `detector_refs` (`hw_introspect.py:164-168`) — currently computed and thrown away at `fda_validation.py:190`. Zero new queries. Channel RANGE stays in preflight | 25-01, 25-03 |
+| D-04 | New task 02-T4: the Pi's `view_detector` branch, resolving **once at build time**. Justified by verified ordering (`__init__` runs `check_for_detectors` at :127 before `load_fda_from_json` at :161; `_semantic_hw` built at :922 before transitions at :991) and by `View.get_value` raising a **bare** `KeyError` (`core/View.py:43-44`) that names nothing | 25-02 |
+| D-05 | `fda_vocabulary.parse_view_detector_operand` added so 02-T4 has agent-runnable coverage — otherwise 02-T2/T3/T4 would be three consecutive `py_compile`-only tasks and `nyquist_compliant` would be false | 25-02, this file |
+| D-06 | Editor: the `<select>` stays **string-valued**; `detectorOptions.mts` owns a token ⇄ operand pair (`viewOperandToOptionValue` / `optionValueToViewOperand`) resolved by **membership in the backend's own data**, not by parsing. Zero prop-shape change, and `ConditionBuilder.tsx:85`'s keep-current-value escape works verbatim | 25-04 |
+| D-07 | `operandLabel` and `getOperandType` must learn `view_detector`, or every edge label and the `StateBodyPanel` wait-condition summary renders `?`. `setType` must use a resolved display key or `''`, or switching a detector operand to `flag` writes the token into the flag name | 25-04 |
+| D-08 | An out-of-range channel **reuses** `view_key_unresolved` (CONTEXT left the choice to Claude) with new optional `detector` / `available_channels` fields — one modal branch, two shapes | 25-03, 25-05 |
+| D-09 | DVK-05 narrowed to keys the backend cannot model. **No migration, no dual-read, no back-compat shim** — CONTEXT D3 walked all 149 rows and none stores a detector key. Every "migrate old LICKER0" framing removed | 25-04, 25-06, this file |
+| D-10 | Plan 06's headline assertion is now the **rename proof**: `device_name` LICKER→TONGUE, definition untouched and `fda_json` SHA identical, transition still fires, editor relabels. Plus a stored-shape assertion that `LICKER` appears nowhere in the saved transition | 25-06 |
+| D-11 | Task count 17 → 19 (01 and 02 each gain one). Requirement coverage re-checked: DVK-01…DVK-11 each appear in at least one plan's `requirements` | all |
+
+**Nyquist re-confirmed after iteration 2:** 19 map rows, 19 real tasks, one-to-one. Every task has
+an `<automated>` verify. Longest run without a behavioural automated check is 2 (see Sign-Off).
+Feedback latency unchanged.
+
+**Approval:** planner-signed 2026-07-29 · revised after plan-check iteration 1 · revised after the
+DVK-11 design change (iteration 2), 2026-07-29

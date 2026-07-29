@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from detector_keys import derive_channels, derive_view_keys, module_detector_channels
+from fda_utils import scan_fda_condition_operands
 
 # ---------------------------------------------------------------------------
 # GOLDEN DERIVATION TABLE — identical in plan 02's Pi twin
@@ -168,3 +169,166 @@ def test_sort_order_module_name_pilot_name_channels_keys():
     assert mpr["channels"] == [2, 3, 11, 12]
     # LICKER2 before LICKER11 — never lexicographic
     assert mpr["keys"] == ["LICKER2", "LICKER3", "LICKER11", "LICKER12"]
+
+
+# ---------------------------------------------------------------------------
+# P6: the ONE condition-operand walker (Plan 25-01 Task 3)
+# ---------------------------------------------------------------------------
+
+def test_condition_tree_leaf_returns_left_and_right():
+    fda = {"transitions": [{"condition_tree": {"left": {"flag": "a"}, "op": "==", "right": 1}}]}
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert locations == {"transitions[0].condition_tree.left", "transitions[0].condition_tree.right"}
+
+
+def test_condition_tree_nested_and_of_or_finds_every_leaf_both_operands():
+    fda = {
+        "transitions": [{
+            "condition_tree": {
+                "op": "AND",
+                "children": [
+                    {"op": "OR", "children": [
+                        {"left": {"flag": "a"}, "op": "==", "right": 1},
+                        {"left": {"flag": "b"}, "op": "==", "right": 2},
+                    ]},
+                    {"left": {"flag": "c"}, "op": "==", "right": 3},
+                ],
+            }
+        }]
+    }
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "transitions[0].condition_tree.children[0].children[1].left" in locations
+    assert "transitions[0].condition_tree.children[0].children[1].right" in locations
+    assert "transitions[0].condition_tree.children[1].left" in locations
+    assert len(results) == 6
+
+
+def test_condition_groups_walked():
+    fda = {
+        "transitions": [{
+            "condition_groups": [
+                {"conditions": [{"left": {"flag": "a"}, "op": "==", "right": 1}]},
+                {"conditions": [{"left": {"flag": "b"}, "op": "==", "right": 2}]},
+            ]
+        }]
+    }
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "transitions[0].condition_groups[1].conditions[0].left" in locations
+    assert "transitions[0].condition_groups[1].conditions[0].right" in locations
+
+
+def test_legacy_flat_conditions_walked():
+    fda = {"transitions": [{"conditions": [{"left": {"flag": "a"}, "op": "==", "right": 1}]}]}
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "transitions[0].conditions[0].left" in locations
+    assert "transitions[0].conditions[0].right" in locations
+
+
+def test_wait_condition_walked():
+    fda = {"states": {"wait": {"wait_condition": {"left": {"flag": "a"}, "op": "==", "right": 1}}}}
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert locations == {"states.wait.wait_condition.left", "states.wait.wait_condition.right"}
+
+
+def test_if_action_condition_inside_state_entry_actions_walked():
+    fda = {
+        "states": {
+            "s1": {
+                "entry_actions": [
+                    {"type": "if", "condition": {"left": {"flag": "a"}, "op": "==", "right": 1}, "then": [], "else": []}
+                ]
+            }
+        }
+    }
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "states.s1.entry_actions[0].condition.left" in locations
+    assert "states.s1.entry_actions[0].condition.right" in locations
+
+
+def test_if_action_condition_inside_nested_then_walked():
+    fda = {
+        "states": {
+            "s1": {
+                "entry_actions": [
+                    {
+                        "type": "if", "condition": {"left": 1, "op": "==", "right": 2},
+                        "then": [
+                            {"type": "if", "condition": {"left": {"flag": "a"}, "op": "==", "right": 1}, "then": [], "else": []}
+                        ],
+                        "else": [],
+                    }
+                ]
+            }
+        }
+    }
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "states.s1.entry_actions[0].then[0].condition.left" in locations
+    assert "states.s1.entry_actions[0].then[0].condition.right" in locations
+
+
+def test_if_action_condition_inside_trigger_assignments_walked():
+    fda = {
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {"type": "flag", "ref": "x"},
+                    {"type": "if", "condition": {"left": {"flag": "a"}, "op": "==", "right": 1}, "then": [], "else": []},
+                ],
+            }
+        ]
+    }
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "trigger_assignments[0].actions[1].condition.left" in locations
+    assert "trigger_assignments[0].actions[1].condition.right" in locations
+
+
+def test_literal_operands_returned_untouched():
+    fda = {"transitions": [{"condition_tree": {"left": 5, "op": "==", "right": None}}]}
+    results = scan_fda_condition_operands(fda)
+    by_location = {r["location"]: r["operand"] for r in results}
+    assert by_location["transitions[0].condition_tree.left"] == 5
+    assert by_location["transitions[0].condition_tree.right"] is None
+
+
+@pytest.mark.parametrize("fda", [
+    {"states": ["not", "a", "dict"]},
+    {"transitions": [None]},
+    {"trigger_assignments": [{"trigger_name": "T", "actions": ["not a dict"]}]},
+    {"transitions": [{"condition_tree": "not a dict"}]},
+    {"transitions": [{"condition_tree": {"op": "AND", "children": {"not": "a list"}}}]},
+    {"transitions": [{"condition_tree": {"left": {"flag": "a"}, "op": "=="}}]},
+    {},
+    None,
+])
+def test_malformed_input_never_raises(fda):
+    scan_fda_condition_operands(fda)
+
+
+def test_states_as_list_shape_supported():
+    fda = {
+        "states": [
+            {"name": "s1", "entry_actions": [
+                {"type": "if", "condition": {"left": {"flag": "a"}, "op": "==", "right": 1}, "then": [], "else": []}
+            ]}
+        ]
+    }
+    results = scan_fda_condition_operands(fda)
+    locations = {r["location"] for r in results}
+    assert "states.s1.entry_actions[0].condition.left" in locations
+
+
+def test_scan_fda_for_refs_unaffected_regression_still_available():
+    from fda_utils import scan_fda_for_refs
+    fda = {"states": {"reward": {"entry_actions": [{"type": "hardware", "ref": "VALVE", "method": "open"}]}}}
+    results = scan_fda_for_refs(fda)
+    assert len(results) == 1
+    assert results[0]["ref"] == "VALVE"

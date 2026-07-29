@@ -20,6 +20,11 @@ row) but RAISES ValueError on the Pi (loud where it matters, safe where it is on
 Boundary note (DVK-07): `api/fda_validation.py` deliberately does NOT import this module. The
 detector-key format never widens the flag namespace; that boundary is pinned behaviourally by
 `fda_validation._valid_flag_names`' equality test, not by import structure alone.
+
+Plan 03 (DVK-02/06/11) adds `scan_fda_view_keys` and `resolve_view_key_issues` — the pilot-agnostic
+FDA scan and the pilot-specific preflight resolver. They live in `api/detector_keys_scan.py`
+(this file would exceed its 300-line budget otherwise) and are re-exported below so
+`from detector_keys import scan_fda_view_keys, resolve_view_key_issues` keeps working.
 """
 from sqlalchemy import text as sa_text
 
@@ -141,3 +146,8 @@ def module_detector_channels(db, module_names: list[str]) -> list[dict]:
             "by_pilot": by_pilot,
         })
     return result
+
+
+# Re-exported so `from detector_keys import scan_fda_view_keys, resolve_view_key_issues` works —
+# see the module docstring's Plan 03 paragraph for why the implementation lives in a sibling file.
+from detector_keys_scan import resolve_view_key_issues, scan_fda_view_keys  # noqa: E402,F401

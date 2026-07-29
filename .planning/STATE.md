@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-29T11:37:40.179Z"
+last_updated: "2026-07-29T11:51:38.259Z"
 progress:
   total_phases: 19
   completed_phases: 6
   total_plans: 39
-  completed_plans: 28
-  percent: 75
+  completed_plans: 29
+  percent: 77
 ---
 
 # STATE: MICS Backend
@@ -26,8 +26,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **3/6 plans done**
-**Progress:** [████████░░] 75%
+**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **4/6 plans done**
+**Progress:** [████████░░] 77%
 
 ### Phase 25 status (2026-07-29)
 
@@ -86,6 +86,29 @@ fixing `toolkit_hw_capabilities` to return `module_names` on its early-return pa
 `GET /api/toolkits` 200s across all 112 rows, module 7 `is_detector: true` / module 8
 `is_detector: false`. `api/main.py` and `api/fda_validation.py` diffs both empty. See
 `25-03-SUMMARY.md`.
+
+**Plan 04 executed (2026-07-29):** DVK-03/04/05/07/11 delivered on the FDA editor. New
+`web_ui/react-src/src/components/detectorOptions.mts` (pure, tested via `node --test`, zero
+new npm dependencies) is the single option-assembly + operand-encoding module behind every
+view-operand picker: `buildViewOptions` groups options into Hardware / one-group-per-detector
+labelled by `device_name` / Flags & variables; `viewOperandToOptionValue` /
+`optionValueToViewOperand` round-trip a `view_detector` operand through an opaque
+`"@detector/MPR121#2"` select token, resolved by scanning the backend's own
+`detector_channels`, never by parsing the token. `ConditionBuilder.tsx`'s `OperandEditor` now
+renders that grouped `<optgroup>` picker and emits `{"view_detector": {"ref","channel"}}` for a
+picked channel — never a resolved per-pilot key (DVK-11). The keep-current-value escape
+survives verbatim, now flagged `(unknown)` (DVK-05, scoped to keys the backend cannot model,
+per 25-CONTEXT S6 — there is no legacy detector key to migrate). `detectorChannels` threaded
+end to end (`TaskEditor` → `StateBodyPanel`/`TriggerAssignmentPanel`/`ConditionGroupsEditor` →
+`ActionEditor` → `IfActionEditor` → `ConditionRow`/`ViewActionFields`). `ViewActionFields`'
+`key_template` field now offers `{device_name}` + variable + derived-key completions from the
+same builder while staying free text (DVK-04/DVK-05); `DetectorWriteWidget.tsx` (trigger `view`
+action, 25-CONTEXT D5) untouched. 24 unit tests green, `tsc --noEmit` clean, `vite build`
+succeeds — bundle `dist/TaskEditor-B6-dKcPk.js`. Two Rule-3 ordering deviations (types added a
+task early; `ViewActionFields` wiring deferred a task late) documented in `25-04-SUMMARY.md`,
+both to keep each task's own `tsc` green — no scope change from the plan. Behavioural
+verification of the rendered pickers is manual, deferred to plan 06's checkpoint. See
+`25-04-SUMMARY.md`.
 
 ### Phase 24 status (2026-07-27)
 
@@ -337,19 +360,21 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Execute Phase 25 Plan 04** — React editor: the view-operand picker offers detector
-   channels (now available via `detector_channels` on `GET /api/toolkits/by-name/{name}`)
-   grouped by `device_name`, and `key_template` token completion.
-2. Then Plan 05 (if scoped) — render `preflight_validate`'s `view_key_unresolved` issues in
+1. **Execute Phase 25 Plan 05** — render `preflight_validate`'s `view_key_unresolved` issues in
    `HardwareCheckModal` (both shapes: with and without the `detector` field, per R1) and the
-   `first_channel` config affordance.
-3. Then Plan 06 — **deploy** plan 02's seven pi-mirror files
+   `first_channel` config affordance (DVK-06/09).
+2. Then Plan 06 — **deploy** plan 02's seven pi-mirror files
    (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files — see
-   `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list), run the three new
-   USER-RUN Pi test files plus the pre-existing suite, and rig-prove DVK-09 (channel 4 lands
-   in `LICKER4`) and DVK-11 (a transition on "MPR121 — channel 2" fires, then re-fires
-   unchanged after a `device_name` rename).
-4. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
+   `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list) AND the plan 04 React
+   rebuild (confirm the deployed bundle is `dist/TaskEditor-B6-dKcPk.js` — see `25-04-SUMMARY.md`
+   "Next Phase Readiness" for the exact operand JSON to look for in
+   `GET /api/task-definitions/<id>`), run the three new USER-RUN Pi test files plus the
+   pre-existing suite, and rig-prove DVK-09 (channel 4 lands in `LICKER4`) and DVK-11 (a
+   transition on "MPR121 — channel 2" fires, then re-fires unchanged after a `device_name`
+   rename). Also owns the manual/behavioural verification of plan 04's editor pickers (grouped
+   `<optgroup>`s, the "(unknown)" flag, the S3 type-switch guard) — deferred from plan 04 per its
+   own `<verification>` note.
+3. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
    outstanding from phase 24 and now larger after plan 02's additions:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
 
@@ -358,18 +383,24 @@ resequencing, they still claim to build the `variables` registry and `api/fda_va
 both already delivered by phase 24. Re-plan before executing, whenever phase 23 is picked up.
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
-DVK-02/06/11 in `REQUIREMENTS.md` — that file tracks phase 25's DVK requirements as plain
+DVK-02/06/07/11 in `REQUIREMENTS.md` — that file tracks phase 25's DVK requirements as plain
 description rows (no per-requirement status column), so completion is tracked via the
 ROADMAP.md phase-25 status line instead. `gsd-tools state advance-plan`/`record-metric`/
 `record-session` also no-op on this STATE.md (it predates the `**Current Plan:**`/
 `**Total Plans in Phase:**`/Performance-Metrics-table conventions those commands expect) —
 position is tracked via the prose "Phase 25 status" section above instead, per this file's
-established pattern for plans 01/02.
+established pattern for plans 01/02/03. `state advance-plan` additionally wrote a malformed
+`` current_plan: `/ `` line into this file's frontmatter before erroring — removed during plan
+04's execution.
 
 ---
-*Last updated: 2026-07-29 — phase 25 plan 03 executed: preflight resolution (DVK-06/11) wired
-into `preflight_validate` step 8, and `detector_channels` wired onto every toolkit read route
-including `GET /api/toolkits/by-name/{name}` (the route TaskEditor.tsx actually calls) —
-required fixing `toolkit_hw_capabilities`'s early-return path, which 98 of 112 `task_toolkits`
-rows take. `is_detector` added to the hardware-module methods endpoint. Full suite 219 passed;
-`api/main.py`/`api/fda_validation.py` diffs both empty. Next: plan 04 (React editor picker).*
+*Last updated: 2026-07-29 — phase 25 plan 04 executed: detector channels are first-class
+pickable FDA-editor operands. New `detectorOptions.mts` (pure, node:test-covered, zero new
+npm deps) is the single option-assembly + operand-encoding module behind every view-operand
+picker; `ConditionBuilder.tsx`'s grouped `<optgroup>` picker emits `{"view_detector":
+{"ref","channel"}}` for a picked channel (DVK-11), never a resolved per-pilot key, with the
+keep-current-value escape preserved and flagged `(unknown)` (DVK-05). `detectorChannels`
+threaded end to end through the state-body/if-condition/trigger-action-list chain (DVK-03/07).
+`ViewActionFields`' `key_template` field offers pickable completions from the same builder
+while staying free text (DVK-04). `tsc`/`vite build` clean; bundle
+`dist/TaskEditor-B6-dKcPk.js`. Next: plan 05 (HardwareCheckModal preflight rendering).*

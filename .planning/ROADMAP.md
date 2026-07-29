@@ -615,10 +615,25 @@ Plans:
 
 **Requirements**: DVK-01 through DVK-10 (**DVK-09 added 2026-07-27 from rig evidence** — the rig's four spouts sit on MPR121 channels 1–4, so `range(0, num_detectors)` builds a dead `LICKER0` and silently discards channel 4; see `24-HARDWARE-VALIDATION.md` §2b Finding A. Resolved 2026-07-29 to `first_channel` + `num_detectors`, **not** a channel list. **DVK-10 added 2026-07-29** — the reason that discard was invisible: `execute_trigger`'s `except KeyError` (`task.py:285-298`) swallows the unknown-key `KeyError` raised at `mics_task.py:717-721` and logs `"No valid trigger for {pin}"` at DEBUG)
 **Depends on:** Phase 24 (TRIGA-12 capability-based `check_for_detectors`; the `view` action + `key_template`), Phase 10 + 17 (hardware modules, name-keyed `pilot_hardware_config`), Phase 13 (`preflight_validate` — named by 24-02 as the home for view-key resolution).
-**Plans:** 0 plans
+**Plans:** 6 plans in 4 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 25 to break down)
+- [ ] 25-01-PLAN.md — backend derivation core: one key helper + the cross-pilot union with surfaced disagreement (DVK-01/02/07)
+- [ ] 25-02-PLAN.md — Pi runtime: `first_channel` in `check_for_detectors`, narrowed `execute_trigger` guard (DVK-01/09/10)
+- [ ] 25-03-PLAN.md — backend wiring: `detector_channels` on the toolkit read, per-pilot key resolution in `preflight_validate` (DVK-02/06)
+- [ ] 25-04-PLAN.md — editor pickers: grouped view operands, `key_template` suggestions, unknown-key degradation (DVK-03/04/05/07)
+- [ ] 25-05-PLAN.md — preflight issue rendering + the `first_channel` config affordance (DVK-06/09)
+- [ ] 25-06-PLAN.md — deploy, user-run Pi suite, rig proof (DVK-08/09/10) — **checkpoint plan**
+
+Waves: 1 = [01, 02] · 2 = [03] · 3 = [04, 05] · 4 = [06]
+
+**DVK-02 decided at plan time (no discuss-phase pass):** the design-time key source is the
+**union across pilots that have a `pilot_hardware_config` row named for that module**, with
+per-pilot provenance and a `conflict` flag. A `hardware_modules` default and a per-toolkit
+declaration were both rejected: each would be a second store of `device_name`/`num_detectors`
+that the Pi never reads, since the Pi receives its config from `pilot_hardware_config` via
+`get_dispatch_spec`'s `prefs_hardware`. One table, one helper, two scopes — design-time union,
+run-time single pilot. Full rationale in `25-01-PLAN.md` `<decisions>`.
 
 **SCOPE RESTORED 2026-07-27 (supersedes the "SCOPE REDUCED" note of the same day)** — the reduction
 assumed Phase 24 would deliver the HANDSHAKE-derived path via TRIGA-13. That mechanism is

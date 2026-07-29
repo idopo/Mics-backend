@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-27T16:45:50.406Z"
+last_updated: "2026-07-29T11:13:07.195Z"
 progress:
   total_phases: 19
-  completed_phases: 5
-  total_plans: 33
-  completed_plans: 24
-  percent: 76
+  completed_phases: 6
+  total_plans: 39
+  completed_plans: 27
+  percent: 73
 ---
 
 # STATE: MICS Backend
@@ -26,8 +26,45 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 24 — Trigger Assignment Action Lists — **8/8 plans done, rig-proven; Pi test suite outstanding**
-**Progress:** [████████░░] 76%
+**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **2/6 plans done**
+**Progress:** [███████░░░] 73%
+
+### Phase 25 status (2026-07-29)
+
+**Plan 01 executed:** DVK-01/02/07/09/11 delivered on the backend. `api/detector_keys.py`
+single-sources `derive_channels`/`derive_view_keys` (the `f"{device_name}{i}"` format, now
+declarable via `first_channel` for DVK-09's channel-1-4 wiring) and `module_detector_channels`
+(the advisory cross-pilot union with surfaced `conflict` + `by_pilot` provenance — verified
+live: `MPR121` → `channels [0,1,2,3]`, `keys LICKER0…LICKER3`, `conflict: false`). New
+`scan_fda_condition_operands` in `api/fda_utils.py` is the ONE condition-operand walker shared
+by this plan's save-time gate and plan 03's preflight resolver. New
+`validate_condition_operands` in `api/fda_validation.py` is the DVK-11 save-time 422: a
+`view_detector` operand must name a real detector and carry a non-negative int `channel` — range
+checking stays with preflight (plan 03). DVK-07 pinned by 4 regression tests verified passing
+against pre-plan code first. Full backend suite: 163 passed. No route changes yet (plan 03).
+See `25-01-SUMMARY.md`.
+
+**Plan 02 executed (2026-07-29):** DVK-09/10/11 delivered on the Pi runtime, in
+`/home/ido/pi-mirror`. `fda_vocabulary.py` gained `detector_channel_range` /
+`detector_view_keys` / `detector_channel_key` (the Pi's half of plan 01's shared golden-table
+derivation) and `parse_view_detector_operand` (DVK-11's shape parser). `check_for_detectors`
+now honours `first_channel` read from `prefs.HARDWARE[group][module_name]` — the exact fix for
+the channel-4 data loss in runs 480/481 (`LICKER1..LICKER4` correctly seeded from
+`curr_vals[1..4]`, never shifted). `execute_trigger`'s `except KeyError` is narrowed to the
+`self.triggers[pin]` lookup alone; a raising callback now reports via a new
+`_report_trigger_error` helper (error log naming the exception + `TRIGGER_ACTION_ERROR` event)
+whose entire body is exception-contained so a dead `event_dispatcher` can't kill the worker
+thread. `_build_condition_operand` gained a `view_detector` branch resolving
+`{"ref": ..., "channel": ...}` to a pilot's real view key ONCE at build time — the same stored
+JSON reads `LICKER2` on one pilot and `TONGUE2` on another. Mirror-Pi identity proved via diff
+before any edit (all four target files byte-identical); diff re-confirmed after editing that
+only the intended methods/import lines changed and `i2c.py` stayed untouched. Dev-host
+agent-runnable suite: 64 passed (`test_detector_view_keys.py` + `test_fda_vocabulary.py`).
+Three new/extended test files (`test_check_for_detectors.py` DVK-09 cases,
+`test_execute_trigger_guard.py`, `test_view_detector_operand.py`) are USER-RUN on the Pi —
+plan 06 owns running them plus the deploy and rig proof. **No pi-mirror git commits made**
+(pi-mirror is its own user-owned git repo; pi_rules forbid any git command there). See
+`25-02-SUMMARY.md`.
 
 ### Phase 24 status (2026-07-27)
 
@@ -208,6 +245,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 24-06]: view action gains source_ref + runtime-resolved {device_name} key_template token (RUNTIME_KEY_TEMPLATE_TOKENS, single-sourced in fda_vocabulary.py) — resolved from the source hardware object's own device_name attribute at call time, so one task definition writes LICKER2 on one pilot and TONGUE2 on another without hard-coding either name
 - [Phase 24-06]: the sourceless-lick canonical payload captures both pin_number and level from detect_change()'s own output — never {"trigger": "level"} — since execute_trigger's level is the TOUCH_INT IRQ edge (assert/deassert), not electrode state; wiring the trigger level would write interrupt polarity into whichever LICKER changed
 - [Phase 24]: Plan 08: trigger_sources/detector_refs derived from lib AST; hard-422 on method-less hardware/timer actions in triggers and state bodies; constrained one-pick DetectorWriteWidget UI macro
+- [Phase 25]: Plan 25-01: derive_channels/derive_view_keys single-source the detector key format; module_detector_channels surfaces cross-pilot conflict instead of merging
+- [Phase 25]: Plan 02: Pi-side DVK-09/10/11 fixes (check_for_detectors first_channel, execute_trigger error containment, view_detector build-time resolution) landed in pi-mirror; no git commits made there per pi_rules
 
 ## Accumulated Context
 
@@ -276,21 +315,29 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Run the 41 Pi tests** (USER-RUN — `autopilot` unimportable on the dev host). These have
-   never executed anywhere; waves 1–2 are runtime-proven but not unit-test-proven:
+1. **Execute Phase 25 Plan 03** — wires `module_detector_channels` onto a toolkit read route
+   and extends `preflight_validate` to resolve `view_detector` operands against a specific
+   pilot's channel range (the check plan 01 deliberately deferred, per P5).
+2. Then Plan 04 — React editor: the view-operand picker offers detector channels grouped by
+   `device_name`, and `key_template` token completion.
+3. Then Plan 05 (if scoped) and Plan 06 — **deploy** plan 02's seven pi-mirror files
+   (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files — see
+   `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list), run the three new
+   USER-RUN Pi test files plus the pre-existing suite, and rig-prove DVK-09 (channel 4 lands
+   in `LICKER4`) and DVK-11 (a transition on "MPR121 — channel 2" fires, then re-fires
+   unchanged after a `device_name` rename).
+4. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
+   outstanding from phase 24 and now larger after plan 02's additions:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
-2. `/gsd:discuss-phase 24` — re-plan 06/07/08 for the sourceless-only decision. Read
-   `24-REPLAN-BRIEF.md` first. **Not** `--gaps`: TRIGA-11 is dropped, TRIGA-13 needs a new
-   home, and two new requirements are proposed (hardware-`method` validation; the
-   `Modules`-only constraint). `--gaps` assumes requirements still hold.
-3. Execute waves 3–4, then the rewritten rig proof.
-4. Then Phase 23 (Compute Primitives + Variables) — **its 3 plans are stale.** They were
-   written before the 24→23 resequencing and still claim to build the `variables` registry
-   (CMP-01/02) and create `api/fda_validation.py`, both of which phase 24 already delivered.
-   Re-plan rather than execute as-is.
-5. `/gsd:plan-phase 25` — Detector-Derived View Keys. Depends on TRIGA-12 landing, and may
-   absorb TRIGA-13 (see re-plan brief).
+
+Note: Phase 23 (Compute Primitives + Variables) plans are stale — written before the 24→23
+resequencing, they still claim to build the `variables` registry and `api/fda_validation.py`,
+both already delivered by phase 24. Re-plan before executing, whenever phase 23 is picked up.
 
 ---
-*Last updated: 2026-07-27 — phase 24 waves 1–2 executed + rig-validated (run 475); sourceless-only
-scope change recorded; Pi workflow section corrected to match the `pi-deploy` skill.*
+*Last updated: 2026-07-29 — phase 25 plan 02 executed: Pi-side DVK-09/10/11 (first_channel in
+check_for_detectors, execute_trigger error containment, view_detector build-time resolution),
+seven pi-mirror files edited with no git commit (pi-mirror is user-owned git, per pi_rules);
+phase 25 plan 01 executed: detector-key derivation, cross-pilot
+advisory union, the shared condition-operand walker, and the DVK-11 save-time gate landed on the
+backend. Full suite 163 passed. Next: plan 02 (Pi twin).*

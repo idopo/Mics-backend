@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-29T11:13:07.195Z"
+last_updated: "2026-07-29T11:17:16.626Z"
 progress:
   total_phases: 19
   completed_phases: 6
@@ -337,7 +337,7 @@ both already delivered by phase 24. Re-plan before executing, whenever phase 23 
 ---
 *Last updated: 2026-07-29 — phase 25 plan 02 executed: Pi-side DVK-09/10/11 (first_channel in
 check_for_detectors, execute_trigger error containment, view_detector build-time resolution),
-seven pi-mirror files edited with no git commit (pi-mirror is user-owned git, per pi_rules);
-phase 25 plan 01 executed: detector-key derivation, cross-pilot
-advisory union, the shared condition-operand walker, and the DVK-11 save-time gate landed on the
-backend. Full suite 163 passed. Next: plan 02 (Pi twin).*
+seven pi-mirror files edited with no git commit (pi-mirror is user-owned git, per pi_rules).
+Phase 25 plan 01 (backend half — detector-key derivation, cross-pilot advisory union, the
+shared condition-operand walker, and the DVK-11 save-time gate) executed previously, full suite
+163 passed. Next: plan 03 (preflight resolution).*

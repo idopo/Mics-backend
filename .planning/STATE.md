@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-29T11:17:16.626Z"
+last_updated: "2026-07-29T11:37:40.179Z"
 progress:
   total_phases: 19
   completed_phases: 6
   total_plans: 39
-  completed_plans: 27
-  percent: 73
+  completed_plans: 28
+  percent: 75
 ---
 
 # STATE: MICS Backend
@@ -26,8 +26,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **2/6 plans done**
-**Progress:** [███████░░░] 73%
+**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **3/6 plans done**
+**Progress:** [████████░░] 75%
 
 ### Phase 25 status (2026-07-29)
 
@@ -65,6 +65,27 @@ Three new/extended test files (`test_check_for_detectors.py` DVK-09 cases,
 plan 06 owns running them plus the deploy and rig proof. **No pi-mirror git commits made**
 (pi-mirror is its own user-owned git repo; pi_rules forbid any git command there). See
 `25-02-SUMMARY.md`.
+
+**Plan 03 executed (2026-07-29):** DVK-02/06/11 wired into the two routes the rest of the
+system reads from. `scan_fda_view_keys` + `resolve_view_key_issues` (new
+`api/detector_keys_scan.py`, re-exported from `detector_keys.py` — the combined file would
+have exceeded its 300-line budget) compose plan 01's `scan_fda_condition_operands` with a new
+`key_template` action walker, then classify every scanned entry against ONE pilot's declared
+`pilot_hardware_config` wiring. `preflight_validate` gained step 8 — nested inside step 7's
+`fda_json` guard (not after it, to avoid a swallowed `NameError` on a fda_json-less task def)
+and wrapped in its own `try/except` + `logger.warning` — resolving detector channels (DVK-11
+range check) and literal/`key_template` view keys (DVK-06) against the target pilot, emitting
+`view_key_unresolved` issues with an optional `detector`/`available_channels` field pair (R1).
+`detector_channels` now rides every toolkit read route including
+`GET /api/toolkits/by-name/{name}` (the route `TaskEditor.tsx` actually calls) — required
+fixing `toolkit_hw_capabilities` to return `module_names` on its early-return path too, since
+98 of 112 `task_toolkits` rows are module-less and previously would have 500'd
+`GET /api/toolkits` once a caller relied on that key. `is_detector` added to
+`GET /api/hardware-modules/{id}/methods`. Full backend suite: 219 passed. Live-verified from
+`mics_web_ui`: both toolkit routes carry the MPR121 `detector_channels` group,
+`GET /api/toolkits` 200s across all 112 rows, module 7 `is_detector: true` / module 8
+`is_detector: false`. `api/main.py` and `api/fda_validation.py` diffs both empty. See
+`25-03-SUMMARY.md`.
 
 ### Phase 24 status (2026-07-27)
 
@@ -247,6 +268,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 24]: Plan 08: trigger_sources/detector_refs derived from lib AST; hard-422 on method-less hardware/timer actions in triggers and state bodies; constrained one-pick DetectorWriteWidget UI macro
 - [Phase 25]: Plan 25-01: derive_channels/derive_view_keys single-source the detector key format; module_detector_channels surfaces cross-pilot conflict instead of merging
 - [Phase 25]: Plan 02: Pi-side DVK-09/10/11 fixes (check_for_detectors first_channel, execute_trigger error containment, view_detector build-time resolution) landed in pi-mirror; no git commits made there per pi_rules
+- [Phase 25]: Plan 25-03: preflight step 8 nested inside step 7's fda_json guard (not after) to reuse already_flagged as skip_modules without risking a swallowed NameError; key_template device_name resolution does not consult skip_modules per the plan's literal resolution-rules table
 
 ## Accumulated Context
 
@@ -315,12 +337,13 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Execute Phase 25 Plan 03** — wires `module_detector_channels` onto a toolkit read route
-   and extends `preflight_validate` to resolve `view_detector` operands against a specific
-   pilot's channel range (the check plan 01 deliberately deferred, per P5).
-2. Then Plan 04 — React editor: the view-operand picker offers detector channels grouped by
-   `device_name`, and `key_template` token completion.
-3. Then Plan 05 (if scoped) and Plan 06 — **deploy** plan 02's seven pi-mirror files
+1. **Execute Phase 25 Plan 04** — React editor: the view-operand picker offers detector
+   channels (now available via `detector_channels` on `GET /api/toolkits/by-name/{name}`)
+   grouped by `device_name`, and `key_template` token completion.
+2. Then Plan 05 (if scoped) — render `preflight_validate`'s `view_key_unresolved` issues in
+   `HardwareCheckModal` (both shapes: with and without the `detector` field, per R1) and the
+   `first_channel` config affordance.
+3. Then Plan 06 — **deploy** plan 02's seven pi-mirror files
    (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files — see
    `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list), run the three new
    USER-RUN Pi test files plus the pre-existing suite, and rig-prove DVK-09 (channel 4 lands
@@ -334,10 +357,19 @@ Note: Phase 23 (Compute Primitives + Variables) plans are stale — written befo
 resequencing, they still claim to build the `variables` registry and `api/fda_validation.py`,
 both already delivered by phase 24. Re-plan before executing, whenever phase 23 is picked up.
 
+Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
+DVK-02/06/11 in `REQUIREMENTS.md` — that file tracks phase 25's DVK requirements as plain
+description rows (no per-requirement status column), so completion is tracked via the
+ROADMAP.md phase-25 status line instead. `gsd-tools state advance-plan`/`record-metric`/
+`record-session` also no-op on this STATE.md (it predates the `**Current Plan:**`/
+`**Total Plans in Phase:**`/Performance-Metrics-table conventions those commands expect) —
+position is tracked via the prose "Phase 25 status" section above instead, per this file's
+established pattern for plans 01/02.
+
 ---
-*Last updated: 2026-07-29 — phase 25 plan 02 executed: Pi-side DVK-09/10/11 (first_channel in
-check_for_detectors, execute_trigger error containment, view_detector build-time resolution),
-seven pi-mirror files edited with no git commit (pi-mirror is user-owned git, per pi_rules).
-Phase 25 plan 01 (backend half — detector-key derivation, cross-pilot advisory union, the
-shared condition-operand walker, and the DVK-11 save-time gate) executed previously, full suite
-163 passed. Next: plan 03 (preflight resolution).*
+*Last updated: 2026-07-29 — phase 25 plan 03 executed: preflight resolution (DVK-06/11) wired
+into `preflight_validate` step 8, and `detector_channels` wired onto every toolkit read route
+including `GET /api/toolkits/by-name/{name}` (the route TaskEditor.tsx actually calls) —
+required fixing `toolkit_hw_capabilities`'s early-return path, which 98 of 112 `task_toolkits`
+rows take. `is_detector` added to the hardware-module methods endpoint. Full suite 219 passed;
+`api/main.py`/`api/fda_validation.py` diffs both empty. Next: plan 04 (React editor picker).*

@@ -49,9 +49,16 @@ resolves `{device_name}` from its `source_ref` (`mics_task.py:689-716`). The lit
 
 **Single resolution site on the Pi — verified:** `_build_transition_lambda` delegates both operands
 to `_build_condition_operand` (`mics_task.py:1206-1207`) for the unified `{left, op, right}` format
-the GUI emits. The `view` branch is `mics_task.py:539-542`. Legacy `{view, op, rhs}` conditions
-(`mics_task.py:1214-1223`) are hand-authored v1/v2 JSON only and are **out of scope** — the GUI
-never emits them.
+the GUI emits. The `view` branch is `mics_task.py:539-542` (`if "view" in operand:` is line **539**
+— re-confirmed by grep 2026-07-29). Legacy `{view, op, rhs}` conditions (`mics_task.py:1214-1223`)
+are hand-authored v1/v2 JSON only and are **out of scope** — the GUI never emits them.
+
+**Precedent caveat (corrected 2026-07-29):** the Phase 24 `view` *action* resolves its `source_ref`
+to a hardware object at **build** time but rebuilds the **key per call** (`_view_call`,
+`mics_task.py:706-716`), because `{pin_number}` varies per interrupt. `view_detector` has no
+per-call variance — its channel is fixed in the JSON — so resolving the key once at build time is
+the right choice, but it is a *deliberate decision*, not a property inherited from the precedent.
+Plan 02 must argue it rather than cite it.
 
 ### D2 — No hardware fact moves into the task definition
 
@@ -126,8 +133,11 @@ A hardcoded `LICKER` in any user-facing string is the exact defect fixed twice i
 - `scan_fda_for_refs` (`api/fda_utils.py:5-30`) walks **only** `states[*].entry_actions` and
   `trigger_assignments[*].actions`, recursing into `if` branches. It **never sees transition
   conditions**, so the new operand needs its own scanner — which plan 03 was already building for
-  DVK-06. `fda_validation.py` has no view-operand validation at all today (`"view"` appears only in
-  `VALID_ACTION_TYPES` at line 35 and the `key_template` check at 294).
+  DVK-06. `fda_validation.py` has no view-operand validation at all today — the literal `"view"`
+  appears at line 35 (`VALID_ACTION_TYPES`) and 291; lines 138 and 294 mention "view" only in a
+  comment and an error message. **Trap:** `_valid_flag_names`' docstring (line 215) advertises
+  "condition operand", but nothing in that module walks a transition condition. Do not trust it as
+  evidence that the plumbing exists.
 - `validation_status` / the red `!` badge: set at `api/routers/toolkits.py:409`, the `_revalidate`
   helper at `:684`, and `api/routers/hardware_libs.py:320` (lib version removes a referenced
   method). Rendered at `TaskDefinitions.tsx:329-341`. Nothing re-validates on a

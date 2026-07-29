@@ -1,5 +1,5 @@
 import React from 'react'
-import type { ConditionNode, FdaCondition, ToolkitRead } from '../types'
+import type { ConditionNode, FdaCondition, ToolkitRead, DetectorChannelGroup } from '../types'
 import { isConditionBranch } from '../types'
 import { ConditionRow } from './ConditionBuilder'
 
@@ -84,10 +84,11 @@ interface Props {
   toolkit: ToolkitRead | null
   hwModuleNames?: string[]
   variableNames?: string[]
+  detectorChannels?: DetectorChannelGroup[]
   onChange: (tree: ConditionNode | null) => void
 }
 
-export function ConditionGroupsEditor({ tree, toolkit, hwModuleNames, variableNames, onChange }: Props) {
+export function ConditionGroupsEditor({ tree, toolkit, hwModuleNames, variableNames, detectorChannels, onChange }: Props) {
 
   function renderNode(node: ConditionNode, path: Path): React.ReactNode {
     if (isConditionBranch(node)) {
@@ -157,6 +158,7 @@ export function ConditionGroupsEditor({ tree, toolkit, hwModuleNames, variableNa
               toolkit={toolkit}
               hwModuleNames={hwModuleNames}
               variableNames={variableNames}
+              detectorChannels={detectorChannels}
               onChange={updated => onChange(updateNode(tree!, path, updated))}
             />
           </div>

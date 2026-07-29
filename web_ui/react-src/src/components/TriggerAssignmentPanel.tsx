@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FdaTriggerAssignment, FdaAction, FdaVariable, ToolkitRead, HardwareModule, TriggerSource } from '../types'
+import type { FdaTriggerAssignment, FdaAction, FdaVariable, ToolkitRead, HardwareModule, TriggerSource, DetectorChannelGroup } from '../types'
 import ActionEditor from './ActionEditor'
 import { typeChipStyle, actionSummary } from './StateBodyPanel'
 import DetectorWriteWidget, { matchesDetectorWrite, buildDetectorWrite } from './DetectorWriteWidget'
@@ -61,6 +61,7 @@ interface Props {
   taskDefId?: number
   versionStamp?: string
   variableNames: string[]
+  detectorChannels?: DetectorChannelGroup[]
   variables: Record<string, FdaVariable>
   onVariablesChange: (updated: Record<string, FdaVariable>) => void
   onChange: (updated: FdaTriggerAssignment[]) => void
@@ -110,6 +111,7 @@ export default function TriggerAssignmentPanel({
   taskDefId,
   versionStamp,
   variableNames,
+  detectorChannels,
   variables,
   onVariablesChange,
   onChange,
@@ -341,6 +343,7 @@ export default function TriggerAssignmentPanel({
                             taskDefId={taskDefId}
                             versionStamp={versionStamp}
                             variableNames={variableNames}
+                            detectorChannels={detectorChannels}
                             allowTriggerContext
                             onChange={updated => updateAction(i, ai, updated)}
                           />

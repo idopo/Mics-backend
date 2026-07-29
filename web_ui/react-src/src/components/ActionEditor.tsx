@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { FdaAction, ToolkitRead, HardwareModule } from '../types'
+import type { FdaAction, ToolkitRead, HardwareModule, DetectorChannelGroup } from '../types'
 import ArgInput from './ArgInput'
 import IfActionEditor from './IfActionEditor'
 import HardwareActionFields from './HardwareActionFields'
@@ -129,6 +129,7 @@ interface Props {
   versionStamp?: string
   /** Declared FdaJson.variables names — valid `output` targets and key_template tokens. */
   variableNames?: string[]
+  detectorChannels?: DetectorChannelGroup[]
   /** True only when this editor is inside a trigger's action list. */
   allowTriggerContext?: boolean
   onChange: (updated: FdaAction) => void
@@ -136,7 +137,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, allowTriggerContext, onChange }: Props) {
+export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, allowTriggerContext, onChange }: Props) {
   const isBackendAuthored = toolkit?.is_backend_authored ?? false
 
   const flagKeys = Object.keys(toolkit?.flags ?? {})
@@ -352,6 +353,7 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
       )}
 
       {/* ── View action ──────────────────────────────────────────────────── */}
+      {/* detectorChannels forwarded here in task 3, alongside ViewActionFields' Props addition. */}
       {action.type === 'view' && (
         <ViewActionFields
           action={action}
@@ -410,6 +412,7 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           taskDefId={taskDefId}
           versionStamp={versionStamp}
           variableNames={variableNames}
+          detectorChannels={detectorChannels}
           allowTriggerContext={allowTriggerContext}
           onChange={onChange}
         />

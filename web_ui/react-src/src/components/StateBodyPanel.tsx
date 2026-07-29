@@ -1,4 +1,4 @@
-import type { FdaState, FdaAction, ToolkitRead, HardwareModule } from '../types'
+import type { FdaState, FdaAction, ToolkitRead, HardwareModule, DetectorChannelGroup } from '../types'
 import ActionEditor from './ActionEditor'
 import { operandLabel } from './ConditionBuilder'
 
@@ -51,10 +51,11 @@ interface Props {
   versionStamp?: string
   /** Declared FdaJson.variables names — valid `output` targets and key_template tokens. */
   variableNames?: string[]
+  detectorChannels?: DetectorChannelGroup[]
   onChange: (updated: FdaState) => void
 }
 
-export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, variableNames, onChange }: Props) {
+export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, onChange }: Props) {
   const isPassthrough = !state.entry_actions?.length && (toolkit?.states?.includes(stateName) ?? false)
   const actions = state.entry_actions ?? []
 
@@ -140,6 +141,7 @@ export default function StateBodyPanel({ stateName, state, toolkit, hwModules, t
                     taskDefId={taskDefId}
                     versionStamp={versionStamp}
                     variableNames={variableNames}
+                    detectorChannels={detectorChannels}
                     onChange={updated => updateAction(i, updated)}
                   />
                   <button

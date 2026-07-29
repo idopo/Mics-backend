@@ -202,6 +202,7 @@ export default function TaskEditor() {
 
   const [fdaJson, setFdaJson] = useState<FdaJson | null>(null)
   const variableNames = Object.keys(fdaJson?.variables ?? {})
+  const detectorChannels = toolkit?.detector_channels ?? []
   const [selectedState, setSelectedState] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -757,6 +758,7 @@ export default function TaskEditor() {
               taskDefId={numId}
               versionStamp={versionStamp}
               variableNames={variableNames}
+              detectorChannels={detectorChannels}
               onChange={updated => updateStateBody(selectedState, updated)}
             />
           ) : (
@@ -782,6 +784,7 @@ export default function TaskEditor() {
                 taskDefId={numId}
                 versionStamp={versionStamp}
                 variableNames={variableNames}
+                detectorChannels={detectorChannels}
                 variables={fdaJson.variables ?? {}}
                 onVariablesChange={updated =>
                   setFdaJson(prev => prev ? { ...prev, variables: updated } : prev)
@@ -812,6 +815,7 @@ export default function TaskEditor() {
                 toolkit={toolkit}
                 hwModuleNames={hwModuleNames}
                 variableNames={variableNames}
+                detectorChannels={detectorChannels}
                 onChange={setCondModalTree}
               />
             </div>

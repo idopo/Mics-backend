@@ -1,4 +1,4 @@
-import type { FdaAction, FdaCondition, ToolkitRead, HardwareModule } from '../types'
+import type { FdaAction, FdaCondition, ToolkitRead, HardwareModule, DetectorChannelGroup } from '../types'
 import ConditionBuilder from './ConditionBuilder'
 import ActionEditor from './ActionEditor'
 
@@ -10,6 +10,7 @@ interface Props {
   versionStamp?: string
   /** Declared FdaJson.variables names — forwarded into both then/else recursion hops. */
   variableNames?: string[]
+  detectorChannels?: DetectorChannelGroup[]
   /** True only when this editor is inside a trigger's action list. */
   allowTriggerContext?: boolean
   onChange: (updated: FdaAction) => void
@@ -28,7 +29,7 @@ const branchLabel: React.CSSProperties = {
   display: 'block',
 }
 
-export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, allowTriggerContext, onChange }: Props) {
+export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, allowTriggerContext, onChange }: Props) {
   const thenActions: FdaAction[] = action.then ?? []
   const elseActions: FdaAction[] | undefined = action.else
 
@@ -81,6 +82,7 @@ export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, 
       <ConditionBuilder
         condition={action.condition ?? EMPTY_CONDITION}
         toolkit={toolkit}
+        detectorChannels={detectorChannels}
         onChange={updateCondition}
       />
 
@@ -104,6 +106,7 @@ export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, 
                   taskDefId={taskDefId}
                   versionStamp={versionStamp}
                   variableNames={variableNames}
+                  detectorChannels={detectorChannels}
                   allowTriggerContext={allowTriggerContext}
                   onChange={upd => updateThen(i, upd)}
                 />
@@ -178,6 +181,7 @@ export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, 
                       taskDefId={taskDefId}
                       versionStamp={versionStamp}
                       variableNames={variableNames}
+                      detectorChannels={detectorChannels}
                       allowTriggerContext={allowTriggerContext}
                       onChange={upd => updateElse(i, upd)}
                     />

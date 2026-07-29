@@ -7,12 +7,22 @@ import type { HardwareModule, AstMethodArg } from '../types'
 export interface PreflightIssue {
   module_id: number | null
   module_name: string
-  issue: 'missing' | 'incomplete_config' | 'class_mismatch' | 'fda_ref_unresolved'
+  issue: 'missing' | 'incomplete_config' | 'class_mismatch' | 'fda_ref_unresolved' | 'view_key_unresolved'
   detail: string
   expected_class?: string
   stored_class?: string
   config?: Record<string, unknown>
   existing_configs?: Array<{ name: string; config: Record<string, unknown> }>
+  /** view_key_unresolved only — where in the FDA JSON the offending operand/key_template lives. */
+  location?: string
+  /** view_key_unresolved only — the offending literal key, or the key `detector` would resolve to. */
+  key?: string
+  /** view_key_unresolved only — this pilot's real view keys, scoped per the issue (module or pilot-wide). */
+  available_keys?: string[]
+  /** view_key_unresolved, detector-channel shape only (DVK-11) — the stored operand, a channel not a key. */
+  detector?: { ref: string; channel: number }
+  /** view_key_unresolved, detector-channel shape only — this pilot's real channels for `detector.ref`. */
+  available_channels?: number[]
 }
 
 interface HardwareCheckModalProps {
@@ -218,6 +228,58 @@ function MissingModuleEditor({
   )
 }
 
+/**
+ * Read-only detail for a `view_key_unresolved` issue (DVK-06/DVK-11) — both shapes.
+ * There is nothing to edit here: the fix is either in the task definition (change the
+ * channel/key) or in the pilot's hardware config (`first_channel`/`num_detectors`), neither of
+ * which belongs in this modal.
+ */
+function ViewKeyIssueDetail({ issue }: { issue: PreflightIssue }): JSX.Element {
+  const availableKeys = issue.available_keys ?? []
+  return (
+    <div>
+      {issue.detector ? (
+        <>
+          <p style={{ margin: '0 0 4px', fontSize: '14px', fontFamily: 'monospace' }}>
+            {issue.detector.ref} — channel {issue.detector.channel}
+          </p>
+          {issue.key && (
+            <p style={{ margin: '0 0 8px', fontSize: '12px', fontFamily: 'monospace', color: 'var(--subtext0)' }}>
+              would resolve to {issue.key}
+            </p>
+          )}
+        </>
+      ) : (
+        issue.key && (
+          <p style={{ margin: '0 0 8px', fontSize: '14px', fontFamily: 'monospace' }}>{issue.key}</p>
+        )
+      )}
+      <p style={{ margin: '4px 0 8px', fontSize: '13px', color: 'var(--subtext0)' }}>{issue.detail}</p>
+      {issue.location && (
+        <p style={{ margin: '0 0 8px', fontSize: '12px', fontFamily: 'monospace', color: 'var(--overlay1)' }}>
+          {issue.location}
+        </p>
+      )}
+      {availableKeys.length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+          {availableKeys.map(k => (
+            <span key={k} className="meta-pill" style={{ fontSize: '12px' }}>{k}</span>
+          ))}
+        </div>
+      ) : (
+        <p style={{ margin: '0 0 8px', fontSize: '12px', color: 'var(--subtext0)' }}>
+          this pilot has no detector channels configured
+        </p>
+      )}
+      <p style={{ margin: 0, fontSize: '12px', color: 'var(--subtext0)' }}>
+        {issue.detector
+          ? "Pick a channel this pilot has in the task editor, or set this pilot's first_channel / num_detectors on the hardware-config page."
+          : "Fix the key in the task editor, or set this pilot's first_channel / num_detectors on the hardware-config page."}
+      </p>
+    </div>
+  )
+}
+
 function ModuleIssueEditor({
   issue,
   pendingEdits,
@@ -229,6 +291,10 @@ function ModuleIssueEditor({
   onEdit: (moduleName: string, key: string, value: string) => void
   onReplaceEdits: (moduleName: string, config: Record<string, unknown>) => void
 }): JSX.Element | null {
+  if (issue.issue === 'view_key_unresolved') {
+    return <ViewKeyIssueDetail issue={issue} />
+  }
+
   if (issue.issue === 'missing' || issue.issue === 'fda_ref_unresolved') {
     return <MissingModuleEditor issue={issue} onReplaceEdits={onReplaceEdits} />
   }
@@ -282,6 +348,9 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
   const [pendingEdits, setPendingEdits] = useState<Record<string, Record<string, unknown>>>(() => {
     const init: Record<string, Record<string, unknown>> = {}
     for (const issue of issues) {
+      // view_key_unresolved names no config row to write — it belongs to the task
+      // definition or the pilot's hardware config, not a PUT this modal issues.
+      if (issue.issue === 'view_key_unresolved') continue
       if (issue.issue === 'class_mismatch') {
         init[issue.module_name] = { ...issue.config }
       } else if (issue.issue === 'incomplete_config') {
@@ -311,6 +380,9 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
     setSaveError('')
     try {
       for (const issue of issues) {
+        // view_key_unresolved names no config row to write — PUTting here would either
+        // overwrite a good config with {} or hit an empty path segment.
+        if (issue.issue === 'view_key_unresolved') continue
         const edits = pendingEdits[issue.module_name] ?? {}
         const baseConfig = issue.config ?? {}
         const configToSave: Record<string, unknown> =
@@ -342,9 +414,9 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
           <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--subtext0)' }}>
             The following hardware modules need configuration before starting:
           </p>
-          {issues.map(issue => (
+          {issues.map((issue, i) => (
             <div
-              key={issue.module_name}
+              key={`${issue.issue}:${issue.module_name}:${issue.location ?? i}`}
               style={{
                 marginBottom: '20px',
                 padding: '12px 14px',
@@ -354,7 +426,7 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <strong style={{ fontSize: '14px' }}>{issue.module_name}</strong>
+                <strong style={{ fontSize: '14px' }}>{issue.module_name || 'View key'}</strong>
                 <span
                   className={`badge status-${issue.issue === 'missing' || issue.issue === 'fda_ref_unresolved' ? 'error' : 'warning'}`}
                   style={{ fontSize: '11px' }}

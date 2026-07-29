@@ -1,12 +1,14 @@
-import type { FdaAction, ToolkitRead } from '../types'
+import type { FdaAction, ToolkitRead, DetectorChannelGroup } from '../types'
 import ArgInput from './ArgInput'
 import { labelStyle } from './ActionEditor'
+import { buildKeyTemplateSuggestions } from './detectorOptions.mts'
 
 interface Props {
   action: FdaAction
   toolkit: ToolkitRead | null
   /** Declared FdaJson.variables names — valid key_template tokens and value/flag options. */
   variableNames?: string[]
+  detectorChannels?: DetectorChannelGroup[]
   /** True only when this editor is inside a trigger's action list. */
   allowTriggerContext?: boolean
   onChange: (patch: Partial<FdaAction>) => void
@@ -16,14 +18,20 @@ interface Props {
  * Form for `type: 'view'` actions — writes a view.view[key] Tracker (e.g. a detector
  * channel created by check_for_detectors). Deliberately renders NO pi_timestamp control:
  * the Pi injects it from the trigger tick silently (2026-07-27 decision, 24-CONTEXT.md).
+ *
+ * DVK-04, not DVK-11: this field is untouched by the detector-reference redesign (25-CONTEXT
+ * D5). It stays free text with pickable completions — a state body may legitimately write one
+ * fixed channel, so a literal per-pilot key is still offered here, with a hint that it hardcodes
+ * a pilot. Do not convert this input to a select; DVK-05 requires the free-text escape.
  */
-export default function ViewActionFields({ action, toolkit, variableNames, allowTriggerContext, onChange }: Props) {
+export default function ViewActionFields({ action, toolkit, variableNames, detectorChannels, allowTriggerContext, onChange }: Props) {
   const names = variableNames ?? []
   const kwargsEntries = Object.entries(action.kwargs ?? {})
+  const suggestions = buildKeyTemplateSuggestions(detectorChannels ?? [], names, action.source_ref ?? null)
 
-  const appendToken = (name: string) => {
+  const appendSuggestion = (insert: string) => {
     const current = action.key_template ?? ''
-    onChange({ key_template: `${current}{${name}}` })
+    onChange({ key_template: `${current}${insert}` })
   }
 
   return (
@@ -47,17 +55,18 @@ export default function ViewActionFields({ action, toolkit, variableNames, allow
           {'{device_name}'} resolves at run time from the action&apos;s source device, so the
           definition stays pilot-agnostic — prefer it over typing a literal prefix.
         </p>
-        {names.length > 0 && (
+        {suggestions.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
-            {names.map(name => (
+            {suggestions.map(s => (
               <button
-                key={name}
+                key={s.insert}
                 className="meta-pill"
-                style={{ cursor: 'pointer', border: 'none' }}
-                onClick={() => appendToken(name)}
-                title={`Append {${name}} to the target key`}
+                disabled={s.disabled}
+                style={{ cursor: s.disabled ? 'default' : 'pointer', border: 'none', opacity: s.disabled ? 0.5 : 1 }}
+                onClick={() => appendSuggestion(s.insert)}
+                title={s.hint}
               >
-                {`{${name}}`}
+                {s.label}
               </button>
             ))}
           </div>

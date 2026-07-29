@@ -353,12 +353,12 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
       )}
 
       {/* ── View action ──────────────────────────────────────────────────── */}
-      {/* detectorChannels forwarded here in task 3, alongside ViewActionFields' Props addition. */}
       {action.type === 'view' && (
         <ViewActionFields
           action={action}
           toolkit={toolkit}
           variableNames={variableNames}
+          detectorChannels={detectorChannels}
           allowTriggerContext={allowTriggerContext}
           onChange={update}
         />

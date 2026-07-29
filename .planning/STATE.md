@@ -92,13 +92,24 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
    builds a dead `LICKER0` and **silently discards channel 4** (9 real events lost in runs
    480/481). Names cannot be offset — the key is `{device_name}{pin_number}` where `pin_number`
    is the raw hardware index — so the channel range itself must become declarable.
-3. `process_queue` (`task.py:262-266`) has no exception handler: any trigger-callback exception
+   **Decided 2026-07-29 (user):** `first_channel` (default `0`) + existing `num_detectors`, i.e.
+   `range(first_channel, first_channel + num_detectors)`. **Not** an explicit channel list — the
+   extra editor UI is not justified by contiguous 1–4 wiring. Non-contiguous channels are
+   consciously out of scope.
+3. **DVK-10 (new, 2026-07-29)** — traced *why* DVK-09 was silent: `mics_task.py:717-721` **does**
+   raise `KeyError` for the unknown `LICKER4`, `_run_trigger_actions` (`mics_task.py:1323-1328`)
+   has no `except`, and `execute_trigger`'s `except KeyError` (`task.py:285-298`) — intended for a
+   missing `self.triggers[pin]` lookup — swallows it and logs `"No valid trigger for {pin}"` at
+   DEBUG. Wrong handler, wrong message, no mention of the key. Narrow that guard to the lookup
+   alone. Hides every action-list key error DVK-06 preflight does not catch first.
+4. `process_queue` (`task.py:262-266`) has no exception handler: any trigger-callback exception
    permanently disables all trigger processing with no operator-visible signal. Found via defect
-   8. User deferred it; not scoped.
-4. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
+   8. User deferred it; not scoped. Distinct from DVK-10 — the LICKER4 `KeyError` never reached
+   `process_queue`, which is why the worker survived and the other 63 writes succeeded.
+5. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
    Note task defs 181/185/187 also hold state-body hardware actions with an empty `method` and
    cannot be re-saved until fixed (TRIGA-16 blast radius).
-5. `detect_change` reports only `changes[0]`, so simultaneous multi-electrode transitions are
+6. `detect_change` reports only `changes[0]`, so simultaneous multi-electrode transitions are
    lost unrecoverably (`i2c.py`, off-limits, pre-existing). Bounds what concurrent multi-spout
    licking can measure.
 

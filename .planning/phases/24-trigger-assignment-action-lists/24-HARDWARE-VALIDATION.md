@@ -149,7 +149,18 @@ wired to MPR121 channels **1–4**; channel 0 is unwired.
 
 `check_for_detectors` builds `f"{device_name}{i}" for i in range(num_detectors)`, so
 `num_detectors: 4` creates `LICKER0…LICKER3`: `LICKER0` can never fire, and **channel 4's writes go
-nowhere** — 9 events lost across the two runs, with no exception and no event.
+nowhere** — 9 events lost across the two runs, with no visible exception and no event.
+
+**Root cause of the silence, traced 2026-07-29 (corrects "no exception" above — one *was* raised):**
+the unknown-key guard fires as designed. `mics_task.py:717-721` raises
+`KeyError("view action: key 'LICKER4' (from template '{device_name}{pin_number}') not found in
+self.view.view. Available: [...]")`. `_run_trigger_actions` (`mics_task.py:1323-1328`) is
+`try`/`finally` with no `except`, so it propagates into `execute_trigger`
+(`task.py:285-298`), whose `except KeyError: self.logger.debug(f"No valid trigger for {pin}")`
+is meant for a missing `self.triggers[pin]` lookup but wraps the callback invocation as well.
+The error was therefore caught by the wrong handler and logged at DEBUG as an unrelated message
+naming neither the key nor the cause. This also explains why the worker thread survived and the
+other 63 writes succeeded: the exception never reached `process_queue`. Raised as **DVK-10**.
 
 Not noise: channel 4 produced clean `1,0` pairs in its own dedicated ~0.6 s window matching the
 sequential touching order, in both runs. Not a dead electrode either — a dead electrode would leave

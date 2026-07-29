@@ -613,7 +613,7 @@ Plans:
 
 **Goal:** Once a detector-bearing hardware module (MPR121) is attached to a toolkit, its per-electrode view keys — `LICKER0…LICKER3`, i.e. `device_name` × `num_detectors` — are derived by the backend and offered as **first-class pickable options in the FDA editor**: transition-condition view operands, state-body operands, and the trigger `view` action's `key_template`. The same derivation resolves keys against a *specific* pilot at preflight, so a wrong key fails before START instead of writing into a view that has no such tracker.
 
-**Requirements**: DVK-01 through DVK-09 (**DVK-09 added 2026-07-27 from rig evidence** — the rig's four spouts sit on MPR121 channels 1–4, so `range(0, num_detectors)` builds a dead `LICKER0` and silently discards channel 4; see `24-HARDWARE-VALIDATION.md` §2b Finding A)
+**Requirements**: DVK-01 through DVK-10 (**DVK-09 added 2026-07-27 from rig evidence** — the rig's four spouts sit on MPR121 channels 1–4, so `range(0, num_detectors)` builds a dead `LICKER0` and silently discards channel 4; see `24-HARDWARE-VALIDATION.md` §2b Finding A. Resolved 2026-07-29 to `first_channel` + `num_detectors`, **not** a channel list. **DVK-10 added 2026-07-29** — the reason that discard was invisible: `execute_trigger`'s `except KeyError` (`task.py:285-298`) swallows the unknown-key `KeyError` raised at `mics_task.py:717-721` and logs `"No valid trigger for {pin}"` at DEBUG)
 **Depends on:** Phase 24 (TRIGA-12 capability-based `check_for_detectors`; the `view` action + `key_template`), Phase 10 + 17 (hardware modules, name-keyed `pilot_hardware_config`), Phase 13 (`preflight_validate` — named by 24-02 as the home for view-key resolution).
 **Plans:** 0 plans
 
@@ -625,7 +625,7 @@ assumed Phase 24 would deliver the HANDSHAKE-derived path via TRIGA-13. That mec
 **structurally impossible**: a registry-declared detector never appears in `prefs.HARDWARE` (its
 config arrives per-run via `PREFS_HARDWARE` in the START payload, after HANDSHAKE), so the Pi cannot
 derive these keys for a sourceless toolkit at all. TRIGA-13 is retired into DVK-01/02/03 and **all of
-DVK-01…08 belongs to this phase**, which now runs immediately after 24.
+DVK-01…10 belongs to this phase**, which now runs immediately after 24.
 
 Phase 24 still delivers TRIGA-14 (variables in operand pickers) and, crucially, does **not** need
 detector keys itself: the constrained one-pick detector affordance (TRIGA-17) removes the need on the

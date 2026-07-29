@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 
 from auth import verify_token
 from db import engine
+from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
 
 logger = logging.getLogger(__name__)
 
@@ -210,8 +211,10 @@ def preflight_validate(
     toolkit_id = td_row.toolkit_id
 
     # 5. Load toolkit → check is_backend_authored and get hardware_module_ids
+    # `flags` is selected here (not just for dispatch) so step 8 can build its valid-key set
+    # without a second toolkit query.
     toolkit_row = db.execute(
-        text("SELECT is_backend_authored, hardware_module_ids FROM task_toolkits WHERE id = :id"),
+        text("SELECT is_backend_authored, hardware_module_ids, flags FROM task_toolkits WHERE id = :id"),
         {"id": toolkit_id},
     ).fetchone()
     if not toolkit_row or not toolkit_row.is_backend_authored:
@@ -241,6 +244,11 @@ def preflight_validate(
 
     # 6. Check each hardware module
     issues: list[dict] = []
+    # Collected here (not re-queried) for step 8's DVK-06/11 view-key resolution — same cfg_row
+    # this loop already fetches per module.
+    module_channels: dict[str, list[int]] = {}
+    module_keys: dict[str, list[str]] = {}
+    device_names: dict[str, str] = {}
     for module_id in module_ids:
         module = db.execute(
             text("SELECT id, name, class_name FROM hardware_modules WHERE id = :id"),
@@ -269,6 +277,14 @@ def preflight_validate(
             continue
 
         cfg = cfg_row.config or {}
+        device_name = cfg.get("device_name")
+        if isinstance(device_name, str) and device_name:
+            device_names[module.name] = device_name
+        channels = derive_channels(cfg)
+        if channels:
+            module_channels[module.name] = channels
+            module_keys[module.name] = derive_view_keys(cfg)
+
         non_class_keys = [k for k in cfg if k != "class_name"]
 
         if not non_class_keys:
@@ -322,5 +338,35 @@ def preflight_validate(
                 "expected_class": module_class_by_name.get(ref),
                 "existing_configs": existing_configs,
             })
+
+        # 8. DVK-06/11: resolve view keys and detector channels against THIS pilot's declared
+        # wiring. Deliberately nested inside the `if td_full and td_full.fda_json:` block above
+        # (not after it) — `already_flagged` is only defined inside that `if`, and step 8 reuses
+        # it as `skip_modules` rather than rebuilding it. Wrapped in its own try/except: preflight
+        # already treats a broken check as non-blocking (Phase 13), and a new check must not
+        # become the first thing that can hard-fail a session start.
+        try:
+            detector_keys = [k for keys in module_keys.values() for k in keys]
+            variables = td_full.fda_json.get("variables")
+            valid_keys = (
+                set(detector_keys)
+                | set((toolkit_row.flags or {}).keys())
+                | set(variables.keys() if isinstance(variables, dict) else [])
+                | {"trial_counter"}
+                | set(module_class_by_name.keys())
+            )
+            issues.extend(resolve_view_key_issues(
+                td_full.fda_json,
+                valid_keys=valid_keys,
+                device_names=device_names,
+                module_channels=module_channels,
+                detector_keys=detector_keys,
+                skip_modules=already_flagged,
+            ))
+        except Exception:
+            logger.warning(
+                "preflight_validate: view-key resolution failed for session %s pilot %s",
+                session_id, pilot_id, exc_info=True,
+            )
 
     return {"ok": len(issues) == 0, "issues": issues}

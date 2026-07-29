@@ -6,8 +6,10 @@ Task 2: route-level tests for preflight_validate's new step 8, mocked-db.execute
 Task 3: detector_channels/is_detector wiring on the toolkit and hardware-module read routes.
 """
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from detector_keys import resolve_view_key_issues, scan_fda_view_keys
 
@@ -366,3 +368,233 @@ def test_key_template_no_tokens_treated_as_operand():
     assert len(issues) == 1
     assert issues[0]["key"] == "LICKER0"
     assert issues[0]["module_name"] == "MPR121"
+
+
+# ---------------------------------------------------------------------------
+# Task 2 — route-level: preflight_validate step 8 (DVK-06/11), mocked-db.execute style
+# (fixture pattern follows test_task_definitions_validation.py's DVK-07 section)
+# ---------------------------------------------------------------------------
+
+
+class _Result:
+    """Stands in for what `db.execute(...)` returns — `.fetchone()` / `.fetchall()` only,
+    matching the real SQLAlchemy CursorResult surface preflight_validate actually calls."""
+
+    def __init__(self, one=None, many=None):
+        self._one = one
+        self._many = many or []
+
+    def fetchone(self):
+        return self._one
+
+    def fetchall(self):
+        return self._many
+
+
+class FakeDb:
+    """SQL-text-dispatching stub for preflight_validate's raw `db.execute()` calls. Matches on
+    distinguishing substrings/params rather than call order, so a test scoped to one branch
+    does not break when a different branch's query changes.
+    """
+
+    def __init__(
+        self, *, run_row=None, spr_row=None, step_row=None, td_row=None,
+        toolkit_row=None, existing_configs=None, modules=None, configs=None, td_full=None,
+    ):
+        self.run_row = run_row
+        self.spr_row = spr_row
+        self.step_row = step_row
+        self.td_row = td_row
+        self.toolkit_row = toolkit_row
+        self.existing_configs = existing_configs or []
+        self.modules = modules or {}  # hardware_module id -> SimpleNamespace(id, name, class_name)
+        self.configs = configs or {}  # module name -> SimpleNamespace(config=dict)
+        self.td_full = td_full
+
+    def execute(self, query, params=None):
+        sql = " ".join(str(query).split())
+        params = params or {}
+
+        if "FROM session_runs sr" in sql:
+            return _Result(one=self.run_row)
+        if "FROM subject_protocol_runs" in sql:
+            return _Result(one=self.spr_row)
+        if "FROM protocol_step_templates" in sql:
+            return _Result(one=self.step_row)
+        if "toolkit_id FROM task_definitions" in sql:
+            return _Result(one=self.td_row)
+        if "FROM task_toolkits" in sql:
+            return _Result(one=self.toolkit_row)
+        if "fda_json FROM task_definitions" in sql:
+            return _Result(one=self.td_full)
+        if sql.startswith("SELECT name, config FROM pilot_hardware_config"):
+            return _Result(many=self.existing_configs)
+        if sql.startswith("SELECT id, name, class_name FROM hardware_modules"):
+            return _Result(one=self.modules.get(params.get("id")))
+        if sql.startswith("SELECT name, class_name FROM hardware_modules"):
+            return _Result(one=self.modules.get(params.get("id")))
+        if "FROM pilot_hardware_config" in sql and "name = :name" in sql:
+            return _Result(one=self.configs.get(params.get("name")))
+        return _Result()
+
+
+def _module(module_id, name, class_name):
+    return SimpleNamespace(id=module_id, name=name, class_name=class_name)
+
+
+def _config(config_dict):
+    return SimpleNamespace(config=config_dict)
+
+
+MPR121_CONFIG = {"device_name": "LICKER", "num_detectors": 4, "first_channel": 1, "class_name": "Touch_Detector"}
+
+
+def _backend_toolkit_scenario(fda_json, mpr121_config=MPR121_CONFIG, flags=None, module_ids=None):
+    module_ids = module_ids if module_ids is not None else [7]
+    return FakeDb(
+        run_row=None,
+        spr_row=SimpleNamespace(protocol_id=1),
+        step_row=SimpleNamespace(task_definition_id=42),
+        td_row=SimpleNamespace(toolkit_id=5),
+        toolkit_row=SimpleNamespace(is_backend_authored=True, hardware_module_ids=module_ids, flags=flags or {}),
+        # preflight_validate indexes these rows positionally (row[0], row[1]) — tuples, not dicts.
+        existing_configs=([("MPR121", mpr121_config)] if mpr121_config is not None else []),
+        modules={7: _module(7, "MPR121", "Touch_Detector")},
+        configs=({"MPR121": _config(mpr121_config)} if mpr121_config is not None else {}),
+        td_full=SimpleNamespace(fda_json=fda_json),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _clear_dependency_overrides():
+    yield
+    from main import app
+    app.dependency_overrides.clear()
+
+
+def _client_for(fake_db):
+    from auth import verify_token
+    from main import app
+    from routers.toolkit_dispatch import get_sa_session
+    app.dependency_overrides[verify_token] = lambda: {"sub": "test"}
+    app.dependency_overrides[get_sa_session] = lambda: fake_db
+    return TestClient(app)
+
+
+def auth_headers():
+    return {"Authorization": "Bearer test-token"}
+
+
+def _preflight(fake_db, session_id=1, pilot_id=1):
+    client = _client_for(fake_db)
+    return client.post(f"/api/sessions/{session_id}/preflight-validate/{pilot_id}", headers=auth_headers())
+
+
+def test_out_of_range_channel_returns_one_view_key_unresolved_issue_with_detector_field():
+    fda = _detector_fda(ref="MPR121", channel=5)
+    resp = _preflight(_backend_toolkit_scenario(fda))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "view_key_unresolved"
+    assert body["issues"][0]["detector"] == {"ref": "MPR121", "channel": 5}
+
+
+def test_in_range_channel_no_new_issue():
+    fda = _detector_fda(ref="MPR121", channel=2)
+    resp = _preflight(_backend_toolkit_scenario(fda))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["issues"] == []
+
+
+def test_literal_key_pilot_cannot_produce_one_issue_no_detector_field():
+    fda = _view_fda("LICKER0")
+    resp = _preflight(_backend_toolkit_scenario(fda))
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "view_key_unresolved"
+    assert "detector" not in body["issues"][0]
+
+
+def test_canonical_device_name_pin_number_template_resolvable_no_new_issue():
+    fda = _key_template_fda("{device_name}{pin_number}", source_ref="MPR121")
+    resp = _preflight(_backend_toolkit_scenario(fda))
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["issues"] == []
+
+
+def test_canonical_device_name_pin_number_template_unresolvable_device_name_one_issue():
+    """The MPR121 config row exists (so step 6 stays clean) but carries no device_name — the
+    {device_name} token this template needs has nothing to resolve against on this pilot."""
+    config_no_device_name = {"class_name": "Touch_Detector", "address": True}
+    fda = _key_template_fda("{device_name}{pin_number}", source_ref="MPR121")
+    resp = _preflight(_backend_toolkit_scenario(fda, mpr121_config=config_no_device_name))
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "view_key_unresolved"
+    assert body["issues"][0]["module_name"] == "MPR121"
+
+
+def test_non_backend_authored_toolkit_unchanged_early_return():
+    fake_db = FakeDb(
+        run_row=None,
+        spr_row=SimpleNamespace(protocol_id=1),
+        step_row=SimpleNamespace(task_definition_id=42),
+        td_row=SimpleNamespace(toolkit_id=5),
+        toolkit_row=SimpleNamespace(is_backend_authored=False, hardware_module_ids=[], flags={}),
+    )
+    resp = _preflight(fake_db)
+    body = resp.json()
+    assert body == {"ok": True, "issues": [], "skip_reason": "not_backend_authored"}
+
+
+def test_no_task_definition_unchanged_early_return():
+    fake_db = FakeDb(
+        run_row=None,
+        spr_row=SimpleNamespace(protocol_id=1),
+        step_row=SimpleNamespace(task_definition_id=None),
+    )
+    resp = _preflight(fake_db)
+    body = resp.json()
+    assert body == {"ok": True, "issues": [], "skip_reason": "not_backend_authored"}
+
+
+def test_fda_json_none_step6_issues_only_no_exception_logged():
+    fake_db = _backend_toolkit_scenario(fda_json=None, mpr121_config=None)
+    with patch("routers.toolkit_dispatch.logger.warning") as mock_warn:
+        resp = _preflight(fake_db)
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "missing"
+    mock_warn.assert_not_called()
+
+
+def test_module_already_flagged_missing_no_duplicate_view_key_unresolved_issue():
+    """R3: a `view_detector` naming a module the pilot has no config row for is reported once
+    (step 6's `missing`), not twice."""
+    fda = _detector_fda(ref="MPR121", channel=5)
+    resp = _preflight(_backend_toolkit_scenario(fda, mpr121_config=None))
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "missing"
+
+
+def test_malformed_toolkit_flags_row_returns_200_with_step6_issues_only_and_logs_warning():
+    """A malformed config row (toolkit.flags not a dict) must not 500 — step 8 degrades to
+    'no new issue' and logs, per the plan's try/except mandate."""
+    fda = _view_fda("LICKER0")
+    with patch("routers.toolkit_dispatch.logger.warning") as mock_warn:
+        resp = _preflight(_backend_toolkit_scenario(fda, flags="not a dict"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["issues"] == []
+    mock_warn.assert_called_once()

@@ -215,6 +215,10 @@ export interface Overrides {
 
 export type FdaOperand =
   | { view: string }
+  /** A detector reference, never a resolved per-pilot key (DVK-11). The name that appears at
+   *  `view.view[...]` on the pilot is resolved from `ref` + `channel` at build time on the Pi —
+   *  the same stored operand reads "LICKER2" on one pilot and "TONGUE2" on another. */
+  | { view_detector: { ref: string; channel: number } }
   | { tracker: string }
   | { flag: string }
   | { param: string }
@@ -326,6 +330,27 @@ export interface TriggerSource {
   direction: 'input' | 'output' | null
 }
 
+/** One pilot's declared wiring for a detector channel group — provenance behind `conflict`. */
+export interface DetectorChannelPilot {
+  pilot_id: number
+  pilot_name: string
+  device_name: string
+  channels: number[]
+  keys: string[]
+}
+
+/** Advisory, cross-pilot union of a detector module's channels (plan 03's derivation). */
+export interface DetectorChannelGroup {
+  module_name: string
+  /** User-chosen prefix(es) — e.g. "LICKER" on this rig. Not a constant; never hardcode it. */
+  device_names: string[]
+  /** WHAT IS STORED (DVK-11). `keys` below is only a preview of the resolved names. */
+  channels: number[]
+  keys: string[]
+  conflict: boolean
+  by_pilot: DetectorChannelPilot[]
+}
+
 export interface ToolkitRead {
   id: number
   name: string
@@ -346,6 +371,8 @@ export interface ToolkitRead {
   /** Older API responses predate this column — always optional. */
   trigger_sources?: TriggerSource[]
   detector_refs?: string[]
+  /** Older API responses predate this column — always optional. */
+  detector_channels?: DetectorChannelGroup[]
 }
 
 // Locked states (Phase 11)

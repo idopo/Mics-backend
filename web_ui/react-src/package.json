@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build"
+    "build": "tsc -b && vite build",
+    "test:unit": "node --test \"tests/**/*.test.mts\""
   },
   "dependencies": {
     "@codemirror/lang-python": "^6.2.1",

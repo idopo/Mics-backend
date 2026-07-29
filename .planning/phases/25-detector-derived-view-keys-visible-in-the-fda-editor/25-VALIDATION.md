@@ -5,7 +5,7 @@ status: planned
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-29
-updated: 2026-07-29  # revised after plan-check iteration 1, then after the DVK-11 design change (iteration 2)
+updated: 2026-07-29  # revised after plan-check iteration 1, after the DVK-11 design change (iteration 2), then after plan-check iteration 3
 ---
 
 # Phase 25 — Validation Strategy
@@ -101,6 +101,9 @@ remain manual.
 - **After every React task commit:** `npm run test:unit && npx tsc --noEmit`
 - **After every Pi task commit:** `python3 -m py_compile <changed file>` + the stdlib-only Pi suite (agent) — full Pi suite is user-run
 - **After every plan wave:** full backend suite + React unit + `tsc --noEmit`
+  (waves, after iteration 3: **1** = plans 01+02 · **2** = plan 03 · **3** = plan 04 · **4** = plan
+  05 · **5** = plan 06. Plan 05 was moved out of wave 3 because it and plan 04 both write
+  `web_ui/react-src/src/types/index.ts`.)
 - **Before `/gsd:verify-work`:** backend suite green, React unit green, `tsc --noEmit` clean, Pi suite user-run green, rig evidence recorded
 - **Max feedback latency:** ~20 s (backend rebuild dominates)
 
@@ -120,15 +123,15 @@ remain manual.
 | 02-T4 `view_detector` operand branch | 25-02 | 1 | DVK-11 | unit (stdlib, **agent-runnable**: `parse_view_detector_operand`) + **user-run Pi suite** (resolution) | `cd /home/ido/pi-mirror && python3 -m pytest tests/test_detector_view_keys.py tests/test_fda_vocabulary.py -q` | extends 02-T1 file + created by task | ⬜ pending |
 | 03-T1 scanner + resolver | 25-03 | 2 | DVK-06, DVK-11 | unit (pure) | `docker exec mics_api python3 -m pytest /app/tests/test_view_key_preflight.py -q` | created by task | ⬜ pending |
 | 03-T2 preflight wiring | 25-03 | 2 | DVK-06, DVK-11 | route (mocked db) | `docker exec mics_api python3 -m pytest /app/tests/ -q` | extends 03-T1 file | ⬜ pending |
-| 03-T3 `detector_channels` + `is_detector` | 25-03 | 2 | DVK-02 | unit + live assert on **both** read routes (must show `channels`) | `docker exec mics_api python3 -m pytest /app/tests/ -q` then an inline python assert that `detector_channels` carries MPR121 `channels`+`keys`+`device_names` on `/api/toolkits/100` **and** `/api/toolkits/by-name/source_less_toolkit` (full command in 25-03 task 3) | extends existing | ⬜ pending |
+| 03-T3 `detector_channels` + `is_detector` | 25-03 | 2 | DVK-02 | unit + live assert on **all three** read paths (must show `channels`; the list route must not 500) | `docker exec mics_api python3 -m pytest /app/tests/ -q` then an inline python assert that `detector_channels` carries MPR121 `channels`+`keys`+`device_names` on `/api/toolkits/100` **and** `/api/toolkits/by-name/source_less_toolkit`, **and** that `GET /api/toolkits` returns 200 across all ~112 toolkits with `detector_channels` a list on the module-less ones (full command in 25-03 task 3) | extends existing | ⬜ pending |
 | 04-T1 `detectorOptions.mts` | 25-04 | 3 | DVK-03, DVK-04, DVK-05, DVK-07, DVK-11 | unit (**node:test**), incl. the operand round trip | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit` | created by task | ⬜ pending |
 | 04-T2 grouped picker + threading | 25-04 | 3 | DVK-03, DVK-05, DVK-07, DVK-11 | unit + typecheck + build | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit && npx vite build` | extends 04-T1 file | ⬜ pending |
 | 04-T3 `key_template` suggestions | 25-04 | 3 | DVK-04, DVK-05 | unit + typecheck + build | `cd web_ui/react-src && npm run test:unit && npx tsc --noEmit && npx vite build` | extends 04-T1 file | ⬜ pending |
-| 05-T1 `view_key_unresolved` render (both shapes) | 25-05 | 3 | DVK-06, DVK-11 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
-| 05-T2 `first_channel` affordance | 25-05 | 3 | DVK-09 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
-| 06-T1 deploy + rebuild | 25-06 | 4 | DVK-08 | full suites | `docker exec mics_api python3 -m pytest /app/tests/ -q && cd web_ui/react-src && npm run test:unit && npx tsc --noEmit` | n/a | ⬜ pending |
-| 06-T2 Pi suite + restart | 25-06 | 4 | DVK-09, DVK-10, DVK-11 | **checkpoint: human-action** | USER-RUN: `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` | n/a | ⬜ pending |
-| 06-T3 rig proof (incl. the `device_name` rename) | 25-06 | 4 | DVK-03, DVK-04, DVK-05, DVK-06, DVK-08, DVK-09, DVK-10, DVK-11 | **checkpoint: human-verify** | none — live hardware | n/a | ⬜ pending |
+| 05-T1 `view_key_unresolved` render (both shapes) | 25-05 | 4 | DVK-06, DVK-11 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
+| 05-T2 `first_channel` affordance | 25-05 | 4 | DVK-09 | typecheck + build (**manual-only render**) | `cd web_ui/react-src && npx tsc --noEmit && npx vite build` | n/a | ⬜ pending |
+| 06-T1 deploy + rebuild | 25-06 | 5 | DVK-08 | full suites | `docker exec mics_api python3 -m pytest /app/tests/ -q && cd web_ui/react-src && npm run test:unit && npx tsc --noEmit` | n/a | ⬜ pending |
+| 06-T2 Pi suite + restart | 25-06 | 5 | DVK-09, DVK-10, DVK-11 | **checkpoint: human-action** | USER-RUN: `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` | n/a | ⬜ pending |
+| 06-T3 rig proof (incl. the `device_name` rename) | 25-06 | 5 | DVK-03, DVK-04, DVK-05, DVK-06, DVK-08, DVK-09, DVK-10, DVK-11 | **checkpoint: human-verify** | none — live hardware | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -259,5 +262,32 @@ Authority: `25-CONTEXT.md` D1-D6.
 an `<automated>` verify. Longest run without a behavioural automated check is 2 (see Sign-Off).
 Feedback latency unchanged.
 
+**Iteration 3 (2026-07-29) — plan-checker feedback on the DVK-11 revision.** The eight design-change
+items were independently re-verified against the real code and confirmed correct; nothing was
+replanned. One blocker and three should-fixes were applied.
+
+| Ref | Change | Files |
+|---|---|---|
+| B-1 | **`toolkit_hw_capabilities`' EARLY RETURN (`hw_introspect.py:131-132`) has no `module_names` key**, so plan 03's `caps["module_names"]` would 500 `GET /api/toolkits`. Verified live: **98 of 112 `task_toolkits` rows have `hardware_module_ids = []`**, and `list_toolkits` (`toolkits.py:102`) iterates every one. It shipped green only because plan 03's and plan 06's assertions both read toolkit 100 (`[1,2,3,5,6,7,8]`), which takes the other path. Fix: add `"module_names": []` to the early return; use `caps.get("module_names") or []` at the three fed call sites; extend 03-T3's verify to hit `GET /api/toolkits` and assert `detector_channels` is a list on a module-less toolkit; add a unit case that `toolkit_hw_capabilities(db, [])` contains `module_names`. `api/hw_introspect.py` added to plan 03's `files_modified` | 25-03, this file |
+| S-1 | The `view` operand branch is `mics_task.py:**539-543**`, not `:538` (`:538` is blank; 25-CONTEXT's `539-542` clips the `return`). Corrected in plan 02's `<interfaces>` and in task 4's action | 25-02 |
+| S-2 | The two "byte-identical" GOLDEN tables were not identical — plan 02's had 14 rows to plan 01's 17, missing `first_channel: -1 / "x" / True`. Added; both are now 17 rows. (The Pi's `ValueError` divergence lives in `check_for_detectors`, not in the pure helper, so the helper's table genuinely is shared) | 25-02 |
+| S-3 | Plans 04 and 05 were both wave 3 and both modify `web_ui/react-src/src/types/index.ts` — parallel execution would clobber. Plan 05 is now `depends_on: [03, 04]`, **wave 4**; plan 06 shifts to **wave 5**. Plan 05 needs nothing plan 04 produces, so this costs one serialisation of a two-task plan | 25-05, 25-06, this file |
+| N-1 | Stray `</content>` / `</invoke>` tags leaked from the writing tool stripped from all six plan files | 25-01…25-06 |
+| N-2 | `api/fda_validation.py` is already 322 lines, over the project's 300-line soft limit and over it before this phase. Plan 01 task 4's 400-line figure is now stated as an **acknowledged deviation with a follow-up**, not a pass criterion | 25-01 |
+| N-3 | Plan 03's `<interfaces>` called `{"tracker": "KEY"}` a *view* operand. On the Pi it is not — `mics_task.py:545-549` maps `tracker`/`flag` to `self.flags[key].value` and never touches `self.view`. Reworded: the scanner treats it as a view key for preflight only, the consequence is a false negative at worst, and the UI/Pi naming mismatch is pre-existing and out of scope | 25-03 |
+| N-4 | `.planning/REQUIREMENTS.md` DVK-08 gained the "Amended 2026-07-29" note DVK-03 and DVK-05 already carried | REQUIREMENTS.md |
+| N-5 | Off-by-one citations corrected: `mics_task.py:557-568` (hardware+group operand), `PilotHardwareConfig.tsx:107-110` (`listHardwareModules` query), `hw_introspect.py:95-120` (`class_capabilities`) | 25-02, 25-03, 25-05 |
+
+**Nyquist re-confirmed after iteration 3: `nyquist_compliant: true` still holds.** 19 map rows, 19
+real tasks, one-to-one — **no task was added, removed, split or merged** (B-1's fix is a unit case
+and an assertion inside the existing 03-T3, not a new task). Every task still has an `<automated>`
+verify. The only verify command that changed is 03-T3's, which gained the module-less list-route
+assertion and is still automated and still inside the latency budget. Sampling continuity is
+unchanged by S-3's wave shift: plan 05's two typecheck-only tasks are still the longest run without
+a behavioural automated check (**2**), still preceded by 04-T3's `node:test` run and still
+immediately followed by plan 06 task 1's three full suites — moving 05 from wave 3 to wave 4
+changes only what may run *in parallel* with it, not the task order the sampling argument is built
+on.
+
 **Approval:** planner-signed 2026-07-29 · revised after plan-check iteration 1 · revised after the
-DVK-11 design change (iteration 2), 2026-07-29
+DVK-11 design change (iteration 2) · revised after plan-check iteration 3, 2026-07-29

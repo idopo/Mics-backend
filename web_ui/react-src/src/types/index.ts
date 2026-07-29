@@ -490,6 +490,7 @@ export interface HardwareModuleMethods {
   module_name: string
   class_name: string
   methods: AstMethod[]
+  is_detector: boolean
 }
 
 export interface PilotHardwareConfigRow {

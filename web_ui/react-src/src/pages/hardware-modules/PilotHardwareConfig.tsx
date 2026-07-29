@@ -9,6 +9,7 @@ import {
   getHardwareModuleMethods,
 } from '../../api/hardware_modules'
 import { apiFetch } from '../../api/client'
+import DetectorChannelFields from './DetectorChannelFields'
 import type { PilotHardwareConfigRow, HardwareModule, AstMethodArg } from '../../types'
 
 const TEXTAREA_STYLE: React.CSSProperties = {
@@ -109,6 +110,25 @@ export default function PilotHardwareConfig(): JSX.Element {
     queryFn: listHardwareModules,
   })
 
+  // Resolved by name, not by id — a pilot_hardware_config row carries no module_id (it's
+  // free-form, see Phase 17). Both entry points share the same query key so picking a module in
+  // the add flow does not trigger a second network fetch for the edit flow's own resolution.
+  const editingModule = modules.find(m => m.name === editName)
+  const { data: editModuleMethods } = useQuery({
+    queryKey: ['hardware-module-methods', editingModule?.id],
+    queryFn: () => getHardwareModuleMethods(editingModule!.id),
+    enabled: editingRow !== null && !!editingModule,
+  })
+  const editIsDetector = editModuleMethods?.is_detector ?? false
+
+  const addModule = modules.find(m => String(m.id) === selectedModuleId)
+  const { data: addModuleMethods } = useQuery({
+    queryKey: ['hardware-module-methods', addModule?.id],
+    queryFn: () => getHardwareModuleMethods(addModule!.id),
+    enabled: !!addModule,
+  })
+  const addIsDetector = addModuleMethods?.is_detector ?? false
+
   const deleteMutation = useMutation({
     mutationFn: (name: string) => deletePilotHardwareConfig(pid, name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pilot-hardware-config', pid] }),
@@ -161,7 +181,10 @@ export default function PilotHardwareConfig(): JSX.Element {
     if (!mod) return
     setTemplateLoading(true)
     try {
-      const methods = await getHardwareModuleMethods(mod.id)
+      const methods = await qc.fetchQuery({
+        queryKey: ['hardware-module-methods', mod.id],
+        queryFn: () => getHardwareModuleMethods(mod.id),
+      })
       const initArgs = methods.methods.find(m => m.name === '__init__')?.args ?? []
       setAddJson(buildTemplate(mod, initArgs, addName))
     } catch {
@@ -275,6 +298,9 @@ export default function PilotHardwareConfig(): JSX.Element {
                           </span>
                         )}
                       </div>
+                      {editIsDetector && (
+                        <DetectorChannelFields json={editJson} onChange={setEditJson} />
+                      )}
                       <textarea
                         rows={8}
                         value={editJson}
@@ -328,6 +354,9 @@ export default function PilotHardwareConfig(): JSX.Element {
             )}
           </div>
         </div>
+        {addIsDetector && (
+          <DetectorChannelFields json={addJson} onChange={setAddJson} />
+        )}
         <div style={{ marginBottom: '0.75rem' }}>
           <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtext0)', marginBottom: '2px' }}>Config JSON</label>
           <textarea

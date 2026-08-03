@@ -1,8 +1,8 @@
 # Roadmap: MICS Backend
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor + Hardware Centralization
-**Status:** Phases 9–17 complete. Active scope is **24 → 23 → review → 18**. Phase 25 added 2026-07-27, depends on 24; **agreed 2026-07-27 to run immediately after 24, before 23** — phase 24 deliberately does not derive detector view keys, so transitions on `LICKER2` are unavailable until 25 lands. Phases 1–4 archived, 5–8 deferred.
-**Requirements:** 86 v1 requirements across 13 phases
+**Status:** Phases 9–17 complete. Active scope is **24 → 25 → 23 → review → 18 → 26 → 27 → 28**. Phase 25 added 2026-07-27, depends on 24; **agreed 2026-07-27 to run immediately after 24, before 23** — phase 24 deliberately does not derive detector view keys, so transitions on `LICKER2` are unavailable until 25 lands. **Phases 26–28 (the OpenEphys arc) added 2026-08-03**, all depending on Phase 18, whose context was revised the same day to carry them — Phase 18's existing plans are superseded and it must be re-planned. Phases 1–4 archived, 5–8 deferred.
+**Requirements:** 103 v1 requirements across 16 phases *(+17 on 2026-08-03: EXTLINK-14–18 for the revised Phase 18 substrate, EPHYS-01–12 for Phases 26–28; EXTLINK-07 and EXTLINK-13 amended in place)*
 
 ---
 
@@ -29,11 +29,15 @@
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
 | 18 | MICS-Link: Pi Transport + ExternalHardware | ZMQ ROUTER socket on Pi IOLoop + ExternalHardware base class with @signal/@event/@command + View Tracker auto-registration + stale policy + smoke test | EXTLINK-01–11 | ○ Pending |
-| 23 | 4/10 | In Progress|  | ◐ **4/10 plans executed 2026-08-03** — plan 01 (Wave 0) landed the three ❌ contract test files from `23-VALIDATION.md` (CMP-04/12/17/19), all failing/skipping/xfailing today for the right reason; plan 02 landed the compute-lib storage substrate (CMP-04/12/19: `hardware_libs.kind`, `declared_imports` allowlist, `release()` gate, seeded `COMPUTE` hardware module + auto-provisioned pilot config); plan 03 landed the backend save-time gate + variable-usage analysis (CMP-10/11/15: hard 422s for compute ref/method/output, `validate_compute_variables` collision/reference checks, new `api/variable_scan.py` writer/reader existence analysis); plan 04 (Wave 2) landed `type:"compute"` on the Pi runtime (CMP-03/04/05/06) — single-sourced into `fda_vocabulary.py`/`mics_task.py`/`tools/validate_fda.py`, mandatory `output` enforced at build time in both languages; one blocking bug fixed in-task (`_build_state_method` didn't recognize `compute`), one bug found and deliberately left for plan 23-10 to confirm (`hot_update_fda` re-declaring a variable name likely hits a Phase-24 collision-guard bug); plans 05–10 remain |
+| 23 | 5/10 | In Progress|  | ◐ **4/10 plans executed 2026-08-03** — plan 01 (Wave 0) landed the three ❌ contract test files from `23-VALIDATION.md` (CMP-04/12/17/19), all failing/skipping/xfailing today for the right reason; plan 02 landed the compute-lib storage substrate (CMP-04/12/19: `hardware_libs.kind`, `declared_imports` allowlist, `release()` gate, seeded `COMPUTE` hardware module + auto-provisioned pilot config); plan 03 landed the backend save-time gate + variable-usage analysis (CMP-10/11/15: hard 422s for compute ref/method/output, `validate_compute_variables` collision/reference checks, new `api/variable_scan.py` writer/reader existence analysis); plan 04 (Wave 2) landed `type:"compute"` on the Pi runtime (CMP-03/04/05/06) — single-sourced into `fda_vocabulary.py`/`mics_task.py`/`tools/validate_fda.py`, mandatory `output` enforced at build time in both languages; one blocking bug fixed in-task (`_build_state_method` didn't recognize `compute`), one bug found and deliberately left for plan 23-10 to confirm (`hot_update_fda` re-declaring a variable name likely hits a Phase-24 collision-guard bug); plans 05–10 remain |
 | 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments`; on a **sourceless** toolkit a constrained one-pick detector write drives the licker trackers with no way to cross pin and tracker; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–10, 11a, 12, 14–19 | ✓ **8/8 plans executed 2026-07-27** — rig-proven (runs 478/480/481: 144 triggers, 63 licker writes, 0 correctness errors); 8/8 save-time negative cases 422. ⚠ Pi test suite still never run (user-run) |
 | 25 | Detector-Derived View Keys | `LICKER*` keys derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight. **Absorbs TRIGA-13.** **DVK-09 added from rig evidence** — channels must be declarable, not assumed 0-based (a live spout is currently discarded); resolved 2026-07-29 to `first_channel` + count, no channel list. **DVK-11 added 2026-07-29** — operands store a detector ref + channel index, never the resolved per-pilot key. **DVK-10 added 2026-07-29** — `execute_trigger`'s over-broad `except KeyError` swallowed that discard as `"No valid trigger"`. Transitions on a licker key are unavailable until this lands | DVK-01–11 | ◐ **5/6 plans executed 2026-07-29** — plan 01 landed the backend derivation core (DVK-01/02/07/09/11); plan 02 landed the Pi runtime half (DVK-09/10/11: `first_channel` in `check_for_detectors`, `execute_trigger` error containment, `view_detector` build-time resolution); plan 03 wired preflight resolution (DVK-06/11: out-of-range channel / unreachable literal key / unresolvable `{device_name}` template all fail preflight with the pilot's actual wiring) and `detector_channels` onto every toolkit read route including `by-name`; plan 04 made detector channels first-class pickable view operands in the FDA editor (DVK-03/04/05/07/11: grouped `<optgroup>` picker emitting `{"view_detector": {"ref","channel"}}`, `key_template` suggestions, unknown-key preservation); plan 05 renders `view_key_unresolved` preflight issues in `HardwareCheckModal` (both shapes, no start gate, PUT loop provably skipped) and adds the `first_channel` config affordance with a live key preview (DVK-06/09) — only plan 06 (deploy + rig proof) remains |
 
-**Execution order (amended 2026-07-27):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → Open Ephys. Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. See `.planning/STABILIZATION_PLAN.md`.
+| 26 | OpenEphys Device Control | MICS starts/stops the OE recording itself, names the save folder per subject/session, writes labelled markers into the recording, and records the path back into MICS. Control only — no neural data into the task | EPHYS-01–05 | ○ Pending |
+| 27 | OpenEphys Firing Rate over ZMQ | Pi SUBs to the OE ZMQ plugin, decodes spikes in a versioned lib's `@decoder`, maintains a windowed rate per declared unit as an ordinary view key, logs `(ts_pi_recv, oe_sample)` pairs for clock co-registration | EPHYS-06–10 | ○ Pending |
+| 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
+
+**Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. See `.planning/STABILIZATION_PLAN.md`.
 
 ---
 
@@ -490,7 +494,7 @@ Plans:
 >
 > **Decoupled/deferred:** the `expr` escape-hatch (former CMP-07–09) **and** inline Python typed into a state body. Both forfeit versioning and op logging (no object for `@log_action`), so neither can satisfy CMP-16. Python authoring happens in the hardware-lib editor; the state body only selects and wires. Third-party PyPI packages + per-Pi package management also deferred — CMP-19 reserves the hooks.
 
-**Plans:** 4/10 plans executed
+**Plans:** 5/10 plans executed
 
 Plans (waves):
 - [x] 23-01-PLAN.md — **wave 1** — Wave 0: the three missing test files as executable contracts (CMP-04/12/17/19) — done 2026-08-03, see `23-01-SUMMARY.md`
@@ -572,9 +576,27 @@ Phase 23 (Compute Operations / Compute Libs) — 10 plans, 6 waves (re-planned 2
         ↓
     23-10 Deploy + rig proof (checkpoint)                 (wave 6)
     (expr escape hatch + inline Python decoupled/deferred — see Phase 23 note)
+
+Phase 9 (hardware_libs + AST) + Phase 10 (hardware_modules)
+  + Phase 11 (toolkit dispatch) + Phase 13 (preflight) + Phase 17 (free-form config)
+    ↓ the whole hw-lib → module → pilot-config → dispatch → preflight pipeline
+Phase 18 (MICS-Link: ExternalHardware substrate)
+    ↓ roles (router_bind | sub_connect) + @decoder
+    ↓ egress queue + on_run_start/on_run_stop + device lease
+    ├─────────────────────────────┐
+    ↓                             ↓
+Phase 26 (OpenEphys Control)   [DeepLabCut — reserved, paused]
+    ↓ OpenEphys module + config row + lease held
+Phase 27 (OpenEphys Firing Rate over ZMQ)
+    ↑ also needs Phase 25 (detector_keys → editor-visible derived view keys)
+    ↑ also needs Phase 24 (hardware action type — markers need no new vocabulary)
+    ↓ network markers in the recording + (ts_pi_recv, oe_sample) pairs
+Phase 28 (TTL vs Network Sync Validation — measurement only, no cutover)
 ```
 
 **Phase 1 can start today.** Phase 5 can also start in parallel with Phase 1 — they are fully independent. **Phase 9 can start after Phase 4 is complete** — it is independent of Phases 5–8.
+
+**Phases 26–28 cannot start before Phase 18**, which is the substrate they consume. Phase 27 additionally carries an external prerequisite outside MICS: a spike detector/sorter must sit upstream of the OE ZMQ plugin, with sorting configured, or there are no spikes on the wire and no unit IDs to declare.
 
 ### Phase 24: Trigger Assignment Action Lists
 
@@ -702,6 +724,150 @@ rather than building them.
 **Central design tension to settle in planning:** task definitions are pilot-agnostic, but `device_name` × `num_detectors` is per-pilot data. The editor needs keys *before* a pilot is chosen. Candidate sources — union across pilots that have the module configured (surfacing disagreement rather than silently merging), a declared default on `hardware_modules`, or an explicit per-toolkit declaration. Pick one; do not invent a second source of truth for the key format — it must stay `f"{device_name}{i}"`, identical to `check_for_detectors`.
 
 **Success gate:** attach MPR121 to a toolkit, open the FDA editor, and pick `LICKER2` from the view-operand dropdown when declaring a transition; the definition saves, preflights clean against the configured pilot, and the transition fires on the rig.
+
+---
+
+## MICS-Link consumers: the OpenEphys arc (Phases 26–28)
+
+Phases 26–28 are the **first real consumer** of the Phase 18 `ExternalHardware` substrate. Phase 18
+was revised on 2026-08-03 specifically so these three could stand on it without bespoke plumbing —
+see `18-CONTEXT.md` § `<revision_2026_08_03>`. DeepLabCut is the intended second consumer and
+inherits the same substrate (`sub_connect` + `@decoder`) for free; it is deliberately paused.
+
+**Source:** `docs/open_ephys_integration.pdf` (+ `.md` twin). Two independent OE network channels:
+HTTP REST control on **37497**, ZMQ data on **5556** (plugin default, configurable — confirm against
+the rig's actual plugin settings).
+
+**Locked scope decisions (2026-08-03 session):**
+- **The Pi owns both channels.** One clock domain, one versioned lib, one toolkit story. The backend
+  owns *only* the device lease, because the Pi cannot know about other pilots.
+- **The OE machine is shared across rigs but never used simultaneously.** The lease is a safety net,
+  not a scheduler — no queue/notify UX.
+- **The TTL cable stays.** Network markers run alongside it. Phase 28 measures the two against each
+  other; any cutover is a later decision made on that evidence, not part of this arc.
+
+**Correction carried into planning:** the OE ZMQ plugin transfers **spikes, not firing rate**. Rate
+is derived by windowed counting, which here runs on the Pi. Two consequences bind Phase 27: the OE
+signal chain needs a **spike detector/sorter upstream of the ZMQ plugin** or there are no spikes on
+the wire at all, and **sorted unit IDs only exist if sorting is configured**, so units of interest
+must be declared in `pilot_hardware_config.config` rather than discovered at runtime.
+
+---
+
+### Phase 26: OpenEphys Device Control
+
+**Goal:** A MICS session starts and stops an Open Ephys recording by itself, names the save folder
+per subject/session, writes labelled event markers into the recording mid-task, and records the
+resulting path back into MICS — so a researcher never touches the Open Ephys GUI and the system
+knows where its own ephys data landed. Control-only: no neural data flows into the task yet.
+
+**Requirements:** EPHYS-01 through EPHYS-05
+
+**Depends on:** Phase 18 (`ExternalHardware` base class, egress queue, `on_run_start`/`on_run_stop`
+lifecycle hooks, device lease, control-only zero-signal modules). Phase 24 (`hardware` action type —
+markers are dispatched as ordinary state/trigger actions, so no new action vocabulary). Phase 17
+(free-form `pilot_hardware_config`). Phase 13 (preflight issue system).
+
+**Plans:** 0 plans (run `/gsd:plan-phase 26`)
+
+**Success criteria:**
+1. Starting a session on a pilot with an `OpenEphys` module configured drives OE from IDLE to RECORD
+   via `PUT /api/status`, with no human interaction, and the FDA's first state is not entered until
+   recording has actually started (readiness gate keys on `on_run_start`, not liveness).
+2. The save folder is resolved from the run context (subject, session, run, pilot, timestamp) and is
+   unambiguous across rigs — two pilots' data can never merge into one folder.
+3. The resolved recording path is persisted in MICS and readable back through the API, so post-hoc
+   tooling locates the recording without a human recording the path by hand.
+4. A state `entry_action` and a trigger action can both emit a labelled marker (`cue_on`, `reward`)
+   into the recording as an ordinary Phase-24 `hardware` action — no new action type in the editor.
+5. Marker sends never block the FDA thread; a failed marker is logged as a CONTINUOUS event and the
+   session continues (the TTL path is still live).
+6. Session end — normal completion, STOP button, or task exception — returns OE to IDLE. A pilot
+   crash is caught by the backend safety net, which stops the recording and releases the lease.
+7. Preflight reports OE unreachable, and separately reports the device already held by another run,
+   naming the holding pilot/subject/run. Both block the run before the animal is in the box.
+
+**NOT in scope:** any neural data flowing into the task (Phase 27); TTL removal or comparison
+(Phase 28); closed-loop behaviour.
+
+**Verification posture:** Backend/API work is agent-driven (docker compose). The `OpenEphys`
+hardware lib is authored in `~/pi-mirror/` and uploaded through the existing `/api/hardware-libs`
+path. `<verify>` blocks for anything touching the rig return commands for the **user** to run — the
+agent does not run git on the Pi, start/stop the pilot, or run Python on the Pi.
+
+---
+
+### Phase 27: OpenEphys Firing Rate over ZMQ
+
+**Goal:** Live firing rate becomes a first-class task input. The Pi subscribes to the Open Ephys ZMQ
+Interface plugin, decodes spikes, maintains a windowed rate per declared unit, and exposes it as an
+ordinary view key — so `view.get_value("oe.unit_A001_1.rate")` reads like any other sensor and an FDA
+transition can gate on it. Every inbound message's OE sample number is logged against `ts_pi_recv`,
+giving software co-registration of the two clocks.
+
+**Requirements:** EPHYS-06 through EPHYS-10
+
+**Depends on:** Phase 26 (the `OpenEphys` module, its config row, and the lease). Phase 18
+(`sub_connect` role + `@decoder` hook — the mechanism that lets a foreign PUB format be decoded
+inside a versioned hardware lib). Phase 25 (`api/detector_keys.py` `derive_view_keys` — the
+precedent for deriving editor-visible view keys from `pilot_hardware_config.config` rather than from
+static class declarations).
+
+**Plans:** 0 plans (run `/gsd:plan-phase 27`)
+
+**Success criteria:**
+1. The Pi SUBs to the OE ZMQ plugin and decodes spike messages inside the versioned hardware lib's
+   `@decoder`; no OE-specific parsing exists in platform code.
+2. Units of interest and the rate window are declared in `pilot_hardware_config.config`; the
+   resulting view keys are static per pilot, validated by preflight, and selectable in the FDA
+   editor's operand pickers via the Phase 25 mechanism.
+3. An FDA transition gated on a firing-rate threshold fires on the rig against real spiking.
+4. `alive` reflects OE being reachable and recording — a genuinely quiet unit leaves `alive` true and
+   lets the per-signal stale policy govern its value (the Phase 18 liveness/staleness split).
+5. `(ts_pi_recv, oe_sample_number)` pairs are logged to ES at a steady cadence for the run's
+   duration, sufficient to fit clock drift post-hoc.
+6. Raw continuous data is **not** consumed. What the plugin actually puts on the socket is verified
+   in the phase's first task before any estimator work — if continuous cannot be excluded, the
+   bandwidth story is settled then rather than assumed now.
+
+**NOT in scope:** raw continuous @30 kHz into the FDA (explicitly rejected — see Phase 18's deferred
+bulk-stream tier); spike sorting inside MICS (OE owns sorting); TTL comparison (Phase 28).
+
+**Known external prerequisite:** the OE signal chain must have a spike detector/sorter upstream of
+the ZMQ plugin, and sorting configured, or there are no spikes and no unit IDs to declare. This is
+rig configuration, not MICS work, but Phase 27 is unplannable without it — confirm before planning.
+
+**Verification posture:** Same as Phase 26 — lib authored in `~/pi-mirror/`, rig commands returned
+to the user, backend agent-driven.
+
+---
+
+### Phase 28: TTL vs Network Sync Validation
+
+**Goal:** Quantify what the network path actually costs in timing accuracy, by running it alongside
+the TTL cable that is still in place, and produce the evidence needed to decide whether the cable can
+ever come out. This phase deliberately **does not remove the TTL** — it measures.
+
+**Requirements:** EPHYS-11, EPHYS-12
+
+**Depends on:** Phase 26 (network markers reaching the recording), Phase 27 (OE sample numbers paired
+with Pi timestamps).
+
+**Plans:** 0 plans (run `/gsd:plan-phase 28`)
+
+**Success criteria:**
+1. A single recording contains both the existing TTL pulses and the network markers for the same
+   behavioural events, so the two are compared within one clock rather than across sessions.
+2. Offset and jitter between the two paths are quantified over a real session — distribution, not a
+   single number — and reported in a form the lab can act on.
+3. The report states plainly whether network-only alignment meets the tolerance of the experiments
+   actually being run, and what the residual risk is if the cable is removed.
+4. No cutover is performed. Removing the TTL remains a separate, later decision.
+
+**NOT in scope:** removing the TTL; changing the post-hoc analysis pipeline to network-only.
+
+**Verification posture:** Rig session required — commands returned to the user. Analysis is
+agent-driven against ES and the OE recording.
 
 ---
 *Created: 2026-03-15*

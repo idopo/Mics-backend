@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T09:39:08.706Z"
+last_updated: "2026-08-03T10:00:05.457Z"
 progress:
-  total_phases: 19
+  total_phases: 22
   completed_phases: 6
-  total_plans: 46
-  completed_plans: 34
-  percent: 76
+  total_plans: 44
+  completed_plans: 35
+  percent: 82
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **4/10 plans done** (Wave 0 + Wave 2 plans 02/03/04)
+**Phase:** 23 — Compute Primitives + Variables — **5/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plan 05)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [████████░░] 76%
+**Progress:** [████████░░] 82%
 
 ### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
 
@@ -70,15 +70,28 @@ not 18): the OE signal chain needs a spike detector/sorter upstream of the plugi
 spikes on the wire at all, and sorted unit IDs only exist if sorting is configured, so units of
 interest must be declared in `pilot_hardware_config.config`.
 
-**Follow-on phases agreed, not yet added to ROADMAP.md:** E1 OpenEphys control (REST record/IDLE,
-save-path template, `/api/message` markers, path persisted to MICS, preflight reachability) →
-E2 firing rate over ZMQ (decoder, declared units + windowed estimator, `(ts_pi_recv, oe_sample)`
-sync-pair logging, keys via Phase 25's `detector_keys`) → E3 TTL-vs-network jitter validation
-(no cutover; evidence gate). DeepLabCut stays reserved and inherits `sub_connect` for free.
+**Follow-on phases ADDED to ROADMAP.md 2026-08-03** as Phases 26–28 (the "OpenEphys arc", with its
+own preamble section in the roadmap): **26** OpenEphys Device Control (REST RECORD/IDLE, save-path
+template, `/api/message` markers as Phase-24 hardware actions, path persisted to MICS, preflight
+reachability + lease) → **27** Firing Rate over ZMQ (`sub_connect` + `@decoder`, declared units +
+windowed estimator, `(ts_pi_recv, oe_sample)` sync-pair logging, keys via Phase 25's
+`detector_keys`) → **28** TTL-vs-Network Sync Validation (both paths in one recording, jitter as a
+distribution, **no cutover** — evidence gate only). DeepLabCut stays reserved and inherits
+`sub_connect` for free.
 
-**Outstanding before planning 18:** `REQUIREMENTS.md` still states EXTLINK-07 heartbeat-only
-liveness and EXTLINK-13 "all required alive" — both contradict the revised context and must be
-amended, alongside new IDs for roles/decoder, egress, lifecycle hooks, and the lease.
+**REQUIREMENTS.md amended 2026-08-03** — this is now resolved, not outstanding:
+- **EXTLINK-07 amended** — liveness split from signal staleness; lib-supplied hook replaces the
+  heartbeat-only rule that assumed every source sends MICS `HB`.
+- **EXTLINK-13 amended** — readiness gate keys on "all required *ready*" (lib-defined, defaults to
+  `alive`) rather than "all required alive".
+- **EXTLINK-14–18 added** — transport roles + `@decoder`, egress queue, run lifecycle hooks, device
+  lease, control-only zero-signal modules.
+- **EPHYS-01–12 added** — new requirements section covering Phases 26/27/28.
+
+**Still outstanding before planning 18:** nothing in the planning docs. The one open *external*
+question belongs to Phase 27, not 18 — whether the OE signal chain will have a spike detector/sorter
+upstream of the ZMQ plugin with sorting configured. Without it there are no spikes on the wire and
+no unit IDs to declare, which makes 27 unplannable as scoped. Rig configuration, not MICS work.
 
 ### Phase 23 status (2026-08-03)
 
@@ -104,6 +117,31 @@ wins re-invocation. Full backend suite green throughout: **231 passed, 5 skipped
 (verified before AND after `docker compose up --build api`, since that service has no bind mount
 — new test files are invisible to a running, un-rebuilt container). No pi-mirror files other
 than the one new test file touched; no git commands run there. See `23-01-SUMMARY.md`.
+
+**Plan 05 executed (2026-08-03):** CMP-17/19 delivered — the single lib-version resolution
+chain. New `api/lib_version_resolution.py::resolve_lib_version_id`/`resolve_lib_versions`
+implement pin → toolkit_default → stable → active (only if that version's own `state` is
+beta/stable) → none, replacing THREE independently-wrong chains: `get_dispatch_spec` (what
+gets exec'd), `toolkit_hw_capabilities` (AST introspection), and the orchestrator's
+`_send_hardware_libs_if_needed` (what gets shipped to the Pi) — none of which previously
+consulted `stable_version_id` at all. **Deviation (per plan's explicit instruction):** a fourth
+"active" rung was added beyond CONTEXT's literal 3-rung chain, gated on the active version's own
+state being beta/stable — implemented literally (stop at stable-or-nothing), every existing
+backend-authored toolkit on the rig (MPR121, TOUCH_INT, all their task defs) would stop
+dispatching, since none has a promoted stable version yet. Verified live:
+`GET /toolkits/100/dispatch-spec?pilot_id=1` still returns `Modules` with `MPR121`/`TOUCH_INT`
+populated, `unresolved_libs: []`. `GET /toolkits/{id}/hardware-libs?task_def_id=N` now carries
+`resolved_version_id`/`resolved_state`/`resolved_source_code`/`resolution_reason` per lib
+(verified live against all 112 toolkits' libs). Orchestrator's `_send_hardware_libs_if_needed`
+rewritten to read those resolved fields instead of re-deriving the chain, and now sends ONE
+`LOAD_HARDWARE_LIBS` per lib with `test_import: True` + the Pi's expected top-level
+`version_id` — activating `HARDWARE_LIB_TEST_RESULT`, dead since Phase 09, with **zero
+Pi-side change** (verified: pi-mirror `pilot.py` byte-identical via diff against the live Pi).
+Two Rule-3 fixes to pre-existing tests whose fixtures/query-shape assumptions predated this
+plan's changes (`test_view_key_preflight.py`'s two `toolkit_hw_capabilities` tests;
+`test_toolkit_dispatch.py`'s `kind`/`declared_imports` fixture gap from plan 23-02). Full backend
+suite green throughout: **314 passed**. `wc -l`: `hw_introspect.py` 208, `lib_version_resolution.py`
+89, `toolkit_dispatch.py` 376 (all under budget). No pi-mirror commits. See `23-05-SUMMARY.md`.
 
 **Plan 02 executed (2026-08-03):** CMP-04/12/19 delivered — the compute-lib storage substrate.
 `hardware_libs.kind` ('hardware'|'compute') + `hardware_lib_versions.declared_imports` (JSONB),
@@ -474,6 +512,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23]: Wave 0 contract tests use per-test skip/xfail guards (not module-level) when a file mixes already-real integration tests with not-yet-real route tests; module-level importorskip only when every test shares one dependency
 - [Phase 23-03]: hardware_libs.py::_flag_broken_task_defs carries its own action_type filter separate from fda_utils.py's scanner — widening a shared action vocabulary (adding "compute") requires checking every consumer's own filter, not just the scanner; fda_validation.py::_module_names deleted in favor of hw_introspect's already-computed caps['module_names'] (one fewer DB round trip)
 - [Phase 23]: Phase 23 Plan 02: compute-lib storage substrate (kind column, upload gate, seed lib, auto-provisioning) landed and verified against real Postgres dev DB
+- [Phase 23]: Plan 23-05: single lib-version resolver (pin->toolkit_default->stable->active->none) delivered; fourth active rung added beyond CONTEXT's literal chain to avoid breaking existing rig toolkits
 
 ## Accumulated Context
 
@@ -502,6 +541,25 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - **Registry additions (2026-07-27):** hardware modules 7 (`MPR121`→`Touch_Detector`, i2c.py)
   and 8 (`TOUCH_INT`→`Digital_In`, gpio.py) created with pilot-1 configs and attached to
   toolkit 100. These were prerequisites for any sourceless detector work.
+- **Phase 18 context REVISED (2026-08-03)** — generalized from a DLC-shaped transport into the
+  general external-device substrate, so OpenEphys can be its first consumer. Five additions
+  (transport roles + `@decoder`, liveness/staleness split, egress queue, run lifecycle hooks,
+  device lease). `18-01`/`18-02` plans superseded → `superseded/`; **Phase 18 must be re-planned.**
+  EXTLINK-07 and EXTLINK-13 amended; EXTLINK-14–18 added.
+- **Phases 26, 27, 28 added (2026-08-03): the OpenEphys arc.** 26 OpenEphys Device Control
+  (EPHYS-01–05) → 27 OpenEphys Firing Rate over ZMQ (EPHYS-06–10) → 28 TTL vs Network Sync
+  Validation (EPHYS-11–12). All three depend on Phase 18. Roadmap gains an arc preamble section
+  documenting the locked scope decisions; `REQUIREMENTS.md` gains an EPHYS section.
+- **Execution order amended (2026-08-03):** **24 → 25 → 23 → review → 18 → 26 → 27 → 28.**
+  Supersedes the 2026-07-26 order, which ended with a generic "Open Ephys".
+- **Scope decisions locked (2026-08-03):** the Pi owns both OE channels (HTTP control + ZMQ data),
+  backend owns only the lease; the OE box is shared across rigs but never concurrently, so the
+  lease is a safety net with no scheduling UX; **the TTL cable stays** and Phase 28 measures the
+  network path against it rather than replacing it.
+- **External prerequisite flagged for Phase 27 (2026-08-03):** the OE signal chain needs a spike
+  detector/sorter upstream of the ZMQ plugin, with sorting configured — the plugin transfers
+  **spikes, not firing rate**, and sorted unit IDs do not exist without it. Rig configuration, not
+  MICS work, but 27 is unplannable as scoped until confirmed.
 
 ## Blockers
 
@@ -574,9 +632,11 @@ conflicting instruction inside a PLAN file.
 Note: Phase 23 was re-planned 2026-08-03 as 10 plans in 6 waves against a "compute-as-hardware-lib"
 reframe (see the `docs(23):` commits immediately before `test(23-01):` in git log) — the prior
 "plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests), Plan 03
-(backend compute validation + variable-scan), and Plan 04 (Wave 2, Pi-runtime compute action)
-are done; see "Phase 23 status" above and `23-01-SUMMARY.md`/`23-03-SUMMARY.md`/
-`23-04-SUMMARY.md`.
+(backend compute validation + variable-scan), Plan 04 (Wave 2, Pi-runtime compute action), and
+Plan 05 (Wave 3, single lib-version resolution chain, CMP-17/19) are done; see "Phase 23 status"
+above and `23-01-SUMMARY.md`/`23-03-SUMMARY.md`/`23-04-SUMMARY.md`/`23-05-SUMMARY.md`. 5/10 plans
+done. Remaining outstanding in phase 23: plans 06-10 (later waves) and Phase 25 plan 06 (separate
+phase, still not executed).
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
 CMP-03/04/05/06/10/11/12/15/17/19 in `REQUIREMENTS.md` (same gap previously found for

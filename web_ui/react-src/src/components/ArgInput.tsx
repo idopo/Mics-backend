@@ -176,6 +176,12 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
             onChange={e => onChange({ flag: e.target.value })}
             style={{ width: '100%' }}
           >
+            {/* Keep-current escape, same as ConditionBuilder's: a stored flag that is not in
+                the option list — a hidden machinery variable like `level` inside its own
+                trigger — must stay visible and round-trip, not render as a blank select. */}
+            {!flagKeys.includes((value as { flag: string }).flag ?? '') && (value as { flag: string }).flag && (
+              <option value={(value as { flag: string }).flag}>!{(value as { flag: string }).flag}</option>
+            )}
             {flagKeys.map(k => (
               <option key={k} value={k}>
                 !{k}{(variableNames ?? []).includes(k) && !(toolkit?.flags && k in toolkit.flags) ? ' (variable)' : ''}

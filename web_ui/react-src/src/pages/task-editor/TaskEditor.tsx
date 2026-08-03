@@ -27,6 +27,7 @@ import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
 import TriggerAssignmentPanel, { isCompleteTrigger, isCompleteAction } from '../../components/TriggerAssignmentPanel'
+import { internalVariableNames } from '../../components/internalVariables.mts'
 import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 
@@ -201,7 +202,10 @@ export default function TaskEditor() {
   const hwModuleNames = hwModules.map(m => m.name)
 
   const [fdaJson, setFdaJson] = useState<FdaJson | null>(null)
-  const variableNames = Object.keys(fdaJson?.variables ?? {})
+  // Detector machinery (TOUCH_INT's pin_number/level) stays out of every picker — see
+  // internalVariables.mts. Presentation only: the names remain in fdaJson.variables.
+  const internalVars = internalVariableNames(fdaJson)
+  const variableNames = Object.keys(fdaJson?.variables ?? {}).filter(n => !internalVars.has(n))
   const detectorChannels = toolkit?.detector_channels ?? []
   const [selectedState, setSelectedState] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
@@ -798,6 +802,7 @@ export default function TaskEditor() {
                 variables={fdaJson.variables ?? {}}
                 toolkit={toolkit}
                 taskDefId={numId}
+                hiddenNames={[...internalVars]}
                 onChange={updated => setFdaJson(prev => prev ? { ...prev, variables: updated } : prev)}
               />
               <div style={{ borderTop: `1px solid ${BORDER}`, margin: '4px 0' }} />

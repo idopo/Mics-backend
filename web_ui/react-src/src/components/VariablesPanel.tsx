@@ -6,6 +6,9 @@ interface Props {
   variables: Record<string, FdaVariable>
   toolkit: ToolkitRead | null
   taskDefId?: number
+  /** Machinery names to hide from the list (internalVariables.mts). Display-only — they stay in
+   *  `variables` so every edit below still round-trips them, and collision checks still see them. */
+  hiddenNames?: string[]
   onChange: (updated: Record<string, FdaVariable>) => void
 }
 
@@ -39,9 +42,12 @@ function parseInitialValue(raw: string): unknown {
  * Renaming rejects collisions with existing variable names or toolkit.flags — the Pi raises
  * ValueError on that collision at load time and the backend 422s, so this catches it first.
  */
-export default function VariablesPanel({ variables, toolkit, taskDefId, onChange }: Props): JSX.Element {
+export default function VariablesPanel({ variables, toolkit, taskDefId, hiddenNames, onChange }: Props): JSX.Element {
   const [renameErrors, setRenameErrors] = useState<Record<string, string>>({})
+  // `names` stays the FULL set: new-name generation and rename-collision checks must still see
+  // the hidden machinery names, or a researcher could shadow pin_number and break the trigger.
   const names = Object.keys(variables)
+  const visibleNames = names.filter(n => !(hiddenNames ?? []).includes(n))
   const flagKeys = Object.keys(toolkit?.flags ?? {})
 
   const add = (): void => {
@@ -96,13 +102,13 @@ export default function VariablesPanel({ variables, toolkit, taskDefId, onChange
         <code>output</code> targets and in <code>{'{token}'}</code> keys.
       </p>
 
-      {names.length === 0 ? (
+      {visibleNames.length === 0 ? (
         <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px' }}>
           No variables. Add one to capture a hardware call&apos;s return value.
         </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-          {names.map(name => (
+          {visibleNames.map(name => (
             <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <input

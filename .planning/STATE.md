@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T09:27:56.154Z"
+last_updated: "2026-08-03T09:39:08.706Z"
 progress:
   total_phases: 19
   completed_phases: 6
   total_plans: 46
-  completed_plans: 32
-  percent: 73
+  completed_plans: 34
+  percent: 76
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **2/10 plans done** (Wave 0 + Wave 2 plan 04)
-**Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed)
-**Progress:** [███████░░░] 73%
+**Phase:** 23 — Compute Primitives + Variables — **4/10 plans done** (Wave 0 + Wave 2 plans 02/03/04)
+**Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
+**Progress:** [████████░░] 76%
 
 ### Phase 23 status (2026-08-03)
 
@@ -55,6 +55,33 @@ wins re-invocation. Full backend suite green throughout: **231 passed, 5 skipped
 — new test files are invisible to a running, un-rebuilt container). No pi-mirror files other
 than the one new test file touched; no git commands run there. See `23-01-SUMMARY.md`.
 
+**Plan 02 executed (2026-08-03):** CMP-04/12/19 delivered — the compute-lib storage substrate.
+`hardware_libs.kind` ('hardware'|'compute') + `hardware_lib_versions.declared_imports` (JSONB),
+migrated via `run_hardware_lib_kind_migration` (idempotent, verified twice-in-a-row). New
+`_validate_compute_lib` (`hardware_libs.py`) gates `kind='compute'` uploads/updates: a class with
+an in-file base lacking `release()` is rejected 422 naming `release()`/`Task.end()` (Pitfall 3);
+a `declared_imports` entry outside `seed_compute.COMPUTE_STDLIB_ALLOWLIST` is rejected 422 naming
+the offender + allowlist. `api/seed_libs/compute_ops.py` (the 13 CONTEXT-locked stdlib ops as a
+`Hardware` subclass) + `api/seed_compute.py::seed_compute_ops_lib` seed that source idempotently
+at API startup as a stable `hardware_libs` row (both `active_version_id`/`stable_version_id` set)
+plus a `COMPUTE` `hardware_modules` row. New `api/compute_provisioning.py::provision_compute_configs`
+auto-provisions the trivial `{"class_name": ...}` `pilot_hardware_config` row a compute module
+needs before `init_hardware()` will instantiate it (Research's "high-risk finding" — a compute
+module needs the full hardware-module ceremony, not just `toolkit_hardware_libs`), wired into
+`create_hardware_module`; verified live against the real dev DB — one config row created per
+pilot (2/2), re-provisioning created nothing new, an existing row is never touched. Full backend
+suite green throughout: 296 → 302 passed, 1 skipped, 0 failed. File budgets all held (`db.py` 290,
+`seed_compute.py` 105, `compute_provisioning.py` 72 lines; `hardware_libs.py` +68 lines against an
+80-line budget; `main.py`'s cumulative diff 4 insertions/1 deletion). **Concurrency note:** this
+plan executed alongside sibling agents on plans 23-03/23-04 in the same non-worktree-isolated
+working directory (see their own `23-0x-SUMMARY.md` concurrency notes for the mirror image of
+this account) — verified before every `git add` that only this plan's own hunks were staged,
+including one `git apply --cached` reconstruction of a clean patch to strip a foreign hunk that
+had landed in the same file (`hardware_libs.py::_flag_broken_task_defs`) I was editing for Task 1.
+One of my own working-tree edits (`_lib_dict`'s `declared_imports` field) was itself swept into a
+sibling agent's `docs(23-04)` commit before I could commit Task 2 separately — confirmed
+byte-identical to what this plan needed via `git show`, left as-is. See `23-02-SUMMARY.md`.
+
 **Plan 04 executed (2026-08-03):** CMP-03/04/05/06 delivered on the Pi runtime, in
 `/home/ido/pi-mirror`. `fda_vocabulary.py` gained `"compute"` in `VALID_ACTION_TYPES` (single-
 sourced comment pointing at `api/fda_validation.py`'s backend twin). `mics_task.py`'s
@@ -78,6 +105,28 @@ variables" promise. Not confirmed by execution (autopilot unimportable here); fl
 predicted Phase-24 defect for plan 23-10 to confirm via `test_hot_update_fda_recreates_variables_
 before_rebuilding_transitions`. No pi-mirror git commits (pi-mirror is user-owned git, same as
 plan 25-02). See `23-04-SUMMARY.md` and its "Next Phase Readiness" for the exact rsync file list.
+
+**Plan 03 executed (2026-08-03):** CMP-10/11/15 delivered on the backend save-time gate.
+`fda_utils.py::scan_fda_for_refs` now emits `compute` entries (`ref`/`method`/`output`),
+feeding both the soft drift-badge path and the hw-lib-update impact scan —
+`hardware_libs.py::_flag_broken_task_defs` needed its OWN action_type filter widened too (not
+listed in the plan's files_modified, but required for its own must_haves truth to hold; see
+`23-03-SUMMARY.md` Deviations). `fda_validation.py` gained a `compute` action branch (ref/method
+rule + mandatory-output rule) and `validate_compute_variables` (variable-name collision against
+semantic hardware/module names/detector keys, plus a reference-half check over every condition
+operand); both wired into the existing `collect_hard_errors` → `reject_if_hard_errors` 422 path.
+New `api/variable_scan.py` (172 lines) delivers `scan_variable_writers`/`scan_variable_readers`/
+`variable_never_written_issues` — an explicit v1 "existence, not reachability" analysis, not yet
+wired into preflight (plan 23-07's job). Full backend suite green: **302 passed, 1 skipped**
+(rebuilt api container first — no bind mount). Live 422 proof against the running stack matches
+the plan's `<verification>` section exactly. **Concurrency note:** a separate agent process was
+executing plans 23-02/23-04 in this same non-worktree-isolated working directory during this
+plan's execution (see `23-03-SUMMARY.md` for full detail) — at one point its own `git add`/commit
+swept this plan's already-staged Task 1 files into its `docs(23-04)` commit before I could commit
+them separately; content is correct and verified (full suite green, `routers/toolkits.py` 1-line
+diff confirmed via `git show --stat`), only that one commit's attribution is shared with plan
+23-04's work. No file belonging to plans 23-02/23-04 was touched, edited, or reverted by this
+plan's execution. See `23-03-SUMMARY.md`.
 
 ### Phase 25 status (2026-07-29)
 
@@ -373,6 +422,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 25]: Plan 25-03: preflight step 8 nested inside step 7's fda_json guard (not after) to reuse already_flagged as skip_modules without risking a swallowed NameError; key_template device_name resolution does not consult skip_modules per the plan's literal resolution-rules table
 - [Phase 25]: Plan 25-05: view_key_unresolved is excluded from HardwareCheckModal's PUT loop and pendingEdits initialiser (it names no config row); is_detector resolved by module NAME (not module_id, which pilot_hardware_config rows don't carry) at both the PilotHardwareConfig add and edit entry points, sharing one ['hardware-module-methods', id] query key so no second fetch is introduced
 - [Phase 23]: Wave 0 contract tests use per-test skip/xfail guards (not module-level) when a file mixes already-real integration tests with not-yet-real route tests; module-level importorskip only when every test shares one dependency
+- [Phase 23-03]: hardware_libs.py::_flag_broken_task_defs carries its own action_type filter separate from fda_utils.py's scanner — widening a shared action vocabulary (adding "compute") requires checking every consumer's own filter, not just the scanner; fda_validation.py::_module_names deleted in favor of hw_introspect's already-computed caps['module_names'] (one fewer DB round trip)
+- [Phase 23]: Phase 23 Plan 02: compute-lib storage substrate (kind column, upload gate, seed lib, auto-provisioning) landed and verified against real Postgres dev DB
 
 ## Accumulated Context
 
@@ -441,12 +492,16 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Execute Phase 23 Plan 02** (kind-column migration + `seed_compute.py` + declared-imports
-   allowlist) — turns `api/tests/test_hardware_lib_kind.py`'s 4 skipped + 5 xfailed tests into
-   real passes. See `23-02-PLAN.md` and `23-01-SUMMARY.md` "Next Phase Readiness".
-   (Plan 04, Wave 2, is now also done — see "Phase 23 status" above and `23-04-SUMMARY.md`. Its
-   4 pi-mirror files are staged for deploy at plan 23-10, uncommitted in the pi-mirror working
-   tree, same as plan 02's Phase 25 files below.)
+1. **Confirm Phase 23 Plan 02** landed cleanly (kind-column migration + `seed_compute.py` +
+   declared-imports allowlist — commits `feat(23-02): kind column...` and `feat(23-02): seed
+   Compute Ops lib...` are on disk from a concurrent execution observed during plan 03's run, but
+   no `23-02-SUMMARY.md` existed as of this note) and write its summary if missing.
+   See `23-02-PLAN.md` and `23-01-SUMMARY.md` "Next Phase Readiness".
+   (Plans 03 and 04, both Wave 2, are now also done — see "Phase 23 status" above,
+   `23-03-SUMMARY.md`, and `23-04-SUMMARY.md`. Plan 04's 4 pi-mirror files are staged for deploy
+   at plan 23-10, uncommitted in the pi-mirror working tree, same as plan 02's Phase 25 files
+   below. Plan 03's `variable_never_written_issues` is not yet wired into preflight — that is
+   plan 23-07's job.)
 2. **Execute Phase 25 Plan 06** (last plan in phase 25, still outstanding — deferred while phase
    23 Wave 0 was picked up) — **deploy** plan 02's seven pi-mirror files (`fda_vocabulary.py`,
    `mics_task.py`, `task.py`, and four `tests/` files — see `25-02-SUMMARY.md` "Next Phase
@@ -468,12 +523,14 @@ conflicting instruction inside a PLAN file.
 
 Note: Phase 23 was re-planned 2026-08-03 as 10 plans in 6 waves against a "compute-as-hardware-lib"
 reframe (see the `docs(23):` commits immediately before `test(23-01):` in git log) — the prior
-"plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests) and Plan 04
-(Wave 2, Pi-runtime compute action) are done; see "Phase 23 status" above and
-`23-01-SUMMARY.md`/`23-04-SUMMARY.md`.
+"plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests), Plan 03
+(backend compute validation + variable-scan), and Plan 04 (Wave 2, Pi-runtime compute action)
+are done; see "Phase 23 status" above and `23-01-SUMMARY.md`/`23-03-SUMMARY.md`/
+`23-04-SUMMARY.md`.
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
-CMP-03/04/05/06/12/17/19 in `REQUIREMENTS.md` (same gap previously found for DVK-02/06/07/11) —
+CMP-03/04/05/06/10/11/12/15/17/19 in `REQUIREMENTS.md` (same gap previously found for
+DVK-02/06/07/11) —
 completion is tracked via the ROADMAP.md phase-23 status line instead, updated via
 `gsd-tools roadmap update-plan-progress 23`. `gsd-tools state advance-plan` still errors
 ("Cannot parse Current Plan or Total Plans in Phase from STATE.md" — this file predates that
@@ -483,14 +540,17 @@ on this STATE.md; position is tracked via the prose "Phase NN status" sections a
 file's established pattern.
 
 ---
-*Last updated: 2026-08-03 — phase 23 plan 04 executed (Wave 2): compute action type lands on the
-Pi runtime (CMP-03/04/05/06) — `fda_vocabulary.py`/`mics_task.py`/`tools/validate_fda.py` gain
-`type:"compute"`, single-sourced, with mandatory `output` enforced at build time in both the
-runtime and the CLI validator. One blocking bug found and fixed in-task (`_build_state_method`'s
-validate loop didn't recognize `compute`); one bug found and deliberately left unfixed per the
-plan's own instruction (`load_fda_from_json`'s variable-collision guard likely breaks
-`hot_update_fda` re-declaring the same variable — flagged as a predicted Phase-24 defect for plan
-23-10 to confirm). Agent-verified: `tests/test_fda_vocabulary.py` 23 passed; all `py_compile`
-clean. No pi-mirror git commits (user-owned repo). Phase 25 plan 06 (last plan in that phase)
-remains outstanding. Next: phase 23 plan 02 (kind-column migration + seed_compute.py), phase 23
-plan 05, or phase 25 plan 06, per Next Actions above.*
+*Last updated: 2026-08-03 — phase 23 plan 03 executed (Wave 2): backend compute validation +
+variable-scan (CMP-10/11/15). Hard 422s for compute FDA actions (unknown ref/method, missing/
+undeclared output) and new variable-collision/reference checks (`validate_compute_variables`)
+wired into the existing save-time gate; new `api/variable_scan.py` delivers the CMP-15
+writer/reader existence analysis, not yet wired into preflight (plan 23-07). One deviation:
+`hardware_libs.py::_flag_broken_task_defs` needed its own action_type filter widened to
+"compute" too (not in the plan's files_modified, required by its own must_haves truth). Full
+backend suite green: 302 passed, 1 skipped. A concurrent agent process was observed executing
+plans 23-02/23-04 in this same working directory during this run — see `23-03-SUMMARY.md`'s
+Deviations for the full concurrency note (content unaffected, one commit's attribution shared).
+Plan 04 (Wave 2, Pi-runtime compute action, CMP-03/04/05/06) also executed this session — see
+`23-04-SUMMARY.md`. Phase 25 plan 06 (last plan in that phase) remains outstanding. Next: phase
+23 plan 02 (confirm summary written), phase 23 plan 05, or phase 25 plan 06, per Next Actions
+above.*

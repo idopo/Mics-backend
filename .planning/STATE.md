@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T10:11:05.937Z"
+last_updated: "2026-08-03T10:31:21.648Z"
 progress:
   total_phases: 22
   completed_phases: 6
   total_plans: 44
-  completed_plans: 36
-  percent: 84
+  completed_plans: 37
+  percent: 86
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **6/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06)
+**Phase:** 23 — Compute Primitives + Variables — **7/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plan 07)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [████████░░] 84%
+**Progress:** [█████████░] 86%
 
 ### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
 
@@ -94,6 +94,34 @@ upstream of the ZMQ plugin with sorting configured. Without it there are no spik
 no unit IDs to declare, which makes 27 unplannable as scoped. Rig configuration, not MICS work.
 
 ### Phase 23 status (2026-08-03)
+
+**Plan 07 executed (2026-08-03):** CMP-15/17/19 delivered — preflight tells the truth about
+compute and gains the two issue kinds this phase promised. `preflight_validate` step 6 is now
+compute-aware: gated on `compute_module_names(db, module_ids)`, a compute module's
+`{"class_name": ...}`-only config no longer trips `incomplete_config` (a hardware module with
+the identical shape still does), `class_mismatch` is now reachable for compute modules (the
+old branch's early `continue` made it unreachable), and a pilot missing its compute config row
+self-heals via `provision_compute_configs` before the loop runs, non-blocking. New step 9
+(`variable_never_written`, CMP-15) reports a transition reading a variable nothing writes
+anywhere in the FDA, via `variable_scan.variable_never_written_issues`, nested in the same
+`fda_json` guard as step 8 and in its own try/except. New step-6 `lib_version_unresolved`
+(CMP-17 rung 5) resolves each module's hardware lib version via `resolve_lib_version_id` and
+names the module + lib filename when no beta/stable version is deployable — replacing
+`get_dispatch_spec`'s silent skip, checked independently of whether the config row itself is
+present. A new `PREFLIGHT_ISSUE_KINDS` frozenset documents all eight issue kinds (mirrored by
+`HardwareCheckModal.tsx::PreflightIssue` in plan 23-09); `compute_lib_import_failed_issue` is a
+registered-but-unused constructor reserving CMP-19c's shape. New
+`GET /api/task-definitions/{id}/variable-usage` (`api/routers/task_def_inspect.py`, 63 lines,
+following `toolkit_dispatch.py`'s own `Depends(get_sa_session)` shape rather than
+`pilot_hardware_config.py`'s bare with-block, for testability) is a thin composition over
+`variable_scan`'s writer/reader scanners for the FDA editor's read-only inspector; wired into
+`api/main.py` via a 2-line diff. Full backend suite green throughout: **332 passed**. Live-
+verified: `GET /api/task-definitions/186/variable-usage` returns populated writers/readers,
+187 returns empty, unknown id 404s; `POST /api/sessions/113/preflight-validate/1` (real
+backend-authored session/pilot) still returns `{"ok": true, "issues": []}` — no regression.
+`wc -l`: `toolkit_dispatch.py` 459 (under the 470 helper-extraction threshold and the 500 hard
+limit), `task_def_inspect.py` 63. `api/main.py` diff exactly 2 lines. No deviations. See
+`23-07-SUMMARY.md`.
 
 **Plan 01 executed:** Wave 0 — the three ❌ contract-test targets from `23-VALIDATION.md` now
 exist on disk, all failing/skipping/xfailing today for the right reason (missing feature, not a
@@ -530,6 +558,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23-03]: hardware_libs.py::_flag_broken_task_defs carries its own action_type filter separate from fda_utils.py's scanner — widening a shared action vocabulary (adding "compute") requires checking every consumer's own filter, not just the scanner; fda_validation.py::_module_names deleted in favor of hw_introspect's already-computed caps['module_names'] (one fewer DB round trip)
 - [Phase 23]: Phase 23 Plan 02: compute-lib storage substrate (kind column, upload gate, seed lib, auto-provisioning) landed and verified against real Postgres dev DB
 - [Phase 23]: Plan 23-05: single lib-version resolver (pin->toolkit_default->stable->active->none) delivered; fourth active rung added beyond CONTEXT's literal chain to avoid breaking existing rig toolkits
+- [Phase 23-compute-primitives-variables]: [Phase 23-07]: lib_version_unresolved checked independently of missing/incomplete_config in step 6's loop (before the cfg_row fetch), since CMP-17's undeployable-lib check is orthogonal to whether the pilot has configured the module at all
+- [Phase 23-compute-primitives-variables]: [Phase 23-07]: task_def_inspect.py uses a Depends(get_sa_session) generator matching toolkit_dispatch.py's shape (not pilot_hardware_config.py's bare with-block) so the mocked-db.execute TestClient pattern already used in test_view_key_preflight.py works
 
 ## Accumulated Context
 

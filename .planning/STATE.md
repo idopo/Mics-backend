@@ -30,6 +30,56 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
 **Progress:** [████████░░] 76%
 
+### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
+
+Not started; planning only. `18-CONTEXT.md` was **revised** in a discussion session driven by
+`docs/open_ephys_integration.pdf`, to generalize the phase so **OpenEphys is its first consumer**.
+`18-01-PLAN.md` and `18-02-PLAN.md` were written against the pre-revision context and are now
+**superseded** — moved to `.planning/phases/18-extlink-pi-transport/superseded/` (Phase 23
+precedent). Neither had been executed, so nothing is lost but planning time.
+
+**Five additions to the `ExternalHardware` substrate** (all new, none previously specified):
+1. **Transport roles** — `router_bind` (original: MICS SDK dials in) + `sub_connect` (new: Pi dials
+   out to a foreign PUB), with a per-lib `@decoder` hook. Required because the OE ZMQ Interface
+   plugin is a PUB in its own JSON+binary format and will never speak our MessagePack envelope.
+2. **Liveness split from staleness** — `alive` now means *reachable*, via a lib-supplied liveness
+   hook (default: data-within-`stale_ms`; OE overrides to poll HTTP status). Signal freshness stays
+   with the per-signal stale policy. **Amends EXTLINK-07**, which assumed every source sends `HB`.
+3. **Egress path** — FIFO one-worker-per-device outbound queue, fire-and-forget with **no retry**
+   (a late marker corrupts alignment worse than a missing one), bounded with drop-newest +
+   recorded loss, N consecutive failures flip `alive`.
+4. **Run lifecycle hooks** — `on_run_start(run_ctx)` async + retried inside the wait window,
+   `on_run_stop()` on all Pi paths plus a backend safety net for the Pi-crash case (otherwise OE
+   records forever). **Amends EXTLINK-13**: the readiness gate now keys on "all required *ready*"
+   (lib-defined, defaults to `alive`) rather than "all required alive".
+5. **Device lease** — backend-side arbitration keyed on normalized `host`, hard-blocking as a new
+   preflight issue kind naming the holder. Needed because the OE box is shared across pilots
+   (sequentially). Auto-released by the same reconciliation that stops orphaned recordings, plus a
+   manual force-release.
+
+**User decisions locked this session:** Pi owns both OE channels (HTTP control + ZMQ data) for one
+clock domain and one versioned lib — backend owns *only* the lease. v1 OE scope is firing rate +
+recording + save-folder naming, with the folder path logged into MICS (so the ZMQ data path is v1,
+not deferred). The OE machine is never used by two rigs simultaneously, so the lease is a safety
+net with no queue/notify UX. **The TTL cable stays**; network markers run alongside it and any
+cutover happens later on measured evidence.
+
+**Correction recorded:** the OE ZMQ plugin transfers **spikes, not firing rate** — rate is derived
+by windowed counting, which in this design runs on the Pi. Consequences (both belong to Phase E2,
+not 18): the OE signal chain needs a spike detector/sorter upstream of the plugin or there are no
+spikes on the wire at all, and sorted unit IDs only exist if sorting is configured, so units of
+interest must be declared in `pilot_hardware_config.config`.
+
+**Follow-on phases agreed, not yet added to ROADMAP.md:** E1 OpenEphys control (REST record/IDLE,
+save-path template, `/api/message` markers, path persisted to MICS, preflight reachability) →
+E2 firing rate over ZMQ (decoder, declared units + windowed estimator, `(ts_pi_recv, oe_sample)`
+sync-pair logging, keys via Phase 25's `detector_keys`) → E3 TTL-vs-network jitter validation
+(no cutover; evidence gate). DeepLabCut stays reserved and inherits `sub_connect` for free.
+
+**Outstanding before planning 18:** `REQUIREMENTS.md` still states EXTLINK-07 heartbeat-only
+liveness and EXTLINK-13 "all required alive" — both contradict the revised context and must be
+amended, alongside new IDs for roles/decoder, egress, lifecycle hooks, and the lease.
+
 ### Phase 23 status (2026-08-03)
 
 **Plan 01 executed:** Wave 0 — the three ❌ contract-test targets from `23-VALIDATION.md` now

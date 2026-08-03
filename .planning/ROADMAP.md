@@ -442,7 +442,7 @@ Plans:
 ### Phase 18: MICS-Link — Pi Transport + ExternalHardware
 **Goal:** Pi gains a structured, crash-safe input channel that lets external software (DeepLabCut, OpenEphys, photometry, …) push data into the existing View / FDA framework. Author writes one `ExternalHardware` subclass with `@signal` / `@event` / `@command` decorators and uploads it as a regular hardware library (Phase 9). It is registered as a hardware module (Phase 10), its per-pilot network config (`{class_name, listen_port, source_id, stale_ms}`) lives in `pilot_hardware_config.config` (Phase 17 — free-form, no schema change), selected by a toolkit (Phase 11), dispatched on the existing `HARDWARE` + `PREFS_HARDWARE` channel (Phase 11), preflight-validated (Phase 13). On the Pi, each instance binds its own ROUTER on its `listen_port` and accepts only the configured `source_id` DEALER identity. FDA transitions read external data via the same `view.get_value(...)` API used for GPIO/I2C — zero new call sites, zero new dispatch shapes.
 
-**Requirements:** EXTLINK-01 through EXTLINK-18 *(EXTLINK-07 and EXTLINK-13 amended 2026-08-03; EXTLINK-14–18 added the same day)*
+**Requirements**: EXTLINK-01, EXTLINK-02, EXTLINK-03, EXTLINK-04, EXTLINK-05, EXTLINK-06, EXTLINK-07, EXTLINK-08, EXTLINK-09, EXTLINK-10, EXTLINK-11, EXTLINK-12, EXTLINK-13, EXTLINK-14, EXTLINK-15, EXTLINK-16, EXTLINK-17, EXTLINK-18 *(EXTLINK-07 and EXTLINK-13 amended 2026-08-03; EXTLINK-14–18 added the same day)*
 
 > **⚠ CONTEXT REVISED 2026-08-03 — this phase must be RE-PLANNED.** The original design assumed one
 > consumer shape: our own SDK, speaking our MessagePack envelope, **dialing into** the Pi's ROUTER.

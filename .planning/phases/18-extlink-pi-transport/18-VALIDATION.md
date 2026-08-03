@@ -71,6 +71,9 @@ map each task onto a row here, and every row must be claimed by some task.
 |---|---|---|---|---|
 | EXTLINK-14 | `@decoder` translates a foreign frame → declared signal/event updates; truncated frame returns empty, never raises; unknown field dropped, known fields still applied | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py` | ❌ W0 |
 | EXTLINK-14 | `role: sub_connect` selects SUB + `.connect()`, skips DEALER-identity check; `router_bind` selects ROUTER + `.bind()` — via injected fake socket factory, no real socket | unit (Pi mirror, agent) | `... -k role_selection` | ❌ W0 |
+| EXTLINK-18 | **`role: "none"` returns a plan with NO socket** — `socket_plan` must not invent a port or fall back to a default role. Newly agent-testable (was rig-only before the 2026-08-03 gap fix) | unit (Pi mirror, agent) | `... -k role_none` | ❌ W0 |
+| EXTLINK-18 | **Config validation accepts `role: "none"` with neither `listen_port` nor `connect_port`** and does not 422 on their absence | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_view_key_preflight.py -k role_none` | ❌ W0 (extend) |
+| EXTLINK-18 | A control-only instance still **registers `<source_id>.alive`, starts the liveness poll, starts the egress worker, and fires lifecycle hooks** — i.e. participates fully in the readiness gate despite having no socket | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_lifecycle.py -k control_only` | ❌ W0 |
 | EXTLINK-15 | Egress FIFO order preserved under one worker | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_egress.py -k fifo` | ❌ W0 |
 | EXTLINK-15 | Overflow drops the **newest**, increments `dropped`, and items 1–2 (not 3) are the ones sent | unit (Pi mirror, agent) | `... -k drop_newest` | ❌ W0 |
 | EXTLINK-15 | Failure is never retried; worker survives and attempts the next item | unit (Pi mirror, agent) | `... -k no_retry` | ❌ W0 |
@@ -97,7 +100,7 @@ map each task onto a row here, and every row must be claimed by some task.
 | EXTLINK-14 | `sub_connect` end-to-end against a live PUB | manual + rig | USER-RUN smoke script `publish` subcommand | N/A |
 | EXTLINK-13 | Full three-exit behavior through a real task start | manual + rig | USER-RUN | N/A |
 | EXTLINK-16 | Hooks fire on all three real teardown paths | manual + rig | USER-RUN | N/A |
-| EXTLINK-18 | Zero-signal control-only module binds and participates in the gate | manual + rig | USER-RUN | N/A |
+| EXTLINK-18 | Zero-signal control-only module (**`role: "none"`, no socket**) binds and participates in the gate **on the real Pi** — the mechanism itself is now agent-tested above, so this row proves only the end-to-end wiring | manual + rig | USER-RUN | N/A |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

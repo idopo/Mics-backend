@@ -70,11 +70,41 @@ External sources are **virtual hardware modules** that flow through the existing
 - Dispatched on the existing `HARDWARE` + `PREFS_HARDWARE` channel via `toolkit_dispatch.py` (Phase 11). No new kwarg.
 - Preflight-validated (Phase 13) by `class_name` like any other module.
 
-### Transport roles (NEW — 2026-08-03)
-Two roles, selected per instance by `role` in `pilot_hardware_config.config`:
+### Transport roles (NEW — 2026-08-03; THIRD ROLE ADDED 2026-08-03 after Phase 26 planning)
+
+> **GAP FIX — `role: "none"` (control-only, no inbound transport).** Phase 26 planning exposed that
+> two roles are not enough. Both `router_bind` and `sub_connect` open a socket, so a device whose
+> entire inbound story is an outbound poll — OpenEphys, whose liveness is an HTTP `GET /api/status` —
+> would be forced to declare a role, pick a port, and bind a socket nothing ever connects to. That
+> contradicts EXTLINK-18, which the original wording only half-covered (it addressed zero `@signal`,
+> not zero transport).
+>
+> **Resolution: a third role value, `"none"`.**
+> - `socket_plan` returns a plan with **no socket** — it must not invent a port or a default role.
+> - `identity_ok` and the `@decoder` path are **inapplicable** in this role.
+> - Config validation must **not** require `listen_port` or `connect_port`. `host` may still be
+>   required, for **egress**.
+> - `.bind()` still does everything else: registers the `<source_id>.alive` tracker, starts the
+>   liveness poll (a lib overrides the default predicate — EXTLINK-07), starts the egress worker
+>   (EXTLINK-15), and fires the lifecycle hooks (EXTLINK-16). **A control-only module participates
+>   fully in the readiness gate.**
+> - Rejected: making `role` optional/absent to mean "no transport". An explicit value is
+>   self-documenting, validates cleanly at the config boundary, and lets preflight distinguish
+>   "deliberately control-only" from "someone forgot to set a role".
+>
+> **Side benefit:** this makes EXTLINK-18 partly **agent-testable**. `socket_plan(role="none")`
+> returning no socket is a pure-function assertion, where the validation map previously had only a
+> rig row for EXTLINK-18.
+
+Three roles, selected per instance by `role` in `pilot_hardware_config.config`:
 
 - **`router_bind`** (original design, default) — the instance binds its own ROUTER on `listen_port`. A MICS-native SDK DEALER dials in with `identity = source_id`; frames whose identity ≠ `source_id` are dropped at the socket layer.
 - **`sub_connect`** (new) — the instance **dials out** to a foreign publisher at `host:connect_port` with a SUB socket. There is no DEALER identity to check, so the identity check does not apply in this role; `source_id` is retained purely as the **tracker-name prefix** (`oe.spike_rate`), which keeps view-key naming identical across both roles.
+
+- **`none`** (control-only) — **no inbound socket at all.** For devices we only command, whose
+  liveness comes from an outbound poll rather than inbound traffic. `source_id` still serves as the
+  tracker-name prefix so `<source_id>.alive` works identically. This is what OpenEphys's HTTP control
+  side uses (Phase 26).
 
 The `@decoder` hook translates a foreign frame into declared signal/event updates. **It lives in the versioned hardware lib, not in platform code** — that is the whole point: the OE wire format becomes a versioned, promotable, per-toolkit artifact that a researcher can fix without a platform release. `sub_connect` sources still declare `@signal` / `@event` normally, so view keys, typed FDA reads, and the editor's pickers work identically for both roles.
 
@@ -146,7 +176,7 @@ Needed because one OE box has one record node and may be pointed at by several p
   }
 }
 ```
-`listen_port` applies to `role: "router_bind"`; `connect_port` + `host` apply to `role: "sub_connect"`. `host` is also the lease key. `class_name` remains the Phase-17 contract field. Still **no schema change** — `api/routers/pilot_hardware_config.py:41` stores config as-is and explicitly delegates validation to the caller, so the new fields need no endpoint change. Validation of the new fields belongs in preflight.
+`listen_port` applies to `role: "router_bind"`; `connect_port` + `host` apply to `role: "sub_connect"`. **`role: "none"` (control-only) requires NEITHER port** — validation must not demand one — though `host` may still be required for egress. `host` is also the lease key. `class_name` remains the Phase-17 contract field. Still **no schema change** — `api/routers/pilot_hardware_config.py:41` stores config as-is and explicitly delegates validation to the caller, so the new fields need no endpoint change. Validation of the new fields belongs in preflight.
 
 ### Transport + wire (locked, unchanged for `router_bind`)
 - One ZMQ socket per `ExternalHardware` instance, bound/connected on a task-local IOLoop via `ZMQStream` (same pattern Net_Node uses at `node.py:147-151`).

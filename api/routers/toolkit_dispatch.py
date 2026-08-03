@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session as OrmSession, sessionmaker
 
 from auth import verify_token
+from compute_provisioning import compute_module_names, provision_compute_configs
 from db import engine
 from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
 from lib_version_resolution import resolve_lib_version_id
@@ -226,6 +227,20 @@ def preflight_validate(
 
     module_ids = toolkit_row.hardware_module_ids or []
 
+    # Compute-aware step 6, part 1: self-heal a pilot missing a config row for a compute
+    # module before the per-module loop runs. A compute module has no per-rig hardware to
+    # configure, so a missing row is a registration gap the pilot shouldn't be blamed for.
+    compute_names = compute_module_names(db, module_ids)
+    if compute_names:
+        try:
+            provision_compute_configs(db, module_ids, pilot_ids=[pilot_id])
+            db.commit()
+        except Exception:
+            logger.warning(
+                "preflight_validate: compute-config self-heal failed for pilot %s", pilot_id,
+                exc_info=True,
+            )
+
     # Fetch existing pilot configs once — shared by steps 6 and 7 for "copy from" suggestions.
     existing_configs = [
         {"name": row[0], "config": row[1]}
@@ -291,7 +306,10 @@ def preflight_validate(
 
         non_class_keys = [k for k in cfg if k != "class_name"]
 
-        if not non_class_keys:
+        # A compute module has no pins, addresses, or durations -- {"class_name": ...} alone
+        # IS a complete config for it. The original check assumed every module needs at least
+        # one real parameter; that only holds for hardware modules.
+        if not non_class_keys and module.name not in compute_names:
             issues.append({
                 "module_id": module.id,
                 "module_name": module.name,

@@ -411,6 +411,9 @@ class FakeDb:
         self.configs = configs or {}  # module name -> SimpleNamespace(config=dict)
         self.td_full = td_full
 
+    def commit(self):
+        """No-op — Plan 23-07 Task 1's self-heal path calls db.commit() after provisioning."""
+
     def execute(self, query, params=None):
         sql = " ".join(str(query).split())
         params = params or {}
@@ -597,6 +600,90 @@ def test_malformed_toolkit_flags_row_returns_200_with_step6_issues_only_and_logs
     body = resp.json()
     assert body["ok"] is True
     assert body["issues"] == []
+    mock_warn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# CMP-15/23-07 Task 1 — compute-aware step 6: no false positive, self-healing config
+# ---------------------------------------------------------------------------
+
+
+def _compute_toolkit_scenario(fda_json, config=None, class_name="ComputeOps"):
+    """Same shape as _backend_toolkit_scenario, but for a lone compute module."""
+    return FakeDb(
+        run_row=None,
+        spr_row=SimpleNamespace(protocol_id=1),
+        step_row=SimpleNamespace(task_definition_id=42),
+        td_row=SimpleNamespace(toolkit_id=5),
+        toolkit_row=SimpleNamespace(is_backend_authored=True, hardware_module_ids=[9], flags={}),
+        existing_configs=([("ComputeMod", config)] if config is not None else []),
+        modules={9: _module(9, "ComputeMod", class_name)},
+        configs=({"ComputeMod": _config(config)} if config is not None else {}),
+        td_full=SimpleNamespace(fda_json=fda_json),
+    )
+
+
+def test_compute_module_empty_config_no_incomplete_config_issue():
+    fake_db = _compute_toolkit_scenario(fda_json=None, config={"class_name": "ComputeOps"})
+    with patch("routers.toolkit_dispatch.compute_module_names", return_value={"ComputeMod": "ComputeOps"}):
+        resp = _preflight(fake_db)
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["issues"] == []
+
+
+def test_hardware_module_empty_config_still_incomplete_config():
+    fake_db = _backend_toolkit_scenario(fda_json=None, mpr121_config={"class_name": "Touch_Detector"})
+    resp = _preflight(fake_db)  # compute_module_names not patched -> real call -> {} (not compute)
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "incomplete_config"
+
+
+def test_compute_module_wrong_class_name_still_class_mismatch():
+    fake_db = _compute_toolkit_scenario(fda_json=None, config={"class_name": "WrongClass"})
+    with patch("routers.toolkit_dispatch.compute_module_names", return_value={"ComputeMod": "ComputeOps"}):
+        resp = _preflight(fake_db)
+    body = resp.json()
+    assert body["ok"] is False
+    assert len(body["issues"]) == 1
+    assert body["issues"][0]["issue"] == "class_mismatch"
+    assert body["issues"][0]["stored_class"] == "WrongClass"
+
+
+def test_compute_module_missing_config_row_self_heals_before_loop():
+    fake_db = _compute_toolkit_scenario(fda_json=None, config=None)
+
+    def fake_provision(db, module_ids, pilot_ids=None):
+        db.configs["ComputeMod"] = _config({"class_name": "ComputeOps"})
+        return [(pilot_ids[0], "ComputeMod")]
+
+    with patch("routers.toolkit_dispatch.compute_module_names", return_value={"ComputeMod": "ComputeOps"}), \
+         patch("routers.toolkit_dispatch.provision_compute_configs", side_effect=fake_provision):
+        resp = _preflight(fake_db)
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["issues"] == []
+
+
+def test_hardware_module_missing_config_row_still_missing():
+    fake_db = _backend_toolkit_scenario(fda_json=None, mpr121_config=None)
+    resp = _preflight(fake_db)
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["issues"][0]["issue"] == "missing"
+
+
+def test_compute_provisioning_raises_does_not_fail_request():
+    fake_db = _compute_toolkit_scenario(fda_json=None, config=None)
+    with patch("routers.toolkit_dispatch.compute_module_names", return_value={"ComputeMod": "ComputeOps"}), \
+         patch("routers.toolkit_dispatch.provision_compute_configs", side_effect=RuntimeError("boom")), \
+         patch("routers.toolkit_dispatch.logger.warning") as mock_warn:
+        resp = _preflight(fake_db)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["issues"][0]["issue"] == "missing"  # provisioning failed, row still absent
     mock_warn.assert_called_once()
 
 

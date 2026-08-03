@@ -1,8 +1,8 @@
 ---
 phase: 26
 slug: openephys-device-control
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-03
 ---
@@ -156,4 +156,12 @@ never starts/stops the pilot, and never runs Python on the Pi — every item is 
 - [ ] Feedback latency < 30s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved at planning (2026-08-03) — 13 plans, 4 waves.
+
+> **One deliberate deviation from the checklist above.** The *OE REST surface confirmation* row does
+> NOT land in the single consolidated rig checkpoint. It is plan **26-03**, in wave 1, because it
+> gates path-construction code (plans 26-06 / 26-07 / 26-10) — folding it into the end-of-phase
+> session would invert that dependency. Every OTHER manual-only row is in the one consolidated
+> checkpoint, plan **26-13**. Two user-facing rig/browser touchpoints exist in total: 26-03 (curl
+> probe, no rig hardware beyond the OE box) and 26-13 (the rig session); plan 26-12 adds a browser
+> confirmation that needs no rig at all.

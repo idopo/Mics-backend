@@ -125,6 +125,77 @@ def test_view_action_contributes_no_ref_result():
 
 
 # ---------------------------------------------------------------------------
+# scan_fda_for_refs — compute actions (Plan 23-03 Task 1, CMP-11)
+# ---------------------------------------------------------------------------
+
+def test_state_compute_action_returns_ref_method_and_output():
+    fda = {
+        "states": {
+            "roll": {
+                "entry_actions": [
+                    {"type": "compute", "ref": "COMPUTE", "method": "random_bool", "args": [0.5], "output": "target"},
+                ]
+            }
+        }
+    }
+    results = scan_fda_for_refs(fda)
+    assert len(results) == 1
+    entry = results[0]
+    assert entry["scope"] == "state"
+    assert entry["action_type"] == "compute"
+    assert entry["ref"] == "COMPUTE"
+    assert entry["method"] == "random_bool"
+    assert entry["output"] == "target"
+
+
+def test_trigger_compute_action_returns_one_trigger_scoped_result():
+    fda = {
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {"type": "compute", "ref": "COMPUTE", "method": "add", "args": [1], "output": "counter"},
+                ],
+            }
+        ]
+    }
+    results = scan_fda_for_refs(fda)
+    assert len(results) == 1
+    assert results[0]["scope"] == "trigger"
+    assert results[0]["action_type"] == "compute"
+    assert results[0]["output"] == "counter"
+
+
+def test_compute_action_in_if_then_and_else_branches_both_returned():
+    fda = {
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {
+                        "type": "if",
+                        "condition": {},
+                        "then": [{"type": "compute", "ref": "COMPUTE", "method": "add", "output": "a"}],
+                        "else": [{"type": "compute", "ref": "COMPUTE", "method": "sub", "output": "b"}],
+                    }
+                ],
+            }
+        ]
+    }
+    results = scan_fda_for_refs(fda)
+    outputs = {r["output"] for r in results}
+    assert outputs == {"a", "b"}
+    assert all(r["action_type"] == "compute" for r in results)
+
+
+def test_hardware_action_output_key_present_and_none_when_absent():
+    """Existing hardware-action entries now carry `output` too — None when not declared."""
+    fda = {"states": {"reward": {"entry_actions": [{"type": "hardware", "ref": "VALVE", "method": "open"}]}}}
+    results = scan_fda_for_refs(fda)
+    assert results[0]["output"] is None
+
+
+# ---------------------------------------------------------------------------
 # ref_label
 # ---------------------------------------------------------------------------
 

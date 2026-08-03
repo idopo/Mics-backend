@@ -1,28 +1,16 @@
-"""Contract tests for the CMP-12 `kind` column + CMP-19 declared-imports allowlist
-(Wave 0, Plan 23-01).
+"""Contract tests for the CMP-12 `kind` column + CMP-19 declared-imports allowlist.
 
-None of the production symbols under test exist yet:
-  - `db.run_hardware_lib_kind_migration` (plan 23-02)
-  - `HardwareLib.kind` / `HardwareLibVersion.declared_imports` columns (plan 23-02)
-  - `seed_compute.seed_compute_ops_lib` / `seed_compute.COMPUTE_STDLIB_ALLOWLIST` (plan 23-02)
-  - the `kind='compute'` / `declared_imports=[...]` branches of `POST /api/hardware-libs`
-    (plan 23-02)
-
-Migration tests import `run_hardware_lib_kind_migration` inside each test body (not at module
-level) so collection never errors; a missing symbol is caught and turned into an explicit
-`pytest.skip`. Seed tests use `pytest.importorskip("seed_compute", ...)` inside the test body
-for the same reason. Route tests are marked `xfail(strict=False)` -- the endpoint exists today
-but silently ignores the new `kind`/`declared_imports` form fields, so these assertions fail
-for the right reason (missing feature) rather than erroring.
-
-TODO(plan 23-02): once the migration/seed/route work lands, remove every skip/importorskip/xfail
-in this file -- they exist only to keep this suite green before that plan runs.
+Landed by plan 23-02: `db.run_hardware_lib_kind_migration`, `HardwareLib.kind` /
+`HardwareLibVersion.declared_imports`, `seed_compute.seed_compute_ops_lib` /
+`seed_compute.COMPUTE_STDLIB_ALLOWLIST`, and the `kind='compute'` / `declared_imports=[...]`
+branches of `POST /api/hardware-libs`. Every skip/importorskip/xfail from the Wave-0 (plan 23-01)
+version of this file is gone -- every assertion below is a real pass.
 """
 import json
 from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -74,12 +62,7 @@ class ComputeOps(Hardware):
 # ---------------------------------------------------------------------------
 
 def test_migration_runs_twice_without_error_and_columns_exist():
-    try:
-        from db import run_hardware_lib_kind_migration
-    except ImportError:
-        pytest.skip("run_hardware_lib_kind_migration not implemented yet (plan 23-02)")
-
-    from db import engine
+    from db import run_hardware_lib_kind_migration, engine
     from sqlalchemy import text
 
     run_hardware_lib_kind_migration(engine)
@@ -100,12 +83,7 @@ def test_migration_runs_twice_without_error_and_columns_exist():
 
 def test_default_kind_for_preexisting_lib_row_is_hardware():
     """The migration must not reclassify any existing lib -- default is 'hardware'."""
-    try:
-        from db import run_hardware_lib_kind_migration
-    except ImportError:
-        pytest.skip("run_hardware_lib_kind_migration not implemented yet (plan 23-02)")
-
-    from db import engine
+    from db import run_hardware_lib_kind_migration, engine
     from sqlalchemy import text
 
     run_hardware_lib_kind_migration(engine)
@@ -129,11 +107,23 @@ def test_default_kind_for_preexisting_lib_row_is_hardware():
 # ---------------------------------------------------------------------------
 
 def test_seed_compute_ops_lib_idempotent_created_flag_and_single_row():
-    seed_compute = pytest.importorskip(
-        "seed_compute", reason="CMP-19: seed_compute module not implemented until plan 23-02"
-    )
+    import seed_compute
     from db import engine
     from sqlalchemy import text
+
+    # The live api service seeds this exact row at boot, against this same DB -- clear it
+    # first so "first call creates" is provable rather than an artifact of container startup.
+    with engine.begin() as conn:
+        lib_id = conn.execute(text(
+            "SELECT id FROM hardware_libs WHERE filename = 'compute_ops.py'"
+        )).scalar()
+        if lib_id:
+            conn.execute(text("DELETE FROM hardware_modules WHERE hardware_lib_id = :id"), {"id": lib_id})
+            conn.execute(text(
+                "UPDATE hardware_libs SET active_version_id = NULL, stable_version_id = NULL WHERE id = :id"
+            ), {"id": lib_id})
+            conn.execute(text("DELETE FROM hardware_lib_versions WHERE hardware_lib_id = :id"), {"id": lib_id})
+            conn.execute(text("DELETE FROM hardware_libs WHERE id = :id"), {"id": lib_id})
 
     result1 = seed_compute.seed_compute_ops_lib(engine)
     result2 = seed_compute.seed_compute_ops_lib(engine)
@@ -149,9 +139,8 @@ def test_seed_compute_ops_lib_idempotent_created_flag_and_single_row():
 
 
 def test_compute_stdlib_allowlist_contains_random_and_math_not_numpy():
-    seed_compute = pytest.importorskip(
-        "seed_compute", reason="CMP-19: seed_compute module not implemented until plan 23-02"
-    )
+    import seed_compute
+
     assert "random" in seed_compute.COMPUTE_STDLIB_ALLOWLIST
     assert "math" in seed_compute.COMPUTE_STDLIB_ALLOWLIST
     assert "numpy" not in seed_compute.COMPUTE_STDLIB_ALLOWLIST
@@ -161,7 +150,6 @@ def test_compute_stdlib_allowlist_contains_random_and_math_not_numpy():
 # CMP-12/19 route contract: POST /api/hardware-libs kind= / declared_imports=
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(reason="CMP-12: kind not implemented until plan 23-02", strict=False)
 def test_upload_compute_lib_with_release_returns_kind_compute():
     with patch("routers.hardware_libs._SA_SessionLocal"):
         resp = _client().post(
@@ -174,7 +162,6 @@ def test_upload_compute_lib_with_release_returns_kind_compute():
     assert resp.json()["kind"] == "compute"
 
 
-@pytest.mark.xfail(reason="CMP-12: release() enforcement not implemented until plan 23-02", strict=False)
 def test_upload_compute_lib_without_release_is_422_naming_release():
     with patch("routers.hardware_libs._SA_SessionLocal"):
         resp = _client().post(
@@ -187,7 +174,6 @@ def test_upload_compute_lib_without_release_is_422_naming_release():
     assert "release" in resp.json()["detail"]
 
 
-@pytest.mark.xfail(reason="CMP-12: kind enum validation not implemented until plan 23-02", strict=False)
 def test_upload_lib_kind_banana_is_422():
     with patch("routers.hardware_libs._SA_SessionLocal"):
         resp = _client().post(
@@ -199,7 +185,6 @@ def test_upload_lib_kind_banana_is_422():
     assert resp.status_code == 422
 
 
-@pytest.mark.xfail(reason="CMP-19: declared_imports allowlist not implemented until plan 23-02", strict=False)
 def test_upload_compute_lib_declared_import_numpy_rejected_names_allowlist():
     with patch("routers.hardware_libs._SA_SessionLocal"):
         resp = _client().post(
@@ -218,7 +203,6 @@ def test_upload_compute_lib_declared_import_numpy_rejected_names_allowlist():
     assert "random" in detail and "math" in detail  # allowlist named in the message
 
 
-@pytest.mark.xfail(reason="CMP-19: declared_imports allowlist not implemented until plan 23-02", strict=False)
 def test_upload_compute_lib_declared_import_stdlib_only_accepted():
     with patch("routers.hardware_libs._SA_SessionLocal"):
         resp = _client().post(
@@ -233,3 +217,90 @@ def test_upload_compute_lib_declared_import_stdlib_only_accepted():
         )
     assert resp.status_code in (200, 201)
     assert resp.json()["declared_imports"] == ["random", "math"]
+
+
+# ---------------------------------------------------------------------------
+# CMP-04/19: seed compute lib source behaviour -- exec'd with stubbed autopilot modules
+# ---------------------------------------------------------------------------
+
+def _load_seed_ops_class():
+    """Exec the seed source with stub `autopilot.hardware`/`autopilot.utils.logging_utils`
+    modules injected into sys.modules, so the seed ops are testable even though `autopilot`
+    is unimportable on this host. Returns the exec'd `ComputeOps` class."""
+    import sys
+    import types
+    from pathlib import Path
+
+    class _StubHardware:
+        def release(self):
+            raise Exception("The release method was not overridden by the subclass!")
+
+    autopilot_mod = types.ModuleType("autopilot")
+    autopilot_hardware_mod = types.ModuleType("autopilot.hardware")
+    autopilot_hardware_mod.Hardware = _StubHardware
+    autopilot_utils_mod = types.ModuleType("autopilot.utils")
+    autopilot_logging_mod = types.ModuleType("autopilot.utils.logging_utils")
+    autopilot_logging_mod.log_action = lambda f: f
+
+    saved = {
+        k: sys.modules.get(k)
+        for k in ("autopilot", "autopilot.hardware", "autopilot.utils", "autopilot.utils.logging_utils")
+    }
+    sys.modules["autopilot"] = autopilot_mod
+    sys.modules["autopilot.hardware"] = autopilot_hardware_mod
+    sys.modules["autopilot.utils"] = autopilot_utils_mod
+    sys.modules["autopilot.utils.logging_utils"] = autopilot_logging_mod
+    try:
+        source = (Path(__file__).parent.parent / "seed_libs" / "compute_ops.py").read_text()
+        namespace: dict = {}
+        exec(compile(source, "compute_ops.py", "exec"), namespace)
+        return namespace["ComputeOps"]
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def test_seed_ops_class_defines_release_and_exactly_thirteen_public_ops():
+    cls = _load_seed_ops_class()
+    ops = cls()
+    ops.release()  # must not raise
+
+    public_methods = {
+        name for name in vars(cls)
+        if not name.startswith("_") and callable(getattr(cls, name)) and name != "release"
+    }
+    assert public_methods == {
+        "random_choice", "random_int", "random_float", "random_bool", "assign",
+        "add", "subtract", "multiply", "divide", "modulo", "minimum", "maximum", "clamp",
+    }
+    # No comparison/boolean-logic ops -- branching stays in FDA transitions (CONTEXT, locked).
+    assert not any(name.startswith(("eq", "compare", "and_", "or_", "not_")) for name in public_methods)
+
+
+def test_seed_ops_numeric_and_random_behaviour():
+    cls = _load_seed_ops_class()
+    ops = cls()
+
+    assert ops.add(2, 3) == 5
+    assert ops.subtract(5, 3) == 2
+    assert ops.multiply(2, 3) == 6
+    with pytest.raises(ZeroDivisionError):
+        ops.divide(1, 0)
+    with pytest.raises(ZeroDivisionError):
+        ops.modulo(1, 0)
+    assert ops.divide(6, 3) == 2
+    assert ops.modulo(7, 3) == 1
+    assert ops.clamp(5, 0, 3) == 3
+    assert ops.clamp(-1, 0, 3) == 0
+    assert ops.minimum(2, 5) == 2
+    assert ops.maximum(2, 5) == 5
+    x = object()
+    assert ops.assign(x) is x
+    assert ops.random_bool(1.0) is True
+    assert ops.random_bool(0.0) is False
+    assert ops.random_int(3, 3) == 3
+    assert ops.random_choice(["a"]) == "a"
+    assert ops.random_float(1.0, 1.0) == 1.0

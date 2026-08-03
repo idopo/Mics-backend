@@ -70,6 +70,7 @@ from routers.hardware_modules import router as hardware_modules_router
 from routers.pilot_hardware_config import router as pilot_hardware_config_router
 from routers.locked_states import router as locked_states_router
 from routers.toolkit_dispatch import router as toolkit_dispatch_router
+from seed_compute import seed_compute_ops_lib
 app.include_router(toolkits_router, prefix="/api")
 app.include_router(hardware_libs_router, prefix="/api")
 app.include_router(hardware_modules_router)
@@ -144,6 +145,7 @@ def startup():
     run_toolkit_hw_lib_version_migration(engine)
     run_pilot_hw_config_name_migration(engine)
     run_hardware_lib_kind_migration(engine)
+    seed_compute_ops_lib(engine)
 
 
 @app.get("/health")

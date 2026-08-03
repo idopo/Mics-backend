@@ -650,17 +650,19 @@ on this STATE.md; position is tracked via the prose "Phase NN status" sections a
 file's established pattern.
 
 ---
-*Last updated: 2026-08-03 — phase 23 plan 03 executed (Wave 2): backend compute validation +
-variable-scan (CMP-10/11/15). Hard 422s for compute FDA actions (unknown ref/method, missing/
-undeclared output) and new variable-collision/reference checks (`validate_compute_variables`)
-wired into the existing save-time gate; new `api/variable_scan.py` delivers the CMP-15
-writer/reader existence analysis, not yet wired into preflight (plan 23-07). One deviation:
-`hardware_libs.py::_flag_broken_task_defs` needed its own action_type filter widened to
-"compute" too (not in the plan's files_modified, required by its own must_haves truth). Full
-backend suite green: 302 passed, 1 skipped. A concurrent agent process was observed executing
-plans 23-02/23-04 in this same working directory during this run — see `23-03-SUMMARY.md`'s
-Deviations for the full concurrency note (content unaffected, one commit's attribution shared).
-Plan 04 (Wave 2, Pi-runtime compute action, CMP-03/04/05/06) also executed this session — see
-`23-04-SUMMARY.md`. Phase 25 plan 06 (last plan in that phase) remains outstanding. Next: phase
-23 plan 02 (confirm summary written), phase 23 plan 05, or phase 25 plan 06, per Next Actions
-above.*
+*Last updated: 2026-08-03 — phase 23 plan 05 executed (Wave 3): single lib-version resolution
+chain (CMP-17/19). New `api/lib_version_resolution.py::resolve_lib_version_id`/
+`resolve_lib_versions` (pin -> toolkit_default -> stable -> active[beta/stable only] -> none)
+replaces three independently-wrong chains in `get_dispatch_spec`, `toolkit_hw_capabilities`, and
+the orchestrator's `_send_hardware_libs_if_needed`; `GET /toolkits/{id}/hardware-libs` gains
+`?task_def_id=` + `resolved_*` fields; orchestrator now sends one `LOAD_HARDWARE_LIBS` per lib
+with `test_import: True`, activating `HARDWARE_LIB_TEST_RESULT` (dead since Phase 09) with zero
+Pi-side change. Deviation (per plan's own instruction): added a fourth "active" rung beyond
+CONTEXT's literal 3-rung chain — required so the rig's existing toolkits (none promoted to
+stable) keep dispatching; verified live that MPR121/TOUCH_INT still populate `hardware.Modules`.
+Two Rule-3 test fixes for pre-existing tests whose assumptions predated this plan (query-shape
+in `test_view_key_preflight.py`, stale `kind`/`declared_imports` fixture fields in
+`test_toolkit_dispatch.py`). Full backend suite green: 314 passed. No pi-mirror file touched
+(verified byte-identical via diff). See `23-05-SUMMARY.md`. Phase 23 now 5/10 plans done. Phase
+25 plan 06 (last plan in that phase) remains outstanding. Next: phase 23 plans 06-10 (later
+waves) or phase 25 plan 06, per Next Actions above.*

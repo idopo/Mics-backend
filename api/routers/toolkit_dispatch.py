@@ -12,6 +12,7 @@ from compute_provisioning import compute_module_names, provision_compute_configs
 from db import engine
 from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
 from lib_version_resolution import resolve_lib_version_id
+from variable_scan import variable_never_written_issues
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,32 @@ def get_dispatch_class(
     return {"class_name": class_name, "is_backend_authored": bool(row.is_backend_authored)}
 
 
+# Every preflight issue kind this module can emit. Mirrored (must stay in sync) by the
+# `PreflightIssue` union in `HardwareCheckModal.tsx` — plan 23-09's job to extend it.
+PREFLIGHT_ISSUE_KINDS = frozenset({
+    "missing",                    # no pilot_hardware_config row for a required module
+    "incomplete_config",          # hardware module config has no non-class_name keys
+    "class_mismatch",             # stored class_name != module's declared class_name
+    "fda_ref_unresolved",         # FDA hardware action refs a name the pilot has no config for
+    "view_key_unresolved",        # DVK-06/11: view/detector operand resolves to no real key
+    "variable_never_written",     # CMP-15: a transition reads a variable nothing ever writes
+    "lib_version_unresolved",     # CMP-17 rung 5: no beta/stable version deployable for a lib
+    "compute_lib_import_failed",  # CMP-19c RESERVED: compute lib failed to import on the Pi
+})
+
+
+def compute_lib_import_failed_issue(module_name: str, lib_filename: str, error: str) -> dict:
+    """Shape for the RESERVED `compute_lib_import_failed` issue kind (CMP-19c). Not emitted
+    anywhere yet — reserves the surfacing path before there is a Pi-side reporter to call it."""
+    return {
+        "module_id": None,
+        "module_name": module_name,
+        "issue": "compute_lib_import_failed",
+        "lib_filename": lib_filename,
+        "detail": f"Compute lib '{lib_filename}' failed to import on the Pi: {error}",
+    }
+
+
 @router.post("/sessions/{session_id}/preflight-validate/{pilot_id}")
 def preflight_validate(
     session_id: int,
@@ -261,6 +288,13 @@ def preflight_validate(
         if m:
             module_class_by_name[m.name] = m.class_name
 
+    # Pin lookup for CMP-17 rung 5 (lib_version_unresolved) — same pattern as get_dispatch_spec.
+    hw_versions_row = db.execute(
+        text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+        {"id": task_def_id},
+    ).fetchone()
+    hw_versions = (hw_versions_row.hw_lib_versions if hw_versions_row and hw_versions_row.hw_lib_versions else {})
+
     # 6. Check each hardware module
     issues: list[dict] = []
     # Collected here (not re-queried) for step 8's DVK-06/11 view-key resolution — same cfg_row
@@ -270,11 +304,32 @@ def preflight_validate(
     device_names: dict[str, str] = {}
     for module_id in module_ids:
         module = db.execute(
-            text("SELECT id, name, class_name FROM hardware_modules WHERE id = :id"),
+            text("SELECT id, name, class_name, hardware_lib_id FROM hardware_modules WHERE id = :id"),
             {"id": module_id},
         ).fetchone()
         if not module:
             continue
+
+        # CMP-17 rung 5: report a lib with no deployable version by name and reason, replacing
+        # what was today a silent skip in get_dispatch_spec. Independent of config presence, so
+        # checked here regardless of whether the "missing"/"incomplete_config" branches below fire.
+        pinned_version_id = hw_versions.get(str(module.hardware_lib_id))
+        version_id, reason = resolve_lib_version_id(
+            db, module.hardware_lib_id, toolkit_id=toolkit_id, pinned_version_id=pinned_version_id,
+        )
+        if reason == "none":
+            lib_row = db.execute(
+                text("SELECT name, filename FROM hardware_libs WHERE id = :id"),
+                {"id": module.hardware_lib_id},
+            ).fetchone()
+            lib_label = lib_row.filename if lib_row else str(module.hardware_lib_id)
+            issues.append({
+                "module_id": module.id,
+                "module_name": module.name,
+                "issue": "lib_version_unresolved",
+                "detail": f"No beta/stable version available for lib '{lib_label}' (module {module.name})",
+                "lib_id": module.hardware_lib_id,
+            })
 
         cfg_row = db.execute(
             text(
@@ -388,6 +443,16 @@ def preflight_validate(
         except Exception:
             logger.warning(
                 "preflight_validate: view-key resolution failed for session %s pilot %s",
+                session_id, pilot_id, exc_info=True,
+            )
+
+        # 9. CMP-15: report a transition reading a variable nothing writes anywhere in the FDA.
+        # Same non-blocking posture as step 8 — nested in this guard, own try/except.
+        try:
+            issues.extend(variable_never_written_issues(td_full.fda_json))
+        except Exception:
+            logger.warning(
+                "preflight_validate: variable_never_written scan failed for session %s pilot %s",
                 session_id, pilot_id, exc_info=True,
             )
 

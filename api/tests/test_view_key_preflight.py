@@ -400,6 +400,7 @@ class FakeDb:
     def __init__(
         self, *, run_row=None, spr_row=None, step_row=None, td_row=None,
         toolkit_row=None, existing_configs=None, modules=None, configs=None, td_full=None,
+        lib_row=None, lib_meta_row=None, hw_versions_row=None,
     ):
         self.run_row = run_row
         self.spr_row = spr_row
@@ -410,6 +411,9 @@ class FakeDb:
         self.modules = modules or {}  # hardware_module id -> SimpleNamespace(id, name, class_name)
         self.configs = configs or {}  # module name -> SimpleNamespace(config=dict)
         self.td_full = td_full
+        self.lib_row = lib_row  # SimpleNamespace(stable_version_id, active_version_id)
+        self.lib_meta_row = lib_meta_row  # SimpleNamespace(name, filename)
+        self.hw_versions_row = hw_versions_row
 
     def commit(self):
         """No-op — Plan 23-07 Task 1's self-heal path calls db.commit() after provisioning."""
@@ -426,13 +430,23 @@ class FakeDb:
             return _Result(one=self.step_row)
         if "toolkit_id FROM task_definitions" in sql:
             return _Result(one=self.td_row)
+        if "hw_lib_versions FROM task_definitions" in sql:
+            return _Result(one=self.hw_versions_row)
         if "FROM task_toolkits" in sql:
             return _Result(one=self.toolkit_row)
         if "fda_json FROM task_definitions" in sql:
             return _Result(one=self.td_full)
         if sql.startswith("SELECT name, config FROM pilot_hardware_config"):
             return _Result(many=self.existing_configs)
-        if sql.startswith("SELECT id, name, class_name FROM hardware_modules"):
+        if sql.startswith("SELECT default_version_id FROM toolkit_hardware_libs"):
+            return _Result(one=None)  # no toolkit-level pin default exercised by these tests
+        if sql.startswith("SELECT stable_version_id, active_version_id FROM hardware_libs"):
+            return _Result(one=self.lib_row)
+        if sql.startswith("SELECT state FROM hardware_lib_versions"):
+            return _Result(one=None)  # active rung not exercised; tests use pin/stable/none only
+        if sql.startswith("SELECT name, filename FROM hardware_libs"):
+            return _Result(one=self.lib_meta_row)
+        if sql.startswith("SELECT id, name, class_name, hardware_lib_id FROM hardware_modules"):
             return _Result(one=self.modules.get(params.get("id")))
         if sql.startswith("SELECT name, class_name FROM hardware_modules"):
             return _Result(one=self.modules.get(params.get("id")))
@@ -441,8 +455,8 @@ class FakeDb:
         return _Result()
 
 
-def _module(module_id, name, class_name):
-    return SimpleNamespace(id=module_id, name=name, class_name=class_name)
+def _module(module_id, name, class_name, hardware_lib_id=None):
+    return SimpleNamespace(id=module_id, name=name, class_name=class_name, hardware_lib_id=hardware_lib_id)
 
 
 def _config(config_dict):
@@ -452,7 +466,7 @@ def _config(config_dict):
 MPR121_CONFIG = {"device_name": "LICKER", "num_detectors": 4, "first_channel": 1, "class_name": "Touch_Detector"}
 
 
-def _backend_toolkit_scenario(fda_json, mpr121_config=MPR121_CONFIG, flags=None, module_ids=None):
+def _backend_toolkit_scenario(fda_json, mpr121_config=MPR121_CONFIG, flags=None, module_ids=None, lib_row=None):
     module_ids = module_ids if module_ids is not None else [7]
     return FakeDb(
         run_row=None,
@@ -462,9 +476,12 @@ def _backend_toolkit_scenario(fda_json, mpr121_config=MPR121_CONFIG, flags=None,
         toolkit_row=SimpleNamespace(is_backend_authored=True, hardware_module_ids=module_ids, flags=flags or {}),
         # preflight_validate indexes these rows positionally (row[0], row[1]) — tuples, not dicts.
         existing_configs=([("MPR121", mpr121_config)] if mpr121_config is not None else []),
-        modules={7: _module(7, "MPR121", "Touch_Detector")},
+        modules={7: _module(7, "MPR121", "Touch_Detector", hardware_lib_id=10)},
         configs=({"MPR121": _config(mpr121_config)} if mpr121_config is not None else {}),
         td_full=SimpleNamespace(fda_json=fda_json),
+        # Resolves cleanly (reason="stable") by default so pre-existing tests don't pick up a
+        # spurious lib_version_unresolved issue; override to exercise that path explicitly.
+        lib_row=lib_row if lib_row is not None else SimpleNamespace(stable_version_id=500, active_version_id=None),
     )
 
 
@@ -604,6 +621,89 @@ def test_malformed_toolkit_flags_row_returns_200_with_step6_issues_only_and_logs
 
 
 # ---------------------------------------------------------------------------
+# CMP-15/23-07 Task 2 — step 9 (variable_never_written), lib_version_unresolved,
+# PREFLIGHT_ISSUE_KINDS + compute_lib_import_failed_issue
+# ---------------------------------------------------------------------------
+
+
+def test_variable_read_never_written_yields_one_issue_with_reader_location():
+    fda = {
+        "variables": {"target": {"initial_value": None}},
+        "transitions": [{"condition_tree": {"left": {"view": "target"}, "op": "==", "right": 1}}],
+    }
+    resp = _preflight(_backend_toolkit_scenario(fda, mpr121_config=None))
+    body = resp.json()
+    var_issues = [i for i in body["issues"] if i["issue"] == "variable_never_written"]
+    assert len(var_issues) == 1
+    assert var_issues[0]["variable"] == "target"
+    assert var_issues[0]["location"] == "transitions[0].condition_tree.left"
+
+
+def test_variable_written_by_compute_action_no_variable_never_written_issue():
+    fda = {
+        "variables": {"target": {"initial_value": None}},
+        "transitions": [{"condition_tree": {"left": {"view": "target"}, "op": "==", "right": 1}}],
+        "states": {
+            "s": {"entry_actions": [
+                {"type": "compute", "ref": "ComputeMod", "method": "add", "output": "target"},
+            ]}
+        },
+    }
+    resp = _preflight(_backend_toolkit_scenario(fda, mpr121_config=None))
+    body = resp.json()
+    assert [i for i in body["issues"] if i["issue"] == "variable_never_written"] == []
+
+
+def test_variable_scan_exception_does_not_raise_returns_other_issues():
+    fda = {"variables": {"target": {}}, "transitions": []}
+    with patch("routers.toolkit_dispatch.variable_never_written_issues", side_effect=Exception("boom")), \
+         patch("routers.toolkit_dispatch.logger.warning") as mock_warn:
+        resp = _preflight(_backend_toolkit_scenario(fda, mpr121_config=None))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["issues"][0]["issue"] == "missing"
+    mock_warn.assert_called_once()
+
+
+def test_lib_version_unresolved_emitted_when_resolution_is_none():
+    fake_db = _backend_toolkit_scenario(
+        fda_json=None, mpr121_config=MPR121_CONFIG,
+        lib_row=SimpleNamespace(stable_version_id=None, active_version_id=None),
+    )
+    fake_db.lib_meta_row = SimpleNamespace(name="mpr121_lib", filename="mpr121.py")
+    resp = _preflight(fake_db)
+    body = resp.json()
+    lib_issues = [i for i in body["issues"] if i["issue"] == "lib_version_unresolved"]
+    assert len(lib_issues) == 1
+    assert lib_issues[0]["module_name"] == "MPR121"
+    assert "mpr121.py" in lib_issues[0]["detail"]
+
+
+def test_lib_version_resolved_no_lib_version_unresolved_issue():
+    resp = _preflight(_backend_toolkit_scenario(fda_json=None, mpr121_config=MPR121_CONFIG))
+    body = resp.json()
+    assert [i for i in body["issues"] if i["issue"] == "lib_version_unresolved"] == []
+
+
+def test_preflight_issue_kinds_frozenset_has_eight_kinds_including_new_two():
+    from routers.toolkit_dispatch import PREFLIGHT_ISSUE_KINDS
+    assert len(PREFLIGHT_ISSUE_KINDS) == 8
+    assert "variable_never_written" in PREFLIGHT_ISSUE_KINDS
+    assert "lib_version_unresolved" in PREFLIGHT_ISSUE_KINDS
+    assert "compute_lib_import_failed" in PREFLIGHT_ISSUE_KINDS
+
+
+def test_compute_lib_import_failed_issue_constructor_shape():
+    from routers.toolkit_dispatch import compute_lib_import_failed_issue
+    issue = compute_lib_import_failed_issue("ComputeMod", "compute_ops.py", "ImportError: no module named foo")
+    assert issue["issue"] == "compute_lib_import_failed"
+    assert issue["module_name"] == "ComputeMod"
+    assert issue["lib_filename"] == "compute_ops.py"
+    assert "foo" in issue["detail"]
+
+
+# ---------------------------------------------------------------------------
 # CMP-15/23-07 Task 1 — compute-aware step 6: no false positive, self-healing config
 # ---------------------------------------------------------------------------
 
@@ -617,9 +717,10 @@ def _compute_toolkit_scenario(fda_json, config=None, class_name="ComputeOps"):
         td_row=SimpleNamespace(toolkit_id=5),
         toolkit_row=SimpleNamespace(is_backend_authored=True, hardware_module_ids=[9], flags={}),
         existing_configs=([("ComputeMod", config)] if config is not None else []),
-        modules={9: _module(9, "ComputeMod", class_name)},
+        modules={9: _module(9, "ComputeMod", class_name, hardware_lib_id=20)},
         configs=({"ComputeMod": _config(config)} if config is not None else {}),
         td_full=SimpleNamespace(fda_json=fda_json),
+        lib_row=SimpleNamespace(stable_version_id=800, active_version_id=None),
     )
 
 

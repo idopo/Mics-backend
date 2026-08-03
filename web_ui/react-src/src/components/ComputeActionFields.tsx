@@ -164,6 +164,13 @@ export default function ComputeActionFields({ action, toolkit, hwModules, taskDe
           >
             {arg.name} {arg.annotation ? `(${arg.annotation})` : ''} ⓘ
           </label>
+          {(action.args ?? [])[i] === null && (
+            // Never render a stored null as its default: the researcher would see a valid
+            // number while the saved FDA still holds null and the Pi still crashes on it.
+            <span style={{ fontSize: '10px', color: '#ef4444', display: 'block' }}>
+              No value saved — set it, or the Pi calls this with None.
+            </span>
+          )}
           <ArgInput
             value={withArgAt(argList, action.args, -1, null)[i]}
             toolkit={toolkit}

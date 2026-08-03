@@ -1186,3 +1186,39 @@ def test_put_method_less_hardware_action_returns_422_not_200_broken(client):
 
     assert resp.status_code == 422
     assert any("MPR121" in e for e in resp.json()["detail"]["errors"])
+
+
+# ---------------------------------------------------------------------------
+# A null in `args` is a hole the GUI can leave behind (a sparse array serializes as
+# [null, 1]). It passes every structural check and then dies on the Pi inside the op:
+# random_float(None, 1) -> "unsupported operand type(s) for -: 'int' and 'NoneType'".
+# Caught here so it can never reach a rig again.
+# ---------------------------------------------------------------------------
+
+def test_compute_action_with_null_arg_is_rejected():
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(args=[None, 1]))
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("args" in e and "COMPUTE.random_bool" in e for e in errors), errors
+
+
+def test_compute_action_null_arg_error_names_the_position():
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(args=[1, None]))
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("args[1]" in e for e in errors), errors
+
+
+def test_compute_action_with_complete_args_passes():
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(args=[0.0, 1.0]))
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert not any("args" in e for e in errors), errors
+
+
+def test_compute_action_with_operand_args_passes():
+    """{'flag': 'x'} / {'param': 'y'} operands are legitimate arg values, not holes."""
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(args=[{"flag": "target"}, 1]))
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert not any("args" in e for e in errors), errors

@@ -386,6 +386,16 @@ def _validate_action(
                 f"requires an 'output' naming a declared variable — a compute op that writes "
                 f"nowhere is a no-op"
             )
+        # A null in args is a hole the editor can leave behind (a sparse JS array serializes
+        # as [null, 1]). It passes every structural check and then dies inside the op on the
+        # Pi -- random_float(None, 1) raises TypeError mid-run, killing the task.
+        for arg_idx, arg in enumerate(action.get("args") or []):
+            if arg is None:
+                errors.append(
+                    f"{context_label} action[{idx}]: compute action '{ref}.{action.get('method')}' "
+                    f"has no value for args[{arg_idx}] — the Pi would call it with None and fail "
+                    f"at run time"
+                )
     elif action_type == "method":
         if callable_methods and ref not in callable_methods:
             errors.append(f"{context_label} action[{idx}]: method '{ref}' not in toolkit callable_methods")

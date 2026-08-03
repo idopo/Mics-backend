@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-07-29T11:59:23.000Z"
+last_updated: "2026-08-03T09:13:25.124Z"
 progress:
   total_phases: 19
   completed_phases: 6
-  total_plans: 39
-  completed_plans: 30
-  percent: 77
+  total_plans: 46
+  completed_plans: 31
+  percent: 71
 ---
 
 # STATE: MICS Backend
@@ -26,8 +26,34 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 25 — Detector-Derived View Keys Visible in the FDA Editor — **5/6 plans done**
-**Progress:** [████████░░] 77%
+**Phase:** 23 — Compute Primitives + Variables — **1/10 plans done** (Wave 0)
+**Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed)
+**Progress:** [███████░░░] 71%
+
+### Phase 23 status (2026-08-03)
+
+**Plan 01 executed:** Wave 0 — the three ❌ contract-test targets from `23-VALIDATION.md` now
+exist on disk, all failing/skipping/xfailing today for the right reason (missing feature, not a
+typo), per the phase's re-scoped compute-as-hardware-lib plan (see the four `docs(23):` commits
+immediately preceding this one — re-scope, re-plan as 10 plans/6 waves, defer-and-gate the
+trigger-assignment compute option). `api/tests/test_hardware_lib_kind.py` (9 tests: 2 real-DB
+migration-idempotency + 2 real-DB `seed_compute_ops_lib`/allowlist tests, 5 xfail route tests)
+pins CMP-12/19 — the `hardware_libs.kind`/`hardware_lib_versions.declared_imports` columns,
+`run_hardware_lib_kind_migration`'s idempotency, and `POST /api/hardware-libs`'s
+`kind='compute'`/`declared_imports=[...]` validation, none of which exist until plan 23-02.
+`api/tests/test_toolkit_dispatch.py` (11 tests, module-level `pytest.importorskip` since
+`api/lib_version_resolution.py` doesn't exist until plan 23-05) pins CMP-17's
+`resolve_lib_version_id` pin → toolkit_default → stable → active → none chain (every reason
+string covered) plus the `get_dispatch_spec` stable-over-active regression and the
+`resolved_version_id`/`resolved_state`/`resolution_reason` fields `list_toolkit_hardware_libs`
+must gain. `/home/ido/pi-mirror/tests/test_compute_ops.py` (8 tests, USER-RUN, not deployed)
+pins CMP-03/04/05 — a `Hardware` subclass needs `type=` supplied explicitly (Pitfall 7) and must
+override `release()` or `Task.end()` raises on every run (Pitfall 3), plus the compute action's
+build-time-required `output`, its `group`-present/absent dual resolution form, and last-write-
+wins re-invocation. Full backend suite green throughout: **231 passed, 5 skipped, 5 xfailed**
+(verified before AND after `docker compose up --build api`, since that service has no bind mount
+— new test files are invisible to a running, un-rebuilt container). No pi-mirror files other
+than the one new test file touched; no git commands run there. See `23-01-SUMMARY.md`.
 
 ### Phase 25 status (2026-07-29)
 
@@ -322,6 +348,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 25]: Plan 02: Pi-side DVK-09/10/11 fixes (check_for_detectors first_channel, execute_trigger error containment, view_detector build-time resolution) landed in pi-mirror; no git commits made there per pi_rules
 - [Phase 25]: Plan 25-03: preflight step 8 nested inside step 7's fda_json guard (not after) to reuse already_flagged as skip_modules without risking a swallowed NameError; key_template device_name resolution does not consult skip_modules per the plan's literal resolution-rules table
 - [Phase 25]: Plan 25-05: view_key_unresolved is excluded from HardwareCheckModal's PUT loop and pendingEdits initialiser (it names no config row); is_detector resolved by module NAME (not module_id, which pilot_hardware_config rows don't carry) at both the PilotHardwareConfig add and edit entry points, sharing one ['hardware-module-methods', id] query key so no second fetch is introduced
+- [Phase 23]: Wave 0 contract tests use per-test skip/xfail guards (not module-level) when a file mixes already-real integration tests with not-yet-real route tests; module-level importorskip only when every test shares one dependency
 
 ## Accumulated Context
 
@@ -390,45 +417,49 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Execute Phase 25 Plan 06** (last plan in phase 25) — **deploy** plan 02's seven pi-mirror
-   files (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files — see
-   `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list) AND the plan 04/05 React
-   rebuild (confirm the deployed bundles are `dist/TaskEditor-B6-dKcPk.js`,
-   `dist/HardwareCheckModal-DKJUfoGY.js`, `dist/PilotHardwareConfig-B09He_Dl.js` — see
-   `25-04-SUMMARY.md` and `25-05-SUMMARY.md` "Next Phase Readiness" for the exact operand JSON /
-   config round-trip to look for), run the three new USER-RUN Pi test files plus the pre-existing
-   suite, and rig-prove DVK-09 (channel 4 lands in `LICKER4`) and DVK-11 (a transition on "MPR121
-   — channel 2" fires, then re-fires unchanged after a `device_name` rename). Also owns the
-   manual/behavioural verification of plan 04's editor pickers (grouped `<optgroup>`s, the
-   "(unknown)" flag, the S3 type-switch guard) and plan 05's `HardwareCheckModal`/
-   `PilotHardwareConfig` rendering (both `view_key_unresolved` shapes, the edit-flow
-   `first_channel` round-trip) — both deferred per their own `<verification>` notes.
-2. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
-   outstanding from phase 24 and now larger after plan 02's additions:
+1. **Execute Phase 23 Plan 02** (kind-column migration + `seed_compute.py` + declared-imports
+   allowlist) — turns `api/tests/test_hardware_lib_kind.py`'s 4 skipped + 5 xfailed tests into
+   real passes. See `23-02-PLAN.md` and `23-01-SUMMARY.md` "Next Phase Readiness".
+2. **Execute Phase 25 Plan 06** (last plan in phase 25, still outstanding — deferred while phase
+   23 Wave 0 was picked up) — **deploy** plan 02's seven pi-mirror files (`fda_vocabulary.py`,
+   `mics_task.py`, `task.py`, and four `tests/` files — see `25-02-SUMMARY.md` "Next Phase
+   Readiness" for the exact rsync list) AND the plan 04/05 React rebuild (confirm the deployed
+   bundles are `dist/TaskEditor-B6-dKcPk.js`, `dist/HardwareCheckModal-DKJUfoGY.js`,
+   `dist/PilotHardwareConfig-B09He_Dl.js` — see `25-04-SUMMARY.md` and `25-05-SUMMARY.md` "Next
+   Phase Readiness" for the exact operand JSON / config round-trip to look for), run the three
+   new USER-RUN Pi test files plus the pre-existing suite, and rig-prove DVK-09 (channel 4 lands
+   in `LICKER4`) and DVK-11 (a transition on "MPR121 — channel 2" fires, then re-fires unchanged
+   after a `device_name` rename). Also owns the manual/behavioural verification of plan 04's
+   editor pickers (grouped `<optgroup>`s, the "(unknown)" flag, the S3 type-switch guard) and
+   plan 05's `HardwareCheckModal`/`PilotHardwareConfig` rendering (both `view_key_unresolved`
+   shapes, the edit-flow `first_channel` round-trip) — both deferred per their own
+   `<verification>` notes.
+3. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
+   outstanding from phase 24 and now larger after plan 02's additions, plus the new
+   `test_compute_ops.py` once plan 23-04 lands:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
 
-Note: Phase 23 (Compute Primitives + Variables) plans are stale — written before the 24→23
-resequencing, they still claim to build the `variables` registry and `api/fda_validation.py`,
-both already delivered by phase 24. Re-plan before executing, whenever phase 23 is picked up.
+Note: Phase 23 was re-planned 2026-08-03 as 10 plans in 6 waves against a "compute-as-hardware-lib"
+reframe (see the `docs(23):` commits immediately before `test(23-01):` in git log) — the prior
+"plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests) is done; see
+"Phase 23 status" above and `23-01-SUMMARY.md`.
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
-DVK-02/06/07/11 in `REQUIREMENTS.md` — that file tracks phase 25's DVK requirements as plain
-description rows (no per-requirement status column), so completion is tracked via the
-ROADMAP.md phase-25 status line instead. `gsd-tools state advance-plan`/`record-metric`/
-`record-session` also no-op on this STATE.md (it predates the `**Current Plan:**`/
-`**Total Plans in Phase:**`/Performance-Metrics-table conventions those commands expect) —
-position is tracked via the prose "Phase 25 status" section above instead, per this file's
-established pattern for plans 01/02/03. `state advance-plan` additionally wrote a malformed
-`` current_plan: `/ `` line into this file's frontmatter before erroring — removed during plan
-04's execution.
+CMP-04/12/17/19 in `REQUIREMENTS.md` (same gap previously found for DVK-02/06/07/11) — completion
+is tracked via the ROADMAP.md phase-23 status line instead, updated via
+`gsd-tools roadmap update-plan-progress 23`. `gsd-tools state advance-plan` still errors
+("Cannot parse Current Plan or Total Plans in Phase from STATE.md" — this file predates that
+command's expected conventions); `state update-progress` DOES work and was used to update the
+frontmatter above (46 total / 31 completed / 71%), but it also re-introduced the same malformed
+`` current_plan: `/ `` frontmatter line documented below — removed again during this plan's
+execution. `record-metric`/`record-session` remain no-ops on this STATE.md; position is tracked
+via the prose "Phase NN status" sections above, per this file's established pattern.
 
 ---
-*Last updated: 2026-07-29 — phase 25 plan 05 executed: `HardwareCheckModal` now renders
-`preflight_validate`'s `view_key_unresolved` issues (both the DVK-11 detector-channel shape and
-the literal-key shape) instead of `null`, provably skips the PUT loop for that issue kind, and
-fixes a real duplicate React-key collision the new issue kind introduced. `PilotHardwareConfig`
-gained a `first_channel` affordance with a live derived-key preview on a detector module's edit
-row, resolved by module name since pilot-hardware-config rows carry no `module_id`. No start gate
-added — preflight stays advisory per Phase 13. `tsc --noEmit` clean; `npm run build` succeeds;
-bundles `dist/HardwareCheckModal-DKJUfoGY.js`, `dist/PilotHardwareConfig-B09He_Dl.js`. No
-deviations. Next: plan 06 (deploy + rig proof — the last plan in phase 25).*
+*Last updated: 2026-08-03 — phase 23 plan 01 executed (Wave 0): three contract test files
+(`api/tests/test_hardware_lib_kind.py`, `api/tests/test_toolkit_dispatch.py`,
+`/home/ido/pi-mirror/tests/test_compute_ops.py`) created for CMP-12/17/19/04, all failing/
+skipping/xfailing today for the right reason. Full backend suite green: 231 passed, 5 skipped,
+5 xfailed. No pi-mirror files other than the one new test file touched. Phase 25 plan 06 (last
+plan in that phase) remains outstanding, deferred while this Wave 0 ran. Next: phase 23 plan 02
+(kind-column migration + seed_compute.py), or phase 25 plan 06, per Next Actions above.*

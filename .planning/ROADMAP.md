@@ -452,7 +452,11 @@ Plans:
 > executed. Five additions to the substrate: transport roles + `@decoder`, liveness split from
 > signal staleness, egress queue, run lifecycle hooks, device lease.
 
-**Plans:** 12 plans in 5 waves (planned 2026-08-03, after the context revision)
+**Plans:** 12 plans in 5 waves (planned 2026-08-03, after the context revision) — **⚠ RE-VERIFICATION
+PENDING.** Ten of the twelve were revised on 2026-08-03 (commit `64bbd2d`) to add transport
+`role: "none"` for control-only devices, after Phase 26 planning exposed the gap. **The passing
+plan-checker verdict predates that revision and is stale** — re-run the checker before or during
+execution. Unchanged: 18-04, 18-07.
 
 Plans:
 - [ ] 18-01-PLAN.md — Wave 0: Pi wire/decoder/liveness contract tests + agent msgpack install

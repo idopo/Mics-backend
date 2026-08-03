@@ -124,7 +124,52 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-03) — RE-PLANNED, 12 plans ready to execute
+### Phase 18 status (2026-08-03) — RE-PLANNED, 12 plans · ⚠ RE-VERIFICATION PENDING
+
+> **⚠ THE PASSING PLAN-CHECKER VERDICT IS STALE. DO NOT TREAT THESE PLANS AS VERIFIED.**
+> Verification passed on the plans as they stood at commit `07b0c27`. **Ten of the twelve plans were
+> subsequently revised** (commit `64bbd2d`) to fix the no-transport gap. The plan-checker has **not**
+> been re-run against the revised plans — the user opted to verify later.
+>
+> **Revised:** 18-01, 18-02, 18-03, 18-05, 18-06, 18-08, 18-09, 18-10, 18-11, 18-12.
+> **Unchanged:** 18-04 (msgpack pin), 18-07 (AST extractor — never sees `role`, which is config not
+> class metadata, and already covered the zero-`@signal` half).
+>
+> **To clear this:** re-run the plan-checker (`/gsd:plan-phase 18` will do it, or verify at execute
+> time). Things worth checking specifically: that no same-wave file collision was introduced, that the
+> four EXTLINK-18 validation rows are each claimed, and that `external_hardware_wire.py` still fits
+> its ≤300-line budget with the third role added.
+
+**Gap fixed 2026-08-03 — `role: "none"` (control-only, no inbound transport).** Phase 26 planning
+exposed that two transport roles were not enough. The plans already handled a class with zero
+`@signal`, but `socket_plan` returned only `router_bind` or `sub_connect` — both open a socket. A
+device whose entire inbound story is an *outbound poll* (OpenEphys: liveness via HTTP
+`GET /api/status`) was being forced to declare a role, pick a port, and bind a socket nothing ever
+connects to. Evidence it was already biting: plan 18-12 had made its control-only demo lib
+`sub_connect` because no better option existed.
+
+Resolution (EXTLINK-18 amended; `18-CONTEXT.md` § Transport roles carries the full block):
+- Third role value `"none"` — `socket_plan` returns a plan with **no socket**, invents no port, and
+  does not fall back to a default. `identity_ok` and the `@decoder` path are inapplicable.
+- Config validation must not require `listen_port`/`connect_port` for this role; `host` **is** still
+  required, for egress, and is still the lease key.
+- `.bind()` does everything else — `.alive` tracker, liveness poll, egress worker, lifecycle hooks —
+  so a control-only module participates fully in the readiness gate. Explicitly **not** a reduced
+  path.
+- **`role: "none"` requires an explicit liveness override, enforced by raising at construction.** The
+  default predicate is "a message arrived within `stale_ms`", which a socketless module never
+  satisfies — it would sit permanently `alive=False` and hang the gate with no diagnosis. Consistent
+  with EXTLINK-12's import-time `TypeError` for an unresolvable `@signal` dtype. Silently defaulting
+  to `alive=True` was rejected: that is exactly the "device is off but we think it's fine" failure OE's
+  HTTP check exists to catch.
+- Rejected: making `role` optional/absent to mean "no transport" — an explicit value validates cleanly
+  and distinguishes deliberate control-only from a forgotten field.
+
+**Side effect: EXTLINK-18 is no longer rig-only.** Three new agent-runnable validation rows
+(`-k role_none` on both sides, `-k control_only` on the Pi); the rig row survives but now proves only
+end-to-end wiring, not the mechanism.
+
+
 
 **Planning complete 2026-08-03.** Research → validation strategy → 12 plans in 5 waves →
 plan-checker **VERIFICATION PASSED** (all 18 EXTLINK IDs covered, no same-wave file collisions,

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T10:46:30.924Z"
+last_updated: "2026-08-03T10:59:15.314Z"
 progress:
   total_phases: 22
   completed_phases: 6
-  total_plans: 47
-  completed_plans: 38
-  percent: 83
+  total_plans: 56
+  completed_plans: 39
+  percent: 72
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **8/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plans 07/08)
+**Phase:** 23 — Compute Primitives + Variables — **9/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plans 07/08 + Wave 5 plan 09)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [████████░░] 83%
+**Progress:** [███████░░░] 72%
 
 ### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
 
@@ -94,6 +94,30 @@ upstream of the ZMQ plugin with sorting configured. Without it there are no spik
 no unit IDs to declare, which makes 27 unplannable as scoped. Rig configuration, not MICS work.
 
 ### Phase 23 status (2026-08-03)
+
+**Plan 09 executed (2026-08-03):** CMP-14/15 delivered — the user-facing half of the compute
+preflight work closes out. `HardwareCheckModal.tsx`'s `PreflightIssue` union gained
+`variable_never_written`/`lib_version_unresolved`/`compute_lib_import_failed` (mirroring
+`toolkit_dispatch.py::PREFLIGHT_ISSUE_KINDS`), each rendered read-only by a new
+`ComputeIssueDetail` component — extracted to its own file (not inlined) because the inline
+version measured 545 lines against the plan's 500-line hard cap, exactly the fallback the plan
+itself named. `NON_CONFIG_ISSUES`, a single `Set<PreflightIssue['issue']>`, replaces the
+single-kind `!==` check Phase 25 introduced at both `handleStart`'s PUT loop and the
+`pendingEdits` initialiser — now gating all four issue kinds (the three new ones plus
+`view_key_unresolved`) that name no `pilot_hardware_config` row, so none of them can trigger a
+destructive PUT. New `VariableUsagePanel.tsx` (`useQuery` over plan 07's
+`GET /api/task-definitions/{id}/variable-usage`) renders one collapsed row per variable with a
+`never_written` badge and expandable writer/reader location lists — mechanically confirmed
+read-only (`grep` for `onChange|mutation|button-danger` finds nothing) — rendered inside
+`VariablesPanel.tsx` behind a collapsed `<details>`, which gained a `taskDefId?: number` prop
+threaded from `TaskEditor.tsx` via a 1-line diff (that file isn't in this plan's
+`files_modified`, but the plan explicitly anticipated the change). Used `refetchOnMount:
+'always'` rather than the existing `versionStamp` cache-bust key, since that stamp tracks
+hardware-lib version pins, not `fda_json` saves — again the plan's own documented fallback.
+`tsc --noEmit` and `npm run build` clean after every task; `App.tsx`/`Layout.tsx` diffs both
+empty (no new page, no new nav entry). Behavioural sign-off (live `variable_never_written`
+payload rendering, Start not PUTting for it) explicitly deferred to plan 23-10's checkpoint,
+per this plan's own `<verification>` note. See `23-09-SUMMARY.md`.
 
 **Plan 08 executed (2026-08-03):** CMP-13/14 delivered — the compute action in the FDA editor.
 The action-type `<select>` gained exactly one new entry, `compute` (verified: 1 new `<option>`
@@ -584,6 +608,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23-compute-primitives-variables]: [Phase 23-07]: lib_version_unresolved checked independently of missing/incomplete_config in step 6's loop (before the cfg_row fetch), since CMP-17's undeployable-lib check is orthogonal to whether the pilot has configured the module at all
 - [Phase 23-08]: onDeclareVariable added to ActionEditor's Props one task early (Task 1, not Task 3) to keep that task's own tsc green rendering ComputeActionFields; ActionEditor's own separate TYPE_COLORS const also gained a compute entry alongside StateBodyPanel's so the open action card's own chip isn't gray by fallback; a typed "new variable" name colliding with an existing variable/flag is rejected (inline message) rather than silently reused
 - [Phase 23-compute-primitives-variables]: [Phase 23-07]: task_def_inspect.py uses a Depends(get_sa_session) generator matching toolkit_dispatch.py's shape (not pilot_hardware_config.py's bare with-block) so the mocked-db.execute TestClient pattern already used in test_view_key_preflight.py works
+- [Phase 23]: 23-09: NON_CONFIG_ISSUES Set replaces per-kind checks for which preflight issues may never trigger a config PUT; VariableUsagePanel refetches via refetchOnMount:'always' rather than versionStamp (which tracks hw-lib pins, not fda_json saves)
 
 ## Accumulated Context
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T09:13:25.124Z"
+last_updated: "2026-08-03T09:27:56.154Z"
 progress:
   total_phases: 19
   completed_phases: 6
   total_plans: 46
-  completed_plans: 31
-  percent: 71
+  completed_plans: 32
+  percent: 73
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **1/10 plans done** (Wave 0)
+**Phase:** 23 — Compute Primitives + Variables — **2/10 plans done** (Wave 0 + Wave 2 plan 04)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed)
-**Progress:** [███████░░░] 71%
+**Progress:** [███████░░░] 73%
 
 ### Phase 23 status (2026-08-03)
 
@@ -54,6 +54,30 @@ wins re-invocation. Full backend suite green throughout: **231 passed, 5 skipped
 (verified before AND after `docker compose up --build api`, since that service has no bind mount
 — new test files are invisible to a running, un-rebuilt container). No pi-mirror files other
 than the one new test file touched; no git commands run there. See `23-01-SUMMARY.md`.
+
+**Plan 04 executed (2026-08-03):** CMP-03/04/05/06 delivered on the Pi runtime, in
+`/home/ido/pi-mirror`. `fda_vocabulary.py` gained `"compute"` in `VALID_ACTION_TYPES` (single-
+sourced comment pointing at `api/fda_validation.py`'s backend twin). `mics_task.py`'s
+`_build_action_callable` gained the `compute` branch — byte-for-byte the `hardware`/`timer`
+branch's dual ref-resolution (`group` present → `self.hardware[group][ref]`, absent →
+`self._semantic_hw[ref]`), with `output` made mandatory at BUILD time (`ValueError` naming
+`ref.method`). `tools/validate_fda.py` gained the matching CLI-side `compute` branch, message-
+worded identically to the runtime's. `tests/test_compute_ops.py` (plan 23-01's pre-written Wave 0
+tests, unchanged) plus 4 new Task 3 regression tests for CMP-01/02/05/06 (verify-only — pinning
+that Phase 24's variables registry holds for compute-written variables). `tests/test_fda_vocabulary.py`
+extended with a `compute`-membership assertion: **23 passed** (agent-verified). **One bug found
+and fixed in-task (Rule 3 — blocking):** `_build_state_method`'s separate entry_actions
+pre-validation loop had no branch for `compute` and would have raised "unknown action type"
+before ever reaching the new `_build_action_callable` branch — widened its existing `hardware`
+check to `("hardware", "compute")`. **One bug found and NOT fixed, per the plan's explicit
+instruction:** `load_fda_from_json`'s variables-collision guard (`if var_name in self.flags:
+raise`) does not exempt a variable name the mechanism itself declared on a prior load, so
+`hot_update_fda` re-declaring the SAME variable name (the normal hot-reload case) appears, by
+code inspection, to raise instead of recreating the tracker — CMP-06's "hot-reload re-creates
+variables" promise. Not confirmed by execution (autopilot unimportable here); flagged as a
+predicted Phase-24 defect for plan 23-10 to confirm via `test_hot_update_fda_recreates_variables_
+before_rebuilding_transitions`. No pi-mirror git commits (pi-mirror is user-owned git, same as
+plan 25-02). See `23-04-SUMMARY.md` and its "Next Phase Readiness" for the exact rsync file list.
 
 ### Phase 25 status (2026-07-29)
 
@@ -420,6 +444,9 @@ conflicting instruction inside a PLAN file.
 1. **Execute Phase 23 Plan 02** (kind-column migration + `seed_compute.py` + declared-imports
    allowlist) — turns `api/tests/test_hardware_lib_kind.py`'s 4 skipped + 5 xfailed tests into
    real passes. See `23-02-PLAN.md` and `23-01-SUMMARY.md` "Next Phase Readiness".
+   (Plan 04, Wave 2, is now also done — see "Phase 23 status" above and `23-04-SUMMARY.md`. Its
+   4 pi-mirror files are staged for deploy at plan 23-10, uncommitted in the pi-mirror working
+   tree, same as plan 02's Phase 25 files below.)
 2. **Execute Phase 25 Plan 06** (last plan in phase 25, still outstanding — deferred while phase
    23 Wave 0 was picked up) — **deploy** plan 02's seven pi-mirror files (`fda_vocabulary.py`,
    `mics_task.py`, `task.py`, and four `tests/` files — see `25-02-SUMMARY.md` "Next Phase
@@ -441,25 +468,29 @@ conflicting instruction inside a PLAN file.
 
 Note: Phase 23 was re-planned 2026-08-03 as 10 plans in 6 waves against a "compute-as-hardware-lib"
 reframe (see the `docs(23):` commits immediately before `test(23-01):` in git log) — the prior
-"plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests) is done; see
-"Phase 23 status" above and `23-01-SUMMARY.md`.
+"plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests) and Plan 04
+(Wave 2, Pi-runtime compute action) are done; see "Phase 23 status" above and
+`23-01-SUMMARY.md`/`23-04-SUMMARY.md`.
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
-CMP-04/12/17/19 in `REQUIREMENTS.md` (same gap previously found for DVK-02/06/07/11) — completion
-is tracked via the ROADMAP.md phase-23 status line instead, updated via
+CMP-03/04/05/06/12/17/19 in `REQUIREMENTS.md` (same gap previously found for DVK-02/06/07/11) —
+completion is tracked via the ROADMAP.md phase-23 status line instead, updated via
 `gsd-tools roadmap update-plan-progress 23`. `gsd-tools state advance-plan` still errors
 ("Cannot parse Current Plan or Total Plans in Phase from STATE.md" — this file predates that
 command's expected conventions); `state update-progress` DOES work and was used to update the
-frontmatter above (46 total / 31 completed / 71%), but it also re-introduced the same malformed
-`` current_plan: `/ `` frontmatter line documented below — removed again during this plan's
-execution. `record-metric`/`record-session` remain no-ops on this STATE.md; position is tracked
-via the prose "Phase NN status" sections above, per this file's established pattern.
+frontmatter above (51 total / 37 completed / 73%). `record-metric`/`record-session` remain no-ops
+on this STATE.md; position is tracked via the prose "Phase NN status" sections above, per this
+file's established pattern.
 
 ---
-*Last updated: 2026-08-03 — phase 23 plan 01 executed (Wave 0): three contract test files
-(`api/tests/test_hardware_lib_kind.py`, `api/tests/test_toolkit_dispatch.py`,
-`/home/ido/pi-mirror/tests/test_compute_ops.py`) created for CMP-12/17/19/04, all failing/
-skipping/xfailing today for the right reason. Full backend suite green: 231 passed, 5 skipped,
-5 xfailed. No pi-mirror files other than the one new test file touched. Phase 25 plan 06 (last
-plan in that phase) remains outstanding, deferred while this Wave 0 ran. Next: phase 23 plan 02
-(kind-column migration + seed_compute.py), or phase 25 plan 06, per Next Actions above.*
+*Last updated: 2026-08-03 — phase 23 plan 04 executed (Wave 2): compute action type lands on the
+Pi runtime (CMP-03/04/05/06) — `fda_vocabulary.py`/`mics_task.py`/`tools/validate_fda.py` gain
+`type:"compute"`, single-sourced, with mandatory `output` enforced at build time in both the
+runtime and the CLI validator. One blocking bug found and fixed in-task (`_build_state_method`'s
+validate loop didn't recognize `compute`); one bug found and deliberately left unfixed per the
+plan's own instruction (`load_fda_from_json`'s variable-collision guard likely breaks
+`hot_update_fda` re-declaring the same variable — flagged as a predicted Phase-24 defect for plan
+23-10 to confirm). Agent-verified: `tests/test_fda_vocabulary.py` 23 passed; all `py_compile`
+clean. No pi-mirror git commits (user-owned repo). Phase 25 plan 06 (last plan in that phase)
+remains outstanding. Next: phase 23 plan 02 (kind-column migration + seed_compute.py), phase 23
+plan 05, or phase 25 plan 06, per Next Actions above.*

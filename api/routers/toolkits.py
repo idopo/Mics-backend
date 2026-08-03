@@ -799,7 +799,7 @@ def _validate_task_definition(
         if action_type == "flag" and ref not in current_flag_names:
             errors.append(f"{label}: flag '{ref}' not in toolkit flags")
 
-        if action_type == "hardware" and ref is not None:
+        if action_type in ("hardware", "compute") and ref is not None:
             if hw_module_map and ref not in hw_module_map:
                 errors.append(f"{label}: hardware module '{ref}' not in toolkit modules")
             elif ref in hw_module_map and method is not None:

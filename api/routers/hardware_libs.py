@@ -166,6 +166,7 @@ def _lib_dict(lib: HardwareLib, active_version: HardwareLibVersion | None = None
         "stable_version_id": lib.stable_version_id,
         "active_state": active_version.state if active_version else None,
         "source_code": active_version.source_code if active_version else None,
+        "declared_imports": (active_version.declared_imports or []) if active_version else [],
         "validation_error": active_version.validation_error if active_version else None,
         "created_at": lib.created_at,
         "updated_at": lib.updated_at,
@@ -365,7 +366,11 @@ def _flag_broken_task_defs(db, lib_id: int, removed_methods: dict[str, set[str]]
         refs = scan_fda_for_refs(fda)
 
         for ref_entry in refs:
-            if ref_entry["action_type"] != "hardware":
+            # "compute" widened in lockstep with fda_utils.scan_fda_for_refs (Plan 23-03 CMP-11)
+            # — a compute-op rename/removal must flag dependent task defs the same way a
+            # hardware-op one does; scan_fda_for_refs alone was not enough, this filter was the
+            # second half of the same gate.
+            if ref_entry["action_type"] not in ("hardware", "compute"):
                 continue
             ref_method = ref_entry.get("method")
             if not ref_method:

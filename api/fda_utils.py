@@ -6,10 +6,13 @@ def scan_fda_for_refs(fda_json: dict) -> list[dict]:
     """Recursively walk all states.entry_actions and trigger_assignments[*].actions,
     including type:if branches.
 
-    Returns list of {scope, state_name, action_type, ref, method} for hardware/flag/timer/method
-    actions. scope is "state" or "trigger"; state_name is the state name or trigger_name
-    respectively (kept as the label field so existing consumers work unchanged). ref and method
-    may be None depending on action type.
+    Returns list of {scope, state_name, action_type, ref, method, output} for
+    hardware/flag/timer/method/compute actions. scope is "state" or "trigger"; state_name is the
+    state name or trigger_name respectively (kept as the label field so existing consumers work
+    unchanged). ref and method may be None depending on action type. `output` (CMP-11) is the
+    declared output name/list or None — both the soft drift-badge path
+    (routers/toolkits.py::_validate_task_definition) and the hw-lib-update impact scan
+    (hardware_libs.py::_flag_broken_task_defs) need it to see compute output names.
     """
     results = []
     states = fda_json.get("states", {})
@@ -36,13 +39,14 @@ def _scan_actions(state_name: str, actions: list[dict], scope: str = "state") ->
         if not isinstance(action, dict):
             continue
         action_type = action.get("type")
-        if action_type in ("hardware", "flag", "timer", "method"):
+        if action_type in ("hardware", "flag", "timer", "method", "compute"):
             results.append({
                 "scope": scope,
                 "state_name": state_name,
                 "action_type": action_type,
                 "ref": action.get("ref") or action.get("action"),
                 "method": action.get("method"),
+                "output": action.get("output"),
             })
         elif action_type == "if":
             results.extend(_scan_actions(state_name, action.get("then") or [], scope=scope))

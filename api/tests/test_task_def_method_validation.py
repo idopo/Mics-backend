@@ -120,6 +120,28 @@ def _fda(ref="MPR121", method="detect_change"):
     }
 
 
+def _fda_compute(ref="COMPUTE", method="add", output="target"):
+    return {
+        "version": 2,
+        "initial_state": "idle",
+        "states": {"idle": {}},
+        "transitions": [],
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [{"type": "compute", "ref": ref, "method": method, "args": [], "output": output}],
+            }
+        ],
+    }
+
+
+COMPUTE_SRC = '''
+class ComputeOps:
+    def add(self, a, b):
+        return a + b
+'''
+
+
 # ---------------------------------------------------------------------------
 # The regression this change fixes
 # ---------------------------------------------------------------------------
@@ -261,3 +283,28 @@ def test_flag_drift_is_still_reported():
 def test_no_toolkit_context_returns_ok():
     assert _validate_task_definition(FakeDb(), _fda(), toolkit_id=None) == ("ok", None)
     assert _validate_task_definition(FakeDb(toolkit=None), _fda(), toolkit_id=100) == ("ok", None)
+
+
+# ---------------------------------------------------------------------------
+# CMP-11 (Plan 23-03): compute actions follow the same drift-badge rule as hardware
+# ---------------------------------------------------------------------------
+
+def test_compute_action_unknown_method_reported_same_as_hardware():
+    """A compute lib IS a hardware_modules row — module 'COMPUTE' -> class 'ComputeOps'."""
+    db = FakeDb(
+        toolkit=_toolkit(),
+        modules=[_module("COMPUTE", "ComputeOps")],
+        active_sources={9: COMPUTE_SRC},
+    )
+    status, message = _validate_task_definition(db, _fda_compute(method="mystery"), toolkit_id=100)
+    assert status == "broken"
+    assert message == "Trigger 'TOUCH_INT': COMPUTE.mystery not found in lib (class ComputeOps)"
+
+
+def test_compute_action_known_method_is_ok():
+    db = FakeDb(
+        toolkit=_toolkit(),
+        modules=[_module("COMPUTE", "ComputeOps")],
+        active_sources={9: COMPUTE_SRC},
+    )
+    assert _validate_task_definition(db, _fda_compute(method="add"), toolkit_id=100) == ("ok", None)

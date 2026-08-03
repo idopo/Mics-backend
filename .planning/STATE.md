@@ -30,7 +30,67 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
 **Progress:** [███████░░░] 72%
 
-### Phase 26 status (2026-08-03) — context captured, planning in progress
+### Phase 26 status (2026-08-03) — PLANNED, 13 plans, verification passed
+
+**Planning complete 2026-08-03.** Discuss → research → validation strategy → 13 plans in 4 waves →
+plan-checker **VERIFICATION PASSED**. Not executed. **Blocked on Phase 18**, which it consumes.
+
+**Waves:** W1 = 26-01/02 test contracts + **26-03 early USER-RUN OE REST-surface probe** ·
+W2 = 26-04 path resolver, 26-05 artifact table+API, 26-06/07 OE clients ·
+W3 = 26-08 force-stop registry, 26-09 preflight kinds, 26-10 seeded lib, 26-11 orchestrator, 26-12 React ·
+W4 = 26-13 consolidated rig checkpoint.
+
+**Defining constraint — the artifact layer is device-agnostic** (user directive: DeepLabCut and later
+modules need the same file/dir handling). Three shared modules with **zero** Open Ephys knowledge, OE
+as a thin adapter:
+
+| Device-neutral | OE adapter |
+|---|---|
+| `api/artifact_paths.py` — tokens, 422 on unknown token, many-to-many ambiguity rule | `api/openephys_client.py` + Pi twin |
+| `api/artifacts.py` + `run_artifacts` table + `api/routers/artifacts.py` — keyed `(run_id, device_name)`, `device_fields` JSONB, no OE column | `api/seed_libs/openephys.py` + `api/seed_openephys.py` |
+| `api/device_stop_registry.py` — "run ended uncleanly → stop" trigger | `api/openephys_stop.py` (~20 lines) |
+| `api/preflight_external_devices.py` — `external_device_unreachable` / `external_device_busy` / `artifact_path_collision`, each carrying a device name | one `DEVICE_PROBES` dict entry |
+
+Neutrality is enforced **mechanically, not by review**: `test_device_neutral_layer` runs the whole
+layer for a fabricated `FakeVideoRecorder` and greps the shared sources for `openephys` /
+`Record Node` / `37497` / `experiment_number` / `recording_number`.
+
+**Research findings that changed the design:**
+1. **No disk-space endpoint exists in the OE REST API** — the user's decision was conditional ("yes
+   *if* the API exposes it"), so the precheck is **dropped**, not substituted with SSH or a mount.
+   The underlying risk (session dies when the disk fills) is accepted and unmitigated.
+2. **OE does not return a ready-made path.** It imposes `Record Node <id>/experiment<N>/recording<M>/`
+   beneath whatever directory MICS sets, so the resolved path must be **read back** via a follow-up
+   `GET /api/recording`. Always read back; never predict.
+3. **The collision check has no OE-side path** — no directory-listing endpoint. It becomes a MICS-side
+   uniqueness check against the artifact table. **Accepted residual gap:** a folder created by hand in
+   the OE GUI is invisible to it.
+4. **Project/experiment resolution is ambiguous** — `Subject`↔`Project` and `Experiment`↔`Protocol`
+   are both many-to-many. Decided: `LIMIT 1` (matching `preflight_validate`'s existing shortcut) +
+   **warn on ambiguity** + surface the chosen pair in the API and session view. Rejected refusing to
+   start (would block legitimately multi-project subjects).
+5. **No new dependencies** — `requests` already pinned on the Pi, `httpx` already in `api/`. Unlike
+   Phase 18, no user-run pip step.
+
+**Rig-ordering decision:** 26-03 probes the real OE REST surface in Wave 1 and writes
+`26-REST-SURFACE.md`, because every OE field name in the research came from official docs and was
+never probed against this lab's instance. 26-06/07/10 depend on it; the generic layer (26-04/05) does
+not and runs in parallel.
+
+**Two planner judgement calls:** `external_device_busy` replaces an OE-specific "already recording"
+kind (it generalizes, so DLC gets it free); the per-run ephys opt-out rides
+`overrides.global.disabled_hardware: [names]` on the existing start-on-pilot transport — no schema
+change, device-neutral, and deliberately non-sticky so a forgotten toggle can't silently cost a
+recording.
+
+**Scope added beyond the roadmap:** Phase 26 closes the orphaned-recording gap Phase 18 could only
+document — reconciliation detecting an unclean run end now also commands the device to stop.
+
+**Cross-phase gap flagged, NOT resolved here:** Phase 18's `socket_plan` has no "no transport" mode,
+but EXTLINK-18 requires zero-signal control-only modules — exactly OE's control side. **Resolve during
+Phase 18 execution**; Phase 26 must not fork the transport design.
+
+### Phase 26 planning history (2026-08-03)
 
 `26-CONTEXT.md` written. Five areas discussed and locked:
 

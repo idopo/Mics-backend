@@ -517,6 +517,48 @@ class _EgressWorker:
      "one thread per device" is both the simplest reading of the locked decision and the easiest to
      reason about for ordering guarantees.
 
+## ⚠ ADDENDUM 2026-08-03 — `toolkit_dispatch.py` changed under this research
+
+Phase 23 plan 07 landed **while this research was being written** (commits `f957545`, `b80b81f`, both
+touching `api/routers/toolkit_dispatch.py` + `api/tests/test_view_key_preflight.py`). Four findings
+that override what is written elsewhere in this document:
+
+1. **A preflight issue-kind registry now exists — the lease MUST join it, not bypass it.**
+   `toolkit_dispatch.py:152` defines `PREFLIGHT_ISSUE_KINDS`, a `frozenset` that is now the single
+   source of truth for every issue kind the module can emit (`missing`, `incomplete_config`,
+   `class_mismatch`, `fda_ref_unresolved`, `view_key_unresolved`, `variable_never_written`,
+   `lib_version_unresolved`, `compute_lib_import_failed`). EXTLINK-17's `device_held` (or whatever
+   the plan names it) **must be added to this frozenset**. Anywhere earlier in this document that
+   describes appending issues ad-hoc is describing the pre-`b80b81f` shape.
+
+2. **There is now a "reserved issue kind" precedent to copy.**
+   `compute_lib_import_failed_issue(module_name, lib_filename, error) -> dict` is a shape-only helper
+   that reserves an issue's surfacing path *before* any producer exists to call it. If the lease
+   needs a kind whose producer lands later (e.g. a Pi-reported variant), follow this exact pattern
+   rather than inventing a second convention.
+
+3. **Adding an issue kind has a FRONTEND cost this phase's roadmap entry does not list.**
+   The frozenset's own comment: *"Mirrored (must stay in sync) by the `PreflightIssue` union in
+   `HardwareCheckModal.tsx` — plan 23-09's job to extend it."* So Phase 18 must also touch
+   `web_ui/react-src/src/components/HardwareCheckModal.tsx`. **Add it to the plan's
+   `files_modified`.** Note 23-09 has not executed yet, so at Phase 18 execution time that union may
+   or may not already carry 23's kinds — the plan must read the file rather than assume its contents.
+
+4. **Line numbers elsewhere in this document are stale; test-file guidance is corrected.**
+   `preflight_validate` is now at `toolkit_dispatch.py:177` (was ~145). Earlier references to
+   "lines 246-336" predate ~87 inserted lines — **target symbols, not line numbers**. Also: the
+   Validation Architecture below routes lease tests to `api/tests/test_toolkit_dispatch.py`, but the
+   preflight *issue-kind* tests actually live in **`api/tests/test_view_key_preflight.py`** (39 KB,
+   the file 23-07 extended twice). Put the lease's preflight-issue tests where the sibling issue
+   kinds are tested; `test_toolkit_dispatch.py` (12 KB) covers dispatch-spec shape, not preflight
+   issues.
+
+**Sequencing note:** this is a design dependency, not a merge conflict — the execution order is
+`24 → 25 → 23 → review → 18`, so all of Phase 23 lands before Phase 18 executes. Plans must target
+the registry and the helper pattern, which are stable, rather than today's file layout.
+
+---
+
 ## Validation Architecture
 
 ### Test Framework

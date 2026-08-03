@@ -30,6 +30,40 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
 **Progress:** [███████░░░] 72%
 
+### Phase 26 status (2026-08-03) — context captured, planning in progress
+
+`26-CONTEXT.md` written. Five areas discussed and locked:
+
+1. **Folder naming** — **project/experiment hierarchy** (user's choice over mirroring the ES run
+   key). Template = lib default + per-pilot override. Collision → **refuse to start**, never suffix
+   or let OE auto-increment. Researcher-editable with **token validation** at save.
+   ⚠ **Coupled decision:** the hierarchy embeds mutable metadata in the path, so it is only safe
+   because MICS persists the **resolved** path (below). Do not implement one without the other.
+2. **Recording record** — resolved absolute path + OE start/stop timestamps + host, in a **small
+   dedicated table keyed `(run_id, device_name)`** (chosen so DeepLabCut can reuse it; rejected
+   columns-on-`session_runs` and the `overrides` JSON). Project/experiment names **snapshotted**.
+   **Incomplete-coverage flag** when OE wasn't recording for the run's full duration. Surfaced in
+   the React session/run view, not just the API.
+3. **Markers** — MICS always brackets with run-start/stop; everything else author-placed. Auto trial
+   markers **rejected** (would couple to `INC_TRIAL_COUNTER`, which tasks must send explicitly, so a
+   task omitting it would look like an ephys bug). Free text + same-toolkit autocomplete. Payload
+   carries `label|run|trial`. **Every send dual-logged to ES** — that diff against what landed in the
+   recording *is* Phase 28's measurement, making the validation phase nearly free.
+4. **Bad state** — already-RECORDING → **fail the gate, never take over** (the lease cannot see
+   manual GUI use, so it may be a colleague's session). Disk precheck **only if the OE REST API
+   exposes free space** — research must confirm, don't invent it. Mid-run stop → log, flip `alive`,
+   surface prominently.
+5. **Delivery + opt-out** — `OpenEphys` ships as a **seeded first-party lib**
+   (`api/seed_libs/openephys.py`, following Phase 23's `compute_ops.py` pattern) so ephys works after
+   a deploy with no manual upload. A **per-run override** lets a researcher run without ephys without
+   editing the toolkit.
+
+**Scope added beyond the roadmap's success criteria:** Phase 26 now **closes the orphaned-recording
+gap** Phase 18 could only document — when backend reconciliation detects an unclean run end, it also
+issues the REST call returning OE to IDLE, not just the lease release. This puts device-specific REST
+logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
+`toolkit_dispatch.py` are both near their size limits).
+
 ### Phase 18 status (2026-08-03) — RE-PLANNED, 12 plans ready to execute
 
 **Planning complete 2026-08-03.** Research → validation strategy → 12 plans in 5 waves →

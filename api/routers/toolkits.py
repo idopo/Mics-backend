@@ -16,6 +16,7 @@ from detector_keys import module_detector_channels
 from fda_utils import ref_label, scan_fda_for_refs
 from fda_validation import reject_if_hard_errors
 from hw_introspect import class_names, resolve_class_methods, toolkit_hw_capabilities
+from compute_provisioning import attach_compute_defaults
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
@@ -385,6 +386,7 @@ def create_backend_toolkit(payload: BackendToolkitCreate, _: dict = Depends(veri
             "lss": payload.locked_state_source,
             "id": toolkit.id,
         })
+        attach_compute_defaults(db, toolkit.id)
         db.commit()
         db.refresh(toolkit)
 

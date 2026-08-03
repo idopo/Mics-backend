@@ -72,6 +72,7 @@ from routers.locked_states import router as locked_states_router
 from routers.toolkit_dispatch import router as toolkit_dispatch_router
 from routers.task_def_inspect import router as task_def_inspect_router
 from seed_compute import seed_compute_ops_lib
+from compute_provisioning import attach_compute_defaults
 app.include_router(toolkits_router, prefix="/api")
 app.include_router(hardware_libs_router, prefix="/api")
 app.include_router(hardware_modules_router)
@@ -1204,6 +1205,10 @@ def upsert_pilot_toolkit(
             "UPDATE task_definitions SET toolkit_name = :name "
             "WHERE task_name = :name AND toolkit_name IS NULL"
         ), {"name": name})
+
+        # Every toolkit ships with the compute lib, including Pi-originated ones — a
+        # HANDSHAKE toolkit is otherwise the one kind a researcher can never add it to.
+        attach_compute_defaults(db, toolkit.id)
 
         db.commit()
         return {"status": "ok", "toolkit_id": toolkit.id}

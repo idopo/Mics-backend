@@ -107,6 +107,7 @@ def test_default_kind_for_preexisting_lib_row_is_hardware():
 # ---------------------------------------------------------------------------
 
 def test_seed_compute_ops_lib_idempotent_created_flag_and_single_row():
+    import pytest
     import seed_compute
     from db import engine
     from sqlalchemy import text
@@ -117,6 +118,20 @@ def test_seed_compute_ops_lib_idempotent_created_flag_and_single_row():
         lib_id = conn.execute(text(
             "SELECT id FROM hardware_libs WHERE filename = 'compute_ops.py'"
         )).scalar()
+        # Every toolkit now links the compute lib, so on a dev DB this teardown would delete
+        # a lib/module real toolkits point at -- re-seeding mints NEW ids and silently leaves
+        # their toolkit_hardware_libs + hardware_module_ids dangling. The FK on
+        # default_version_id catches it today; that is luck, not protection. Only run the
+        # destructive path on a DB where nothing depends on the lib (fresh DB / CI).
+        if lib_id:
+            referencing = conn.execute(text(
+                "SELECT COUNT(*) FROM toolkit_hardware_libs WHERE hardware_lib_id = :id"
+            ), {"id": lib_id}).scalar()
+            if referencing:
+                pytest.skip(
+                    f"compute lib {lib_id} is linked by {referencing} toolkit(s) — refusing to "
+                    "delete real wiring; run on a fresh DB to prove first-call-creates"
+                )
         if lib_id:
             conn.execute(text("DELETE FROM hardware_modules WHERE hardware_lib_id = :id"), {"id": lib_id})
             conn.execute(text(
@@ -421,3 +436,89 @@ def test_provision_compute_configs_never_provisions_hardware_kind_module():
     created = provision_compute_configs(db, [99])
     assert created == []
     assert inserted == []
+
+
+# ---------------------------------------------------------------------------
+# Every toolkit ships with the compute lib (user decision, 2026-08-03): linking is
+# not a per-toolkit opt-in. `attach_compute_defaults` is the single seam both
+# creation sites call -- POST /toolkits (backend-authored) and the HANDSHAKE upsert.
+# Reachability needs BOTH halves (compute_provisioning docstring): the
+# toolkit_hardware_libs row (version pinning + LOAD_HARDWARE_LIBS) AND the module id
+# in hardware_module_ids (Pi reachability as self.hardware["Modules"][ref]).
+# ---------------------------------------------------------------------------
+
+def _attach_db(*, lib_rows=None, module_rows=None, existing_links=None, hmids=None, calls=None):
+    from unittest.mock import MagicMock
+    from types import SimpleNamespace
+
+    lib_rows = lib_rows or []
+    module_rows = module_rows or []
+    existing_links = existing_links or []
+    calls = calls if calls is not None else []
+    state = {"hmids": hmids if hmids is not None else []}
+
+    def _execute(query, params=None):
+        sql = " ".join(str(query).split())
+        if sql.startswith("SELECT id FROM hardware_libs WHERE kind = 'compute'"):
+            return _Rows(lib_rows)
+        if sql.startswith("SELECT hm.id FROM hardware_modules hm"):
+            return _Rows(module_rows)
+        if sql.startswith("SELECT hardware_lib_id FROM toolkit_hardware_libs"):
+            return _Rows(existing_links)
+        if sql.startswith("SELECT hardware_module_ids FROM task_toolkits"):
+            return _Rows([SimpleNamespace(hardware_module_ids=state["hmids"])])
+        if sql.startswith("INSERT INTO toolkit_hardware_libs"):
+            calls.append(("link", params["toolkit_id"], params["hardware_lib_id"]))
+            return _Rows([])
+        if sql.startswith("UPDATE task_toolkits SET hardware_module_ids"):
+            calls.append(("hmids", params["id"], params["hmids"]))
+            return _Rows([])
+        return _Rows([])
+
+    db = MagicMock()
+    db.execute.side_effect = _execute
+    return db, calls
+
+
+def test_attach_compute_defaults_links_lib_and_adds_module_id():
+    from compute_provisioning import attach_compute_defaults
+    from types import SimpleNamespace
+    import json
+
+    db, calls = _attach_db(
+        lib_rows=[SimpleNamespace(id=45)],
+        module_rows=[SimpleNamespace(id=24)],
+        hmids=[1, 5],
+    )
+    attach_compute_defaults(db, toolkit_id=100)
+
+    assert ("link", 100, 45) in calls
+    hmids_call = [c for c in calls if c[0] == "hmids"]
+    assert hmids_call, "compute module id must be added to hardware_module_ids"
+    assert sorted(json.loads(hmids_call[0][2])) == [1, 5, 24]
+
+
+def test_attach_compute_defaults_is_idempotent():
+    """Re-running must not duplicate the link row or re-add the module id."""
+    from compute_provisioning import attach_compute_defaults
+    from types import SimpleNamespace
+
+    db, calls = _attach_db(
+        lib_rows=[SimpleNamespace(id=45)],
+        module_rows=[SimpleNamespace(id=24)],
+        existing_links=[SimpleNamespace(hardware_lib_id=45)],
+        hmids=[1, 5, 24],
+    )
+    attach_compute_defaults(db, toolkit_id=100)
+
+    assert not [c for c in calls if c[0] == "link"]
+    assert not [c for c in calls if c[0] == "hmids"]
+
+
+def test_attach_compute_defaults_noop_without_compute_lib():
+    """A fresh DB that has not seeded Compute Ops yet must not crash toolkit creation."""
+    from compute_provisioning import attach_compute_defaults
+
+    db, calls = _attach_db(lib_rows=[], module_rows=[])
+    attach_compute_defaults(db, toolkit_id=100)
+    assert calls == []

@@ -35,6 +35,76 @@ def compute_module_names(db, module_ids: list[int]) -> dict[str, str]:
     return {row.name: row.class_name for row in rows}
 
 
+def attach_compute_defaults(db, toolkit_id: int) -> dict:
+    """Give a toolkit the compute lib every toolkit is expected to have.
+
+    Compute is not a per-toolkit opt-in (user decision, 2026-08-03) -- a researcher should
+    never have to discover that `random_int` exists but is not wired up. Both halves are
+    required and they are governed by different tables (see this module's docstring):
+    the `toolkit_hardware_libs` row drives version pinning + LOAD_HARDWARE_LIBS, and the
+    module id in `hardware_module_ids` is what makes the module reachable on the Pi.
+
+    Idempotent, and a silent no-op on a DB where the compute lib has not been seeded yet --
+    toolkit creation must never fail because of this. Commits nothing; caller owns the txn.
+    """
+    lib_rows = db.execute(
+        sa_text("SELECT id FROM hardware_libs WHERE kind = 'compute'")
+    ).fetchall()
+    if not lib_rows:
+        return {"linked": [], "modules_added": []}
+    lib_ids = [row.id for row in lib_rows]
+
+    module_rows = db.execute(
+        sa_text(
+            "SELECT hm.id FROM hardware_modules hm "
+            "JOIN hardware_libs hl ON hl.id = hm.hardware_lib_id "
+            "WHERE hl.kind = 'compute'"
+        )
+    ).fetchall()
+    module_ids = [row.id for row in module_rows]
+
+    already_linked = {
+        row.hardware_lib_id
+        for row in db.execute(
+            sa_text("SELECT hardware_lib_id FROM toolkit_hardware_libs WHERE toolkit_id = :tid"),
+            {"tid": toolkit_id},
+        ).fetchall()
+    }
+
+    linked: list[int] = []
+    for lib_id in lib_ids:
+        if lib_id in already_linked:
+            continue
+        db.execute(
+            sa_text(
+                "INSERT INTO toolkit_hardware_libs (toolkit_id, hardware_lib_id, default_version_id) "
+                "SELECT :toolkit_id, :hardware_lib_id, "
+                "COALESCE(stable_version_id, active_version_id) FROM hardware_libs WHERE id = :hardware_lib_id"
+            ),
+            {"toolkit_id": toolkit_id, "hardware_lib_id": lib_id},
+        )
+        linked.append(lib_id)
+
+    modules_added: list[int] = []
+    if module_ids:
+        row = db.execute(
+            sa_text("SELECT hardware_module_ids FROM task_toolkits WHERE id = :id"),
+            {"id": toolkit_id},
+        ).fetchall()
+        current = list((row[0].hardware_module_ids if row else None) or [])
+        missing = [m for m in module_ids if m not in current]
+        if missing:
+            db.execute(
+                sa_text(
+                    "UPDATE task_toolkits SET hardware_module_ids = CAST(:hmids AS jsonb) WHERE id = :id"
+                ),
+                {"hmids": json.dumps(current + missing), "id": toolkit_id},
+            )
+            modules_added = missing
+
+    return {"linked": linked, "modules_added": modules_added}
+
+
 def provision_compute_configs(db, module_ids, pilot_ids=None) -> list[tuple[int, str]]:
     """Create the trivial {"class_name": ...} pilot_hardware_config row a compute module needs
     before init_hardware() will instantiate it. Idempotent -- never touches an existing row,

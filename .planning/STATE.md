@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T10:00:05.457Z"
+last_updated: "2026-08-03T10:11:05.937Z"
 progress:
   total_phases: 22
   completed_phases: 6
   total_plans: 44
-  completed_plans: 35
-  percent: 82
+  completed_plans: 36
+  percent: 84
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **5/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plan 05)
+**Phase:** 23 — Compute Primitives + Variables — **6/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [████████░░] 82%
+**Progress:** [████████░░] 84%
 
 ### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
 
@@ -117,6 +117,23 @@ wins re-invocation. Full backend suite green throughout: **231 passed, 5 skipped
 (verified before AND after `docker compose up --build api`, since that service has no bind mount
 — new test files are invisible to a running, un-rebuilt container). No pi-mirror files other
 than the one new test file touched; no git commands run there. See `23-01-SUMMARY.md`.
+
+**Plan 06 executed (2026-08-03):** CMP-12/18 delivered — the kind-aware Hardware Libraries GUI.
+`types/index.ts` gained `LibKind`, `HardwareLib.kind`, `HardwareLibVersion.declared_imports`,
+`HardwareModule.lib_kind` (the last comment-pinned to plan 23-08's compute op picker);
+`uploadHardwareLib` sends `kind`/`declared_imports` FormData fields, defaulting to
+`'hardware'`/`[]`. `HardwareLibs.tsx` gained one `All (n) / Hardware (n) / Compute (n)` filter
+chip row (client-side filter over the already-fetched list, no new endpoint) plus a `meta-pill`
+"compute" badge on compute rows only, and the upload form gained a `kind` select plus a
+comma-separated `declared_imports` input shown only for `compute` with stdlib-only helper text.
+`HardwareLibDetail.tsx` shows the `kind` pill and the selected version's `declared_imports`,
+read-only. Confirmed by reading `api/client.ts` that `apiFetch`'s existing `formatDetail` already
+renders a plain-string 422 `detail` verbatim — no change needed there. `tsc --noEmit` and
+`npm run build` both clean (`dist/HardwareLibs-DPUByP4B.js`, `dist/HardwareLibDetail-CKGnbh6y.js`);
+`git diff --stat` on `App.tsx`/`Layout.tsx` both empty — no new page, no new route, no
+`NAV_LINKS` change. `HardwareLibs.tsx` 172 lines (budget 200). No deviations. Manual click-through
+deferred to plan 23-10's checkpoint, per this plan's own `<verification>` note. See
+`23-06-SUMMARY.md`.
 
 **Plan 05 executed (2026-08-03):** CMP-17/19 delivered — the single lib-version resolution
 chain. New `api/lib_version_resolution.py::resolve_lib_version_id`/`resolve_lib_versions`
@@ -633,10 +650,11 @@ Note: Phase 23 was re-planned 2026-08-03 as 10 plans in 6 waves against a "compu
 reframe (see the `docs(23):` commits immediately before `test(23-01):` in git log) — the prior
 "plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests), Plan 03
 (backend compute validation + variable-scan), Plan 04 (Wave 2, Pi-runtime compute action), and
-Plan 05 (Wave 3, single lib-version resolution chain, CMP-17/19) are done; see "Phase 23 status"
-above and `23-01-SUMMARY.md`/`23-03-SUMMARY.md`/`23-04-SUMMARY.md`/`23-05-SUMMARY.md`. 5/10 plans
-done. Remaining outstanding in phase 23: plans 06-10 (later waves) and Phase 25 plan 06 (separate
-phase, still not executed).
+Plan 05 (Wave 3, single lib-version resolution chain, CMP-17/19), and Plan 06 (Wave 3, kind-aware
+Hardware Libraries GUI, CMP-12/18) are done; see "Phase 23 status" above and
+`23-01-SUMMARY.md`/`23-03-SUMMARY.md`/`23-04-SUMMARY.md`/`23-05-SUMMARY.md`/`23-06-SUMMARY.md`.
+6/10 plans done. Remaining outstanding in phase 23: plans 07-10 (later waves) and Phase 25 plan 06
+(separate phase, still not executed).
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
 CMP-03/04/05/06/10/11/12/15/17/19 in `REQUIREMENTS.md` (same gap previously found for
@@ -650,19 +668,16 @@ on this STATE.md; position is tracked via the prose "Phase NN status" sections a
 file's established pattern.
 
 ---
-*Last updated: 2026-08-03 — phase 23 plan 05 executed (Wave 3): single lib-version resolution
-chain (CMP-17/19). New `api/lib_version_resolution.py::resolve_lib_version_id`/
-`resolve_lib_versions` (pin -> toolkit_default -> stable -> active[beta/stable only] -> none)
-replaces three independently-wrong chains in `get_dispatch_spec`, `toolkit_hw_capabilities`, and
-the orchestrator's `_send_hardware_libs_if_needed`; `GET /toolkits/{id}/hardware-libs` gains
-`?task_def_id=` + `resolved_*` fields; orchestrator now sends one `LOAD_HARDWARE_LIBS` per lib
-with `test_import: True`, activating `HARDWARE_LIB_TEST_RESULT` (dead since Phase 09) with zero
-Pi-side change. Deviation (per plan's own instruction): added a fourth "active" rung beyond
-CONTEXT's literal 3-rung chain — required so the rig's existing toolkits (none promoted to
-stable) keep dispatching; verified live that MPR121/TOUCH_INT still populate `hardware.Modules`.
-Two Rule-3 test fixes for pre-existing tests whose assumptions predated this plan (query-shape
-in `test_view_key_preflight.py`, stale `kind`/`declared_imports` fixture fields in
-`test_toolkit_dispatch.py`). Full backend suite green: 314 passed. No pi-mirror file touched
-(verified byte-identical via diff). See `23-05-SUMMARY.md`. Phase 23 now 5/10 plans done. Phase
-25 plan 06 (last plan in that phase) remains outstanding. Next: phase 23 plans 06-10 (later
-waves) or phase 25 plan 06, per Next Actions above.*
+*Last updated: 2026-08-03 — phase 23 plan 06 executed (Wave 3): kind-aware Hardware Libraries GUI
+(CMP-12/18). `types/index.ts` gained `LibKind`/`HardwareLib.kind`/
+`HardwareLibVersion.declared_imports`/`HardwareModule.lib_kind`; `uploadHardwareLib` sends
+`kind`/`declared_imports`. `HardwareLibs.tsx` gained an All/Hardware/Compute filter chip row with
+counts (client-side filter, no new endpoint) and a kind-aware upload form (compute-only
+`declared_imports` input, stdlib-only helper text); `HardwareLibDetail.tsx` shows `kind` +
+`declared_imports` read-only. `apiFetch` already surfaced 422 `detail` verbatim — confirmed by
+reading `api/client.ts`, no change needed. `tsc --noEmit` and `npm run build` both clean
+(`dist/HardwareLibs-DPUByP4B.js`, `dist/HardwareLibDetail-CKGnbh6y.js`); `App.tsx`/`Layout.tsx`
+diffs both empty — no new page, no new route, no `NAV_LINKS` change. No deviations. See
+`23-06-SUMMARY.md`. Phase 23 now 6/10 plans done. Phase 25 plan 06 (last plan in that phase)
+remains outstanding. Next: phase 23 plans 07-10 (later waves) or phase 25 plan 06, per Next
+Actions above.*

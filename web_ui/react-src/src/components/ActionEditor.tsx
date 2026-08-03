@@ -4,6 +4,7 @@ import ArgInput from './ArgInput'
 import IfActionEditor from './IfActionEditor'
 import HardwareActionFields from './HardwareActionFields'
 import ViewActionFields from './ViewActionFields'
+import ComputeActionFields from './ComputeActionFields'
 import OutputCapture from './OutputCapture'
 
 // ── Action type metadata ────────────────────────────────────────────────────
@@ -16,6 +17,7 @@ const TYPE_COLORS: Record<string, string> = {
   if:       '#22c55e',
   special:  '#94a3b8',
   view:     '#ec4899',
+  compute:  '#8b5cf6',   // distinct from method's #a78bfa
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -26,6 +28,7 @@ const TYPE_LABELS: Record<string, string> = {
   if:       'IF',
   special:  'SPECIAL',
   view:     'VIEW',
+  compute:  'COMPUTE',
 }
 
 // ── Tracker method tables ────────────────────────────────────────────────────
@@ -68,6 +71,11 @@ function defaultArgForTrackerType(trackerType: string): unknown {
 /** Shared with HardwareActionFields — exported to avoid duplicating the predicate. */
 export function isTimerModule(mod: HardwareModule): boolean {
   return mod.lib_filename === 'timer.py'
+}
+
+/** Shared with ComputeActionFields — exported to avoid duplicating the predicate. */
+export function isComputeModule(mod: HardwareModule): boolean {
+  return mod.lib_kind === 'compute'
 }
 
 // ── Style helpers ────────────────────────────────────────────────────────────
@@ -132,12 +140,15 @@ interface Props {
   detectorChannels?: DetectorChannelGroup[]
   /** True only when this editor is inside a trigger's action list. */
   allowTriggerContext?: boolean
+  /** Declares a new name into FdaJson.variables — threaded from TaskEditor for compute's
+   *  auto-declare-on-type behaviour (CMP-13). */
+  onDeclareVariable?: (name: string) => void
   onChange: (updated: FdaAction) => void
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, allowTriggerContext, onChange }: Props) {
+export default function ActionEditor({ action, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, allowTriggerContext, onDeclareVariable, onChange }: Props) {
   const isBackendAuthored = toolkit?.is_backend_authored ?? false
 
   const flagKeys = Object.keys(toolkit?.flags ?? {})
@@ -147,6 +158,7 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
   const callableMethods = toolkit?.callable_methods ?? []
 
   const toolkitModules = hwModules.filter(m => toolkit?.hardware_module_ids?.includes(m.id))
+  const firstComputeModule = toolkitModules.filter(isComputeModule)[0]
 
   const update = (patch: Partial<FdaAction>) => onChange({ ...action, ...patch })
 
@@ -185,6 +197,10 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
       // AWAY from view naturally drops key_template/value/kwargs the same way every other
       // branch here drops the previous type's ref/method/args.
       onChange({ type: 'view', key_template: '', value: null, kwargs: {} })
+    } else if (t === 'compute') {
+      // A brand-new action object (no spread of the previous type's fields) — same
+      // precedent as the view branch above.
+      onChange({ type: 'compute', ref: firstComputeModule?.name ?? '', method: '', args: [], output: '' })
     } else {
       onChange({ type: t as FdaAction['type'], ref: '', args: [] })
     }
@@ -243,6 +259,11 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           <option value="hardware">hardware</option>
           <option value="trial">trial counter</option>
           <option value="flag">flag</option>
+          {/* Compute is out of scope for trigger assignments this phase (deferred, 2026-08-03) —
+              hidden there so an already-set value stays readable but the option can't be picked. */}
+          {(!allowTriggerContext || action.type === 'compute') && (
+            <option value="compute">compute</option>
+          )}
           <option value="view">view</option>
           <option value="method">method</option>
           <option value="if">if</option>
@@ -360,6 +381,20 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           variableNames={variableNames}
           detectorChannels={detectorChannels}
           allowTriggerContext={allowTriggerContext}
+          onChange={update}
+        />
+      )}
+
+      {/* ── Compute action ───────────────────────────────────────────────── */}
+      {action.type === 'compute' && (
+        <ComputeActionFields
+          action={action}
+          toolkit={toolkit}
+          hwModules={hwModules}
+          taskDefId={taskDefId}
+          versionStamp={versionStamp}
+          variableNames={variableNames}
+          onDeclareVariable={onDeclareVariable}
           onChange={update}
         />
       )}

@@ -12,6 +12,7 @@ const TYPE_COLORS: Record<string, string> = {
   if: '#22c55e',
   special: '#94a3b8',
   view: '#ec4899',
+  compute: '#8b5cf6',
 }
 
 export function typeChipStyle(type: string): React.CSSProperties {
@@ -39,6 +40,7 @@ export function actionSummary(action: FdaAction): string {
   if (action.type === 'if') return 'if (…)'
   if (action.type === 'special') return `special: ${action.action ?? ''}`
   if (action.type === 'view') return `view: ${action.key_template ?? ''}`
+  if (action.type === 'compute') return `${action.output ?? '?'} = ${action.ref ?? ''}.${action.method ?? ''}(…)`
   return action.type
 }
 

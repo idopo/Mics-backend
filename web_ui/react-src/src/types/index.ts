@@ -233,14 +233,16 @@ export interface FdaCondition {
 }
 
 export interface FdaAction {
-  type: 'hardware' | 'flag' | 'timer' | 'special' | 'method' | 'if' | 'view'
+  type: 'hardware' | 'flag' | 'timer' | 'special' | 'method' | 'if' | 'view' | 'compute'
   ref?: string
   method?: string
   args?: unknown[]
   action?: string
   duration?: unknown
   /** Capture the call's return value: string = whole value, string[] = positional tuple unpack.
-   *  Targets must be declared in FdaJson.variables (or be an existing toolkit flag). */
+   *  Targets must be declared in FdaJson.variables (or be an existing toolkit flag).
+   *  MANDATORY for `type: 'compute'` — a compute action that writes nothing is meaningless.
+   *  Optional for every other action type. */
   output?: string | string[]
   /** view action: target key in view.view; may contain {name} tokens resolved from variables/flags. */
   key_template?: string

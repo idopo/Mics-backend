@@ -1,4 +1,5 @@
 import type { ToolkitRead } from '../types'
+import NumericInput from './NumericInput'
 
 type ArgMode = 'literal' | 'param' | 'flag' | 'trigger'
 
@@ -121,11 +122,9 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
       </div>
 
       {mode === 'literal' && inputKind === 'number' && (
-        <input
-          type="number"
-          step="any"
+        <NumericInput
           value={typeof value === 'number' ? value : 0}
-          onChange={e => onChange(Number(e.target.value))}
+          onChange={onChange}
           style={{ width: '100%' }}
         />
       )}

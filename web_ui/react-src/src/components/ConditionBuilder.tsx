@@ -1,5 +1,6 @@
 import type { FdaCondition, FdaOperand, ToolkitRead, DetectorChannelGroup } from '../types'
 import { getParamKeys } from './ArgInput'
+import NumericInput from './NumericInput'
 import {
   buildViewOptions,
   isKnownViewOption,
@@ -172,7 +173,10 @@ function OperandEditor({ operand, toolkit, hwModuleNames, variableNames, detecto
       ))}
 
       {type === 'literal' && (
-        <input type="text" value={key} onChange={e => setKey(e.target.value)} placeholder="0" style={ss} />
+        // NumericInput, not a raw text input: `key` round-trips through Number() in
+        // buildOperand and back through String() in getOperandKey, so a half-typed "0."
+        // collapsed to "0" and a float literal could never be entered.
+        <NumericInput value={key} onChange={(v: number | string) => setKey(String(v))} allowText placeholder="0" style={ss} />
       )}
     </div>
   )

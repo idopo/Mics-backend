@@ -1,5 +1,7 @@
 import type { ToolkitRead } from '../types'
 import NumericInput from './NumericInput'
+import StructuredInput from './StructuredInput'
+import { isStructuredAnnotation } from './computeArgs.mts'
 
 type ArgMode = 'literal' | 'param' | 'flag' | 'trigger'
 
@@ -11,10 +13,13 @@ export function getParamKeys(toolkit: ToolkitRead | null | undefined): string[] 
   return Object.keys(schema)
 }
 
-type LiteralInputKind = 'number' | 'bool' | 'text'
+type LiteralInputKind = 'number' | 'bool' | 'text' | 'structured'
 
 function annotationToInputKind(ann: string | null | undefined): LiteralInputKind {
   if (!ann) return 'text'
+  // list/dict get a parsing editor — a plain text input silently stored '["a","b"]' as a
+  // string and the Pi ran random.choice() over its characters.
+  if (isStructuredAnnotation(ann)) return 'structured'
   const base = ann.replace(/Optional\[|\]/g, '').trim()
   if (base === 'bool') return 'bool'
   if (base === 'int' || base === 'float') return 'number'
@@ -80,6 +85,7 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
     if (next === 'literal') {
       if (inputKind === 'bool') onChange(false)
       else if (inputKind === 'number') onChange(0)
+      else if (inputKind === 'structured') onChange([])   // never seed a list arg with a string
       else onChange('')
     } else if (next === 'param') {
       onChange({ param: paramKeys[0] ?? '' })
@@ -127,6 +133,10 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
           onChange={onChange}
           style={{ width: '100%' }}
         />
+      )}
+
+      {mode === 'literal' && inputKind === 'structured' && (
+        <StructuredInput value={value} onChange={onChange} style={{ width: '100%' }} />
       )}
 
       {mode === 'literal' && inputKind === 'bool' && (

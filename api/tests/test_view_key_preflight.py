@@ -618,27 +618,61 @@ def test_build_toolkit_row_detector_channels_is_a_list_even_with_default_caps():
     assert row["detector_channels"] == []
 
 
+class _FakeRows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeOne:
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _FakeIntrospectDb:
+    """SQL-text-dispatching stub for toolkit_hw_capabilities' two-step query (Plan 23-05):
+    module rows, then the resolver's own pin/toolkit_default/stable/active queries, then the
+    final batch source-code fetch."""
+
+    def __init__(self, module_rows, lib_row=None, active_state=None, source_by_id=None):
+        self.module_rows = module_rows
+        self.lib_row = lib_row
+        self.active_state = active_state
+        self.source_by_id = source_by_id or {}
+
+    def execute(self, query, params=None):
+        sql = " ".join(str(query).split())
+        params = params or {}
+        if sql.startswith("SELECT hm.id, hm.name, hm.class_name, hm.hardware_lib_id"):
+            return _FakeRows(self.module_rows)
+        if sql.startswith("SELECT default_version_id FROM toolkit_hardware_libs"):
+            return _FakeOne(None)
+        if sql.startswith("SELECT stable_version_id, active_version_id FROM hardware_libs"):
+            return _FakeOne(self.lib_row)
+        if sql.startswith("SELECT state FROM hardware_lib_versions"):
+            return _FakeOne(SimpleNamespace(state=self.active_state) if self.active_state else None)
+        if sql.startswith("SELECT id, source_code FROM hardware_lib_versions"):
+            ids = params.get("ids", [])
+            return _FakeRows([
+                SimpleNamespace(id=i, source_code=self.source_by_id[i])
+                for i in ids if i in self.source_by_id
+            ])
+        return _FakeRows([])
+
+
 def test_toolkit_hw_capabilities_module_names_survives_row_with_no_source_code():
     from hw_introspect import toolkit_hw_capabilities
 
-    class _FakeRows:
-        def __init__(self, rows):
-            self._rows = rows
-
-        def fetchall(self):
-            return self._rows
-
-    class _FakeDb:
-        def __init__(self, rows):
-            self._rows = rows
-
-        def execute(self, *_a, **_kw):
-            return _FakeRows(self._rows)
-
-    rows = [SimpleNamespace(id=1, name="TOUCH_INT", class_name="Digital_In", source_code=None)]
-    caps = toolkit_hw_capabilities(_FakeDb(rows), [1])
+    rows = [SimpleNamespace(id=1, name="TOUCH_INT", class_name="Digital_In", hardware_lib_id=99)]
+    # No lib_row -> resolver returns (None, "none") -> module is unresolvable.
+    caps = toolkit_hw_capabilities(_FakeIntrospectDb(rows), [1])
     assert caps["module_names"] == ["TOUCH_INT"]
-    assert caps["module_methods"] == {}  # source_code=None -> skipped by the per-row guard
+    assert caps["module_methods"] == {}  # unresolvable version -> skipped by the per-row guard
 
 
 def test_toolkit_hw_capabilities_module_names_present_on_both_returns():
@@ -648,21 +682,12 @@ def test_toolkit_hw_capabilities_module_names_present_on_both_returns():
     assert "module_names" in empty_path
     assert empty_path["module_names"] == []
 
-    class _FakeRows:
-        def __init__(self, rows):
-            self._rows = rows
-
-        def fetchall(self):
-            return self._rows
-
-    class _FakeDb:
-        def __init__(self, rows):
-            self._rows = rows
-
-        def execute(self, *_a, **_kw):
-            return _FakeRows(self._rows)
-
-    rows = [SimpleNamespace(id=7, name="MPR121", class_name="Touch_Detector", source_code="class Touch_Detector:\n    pass\n")]
-    non_empty_path = toolkit_hw_capabilities(_FakeDb(rows), [7])
+    rows = [SimpleNamespace(id=7, name="MPR121", class_name="Touch_Detector", hardware_lib_id=10)]
+    lib_row = SimpleNamespace(stable_version_id=None, active_version_id=100)
+    db = _FakeIntrospectDb(
+        rows, lib_row=lib_row, active_state="beta",
+        source_by_id={100: "class Touch_Detector:\n    pass\n"},
+    )
+    non_empty_path = toolkit_hw_capabilities(db, [7])
     assert "module_names" in non_empty_path
     assert non_empty_path["module_names"] == ["MPR121"]

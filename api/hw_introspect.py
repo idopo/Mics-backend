@@ -6,11 +6,15 @@ reports that honestly via a `closed` flag instead of guessing at an unresolvable
 
 Stdlib `ast` only — no FastAPI/DB imports. `toolkit_hw_capabilities` takes a caller-owned `db`
 session (same pattern as fda_validation._module_names) so this module never opens a connection.
+`lib_version_resolution` is the one exception: same no-connection posture (caller-owned `db`,
+`sqlalchemy.text` only), used here so version resolution (CMP-17) is not re-derived a third time.
 """
 import ast
 from functools import lru_cache
 
 from sqlalchemy import text as sa_text
+
+from lib_version_resolution import resolve_lib_versions
 
 
 @lru_cache(maxsize=256)
@@ -133,10 +137,12 @@ def toolkit_hw_capabilities(db, hardware_module_ids: list[int]) -> dict:
     """{"trigger_sources": [...], "detector_refs": [...], "module_methods": {name: (methods,
     closed)}, "module_names": [...]}
 
-    One SQL join over hardware_modules -> hardware_libs -> hardware_lib_versions
-    (active_version_id.source_code), parsing each distinct version once per call (memoised by
-    _parse_classes across calls). A module whose lib has no active version, or whose class is
-    missing from that version's source, is skipped silently — never a 500 on a toolkit read.
+    Two-step instead of one join: select module rows + lib ids, resolve each lib's version
+    through the CMP-17 chain (`resolve_lib_versions` — pin/toolkit_default rungs never fire
+    here since no toolkit_id/pin is available to this call; stable/active still apply), then
+    fetch just the resolved sources. Parsing is memoised by _parse_classes across calls. A
+    module whose lib has no resolvable version, or whose class is missing from that version's
+    source, is skipped silently — never a 500 on a toolkit read.
 
     `module_names` is every module NAME this toolkit has (regardless of whether its source
     resolved), so a caller can feed it straight to `detector_keys.module_detector_channels`
@@ -150,28 +156,37 @@ def toolkit_hw_capabilities(db, hardware_module_ids: list[int]) -> dict:
 
     rows = db.execute(
         sa_text(
-            "SELECT hm.id, hm.name, hm.class_name, hlv.source_code "
-            "FROM hardware_modules hm "
-            "JOIN hardware_libs hl ON hl.id = hm.hardware_lib_id "
-            "LEFT JOIN hardware_lib_versions hlv ON hlv.id = hl.active_version_id "
-            "WHERE hm.id = ANY(:ids)"
+            "SELECT hm.id, hm.name, hm.class_name, hm.hardware_lib_id "
+            "FROM hardware_modules hm WHERE hm.id = ANY(:ids)"
         ),
         {"ids": list(hardware_module_ids)},
     ).fetchall()
 
     # Collected from `rows` before the per-row `source_code` guard below — a module whose lib
-    # has no active version still HAS a name, and dropping it here would silently make its
+    # has no resolvable version still HAS a name, and dropping it here would silently make its
     # detector channels vanish from module_detector_channels' input.
     module_names = [row.name for row in rows]
+
+    resolved = resolve_lib_versions(db, [row.hardware_lib_id for row in rows])
+    version_ids = {vid for vid, _reason in resolved.values() if vid}
+    sources: dict[int, str] = {}
+    if version_ids:
+        source_rows = db.execute(
+            sa_text("SELECT id, source_code FROM hardware_lib_versions WHERE id = ANY(:ids)"),
+            {"ids": list(version_ids)},
+        ).fetchall()
+        sources = {r.id: r.source_code for r in source_rows}
 
     trigger_sources: list[dict] = []
     detector_refs: list[str] = []
     module_methods: dict[str, tuple[set[str], bool]] = {}
 
     for row in rows:
-        if not row.source_code:
+        version_id, _reason = resolved.get(row.hardware_lib_id, (None, "none"))
+        source_code = sources.get(version_id)
+        if not source_code:
             continue
-        caps = class_capabilities(row.source_code, row.class_name)
+        caps = class_capabilities(source_code, row.class_name)
         module_methods[row.name] = (caps["methods"], caps["closed"])
         if caps["is_trigger"]:
             trigger_sources.append({

@@ -1,16 +1,5 @@
-"""Contract tests for the CMP-17 hardware-lib version-resolution chain (Wave 0, Plan 23-01).
-
-`api/lib_version_resolution.py` does not exist yet -- built by plan 23-05, which also rewires
-`get_dispatch_spec` (api/routers/toolkit_dispatch.py) and `list_toolkit_hardware_libs`
-(api/routers/hardware_libs.py) to call it. The whole module is guarded by
-`pytest.importorskip("lib_version_resolution")` below; the two route-level regression tests
-carry their own `xfail` marker as a second layer, since the routes and the resolver are built
-by the same plan but not necessarily in the same commit.
-
-TODO(plan 23-05): remove the module-level importorskip once `api/lib_version_resolution.py`
-lands, and remove the two `xfail` markers once `get_dispatch_spec`/`list_toolkit_hardware_libs`
-are rewired onto the chain (stable-over-active ordering; resolved_version_id/resolved_state/
-resolution_reason on the toolkit hardware-libs list).
+"""Contract tests for the CMP-17 hardware-lib version-resolution chain (Wave 0, Plan 23-01;
+resolver + both consumer rewrites delivered by Plan 23-05).
 """
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -18,11 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-lib_version_resolution = pytest.importorskip(
-    "lib_version_resolution",
-    reason="CMP-17: api/lib_version_resolution.py not implemented until plan 23-05",
-)
-resolve_lib_version_id = lib_version_resolution.resolve_lib_version_id
+from lib_version_resolution import resolve_lib_version_id
 
 
 @pytest.fixture(autouse=True)
@@ -136,16 +121,19 @@ def test_toolkit_id_none_skips_toolkit_default_rung():
 # ---------------------------------------------------------------------------
 
 class FakeDispatchDb:
-    """SQL-text-dispatching stub matching get_dispatch_spec's raw db.execute() calls."""
+    """SQL-text-dispatching stub matching get_dispatch_spec's raw db.execute() calls, plus
+    the resolver's own queries (toolkit_default link row, active-version state)."""
 
     def __init__(self, *, toolkit_row=None, module_row=None, td_row=None, lib_row=None,
-                 version_by_id=None, cfg_row=None):
+                 version_by_id=None, cfg_row=None, link_row=None, version_state_by_id=None):
         self.toolkit_row = toolkit_row
         self.module_row = module_row
         self.td_row = td_row
         self.lib_row = lib_row
         self.version_by_id = version_by_id or {}
         self.cfg_row = cfg_row
+        self.link_row = link_row
+        self.version_state_by_id = version_state_by_id or {}
 
     def execute(self, query, params=None):
         sql = " ".join(str(query).split())
@@ -156,8 +144,13 @@ class FakeDispatchDb:
             return _Result(self.module_row)
         if sql.startswith("SELECT hw_lib_versions"):
             return _Result(self.td_row)
-        if "SELECT active_version_id FROM hardware_libs" in sql or "SELECT stable_version_id" in sql:
+        if sql.startswith("SELECT default_version_id FROM toolkit_hardware_libs"):
+            return _Result(self.link_row)
+        if sql.startswith("SELECT stable_version_id, active_version_id FROM hardware_libs"):
             return _Result(self.lib_row)
+        if sql.startswith("SELECT state FROM hardware_lib_versions"):
+            state = self.version_state_by_id.get(params.get("id"))
+            return _Result(SimpleNamespace(state=state) if state else None)
         if sql.startswith("SELECT source_code FROM hardware_lib_versions"):
             return _Result(self.version_by_id.get(params.get("id")))
         if sql.startswith("SELECT config FROM pilot_hardware_config"):
@@ -175,19 +168,39 @@ def _client_for(fake_db):
 
 
 def test_dispatch_spec_emits_active_source_when_no_stable_today_baseline():
-    """Baseline (not xfail): with no stable version, today's chain already resolves via
-    active -- proves the FakeDispatchDb harness itself, unaffected by CMP-17."""
+    """Baseline: with no stable version but a beta/stable active version, the resolver's
+    fourth (active) rung still resolves it -- proves the FakeDispatchDb harness itself, and
+    the fourth-rung deviation, both unaffected by the stable-over-active CMP-17 fix below."""
     toolkit_row = SimpleNamespace(id=5, hardware_module_ids=[7], flags={}, params_schema={}, is_backend_authored=True)
     module_row = SimpleNamespace(id=7, name="MPR121", class_name="Touch_Detector", hardware_lib_id=10)
     lib_row = SimpleNamespace(active_version_id=100, stable_version_id=None)
     version_by_id = {100: SimpleNamespace(source_code="ACTIVE_SOURCE")}
-    fake_db = FakeDispatchDb(toolkit_row=toolkit_row, module_row=module_row, lib_row=lib_row, version_by_id=version_by_id)
+    fake_db = FakeDispatchDb(
+        toolkit_row=toolkit_row, module_row=module_row, lib_row=lib_row, version_by_id=version_by_id,
+        version_state_by_id={100: "beta"},
+    )
     resp = _client_for(fake_db).get("/api/toolkits/5/dispatch-spec?pilot_id=1", headers=auth_headers())
     assert resp.status_code == 200
     assert resp.json()["hardware"]["Modules"]["MPR121"]["MPR121"]["source_code"] == "ACTIVE_SOURCE"
 
 
-@pytest.mark.xfail(reason="CMP-17: dispatch-spec still emits active, not stable, until plan 23-05", strict=False)
+def test_dispatch_spec_emits_none_when_active_unvalidated_and_no_stable():
+    """Fourth-rung guard: an unvalidated active version with no stable is NOT deployed -- it
+    is reported via unresolved_libs instead of silently vanishing (CMP-17)."""
+    toolkit_row = SimpleNamespace(id=5, hardware_module_ids=[7], flags={}, params_schema={}, is_backend_authored=True)
+    module_row = SimpleNamespace(id=7, name="MPR121", class_name="Touch_Detector", hardware_lib_id=10)
+    lib_row = SimpleNamespace(active_version_id=100, stable_version_id=None)
+    fake_db = FakeDispatchDb(
+        toolkit_row=toolkit_row, module_row=module_row, lib_row=lib_row,
+        version_state_by_id={100: "unvalidated"},
+    )
+    resp = _client_for(fake_db).get("/api/toolkits/5/dispatch-spec?pilot_id=1", headers=auth_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["hardware"] == {}
+    assert body["unresolved_libs"] == [{"module_name": "MPR121", "lib_id": 10, "reason": "none"}]
+
+
 def test_dispatch_spec_emits_stable_source_when_stable_exists_and_no_pin():
     """The regression test: today's route emits the ACTIVE version's source_code even when a
     STABLE version exists and no pin is given. CMP-17 changes that ordering."""

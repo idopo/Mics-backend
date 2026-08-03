@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 from auth import verify_token
 from db import engine
 from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
+from lib_version_resolution import resolve_lib_version_id
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,16 @@ def get_dispatch_spec(
 
     hardware: dict = {}
     prefs_hardware: dict = {}
+    unresolved_libs: list[dict] = []
+
+    # Pin lookup moved outside the module loop -- previously re-queried per module (free fix).
+    hw_versions: dict = {}
+    if task_def_id:
+        td_row = db.execute(
+            text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+            {"id": task_def_id},
+        ).fetchone()
+        hw_versions = (td_row.hw_lib_versions if td_row and td_row.hw_lib_versions else {})
 
     for module_id in (toolkit.hardware_module_ids or []):
         module = db.execute(
@@ -59,32 +70,24 @@ def get_dispatch_spec(
         if not module:
             continue
 
-        # Resolve which version to send: prefer pinned version from task definition
-        pinned_version_id = None
-        if task_def_id:
-            td_row = db.execute(
-                text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
-                {"id": task_def_id},
-            ).fetchone()
-            hw_versions = (td_row.hw_lib_versions if td_row and td_row.hw_lib_versions else {})
-            pinned_version_id = hw_versions.get(str(module.hardware_lib_id))
-
-        if pinned_version_id:
-            version_id = pinned_version_id
-        else:
-            lib = db.execute(
-                text("SELECT active_version_id FROM hardware_libs WHERE id = :id"),
-                {"id": module.hardware_lib_id},
-            ).fetchone()
-            if not lib or not lib.active_version_id:
-                continue
-            version_id = lib.active_version_id
+        pinned_version_id = hw_versions.get(str(module.hardware_lib_id))
+        version_id, reason = resolve_lib_version_id(
+            db, module.hardware_lib_id, toolkit_id=toolkit_id, pinned_version_id=pinned_version_id,
+        )
+        if version_id is None:
+            unresolved_libs.append({
+                "module_name": module.name, "lib_id": module.hardware_lib_id, "reason": reason,
+            })
+            continue
 
         version = db.execute(
             text("SELECT source_code FROM hardware_lib_versions WHERE id = :id"),
             {"id": version_id},
         ).fetchone()
         if not version:
+            unresolved_libs.append({
+                "module_name": module.name, "lib_id": module.hardware_lib_id, "reason": "none",
+            })
             continue
 
         hardware.setdefault("Modules", {})[module.name] = {
@@ -110,6 +113,7 @@ def get_dispatch_spec(
         "flags": toolkit.flags or {},
         "params_schema": toolkit.params_schema or {},
         "is_backend_authored": bool(toolkit.is_backend_authored),
+        "unresolved_libs": unresolved_libs,
     }
 
 

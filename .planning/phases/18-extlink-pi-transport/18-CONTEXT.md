@@ -95,6 +95,18 @@ External sources are **virtual hardware modules** that flow through the existing
 > **Side benefit:** this makes EXTLINK-18 partly **agent-testable**. `socket_plan(role="none")`
 > returning no socket is a pure-function assertion, where the validation map previously had only a
 > rig row for EXTLINK-18.
+>
+> **Consequence found during plan revision — `role: "none"` REQUIRES a liveness override.**
+> The default liveness predicate is "a message arrived within `stale_ms`". A module with no inbound
+> socket never receives one, so it would sit permanently `alive=False` and, if `required`, hang the
+> readiness gate until timeout with no useful diagnosis. Resolution: **raise at construction** when
+> `role == "none"` and no liveness override is present.
+> - Consistent with EXTLINK-12, which already raises `TypeError` at class-build time when a
+>   `@signal` has no resolvable dtype. Same philosophy: loud, immediate, before any data flows.
+> - **Rejected: silently defaulting to `alive=True` for this role.** Inventing liveness for a device
+>   we never poll is exactly the "device is off but we think it's fine" failure that OpenEphys's HTTP
+>   status check exists to catch. A control-only lib that genuinely cannot check liveness must say so
+>   explicitly with a trivial always-true override — one visible line, not an invisible default.
 
 Three roles, selected per instance by `role` in `pilot_hardware_config.config`:
 

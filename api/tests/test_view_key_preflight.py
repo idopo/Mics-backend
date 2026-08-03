@@ -879,3 +879,78 @@ def test_toolkit_hw_capabilities_module_names_present_on_both_returns():
     non_empty_path = toolkit_hw_capabilities(db, [7])
     assert "module_names" in non_empty_path
     assert non_empty_path["module_names"] == ["MPR121"]
+
+
+# ---------------------------------------------------------------------------
+# CMP-15/23-07 Task 3 — GET /api/task-definitions/{id}/variable-usage
+# ---------------------------------------------------------------------------
+
+
+class _FakeTaskDefDb:
+    """SQL-text-dispatching stub for task_def_inspect's one raw query."""
+
+    def __init__(self, td_row=None):
+        self.td_row = td_row
+
+    def execute(self, query, params=None):
+        sql = " ".join(str(query).split())
+        if sql.startswith("SELECT fda_json FROM task_definitions"):
+            return _Result(one=self.td_row)
+        return _Result()
+
+    def close(self):
+        pass
+
+
+def _variable_usage_client(fake_db):
+    from auth import verify_token
+    from main import app
+    from routers.task_def_inspect import get_sa_session
+    app.dependency_overrides[verify_token] = lambda: {"sub": "test"}
+    app.dependency_overrides[get_sa_session] = lambda: fake_db
+    return TestClient(app)
+
+
+def test_variable_usage_returns_writers_readers_never_written_initial_value():
+    fda = {
+        "variables": {"target": {"initial_value": None}, "lever_count": {"initial_value": 0}},
+        "transitions": [{"condition_tree": {"left": {"view": "target"}, "op": "==", "right": 1}}],
+    }
+    client = _variable_usage_client(_FakeTaskDefDb(td_row=SimpleNamespace(fda_json=fda)))
+    resp = client.get("/api/task-definitions/187/variable-usage", headers=auth_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body["variables"].keys()) == {"target", "lever_count"}
+    assert body["variables"]["target"]["readers"] == ["transitions[0].condition_tree.left"]
+    assert body["variables"]["target"]["writers"] == []
+    assert body["variables"]["target"]["never_written"] is True
+    assert body["variables"]["target"]["initial_value"] is None
+    assert body["variables"]["lever_count"]["never_written"] is False  # initial_value writes it
+    assert body["variables"]["lever_count"]["initial_value"] == 0
+
+
+def test_variable_usage_404_for_unknown_task_definition():
+    client = _variable_usage_client(_FakeTaskDefDb(td_row=None))
+    resp = client.get("/api/task-definitions/9999/variable-usage", headers=auth_headers())
+    assert resp.status_code == 404
+
+
+def test_variable_usage_no_fda_json_returns_empty_variables():
+    client = _variable_usage_client(_FakeTaskDefDb(td_row=SimpleNamespace(fda_json=None)))
+    resp = client.get("/api/task-definitions/187/variable-usage", headers=auth_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"variables": {}}
+
+
+def test_variable_usage_no_variables_key_returns_empty_variables():
+    client = _variable_usage_client(_FakeTaskDefDb(td_row=SimpleNamespace(fda_json={"states": {}})))
+    resp = client.get("/api/task-definitions/187/variable-usage", headers=auth_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"variables": {}}
+
+
+def test_variable_usage_requires_auth():
+    from main import app
+    client = TestClient(app)
+    resp = client.get("/api/task-definitions/187/variable-usage")
+    assert resp.status_code in (401, 403)

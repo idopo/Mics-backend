@@ -70,6 +70,7 @@ from routers.hardware_modules import router as hardware_modules_router
 from routers.pilot_hardware_config import router as pilot_hardware_config_router
 from routers.locked_states import router as locked_states_router
 from routers.toolkit_dispatch import router as toolkit_dispatch_router
+from routers.task_def_inspect import router as task_def_inspect_router
 from seed_compute import seed_compute_ops_lib
 app.include_router(toolkits_router, prefix="/api")
 app.include_router(hardware_libs_router, prefix="/api")
@@ -77,6 +78,7 @@ app.include_router(hardware_modules_router)
 app.include_router(pilot_hardware_config_router)
 app.include_router(locked_states_router, prefix="/api")
 app.include_router(toolkit_dispatch_router, prefix="/api")
+app.include_router(task_def_inspect_router, prefix="/api")
 
 
 # inside upsert_pilot_tasks (near top), define helper:

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import sessionmaker
 
 from auth import verify_token
+from compute_provisioning import provision_compute_configs
 from db import engine
 from hw_introspect import class_capabilities, resolve_class_methods
 from models import HardwareLib, HardwareLibVersion, HardwareModule
@@ -93,6 +94,11 @@ def create_hardware_module(body: HardwareModuleCreate, token=Depends(verify_toke
         session.add(module)
         session.commit()
         session.refresh(module)
+        # CMP-04/12: a compute module needs a per-pilot config row before it will instantiate
+        # on the Pi (see compute_provisioning.py docstring) -- provision immediately so it's
+        # inspectable before any run, not just after a manual add.
+        provision_compute_configs(session, [module.id])
+        session.commit()
         return {"id": module.id, "name": module.name}
 
 

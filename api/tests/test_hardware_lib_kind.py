@@ -304,3 +304,120 @@ def test_seed_ops_numeric_and_random_behaviour():
     assert ops.random_int(3, 3) == 3
     assert ops.random_choice(["a"]) == "a"
     assert ops.random_float(1.0, 1.0) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# CMP-04/12: compute_provisioning -- auto-provision the per-pilot config row a compute
+# module needs before it will instantiate on the Pi. Mocked db.execute, dispatching on a
+# distinguishing substring of the table name (style matches test_toolkit_dispatch.py's _db_stub).
+# ---------------------------------------------------------------------------
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+def _provisioning_db(*, module_rows=None, pilot_rows=None, existing_rows=None, inserted=None):
+    from unittest.mock import MagicMock
+    from types import SimpleNamespace
+
+    module_rows = module_rows or []
+    pilot_rows = pilot_rows or []
+    existing_rows = existing_rows or []
+    inserted = inserted if inserted is not None else []
+
+    def _execute(query, params=None):
+        sql = " ".join(str(query).split())
+        if sql.startswith("SELECT hm.name, hm.class_name"):
+            return _Rows(module_rows)
+        if sql.startswith("SELECT id FROM pilots"):
+            return _Rows(pilot_rows)
+        if sql.startswith("SELECT pilot_id, name FROM pilot_hardware_config"):
+            return _Rows(existing_rows)
+        if sql.startswith("INSERT INTO pilot_hardware_config"):
+            inserted.append((params["pilot_id"], params["name"], params["config"]))
+            return _Rows([])
+        return _Rows([])
+
+    db = MagicMock()
+    db.execute.side_effect = _execute
+    return db, inserted
+
+
+def test_compute_module_names_returns_only_compute_kind_modules():
+    from compute_provisioning import compute_module_names
+    from types import SimpleNamespace
+
+    db, _ = _provisioning_db(module_rows=[SimpleNamespace(name="COMPUTE", class_name="ComputeOps")])
+    assert compute_module_names(db, [10]) == {"COMPUTE": "ComputeOps"}
+
+
+def test_compute_module_names_empty_when_no_module_ids():
+    from compute_provisioning import compute_module_names
+
+    db, _ = _provisioning_db()
+    assert compute_module_names(db, []) == {}
+
+
+def test_provision_compute_configs_creates_row_per_pilot():
+    from compute_provisioning import provision_compute_configs
+    from types import SimpleNamespace
+
+    db, inserted = _provisioning_db(
+        module_rows=[SimpleNamespace(name="COMPUTE", class_name="ComputeOps")],
+        pilot_rows=[SimpleNamespace(id=1), SimpleNamespace(id=2)],
+        existing_rows=[],
+    )
+    created = provision_compute_configs(db, [10])
+    assert set(created) == {(1, "COMPUTE"), (2, "COMPUTE")}
+    assert len(inserted) == 2
+    assert json.loads(inserted[0][2]) == {"class_name": "ComputeOps"}
+
+
+def test_provision_compute_configs_skips_existing_row_even_with_extra_keys():
+    from compute_provisioning import provision_compute_configs
+    from types import SimpleNamespace
+
+    db, inserted = _provisioning_db(
+        module_rows=[SimpleNamespace(name="COMPUTE", class_name="ComputeOps")],
+        pilot_rows=[SimpleNamespace(id=1), SimpleNamespace(id=2)],
+        existing_rows=[SimpleNamespace(pilot_id=1, name="COMPUTE")],
+    )
+    created = provision_compute_configs(db, [10])
+    assert created == [(2, "COMPUTE")]
+    assert len(inserted) == 1
+
+
+def test_provision_compute_configs_called_twice_second_call_creates_nothing():
+    from compute_provisioning import provision_compute_configs
+    from types import SimpleNamespace
+
+    module_rows = [SimpleNamespace(name="COMPUTE", class_name="ComputeOps")]
+    pilot_rows = [SimpleNamespace(id=1)]
+
+    db1, inserted1 = _provisioning_db(module_rows=module_rows, pilot_rows=pilot_rows, existing_rows=[])
+    first = provision_compute_configs(db1, [10])
+    assert first == [(1, "COMPUTE")]
+
+    # Second call sees the row the first call "created" as already-existing.
+    db2, inserted2 = _provisioning_db(
+        module_rows=module_rows, pilot_rows=pilot_rows,
+        existing_rows=[SimpleNamespace(pilot_id=1, name="COMPUTE")],
+    )
+    second = provision_compute_configs(db2, [10])
+    assert second == []
+    assert inserted2 == []
+
+
+def test_provision_compute_configs_never_provisions_hardware_kind_module():
+    from compute_provisioning import provision_compute_configs
+
+    # module_rows empty -- the SQL join filters on hl.kind = 'compute', so a hardware-kind
+    # module id never surfaces from compute_module_names in the first place.
+    db, inserted = _provisioning_db(module_rows=[], pilot_rows=[])
+    created = provision_compute_configs(db, [99])
+    assert created == []
+    assert inserted == []

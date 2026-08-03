@@ -247,6 +247,13 @@ the deferral is not rework later:
 - **`expr` escape-hatch / inline Python in a state** — rejected for this phase (see Authoring).
   Forfeits versioning and op logging. Full design in
   `~/.claude/plans/i-realized-something-the-ancient-pnueli.md`.
+- **Compute in trigger assignments** — deferred (user decision, 2026-08-03). `ActionEditor` is
+  shared between `StateBodyPanel` and `TriggerAssignmentPanel`, and the latter already threads
+  `variableNames`, so the compute option must be **actively gated off** in the trigger context
+  (via the existing `allowTriggerContext` flag, mirroring `ArgInput.tsx:76`) rather than simply
+  left unwired — otherwise it appears there and half-works. UI-only restriction: the Pi builds
+  both action lists through the same `_build_action_callable`, so a hand-authored compute action
+  in a trigger list would still run. Revisit as its own small phase.
 - **`if`-action / nested then-else action branching** — transitions handle branching.
 - **Typed variables** — untyped generic scratch for v1; revisit only on concrete need.
 - **Sandboxing user compute code** — a compute lib runs arbitrary Python in the task thread.

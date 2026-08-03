@@ -3,12 +3,14 @@
 **Date:** 2026-07-29
 **Pilot:** `pilot_raspberry_lior` (pilot_id 1) · **Toolkit:** 100 · **Task def:** 186 (`source_less_toolkit FDA_tes_interuuppt`)
 **Status:** Phase 25's own requirements PROVEN on the rig. Plan 06 checkpoint still OPEN —
-several manual steps not taken, and an unrelated pre-existing rig defect surfaced mid-validation
-and is UNRESOLVED.
+several manual steps not taken. The interrupt defect that surfaced mid-validation was
+**root-caused and fixed later the same day** (§4): a pre-existing regression from the
+2026-01-25 → 2026-03-10 shared-pigpio work, not from phase 24 or 25. Idle path verified fixed
+on hardware; the in-run path (§4g) remains open.
 
-**Scope:** what was proven on hardware, the pre-existing defect found by running the system, the
-seven hypotheses tested against it (six refuted by measurement), the exact system state at
-handoff, and what to do next.
+**Scope:** what was proven on hardware, the interrupt defect found by running the system —
+mechanism, regression window, fix, and rig verification — the hypotheses refuted along the way,
+the exact system state at handoff, and what to do next.
 
 > ⚠️ **ES lives on `132.77.73.217:9200`, index `event_log_v2`.** `.125` is historical
 > (`restored-*`) only — its own `event_log_v2` is a stale 308-doc stub frozen at 2025-11-30.
@@ -140,130 +142,145 @@ Three independent timer expiries landing within 1–2 ms of prediction.
 
 ---
 
-## 4. THE OPEN DEFECT — intermittent lost GPIO interrupt (PRE-EXISTING, UNRESOLVED)
+## 4. THE INTERRUPT DEFECT — ROOT-CAUSED AND FIXED
 
-**Symptom.** Some runs hang forever in `play_led`. Fingerprint is exact and repeatable:
+**Status: idle path RESOLVED** — i2c hardware lib v2 (version id 26), marked `stable`
+2026-07-29 and verified on the rig. The in-run path (§4g) is untouched and still open.
 
-```
-~15–20 ES events · TOUCH_INT count = 0 · zero Tracker writes
-last state_transition = play_led · run never ends
-```
+### 4a. Mechanism
 
-Working runs log 100–194 `TOUCH_INT` events. Stuck runs log **zero** — not few, zero.
+The MPR121 IRQ is a **level** signal. It asserts on any change of the touch-status register and
+is deasserted by exactly one thing: an I2C read of that register (`touched_pins`). `TOUCH_INT` is
+a `Digital_In` with `trigger: "D"` — **falling edge**. A single assertion that nobody reads is
+therefore terminal: the line stays low, no further falling edge can exist, no callback can ever
+fire again, and only an external register read (`i2cdetect -y 1`) recovers the rig.
 
-| run | 496 | 497 | 498 | 499 | 500 | 501 | 518 | 519 | 520 |
-|---|---|---|---|---|---|---|---|---|---|
-| status | ok | **stuck** | ok | **stuck** | ok | **stuck** | ok | ok | **stuck** |
-| TOUCH_INT | 184 | **0** | 154 | **0** | 194 | **0** | — | — | **0** |
+That is the entire defect. **"pigpio delivered nothing" is the predicted observation once
+latched, not evidence of a delivery failure** — which is where the previous revision went wrong.
 
-Intermittent. Not deterministic alternation (492/493/494 and 518/519 ran clean back-to-back).
-Cleared by restarting the pilot. Unaffected by every config and FDA change made.
+Enabling or disabling electrodes is itself a touch-status change, so **every ECR (0x5E) write can
+assert the IRQ.** Two code paths ended on an ECR write with no read after it:
 
-### 4a. NOT caused by Phase 24 or Phase 25 — proven
-
-`TOUCH_INT` "Modules" events are emitted by `execute_trigger`'s **unconditional**
-`Hardware_Event` dispatch (`task.py:272-283`), *before* `self.triggers[pin]` is even looked up.
-Phase 24's assignment machinery and Phase 25's guard both live **downstream** of that line.
-Stuck runs have zero such events → `execute_trigger` was never entered. Nothing either phase
-added can suppress an event emitted before their code runs.
-
-The legacy lick path is **structurally identical** to the current one:
-
-| | legacy | now |
+| path | last operation | consequence |
 |---|---|---|
-| registration | `self.triggers['TOUCH_INT'] = [self.detectedLick]` (`learning_cage.py:139`) | `apply_trigger_assignments` → same dict |
-| pigpio arming | `Task.__init__` → `hw.assign_cb(...)` | **same code**, `task.py:199` |
-| chip read | `MPR121.detect_change()` — 0x5A | **same method** |
+| `MPR121.__init__` → `set_cdc_manual(0x08)` | `ECR = 0x0C` | constructor could return with the line already latched — rescued only by `mics_task.check_for_detectors()` happening to call `read()` afterwards (a different file, and only when a detector is registered) |
+| `MPR121.release()` → `reset()` | `ECR = 0x8F` | **chip left SENSING** after teardown, when its pigpio callbacks and its only reader are already gone |
 
-**What changed is dependence, not mechanism.** Legacy tasks advanced on timers; a dropped
-interrupt cost a lick event and the run still completed normally. The FDA now *requires* the
-touch to advance, so the same fault became a visible hang.
+### 4b. The idle window — measured, not inferred
 
-> **A dropped interrupt and an untouched spout produce byte-identical data.** There is no record
-> of a touch that was never delivered. That indistinguishability is why this survived unnoticed,
-> and it is a standing data-integrity concern for lick counts.
+`run_task`'s `finally` calls `self.pi.stop()` **unconditionally, outside the guard** around
+`task.end()` (`pilot.py:1244-1256`). That closes the single shared pigpio client and cancels every
+callback regardless of how teardown went. Between runs the pilot is deaf — while `release()` left
+the chip sensing. First touch at idle → IRQ asserted → nothing reads it → latched.
 
-### 4b. Measured facts (all confirmed, none disputed)
+Measured 2026-07-29, pilot idle, hours after run 520:
 
-- `[TRIG-SETUP] TOUCH_INT pin=8 bcm=14 cb_assigned=1 current_level=1` on **every** stuck run
-  → callback IS registered; INT line IS idle-high at task start; chip is NOT latched at start
-- `pigs r 14` = **0** mid-stall → the line **does** transition high→low when touched
-- zero `TOUCH_INT` events → pigpio delivers **nothing** for that transition
-- `i2cdetect -y 1` (which probes 0x5A) **released the line and revived the rig** — an external
-  register read is the only escape once latched
-- `[DETECTORS]` prints correctly on stuck runs → I2C healthy, `detector.read()` works
-- `pi id` differs every run → a genuinely fresh `pigpio.pi()` object each time
+```
+pigs r 14 = 0        ← INT asserted, no reader anywhere in the process
+```
 
-### 4c. Hypotheses TESTED AND REFUTED — do not re-litigate these
+### 4c. What changed, and when — NOT phase 24 or 25
+
+Regression window: **2026-01-25 → 2026-03-10**, the shared-pigpio / clock-unification work.
+
+| | `96f6fe8` (Jan 25) | `5704cb5` (Mar 10) → today |
+|---|---|---|
+| pigpio client | `GPIO.init_pigpio()` → `pigpio.pi()` **per hardware object** | one shared client, `pigpio.pi(sync_ticks=True)`, created **per run** by the pilot |
+| `GPIO.release()` | `self.pig.stop()` — live | `# self.pig.stop()` — commented out (`gpio.py:322`) |
+| `run_task` teardown | guarded `task.end()`, then `gpio.clear_scripts()` — **no pilot-level `pi.stop()`** | guarded `task.end()`, then **`self.pi.stop()` unconditionally** |
+
+Before that change, whether the pilot went deaf at idle depended entirely on `Task.end()`'s release
+loop — which has **no per-object error handling** (`task.py:448-450`) and iterates `I2C` before
+`GPIO` (`learning_cage.HARDWARE`). One raise inside the I2C group — e.g. `Motor_Shield_Hat.release()`
+touching `self.kit`, which its constructor may never assign because it swallows failure with a bare
+`except: pass` — aborted the loop before `TOUCH_INT`, leaving its callback armed, its own pigpio
+client connected, and (because `event_queue.put('END')` sits *after* the loop) its worker thread
+alive. The task stayed reachable via `partial(self.handle_trigger, hardware=hw)`, so **the chip kept
+being read while the pilot was idle**. Never designed — an emergent property of an unguarded
+teardown, and exactly the behaviour remembered as "the interrupt was always live".
+
+Phases 24 and 25 remain exonerated as *causes*. But the previous revision's §4a claim that the legacy
+path was "structurally identical" was wrong on two counts: the **lifetime** is not identical (above),
+and the **ACK ordering** is not identical (§4g).
+
+### 4d. The fix — i2c lib v2
+
+Invariant, now pinned by test: **every code path that writes ECR must end with a status read.**
+
+- `set_cdc_manual()` ends with `self.prev = self.mpr121.touched_pins` — clears the IRQ, and seeds
+  `detect_change`'s baseline from the *post*-configuration status instead of a stale pre-CDC read.
+- `__init__` no longer reads separately; `set_cdc_manual()` does it.
+- `release()` writes `ECR = 0x00` (stop mode) **then** reads. Order matters: the stop write itself
+  zeroes the touch status and asserts IRQ, so reading first would leave a window for a touch to
+  re-latch. Deliberately **not** `reset()`, whose final write re-enables all 12 electrodes;
+  recalibration is not lost, because the next run's constructor calls `reset()`.
+
+Tests: `pi-mirror/tests/test_mpr121_irq_hygiene.py` — 3 tests, red before / green after. They run on
+the dev host (the class is extracted from the lib text and exec'd against a recording stub, so no
+`autopilot` import) and therefore assert against the exact source deployed to the Pi. Deployed bytes
+verified md5-identical (`3c933d65…`, `~/apps/hardware_overrides/i2c.py`).
+
+Impact diff on publish was clean: `removed_methods: {}`, `affected_definition_ids: []`.
+
+### 4e. Rig verification
+
+| run | local time | `TOUCH_INT` events | trials | verdict |
+|---|---|---|---|---|
+| 520 | 17:35 | **0** | 1 | dead (pre-fix) |
+| 521 | 18:44 | **0** | 1 | dead (pre-fix) |
+| 523–525 | 18:45–18:46 | 8 each | 5 each | completed |
+| 526 | 18:46 | 24 | 5 | completed |
+
+And the acceptance test, which is the one that actually discriminates — **touch the spout after the
+task terminates**:
+
+```
+pigs r 14 = 1        ← was 0 in the identical condition before the fix
+```
+
+A run starting clean proves nothing on its own: the constructor's `reset()` clears an inherited
+latch regardless of version. Only the idle-touch check tests the defect.
+
+Run 522 produced no ES events at all — unexplained, low priority.
+
+### 4f. Hypotheses tested and refuted — do not re-litigate these
 
 | # | Hypothesis | Refuted by |
 |---|---|---|
 | 1 | dead pigpio handle / stale dispatcher (clock path) | run 491: fresh `pi id`, `connected=True`, **zero** clock-guard drops |
-| 2 | Phase 24/25 error handling introduced it | `TOUCH_INT` events are emitted upstream of all phase code; legacy path identical |
+| 2 | Phase 24/25 error handling introduced it | `TOUCH_INT` events are emitted upstream of all phase code |
 | 3 | MPR121 in STOP mode (`ECR=0x00`) | `pigs r 14` = 0 → chip **did** assert INT; it is sensing |
-| 4 | second MPR121 at 0x5B wired-OR on the IRQ | user confirms only 0x5A drives TOUCH_INT (0x5B/0x60 unrelated hardware) |
-| 5 | 500 µs `set_glitch_filter` (`gpio.py`, `Digital_In.__init__`) | present in legacy too, which worked for years |
-| 6 | `trigger: "B"` vs legacy `"D"` | changed to `"D"` (verified active — run 519 shows single `level=0` callbacks); **run 520 still stuck** |
-| 7 | `polarity` inverting edge/pull | `polarity` setter only assigns `self.on`/`self.off`; the `Digital_In` docstring claiming "pull=low, trigger=high" is **wrong**. `pull:1` → `PUD_UP` ✓, `trigger:"D"` → FALLING ✓ |
+| 4 | second MPR121 at 0x5B wired-OR on the IRQ | user confirms only 0x5A drives TOUCH_INT |
+| 5 | 500 µs `set_glitch_filter` (`Digital_In.__init__`) | present in legacy too, which worked for years |
+| 6 | `trigger: "B"` vs legacy `"D"` | changed to `"D"` (verified active); **run 520 still stuck** |
+| 7 | `polarity` inverting edge/pull | `polarity` setter only assigns `self.on`/`self.off`; `pull:1` → `PUD_UP` ✓, `trigger:"D"` → FALLING ✓ |
 
-**Config now matches legacy field-for-field:** `pin 8`, `pull 1`, `polarity 1`, `trigger D`,
-`record false`. No configuration difference remains.
+**The previous revision's §4d (pigpio notification socket) is superseded.** It became the leading
+hypothesis because every probe that day queried the control path — but it is not needed to explain
+anything: once the line is latched there are no edges to deliver. It was never measured and no
+longer needs to be.
 
-### 4d. LEADING HYPOTHESIS (untested) — pigpio's notification socket
+### 4g. Still open — the in-run path
 
-`pigpio.pi()` opens **two** connections to pigpiod:
+The fix covers the idle window and the constructor. It does **not** cover an interrupt delivered
+mid-run and never serviced. None of the four clean runs exercised this.
 
-```python
-self.sl.s    = socket.create_connection(...)   # CONTROL socket
-self._notify = _callback_thread(...)           # NOTIFICATION socket + thread
-```
-
-Edge callbacks are delivered **only** over the notification socket. Everything we probed all day
-— `connected`, `get_current_tick()`, `pig.read()`, `set_mode`, `set_glitch_filter`, and the
-`pi.callback()` return object — is either the control socket or client-side state.
-
-```
-pilot.py:1141:  if not self.pi.connected: raise    # ← control socket ONLY
-```
-
-So if the notification half fails to come up on a given run, **every probe reports healthy while
-edges are never delivered**. This is per-connection, so a fresh `pigpio.pi()` each run gives a
-fresh chance to fail — intermittent, not cumulative, cleared by a pilot restart, immune to config.
-It is the only layer never measured.
-
-**Next probe (2 lines, into the existing `[TRIG-SETUP]` print):**
-
-```python
-hw.pig._notify                # None, or thread object
-hw.pig._notify.is_alive()     # False on a broken run?
-hw.pig._notify.handle         # pigpiod slot number — climbing = leak
-```
-
-**External test (no deploy), run during a stuck task:**
-
-```bash
-~/.venv/autopilot/bin/python -c "
-import pigpio, time
-pi = pigpio.pi()
-c = pi.callback(14, pigpio.EITHER_EDGE, lambda g,l,t: print('EDGE',g,l,t,flush=True))
-print('watching 20s — touch a spout', flush=True)
-time.sleep(20); c.cancel(); pi.stop()"
-```
-
-`EDGE` prints while the task sees nothing → the task's connection is the broken half.
-Nothing prints → pigpiod isn't reporting BCM 14 at all.
-
-### 4e. Recommended fixes (none implemented)
-
-| # | Fix | Where | Why |
-|---|---|---|---|
-| 1 | **Persistent pigpio connection + persistent MPR121 interrupt**, routed to the *current* task (must look up, never capture) | `pilot.py` lifetime | removes the per-run open/close cycle entirely; restores the legacy always-on shape; **bonus: one continuous tick domain across runs**, which serves the unified-clock requirement better than re-`synchronize()` per run |
-| 2 | **Poll fallback** — every ~100 ms, if INT reads low, call `detect_change` anyway | detector layer | self-heals *any* missed edge; costs 100 ms instead of a session; correct regardless of root cause |
-| 3 | **Watchdog** — INT low >200 ms with no trigger → log loudly | detector layer | makes "no licks" distinguishable from "lost the interrupt", now and forever |
-| 4 | **Return all changes**, not `changes[0]` | `i2c.py:842` | **separate silent-loss bug**: `detect_change` discards every electrode change but the first — same class as the `LICKER4` defect this phase fixed |
-
-(2) and (3) are contained to the detector layer — no lifetime or clock changes.
-(1) is architectural and deserves its own plan + a ten-consecutive-run verification.
+1. **ACK ordering.** Phase 24 moved the register read out of the driver into a researcher-ordered FDA
+   action list. In task def 186 the `MPR121.detect_change` action is **last**, behind a conditional
+   `view` write, so any raise in an earlier action skips the ACK for that interrupt → permanent latch
+   (Phase 25's `_report_trigger_error` makes it silent-but-alive rather than fatal). Already visible
+   in the data: in run 519 every `LICKER1` write carries the **previous** edge's value stamped with
+   the **current** edge's tick (~123 ms late), and the final release of each run is never written.
+   Fix: put `detect_change` first in the action list.
+2. **No self-healing.** A missed edge is unrecoverable by construction. `pig.set_watchdog(pin_bcm, 200)`
+   yields `level=2` callbacks with no edges; on timeout, if the pin reads low, call `detect_change()`.
+   `Digital_In.assign_cb`'s docstring already documents level 2 for exactly this case.
+3. **Unguarded release loop** (`task.py:448-450`) — `release()` can still be skipped wholesale if an
+   earlier object in the group raises, silently disabling the §4d fix. One `try/except`.
+4. **`except(e):` in `MPR121.__init__`** — `e` is undefined, so a genuine init failure raises
+   `NameError`, masks the cause, and leaves a half-built object.
+5. **`detect_change` returns `changes[0]`** (`i2c.py`) — discards every electrode change but the
+   first. Separate silent-loss bug, unchanged by v2.
 
 ---
 
@@ -346,19 +363,24 @@ requirement that the pigpio tick remain the single clock for the entire log syst
 
 ## 6. System state at handoff
 
-### 6a. Debug instrumentation deployed to the Pi — **MUST BE STRIPPED**
+### 6a. Debug instrumentation deployed to the Pi — partially stripped
 
 Uncommitted in `/home/ido/pi-mirror` (user-owned repo; agent never runs git there).
-All deployed and verified byte-identical to the Pi.
 
-| File | Change |
-|---|---|
-| `autopilot/autopilot/networking/Event_Dispatcher.py` | `[DISPATCH]` prints (dispatcher built / clock unreadable / send failed); guarded tick read; `_dropped_no_clock` + `_dropped_on_send` counters; `except Exception: pass` in `_sender_loop` replaced with a counted drop |
-| `autopilot/autopilot/tasks/mics_task.py` | `[DETECTORS]` channel→tracker map; `[VIEW] KEY <- value` on every tracker write |
-| `autopilot/autopilot/tasks/task.py` | `[TRIG-SETUP]` at `assign_cb`; `[TRIG] execute_trigger pin=... level=... registered=...` |
+| File | Change | State |
+|---|---|---|
+| `autopilot/autopilot/tasks/task.py` | `[TRIG] execute_trigger pin=... level=... registered=...` | **removed** 2026-07-29 |
+| `autopilot/autopilot/tasks/mics_task.py` | `[VIEW] KEY <- value` on every tracker write | **removed** 2026-07-29 |
+| `autopilot/autopilot/tasks/task.py` | `[TRIG-SETUP]` at `assign_cb` | still present |
+| `autopilot/autopilot/tasks/mics_task.py` | `[DETECTORS]` channel→tracker map | still present |
+| `autopilot/autopilot/networking/Event_Dispatcher.py` | `[DISPATCH]` prints (dispatcher built / clock unreadable / send failed) | still present |
 
-`i2c.py` verified byte-identical throughout. Clock behaviour unchanged — no fallback timebase,
-no reconnect, no re-`synchronize()`.
+⚠️ The `Event_Dispatcher.py` change is **not only prints** — it also contains the guarded tick read
+(§5f), the `_dropped_no_clock` / `_dropped_on_send` counters, and the `except Exception: pass` in
+`_sender_loop` replaced with a counted drop. Those are fixes and must survive any print stripping.
+
+`i2c.py` **is no longer byte-identical to v1** — see §4d (lib v2, id 26, `stable`). Clock behaviour
+unchanged — no fallback timebase, no reconnect, no re-`synchronize()`.
 
 ### 6b. Live rig config changes made this session
 
@@ -368,6 +390,7 @@ no reconnect, no re-`synchronize()`.
 | `TOUCH_INT.trigger` | `"B"` | `"D"` | UI — matches legacy; **did not fix the hang** |
 | `Right_LED` | present | **deleted** | UI — did not fix the hang |
 | task def 186 FDA | timer-gated | user-edited repeatedly | UI |
+| i2c hardware lib (id 9) | v1 (id 15) `stable` | **v2 (id 26) `stable`** — §4d | `PUT /api/hardware-libs/9`, then toolkit 100 re-pinned to v2 in the editor, then `PATCH .../mark-stable`. v1 retained for rollback |
 
 ⚠️ **`device_name` is still `LICKER`** — the DVK-11 rename proof was never performed, so no
 restore is pending on that field. `first_channel` must remain `1` (the intended new value).
@@ -381,19 +404,21 @@ is incomplete.
 
 ## 7. Immediate next steps
 
-1. **Run the §4d notification-socket probe.** It is the only unmeasured layer and the one
-   remaining hypothesis. Two lines into an already-deployed print, or the zero-deploy external
-   test. **Do this before writing any fix.**
-2. **Implement §4e (2)+(3)** — poll fallback + watchdog. Correct regardless of root cause; makes
-   the rig usable and the failure self-announcing.
-3. **Fix §5a** (hard-reload / `Cache-Control`), then set `first_channel` through the UI to
+1. **Reorder the TOUCH_INT action list** so `MPR121.detect_change` runs **first** (§4g.1). Removes
+   the ACK's dependence on preceding actions and fixes the ~123 ms `LICKER` timestamp lag and the
+   lost final release in one edit. Highest value per unit of risk.
+2. **Add the INT watchdog** (§4g.2) — `set_watchdog(pin_bcm, 200)`, and on `level=2` read the chip
+   if the pin is low. Makes any missed edge self-healing and the failure self-announcing.
+3. **Guard the release loop** (§4g.3) — one `try/except` in `Task.end()`, without which the §4d fix
+   can be silently skipped.
+4. **Fix §5a** (hard-reload / `Cache-Control`), then set `first_channel` through the UI to
    discharge plan 06 task 3 step 1.
-4. **Finish the open plan-06 manual steps:** DVK-03/04/05 editor round trip, DVK-06 preflight
+5. **Finish the open plan-06 manual steps:** DVK-03/04/05 editor round trip, DVK-06 preflight
    negatives, the DVK-11 `device_name` → `TONGUE` rename proof (baseline md5
    `7335c9bb57aeb0b6c24f14c54944a0e9`), and a deliberate one-spout-at-a-time cross-talk run.
-5. **Strip the §6a debug prints** once the defect is understood.
-6. **Resolve the `Solenoid`/`Mid_LED` BCM 18 collision** (§5c) — needs a wiring check.
-7. **Fix §4e (4)** — `detect_change` returning only `changes[0]`.
+6. **Strip the remaining §6a debug prints** — keeping the Event_Dispatcher *fixes*.
+7. **Resolve the `Solenoid`/`Mid_LED` BCM 18 collision** (§5c) — needs a wiring check.
+8. **Fix §4g.5** — `detect_change` returning only `changes[0]`.
 
 ---
 
@@ -406,8 +431,18 @@ The interrupt defect is **pre-existing, not introduced by this phase**, and Phas
 it is now visible at all — DVK-10 turned a silent DEBUG line into a named error, and the FDA's
 dependence on the detector turned a lost lick into an obvious hang.
 
-Seven hypotheses were tested; six were refuted by measurement, several after being stated with
-more confidence than the evidence supported. The pattern of error was consistent: reasoning about
-layers instead of measuring them. The one layer never measured — pigpio's notification socket — is
-the leading candidate precisely because every probe written today queried the control path
-instead.
+Seven hypotheses were tested and refuted, several after being stated with more confidence than the
+evidence supported. The pattern of error was consistent: **reasoning about layers instead of
+measuring them.** The eighth — pigpio's notification socket — was proposed on exactly that basis
+and was also wrong; it survived only because it was the one layer nobody had probed, which is a
+reason to measure a hypothesis, not to believe it.
+
+What broke the deadlock was one read-only measurement taken in the failure state rather than in a
+run: `pigs r 14` with the pilot idle. It returned `0`, and the level-vs-edge mechanism (§4a)
+follows from that in one step. Every earlier probe had been taken *during* a run, where a healthy
+chip and a latched chip are indistinguishable until a touch arrives.
+
+Two further corrections to this document's earlier revision: the legacy path was **not**
+"structurally identical" — neither the hardware lifetime nor the ACK ordering matches — and the
+user's recollection that the interrupt stayed live while the Pi was idle was **correct** and turned
+out to be the decisive clue, despite being dismissed as inconsistent with the code as written.

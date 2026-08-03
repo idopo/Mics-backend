@@ -315,6 +315,8 @@ locked toolkit source. Design spec: `~/.claude/plans/i-realized-something-the-an
 
 > **Deferred (not tracked):** the `expr` escape-hatch (former CMP-07–09 — a sandboxed restricted-AST expression evaluator with a `type:"expr"` action), and equally **inline Python typed into a state body**. Both forfeit versioning, sha, reuse, AST-driven GUI help, and — critically — have no object for `@log_action` to attach to, so they cannot satisfy CMP-16. Python authoring happens in the hardware-lib editor; the state body only selects and wires. Documented in the design spec (`~/.claude/plans/i-realized-something-the-ancient-pnueli.md`); can be re-added as its own phase if a concrete need arises.
 >
+> **Also deferred:** **compute actions in trigger assignments** (user decision 2026-08-03). CMP-13's compute affordance is state-body only. Because `ActionEditor` is shared with `TriggerAssignmentPanel` — which already threads `variableNames` — the option is actively gated off in the trigger context via the existing `allowTriggerContext` flag, not merely left unwired. UI-only: the Pi builds both action lists through the same `_build_action_callable`.
+>
 > **Also deferred:** third-party PyPI packages + per-Pi package management (numpy/scipy). User-authored Python is already solved — source ships from the DB and is test-imported. Third-party wheels are a genuine package-management problem; CMP-19 reserves the hooks. Sandboxing user compute code is likewise deferred — a compute lib runs arbitrary Python in the task thread, mitigated for now by the stable-version promotion flow rather than a sandbox.
 
 ### Trigger Assignment Action Lists (TRIGA)

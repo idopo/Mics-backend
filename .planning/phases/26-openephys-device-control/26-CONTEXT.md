@@ -127,6 +127,23 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
   > roadmap's original wording. Keep it minimal — prefer reusing the existing start-on-pilot
   > `overrides` path or the already-locked `required` flag over building a new mechanism.
 
+### Orphaned-recording cleanup — ADDED TO SCOPE 2026-08-03
+Phase 18 closes only half of the pilot-crash case: its backend safety net releases the lease and
+marks the run errored, but **cannot command the device to stop**, because the backend has no channel
+to one. Phase 26 builds exactly that channel, so **Phase 26 closes it**:
+
+- When backend reconciliation detects a run that ended without a clean stop, it **also issues the
+  REST call returning OE to IDLE**, not just the lease release.
+- The backend reads the OE host and connection settings from `pilot_hardware_config` — the same row
+  the Pi uses. No second source of truth.
+- Without this, a crashed pilot leaves the rig recording until a human notices: filling disk and
+  producing a recording no run claims.
+
+**Consequence the planner must account for:** this puts device-specific REST logic in the backend,
+which today has none. Keep it in a small dedicated module (not `api/main.py`, not
+`toolkit_dispatch.py` — both are near their size limits) and share the client shape with the Pi-side
+lib where practical rather than writing the OE REST calls twice.
+
 ### Claude's Discretion
 - Exact REST call sequence and endpoint shapes against the OE API.
 - Table and column names for the recording record.
@@ -202,10 +219,8 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
   measurement possible by dual-logging markers.
 - **DeepLabCut** — reserved; will reuse the recording-record table and the `sub_connect` role.
 - **Device scheduling** (queue, notify-when-free) — explicitly rejected; the lease hard-blocks only.
-- **Commanding the foreign device to stop from the backend safety net** — Phase 18 documents this
-  residual risk: a crashed pilot can leave OE recording, because the backend has no channel to the
-  device. **Phase 26 owns the OE control channel, so closing this is possible here** — but it was
-  not discussed and is not in the roadmap's success criteria. Flag to the user before planning it in.
+- ~~Commanding the foreign device to stop from the backend safety net~~ — **PULLED INTO SCOPE
+  2026-08-03, see the decision below.** No longer deferred.
 - **Multi-OE-host support** (more than one ephys machine per install) — the lease is keyed on host
   so the model allows it, but nothing in this phase exercises it.
 

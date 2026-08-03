@@ -122,7 +122,13 @@ export default function HardwareLibDetail(): JSX.Element {
 
         <span style={{ fontWeight: 600, fontSize: '15px' }}>{lib.name}</span>
         <span style={{ fontSize: '12px', color: 'var(--subtext0)', fontFamily: 'monospace' }}>{lib.filename}</span>
+        {lib.kind === 'compute' && <span className="meta-pill">compute</span>}
         <span className={stateClass(lib.active_state)}>{lib.active_state ?? 'none'}</span>
+        {selectedVersion?.declared_imports && selectedVersion.declared_imports.length > 0 && (
+          <span style={{ fontSize: '11px', color: 'var(--subtext0)' }}>
+            imports: {selectedVersion.declared_imports.join(', ')}
+          </span>
+        )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
           {saveError && (

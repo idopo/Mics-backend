@@ -867,9 +867,23 @@ static class declarations).
 **NOT in scope:** raw continuous @30 kHz into the FDA (explicitly rejected — see Phase 18's deferred
 bulk-stream tier); spike sorting inside MICS (OE owns sorting); TTL comparison (Phase 28).
 
-**Known external prerequisite:** the OE signal chain must have a spike detector/sorter upstream of
-the ZMQ plugin, and sorting configured, or there are no spikes and no unit IDs to declare. This is
-rig configuration, not MICS work, but Phase 27 is unplannable without it — confirm before planning.
+**Known external prerequisite — PARTIALLY RESOLVED 2026-08-03.** The user reports that **the OE
+pipeline already contains something that computes firing rate / spikes**, so the "there may be no
+spikes on the wire at all" risk is substantially reduced. The *exact* nature is **not yet confirmed**
+and must be checked on the rig before this phase is planned, because the two possibilities lead to
+materially different designs:
+
+- **(a) A spike detector/sorter publishing sorted spikes.** Phase 27 stands as written: the Pi does
+  the windowed rate counting, units declared in `pilot_hardware_config` (EPHYS-07/08 as specified).
+- **(b) Something computing firing rate directly.** Phase 27 simplifies considerably — the Pi
+  consumes rate rather than estimating it, and EPHYS-08's windowed estimator largely disappears.
+  **Open sub-question if (b):** is that computed rate actually *published over the ZMQ Interface*, or
+  does it only exist inside the OE GUI? A value the GUI displays but never puts on the socket is
+  useless to us, and would put us back on (a).
+
+**To check on the rig before `/gsd:plan-phase 27`:** open the OE signal chain and record which
+plugins sit upstream of the ZMQ Interface plugin, whether sorting is configured, and which message
+types the ZMQ plugin is set to publish.
 
 **Verification posture:** Same as Phase 26 — lib authored in `~/pi-mirror/`, rig commands returned
 to the user, backend agent-driven.

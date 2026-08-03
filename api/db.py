@@ -276,3 +276,15 @@ def run_pilot_hw_config_name_migration(eng):
               END IF;
             END$$;
         """))
+
+
+def run_hardware_lib_kind_migration(eng):
+    """Phase 23 CMP-12/19: hardware_libs.kind + hardware_lib_versions.declared_imports.
+    Idempotent — safe on fresh deployments and existing DBs."""
+    with eng.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE hardware_libs ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'hardware'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE hardware_lib_versions ADD COLUMN IF NOT EXISTS declared_imports JSONB DEFAULT '[]'::jsonb"
+        ))

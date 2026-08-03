@@ -106,6 +106,7 @@ def sha256(source_code: str) -> str:
 
 class SourceUpdateBody(BaseModel):
     source_code: str
+    declared_imports: Optional[list[str]] = None
 
 
 class ValidateBody(BaseModel):
@@ -145,6 +146,7 @@ def _version_dict(v: HardwareLibVersion) -> Dict[str, Any]:
         "sha256_hash": v.sha256_hash,
         "state": v.state,
         "ast_metadata": v.ast_metadata,
+        "declared_imports": v.declared_imports or [],
         "created_at": v.created_at,
         "stable_at": v.stable_at,
         "stable_reason": v.stable_reason,
@@ -158,6 +160,7 @@ def _lib_dict(lib: HardwareLib, active_version: HardwareLibVersion | None = None
         "id": lib.id,
         "name": lib.name,
         "filename": lib.filename,
+        "kind": lib.kind,
         "ast_metadata": lib.ast_metadata,
         "active_version_id": lib.active_version_id,
         "stable_version_id": lib.stable_version_id,
@@ -169,7 +172,51 @@ def _lib_dict(lib: HardwareLib, active_version: HardwareLibVersion | None = None
     }
 
 
-def _create_version(db, lib_id: int, source_code: str, next_version_number: int) -> HardwareLibVersion:
+def _validate_compute_lib(source_code: str, declared_imports: list[str]) -> None:
+    """CMP-04 + CMP-19 hard gates for a `kind='compute'` upload/update.
+
+    a) every class with an in-file base (a `class X(Something):`) must define `release()` --
+       `Task.end()` calls `release()` unconditionally on every hardware object on every run.
+    b) every declared import must be a Pi stdlib module already vetted for a compute lib --
+       third-party packages need per-Pi package management, deferred (CMP-19).
+    """
+    from hw_introspect import resolve_class_methods
+
+    for node in ast.walk(ast.parse(source_code)):
+        if isinstance(node, ast.ClassDef) and node.bases:
+            methods, _closed = resolve_class_methods(source_code, node.name)
+            if "release" not in methods:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"class '{node.name}' must define release() -- Task.end() calls "
+                        f"release() on every hardware object on every run"
+                    ),
+                )
+
+    if not declared_imports:
+        return
+    from seed_compute import COMPUTE_STDLIB_ALLOWLIST
+
+    for imp in declared_imports:
+        if imp not in COMPUTE_STDLIB_ALLOWLIST:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"declared import '{imp}' is not allowed -- allowed stdlib imports: "
+                    f"{sorted(COMPUTE_STDLIB_ALLOWLIST)} -- third-party packages are deferred "
+                    f"pending per-Pi package management (CMP-19)"
+                ),
+            )
+
+
+def _create_version(
+    db,
+    lib_id: int,
+    source_code: str,
+    next_version_number: int,
+    declared_imports: list[str] | None = None,
+) -> HardwareLibVersion:
     """Validate source, create version row in beta state, return it."""
     ok, err = validate_source(source_code)
     state = "beta" if ok else "unvalidated"
@@ -181,6 +228,7 @@ def _create_version(db, lib_id: int, source_code: str, next_version_number: int)
         sha256_hash=sha256(source_code),
         state=state,
         ast_metadata=meta,
+        declared_imports=declared_imports,
         validation_error=err,
     )
     db.add(version)
@@ -196,16 +244,29 @@ def _create_version(db, lib_id: int, source_code: str, next_version_number: int)
 def upload_hardware_lib(
     name: str = Form(...),
     file: UploadFile = File(...),
+    kind: str = Form("hardware"),
+    declared_imports: str = Form("[]"),
     _: dict = Depends(verify_token),
 ):
+    if kind not in ("hardware", "compute"):
+        raise HTTPException(status_code=422, detail=f"kind must be 'hardware' or 'compute' (got '{kind}')")
+    try:
+        imports_list = json.loads(declared_imports)
+        assert isinstance(imports_list, list) and all(isinstance(i, str) for i in imports_list)
+    except Exception:
+        raise HTTPException(status_code=422, detail="declared_imports must be a JSON array of strings")
+
     source_code = file.file.read().decode("utf-8")
     db = _SA_SessionLocal()
     try:
-        lib = HardwareLib(name=name, filename=file.filename)
+        if kind == "compute":
+            _validate_compute_lib(source_code, imports_list)
+
+        lib = HardwareLib(name=name, filename=file.filename, kind=kind)
         db.add(lib)
         db.flush()  # get lib.id
 
-        version = _create_version(db, lib.id, source_code, next_version_number=1)
+        version = _create_version(db, lib.id, source_code, next_version_number=1, declared_imports=imports_list)
 
         if version.state == "unvalidated":
             db.rollback()
@@ -341,6 +402,9 @@ def update_hardware_lib_source(
         if not lib:
             raise HTTPException(status_code=404, detail="Hardware lib not found")
 
+        if lib.kind == "compute":
+            _validate_compute_lib(body.source_code, body.declared_imports or [])
+
         # Capture old AST before overwrite for impact diff
         old_ast = lib.ast_metadata
 
@@ -351,7 +415,7 @@ def update_hardware_lib_source(
             .first()
         )
         next_num = (last_version.version_number + 1) if last_version else 1
-        version = _create_version(db, lib_id, body.source_code, next_num)
+        version = _create_version(db, lib_id, body.source_code, next_num, declared_imports=body.declared_imports)
 
         if version.state == "unvalidated":
             db.rollback()

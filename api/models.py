@@ -646,6 +646,7 @@ class HardwareLibVersion(Base):
     sha256_hash = Column(String, nullable=False)
     state = Column(String, default="unvalidated")  # unvalidated | beta | stable
     ast_metadata = Column(SAJSON, nullable=True)
+    declared_imports = Column(SAJSON, nullable=True)  # Phase 23 CMP-19: compute-lib import allowlist
     created_at = Column(DateTime, default=datetime.utcnow)
     stable_at = Column(DateTime, nullable=True)
     stable_reason = Column(String, nullable=True)   # 'user' | 'protocol_run'
@@ -659,6 +660,7 @@ class HardwareLib(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     filename = Column(String, nullable=False)
+    kind = Column(String, nullable=False, default="hardware")  # Phase 23 CMP-12: 'hardware' | 'compute'
     ast_metadata = Column(SAJSON, nullable=True)
     active_version_id = Column(
         Integer,

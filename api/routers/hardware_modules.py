@@ -60,6 +60,7 @@ def _module_row(module: HardwareModule, lib: HardwareLib | None) -> dict:
         "description": module.description,
         "created_at": module.created_at,
         "lib_filename": lib.filename if lib else None,
+        "lib_kind": lib.kind if lib else None,
     }
 
 

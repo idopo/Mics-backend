@@ -28,8 +28,8 @@ pilot's wiring stays with preflight, same reason as key_template resolution abov
 import re
 
 from fastapi import HTTPException
-from sqlalchemy import text as sa_text
 
+from detector_keys import module_detector_channels
 from fda_utils import scan_fda_condition_operands
 from hw_introspect import toolkit_hw_capabilities
 from models import TaskToolkit
@@ -39,7 +39,7 @@ from models import TaskToolkit
 # import from each other, so the token is listed here explicitly rather than inferred).
 RUNTIME_KEY_TEMPLATE_TOKENS = {"device_name"}
 
-VALID_ACTION_TYPES = {"hardware", "flag", "timer", "special", "method", "if", "view"}
+VALID_ACTION_TYPES = {"hardware", "flag", "timer", "special", "method", "if", "view", "compute"}
 VALID_SPECIALS = {"INC_TRIAL_COUNTER"}
 VALID_TRIGGER_CONTEXT_KEYS = {"level", "tick"}
 # No handler constant: the `handler` enum was dropped in Phase 24. `actions` is the only vocabulary.
@@ -204,6 +204,61 @@ def validate_condition_operands(fda_json: dict, detector_refs: set[str] | None =
     return errors
 
 
+def validate_compute_variables(
+    fda_json: dict,
+    toolkit,
+    module_names: set[str] | None = None,
+    detector_keys: set[str] | None = None,
+) -> list[str]:
+    """CMP-10: two independent hard checks over the `variables` registry and every condition
+    operand — the compute-era additions to the save-time gate.
+
+    Collision half: a declared variable name must not collide with the toolkit's semantic
+    hardware, a backend-authored module name, or a detector-derived view key. Each of those is
+    resolved through the exact same `{"view": name}` / `{"flag": name}` operand shape a variable
+    is, so an un-caught collision would make one silently shadow the other. The flag-collision
+    half already lives in `validate_variables` — not duplicated here.
+
+    Reference half: every `{"view": name}` / `{"flag": name}` condition operand (transitions,
+    `wait_condition`, `if`-action conditions — all reached via `scan_fda_condition_operands`)
+    must name something resolvable: a toolkit flag, a declared variable, `trial_counter`, a
+    module name, or a detector view key. `{"view_detector": ...}` operands are plan 25-01's own
+    shape and are skipped entirely (matched neither key below); literal operands are ignored.
+    """
+    if toolkit is None:
+        return []
+    errors: list[str] = []
+    module_names = module_names or set()
+    detector_keys = detector_keys or set()
+
+    variables = fda_json.get("variables") or {}
+    if isinstance(variables, dict):
+        semantic_hw = set((getattr(toolkit, "semantic_hardware", None) or {}).keys())
+        for name in variables:
+            if name in semantic_hw:
+                errors.append(f"variable '{name}' collides with a toolkit hardware name")
+            elif name in module_names:
+                errors.append(f"variable '{name}' collides with a hardware module name")
+            elif name in detector_keys:
+                errors.append(f"variable '{name}' collides with a detector-derived view key")
+
+    valid_names = _valid_flag_names(fda_json, toolkit) | module_names | detector_keys
+    for entry in scan_fda_condition_operands(fda_json):
+        operand = entry["operand"]
+        if not isinstance(operand, dict):
+            continue
+        if "view" in operand:
+            name = operand["view"]
+        elif "flag" in operand:
+            name = operand["flag"]
+        else:
+            continue
+        if not isinstance(name, str) or name not in valid_names:
+            errors.append(f"{entry['location']}: references unknown variable/flag '{name}'")
+
+    return errors
+
+
 def collect_hard_errors(
     fda_json: dict,
     toolkit,
@@ -211,8 +266,9 @@ def collect_hard_errors(
     module_methods: dict[str, tuple[set[str], bool]] | None = None,
     trigger_sources: set[str] | None = None,
     detector_refs: set[str] | None = None,
+    detector_keys: set[str] | None = None,
 ) -> list[str]:
-    """Every hard (422-worthy) error for this FDA. Phase 23 appends its compute checks here."""
+    """Every hard (422-worthy) error for this FDA."""
     if not fda_json or toolkit is None:
         return []
     return (
@@ -220,6 +276,7 @@ def collect_hard_errors(
         + validate_trigger_assignments(fda_json, toolkit, module_names, module_methods, trigger_sources)
         + validate_state_actions(fda_json, toolkit, module_methods)
         + validate_condition_operands(fda_json, detector_refs)
+        + validate_compute_variables(fda_json, toolkit, module_names, detector_keys)
     )
 
 
@@ -236,27 +293,18 @@ def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
     module_methods = caps["module_methods"] if caps else None
     trigger_sources = {t["hw_id"] for t in caps["trigger_sources"]} if caps else None
     detector_refs = set(caps["detector_refs"]) if caps else None
+    module_names = set(caps["module_names"]) if caps else set()
+    # module_detector_channels is a single call keyed on module_names alone (no pilot_id needed)
+    # — per-pilot channel RANGE stays with preflight, same split as key_template resolution.
+    detector_keys = (
+        {key for entry in module_detector_channels(db, sorted(module_names)) for key in entry["keys"]}
+        if module_names else set()
+    )
     errors = collect_hard_errors(
-        fda_json, toolkit, _module_names(db, toolkit), module_methods, trigger_sources, detector_refs
+        fda_json, toolkit, module_names, module_methods, trigger_sources, detector_refs, detector_keys
     )
     if errors:
         raise HTTPException(422, detail={"errors": errors})
-
-
-def _module_names(db, toolkit) -> set[str]:
-    """Names of the toolkit's backend-authored hardware Modules, as the Pi will see them.
-
-    Mirrors toolkit_dispatch.get_dispatch_spec, which keys HARDWARE["Modules"] by
-    hardware_modules.name — so a ref valid here is a ref the Pi can resolve.
-    """
-    module_ids = getattr(toolkit, "hardware_module_ids", None) if toolkit is not None else None
-    if not module_ids:
-        return set()
-    rows = db.execute(
-        sa_text("SELECT name FROM hardware_modules WHERE id = ANY(:ids)"),
-        {"ids": list(module_ids)},
-    ).fetchall()
-    return {r.name for r in rows}
 
 
 def _valid_flag_names(fda_json: dict, toolkit) -> set[str]:
@@ -306,7 +354,7 @@ def _validate_action(
     if method_only:
         # State-body hard validation is scoped to the method rule only — ref/flag/view/output
         # checks stay with the soft drift path. Non-hardware actions have nothing to check here.
-        return _validate_action_method(context_label, idx, action, module_methods) if action_type in ("hardware", "timer") else []
+        return _validate_action_method(context_label, idx, action, module_methods) if action_type in ("hardware", "timer", "compute") else []
 
     if action_type not in VALID_ACTION_TYPES:
         return [
@@ -324,6 +372,20 @@ def _validate_action(
         if "group" not in action and known_hw and ref not in known_hw:
             errors.append(f"{context_label} action[{idx}]: unknown hardware ref '{ref}'")
         errors.extend(_validate_action_method(context_label, idx, action, module_methods))
+    elif action_type == "compute":
+        # A compute module IS a hardware_modules row (CMP-03/12) — same ref/method rule as
+        # hardware, plus one unconditional rule the hardware branch does not need: an `output`
+        # is mandatory on compute (a compute op that writes nowhere is a no-op).
+        if "group" not in action and known_hw and ref not in known_hw:
+            errors.append(f"{context_label} action[{idx}]: unknown compute ref '{ref}'")
+        errors.extend(_validate_action_method(context_label, idx, action, module_methods))
+        out = action.get("output")
+        if not out or (isinstance(out, list) and not out):
+            errors.append(
+                f"{context_label} action[{idx}]: compute action '{ref}.{action.get('method')}' "
+                f"requires an 'output' naming a declared variable — a compute op that writes "
+                f"nowhere is a no-op"
+            )
     elif action_type == "method":
         if callable_methods and ref not in callable_methods:
             errors.append(f"{context_label} action[{idx}]: method '{ref}' not in toolkit callable_methods")

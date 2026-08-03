@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from fda_validation import (
     collect_hard_errors,
+    validate_compute_variables,
     validate_condition_operands,
     validate_state_actions,
     validate_trigger_assignments,
@@ -367,6 +368,110 @@ def test_args_kwargs_valid_trigger_key_is_ok():
 
 
 # ---------------------------------------------------------------------------
+# Compute actions (Plan 23-03 Task 2, CMP-10)
+# ---------------------------------------------------------------------------
+
+def _compute_action(ref="COMPUTE", method="random_bool", output="target", **extra):
+    action = {"type": "compute", "ref": ref, "method": method, "args": [0.5]}
+    if output is not None:
+        action["output"] = output
+    action.update(extra)
+    return action
+
+
+def _compute_fda(action, variables=None):
+    fda = {"trigger_assignments": [{"trigger_name": "TOUCH_INT", "actions": [action]}]}
+    if variables is not None:
+        fda["variables"] = variables
+    return fda
+
+
+def test_compute_type_no_longer_trips_unknown_action_type():
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(output=None), variables={})
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert not any("unknown action type" in e for e in errors)
+
+
+def test_compute_action_missing_output_key_errors_naming_output():
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(output=None))
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("output" in e and "COMPUTE.random_bool" in e for e in errors)
+
+
+def test_compute_action_empty_string_output_errors():
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(output=""))
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("output" in e for e in errors)
+
+
+def test_compute_action_output_not_declared_as_variable_errors():
+    """Falls out of the existing generic output-membership check — asserted, not re-implemented."""
+    toolkit = make_toolkit()
+    fda = _compute_fda(_compute_action(output="target"))  # 'target' never declared in variables
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("output slot 'target' not declared" in e for e in errors)
+
+
+def test_compute_action_output_declared_as_variable_is_ok():
+    toolkit = make_toolkit(semantic_hardware={"COMPUTE": ["COMPUTE"]})
+    fda = _compute_fda(_compute_action(output="target"), variables={"target": {}})
+    assert validate_trigger_assignments(fda, toolkit) == []
+
+
+def test_compute_action_unknown_ref_errors():
+    toolkit = make_toolkit(semantic_hardware={"COMPUTE": ["COMPUTE"]})
+    fda = _compute_fda(_compute_action(ref="GHOST_LIB", output="target"), variables={"target": {}})
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("unknown compute ref 'GHOST_LIB'" in e for e in errors)
+
+
+def test_compute_action_unknown_method_rejected_when_class_closed():
+    toolkit = make_toolkit(semantic_hardware={"COMPUTE": ["COMPUTE"]})
+    module_methods = {"COMPUTE": ({"random_bool", "add"}, True)}
+    fda = _compute_fda(_compute_action(method="mystery", output="target"), variables={"target": {}})
+    errors = validate_trigger_assignments(fda, toolkit, module_methods=module_methods)
+    assert any("mystery" in e for e in errors)
+
+
+def test_compute_action_empty_method_errors_same_as_hardware():
+    toolkit = make_toolkit(semantic_hardware={"COMPUTE": ["COMPUTE"]})
+    fda = _compute_fda(_compute_action(method="", output="target"), variables={"target": {}})
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("COMPUTE" in e and "no method" in e for e in errors)
+
+
+def test_compute_action_in_state_body_no_method_hard_errors():
+    """method_only path (TRIGA-16) must catch a compute action too."""
+    toolkit = make_toolkit()
+    fda = {"states": {"roll": {"entry_actions": [_compute_action(method="", output="target")]}}}
+    errors = validate_state_actions(fda, toolkit)
+    assert any("no method" in e for e in errors)
+
+
+def test_route_level_compute_action_missing_output_returns_422(client):
+    defn = make_defn_mock()
+    toolkit = make_toolkit(semantic_hardware={"COMPUTE": ["COMPUTE"]})
+    mock_db = make_db_mock(defn=defn, toolkit=toolkit)
+    payload = {
+        "fda_json": {
+            "states": {},
+            "trigger_assignments": [
+                {"trigger_name": "TOUCH_INT", "actions": [_compute_action(output=None)]}
+            ],
+        }
+    }
+    with patch("routers.toolkits._SA_SessionLocal") as mock_factory:
+        mock_factory.return_value = mock_db
+        resp = client.put("/api/task-definitions/1", json=payload, headers=auth_headers())
+
+    assert resp.status_code == 422
+    assert any("output" in e for e in resp.json()["detail"]["errors"])
+
+
+# ---------------------------------------------------------------------------
 # Variables errors
 # ---------------------------------------------------------------------------
 
@@ -386,6 +491,105 @@ def test_variable_colliding_with_toolkit_flag_errors_naming_it():
 def test_variables_no_collision_is_ok():
     toolkit = make_toolkit(flags={"trial_counter": {}})
     assert validate_variables({"variables": {"pin_number": {}}}, toolkit) == []
+
+
+# ---------------------------------------------------------------------------
+# validate_compute_variables (Plan 23-03 Task 2, CMP-10): collision half
+# ---------------------------------------------------------------------------
+
+def test_variable_colliding_with_toolkit_flag_regression_pinned_via_collect_hard_errors():
+    """The flag-collision half already lives in validate_variables — regression-pin it through
+    the new function's caller (collect_hard_errors) rather than duplicating the rule."""
+    toolkit = make_toolkit(flags={"trial_counter": {}})
+    fda = {"variables": {"trial_counter": {}}}
+    errors = collect_hard_errors(fda, toolkit)
+    assert any("trial_counter" in e and "flag" in e for e in errors)
+
+
+def test_variable_colliding_with_semantic_hardware_errors_naming_it():
+    toolkit = make_toolkit(semantic_hardware={"MPR121": ["I2C", "MPR121"]})
+    errors = validate_compute_variables({"variables": {"MPR121": {}}}, toolkit)
+    assert any("MPR121" in e for e in errors)
+
+
+def test_variable_colliding_with_module_name_errors_naming_it():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables({"variables": {"Right_LED": {}}}, toolkit, module_names={"Right_LED"})
+    assert any("Right_LED" in e for e in errors)
+
+
+def test_variable_colliding_with_detector_key_errors_naming_it():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables({"variables": {"LICKER0": {}}}, toolkit, detector_keys={"LICKER0"})
+    assert any("LICKER0" in e for e in errors)
+
+
+def test_variable_no_collision_with_module_names_or_detector_keys_is_ok():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables(
+        {"variables": {"pin_number": {}}}, toolkit, module_names={"Right_LED"}, detector_keys={"LICKER0"}
+    )
+    assert errors == []
+
+
+# ---------------------------------------------------------------------------
+# validate_compute_variables: reference half — {"view"/"flag": name} operands
+# ---------------------------------------------------------------------------
+
+def _condition_fda(operand):
+    return {"transitions": [{"condition_tree": {"left": operand, "op": "==", "right": 1}}]}
+
+
+def test_condition_view_operand_unknown_name_errors_naming_location():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables(_condition_fda({"view": "ghost"}), toolkit)
+    assert any("transitions[0].condition_tree.left" in e and "ghost" in e for e in errors)
+
+
+def test_condition_flag_operand_unknown_name_errors_naming_location():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables(_condition_fda({"flag": "ghost"}), toolkit)
+    assert any("transitions[0].condition_tree.left" in e and "ghost" in e for e in errors)
+
+
+def test_condition_view_operand_known_variable_is_ok():
+    toolkit = make_toolkit()
+    fda = _condition_fda({"view": "pin_number"})
+    fda["variables"] = {"pin_number": {}}
+    assert validate_compute_variables(fda, toolkit) == []
+
+
+def test_condition_flag_operand_known_toolkit_flag_is_ok():
+    toolkit = make_toolkit(flags={"lever_pressed": {}})
+    assert validate_compute_variables(_condition_fda({"flag": "lever_pressed"}), toolkit) == []
+
+
+def test_condition_operand_resolved_via_module_names_is_ok():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables(
+        _condition_fda({"view": "Right_LED"}), toolkit, module_names={"Right_LED"}
+    )
+    assert errors == []
+
+
+def test_condition_operand_resolved_via_detector_keys_is_ok():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables(
+        _condition_fda({"view": "LICKER0"}), toolkit, detector_keys={"LICKER0"}
+    )
+    assert errors == []
+
+
+def test_view_detector_operand_not_checked_here_stays_plan_25_01_scope():
+    toolkit = make_toolkit()
+    errors = validate_compute_variables(_condition_fda({"view_detector": {"ref": "Ghost", "channel": 0}}), toolkit)
+    assert errors == []
+
+
+def test_literal_operand_ignored():
+    toolkit = make_toolkit()
+    assert validate_compute_variables(_condition_fda(5), toolkit) == []
+    assert validate_compute_variables(_condition_fda(None), toolkit) == []
 
 
 # ---------------------------------------------------------------------------

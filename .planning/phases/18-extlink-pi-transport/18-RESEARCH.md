@@ -517,6 +517,280 @@ class _EgressWorker:
      "one thread per device" is both the simplest reading of the locked decision and the easiest to
      reason about for ordering guarantees.
 
+## Validation Architecture
+
+### Test Framework
+
+| Property | Value |
+|---|---|
+| Framework (backend) | pytest, run inside the `api` docker container (`docker compose exec api pytest`) |
+| Framework (Pi, agent-runnable) | pytest, but `import autopilot` **fails on the dev host** — verified this session: `autopilot/autopilot/__init__.py:4` unconditionally does `from autopilot.setup import setup_autopilot`, which does `import npyscreen`, not installed here (`ModuleNotFoundError: No module named 'npyscreen'`). This reproduces Phase 23's documented finding exactly. **Any test file that does `from autopilot.hardware import ...` or `from autopilot.tasks import ...` is USER-RUN on the Pi, not agent-runnable**, regardless of whether the logic under test needs real hardware. `msgpack` and `zmq` are also both absent from the dev host's Python (verified: `ModuleNotFoundError` for both) — a further reason to isolate anything msgpack/zmq-touching into a pure-stdlib-shape module (see Design-for-Testability below). |
+| Framework (React) | N/A this phase — no React changes in scope |
+| Quick run command (backend) | `docker compose exec api python -m pytest -q api/tests/test_toolkit_dispatch.py -k lease` (once written) |
+| Quick run command (Pi, agent-runnable, no `autopilot` import) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py tests/test_extlink_egress.py tests/test_extlink_wire.py` (proposed new files — see below; these must not import `autopilot.*`) |
+| Full suite command (backend) | `docker compose exec api python -m pytest -q` |
+| Full suite command (Pi) | **USER-RUN**: `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q` |
+
+### Design-for-testability requirement (this is a plan-shaping finding, not a footnote)
+
+Because `import autopilot.hardware.external_hardware` always executes `autopilot/__init__.py` (Python
+runs every parent package's `__init__.py` on any dotted import, with no way around it short of
+editing that file, which is out of scope), **the only way to get agent-side unit coverage on this
+dev host is to keep the msgpack codec, the `@decoder` dispatch logic, the stale-policy calculator,
+and the egress-queue mechanics in a small module (or a set of functions/classes within
+`external_hardware.py`) that has zero `autopilot.*` imports at module level** — pure stdlib plus
+`msgpack` (installable in the agent's own test environment; NOT the Pi). `ExternalHardware` itself
+(the `Hardware` subclass, needing `autopilot.hardware.Hardware`) stays USER-RUN, but the pure logic
+it delegates to can be imported directly and unit-tested by the agent. Concretely: put the wire
+codec (`encode_sig`/`decode_frame`), the decoder-dispatch loop, the stale-policy resolver, and the
+`_EgressWorker` class in importable, `autopilot`-free shape (even if they end up as
+`@staticmethod`s or module-level functions inside `external_hardware.py` — Python only executes the
+*package* `__init__.py` chain when the import statement reaches into the package; a test file that
+does `importlib.util.spec_from_file_location(...)` directly against `external_hardware.py`'s path
+**still triggers `autopilot/__init__.py`** the moment `external_hardware.py` itself contains
+`from autopilot.hardware import Hardware` at module scope — so the pure pieces must be extractable
+into helpers that do NOT require that import to be evaluated, e.g. by deferring the `Hardware`
+import to be local to the class definition it's needed for, or by keeping the pure logic in a
+separate sibling module `external_hardware_wire.py` with zero autopilot imports, imported BY
+`external_hardware.py` but requiring no reverse dependency. **Recommend the sibling-module split**
+— it is the only approach that reliably survives whatever import ordering the class ends up with.
+
+### Per-subsystem validation strategy
+
+#### 1. `sub_connect` + `@decoder`
+- **(A) Agent-verifiable, no live publisher needed.** The `@decoder` contract is "translate one
+  foreign frame (bytes) into a list of declared signal/event updates" — a pure function over bytes
+  in, structured updates out. Write `tests/test_extlink_decoder.py` (new, `autopilot`-free) with
+  **synthetic captured frames** as literal byte strings/dicts (no real OE process needed): decode a
+  well-formed frame → asserts the exact `(signal_name, value)` tuples produced; decode a truncated
+  frame → asserts a `None`/empty-list return (never a raised exception, per EXTLINK-08); decode a
+  frame with an unknown field → asserts the unknown-field is dropped, known fields still applied.
+  This is the single highest-value test in the whole phase, since it's the one component with zero
+  existing precedent to lean on (see Don't Hand-Roll) — write it FIRST, before any Pi-side wiring.
+- **(A) The SUB socket's connect-vs-bind role selection** (does `role: "sub_connect"` correctly
+  choose `zmq.SUB` + `.connect()` and skip the DEALER-identity check) is verifiable with a **fake
+  socket factory**: inject a stub object in place of `zmq.Context().socket(...)` in a unit test and
+  assert `.connect()` was called with the configured `host:connect_port` and `.bind()` was not,
+  without ever opening a real network socket.
+- **(B) USER-RUN, single checkpoint:** an actual `sub_connect` end-to-end proof needs a real PUB
+  publisher. Reuse `extlink_smoke.py`'s shape but add a `publish` subcommand (or a tiny standalone
+  script) that PUBs a synthetic foreign-format frame from the dev machine; the user runs it against
+  the deployed Pi and confirms the resulting view key updates. This is NOT verifiable from the
+  mirror because it requires a live, bound Tornado IOLoop on the actual Pi process.
+
+#### 2. Egress queue
+- **(A) Fully agent-verifiable with a fake failing sink — no network, no Pi.** `tests/test_extlink_egress.py`
+  (new, `autopilot`-free — the `_EgressWorker` class from Code Examples takes a `send_fn` callable,
+  which is trivially replaceable with a test double):
+  - `test_fifo_order`: enqueue items `[1,2,3]` with a `send_fn` that appends to a list; assert the
+    list ends up `[1,2,3]` (ordering preserved under a single worker thread).
+  - `test_drop_newest_on_overflow`: construct with `maxsize=2`, enqueue 3 items faster than
+    `send_fn` can drain (block `send_fn` with a `threading.Event`); assert the 3rd `enqueue()` call
+    raises/reports `queue.Full` and `dropped == 1`, and that items 1 and 2 (not 3) are the ones
+    actually sent — proving "drop the newest," not the oldest.
+  - `test_no_retry_on_failure`: `send_fn` raises on the first call; assert the worker thread
+    continues (doesn't crash) and the *next* enqueued item is still attempted — proving fire-and-
+    forget, no retry of the failed item.
+  - `test_alive_flips_after_n_consecutive_failures`: wrap `send_fn` to always raise; assert an
+    `alive`-flip callback fires exactly once after the configured `egress_fail_threshold`
+    consecutive failures, and does not re-fire on every subsequent failure (edge-triggered, not
+    level-triggered).
+  All four are pure `threading`/`queue` mechanics with a fake `send_fn` — zero dependency on ZMQ,
+  HTTP, or the Pi.
+- **(B) USER-RUN:** proving the egress worker never blocks the FDA thread under REAL network
+  latency (e.g., OE's REST endpoint hanging) can only be observed on the rig or against a real
+  networked stub service — not meaningfully fakeable in a unit test, since the property being
+  proven is "the calling thread's timing is unaffected," which requires a real OS thread scheduler
+  under real I/O latency to be convincing. Budget this as one rig checkpoint per Phase 26, not
+  Phase 18 (Phase 18 only needs to prove the *mechanism*, i.e. tests above).
+
+#### 3. Run lifecycle hooks (`on_run_start`/`on_run_stop`)
+- **(A) Agent-verifiable in the mirror, no Pi required, no autopilot import if built per the
+  Design-for-testability note above:** `tests/test_extlink_lifecycle.py` —
+  - `test_on_run_start_retried_until_ready`: a fake lib whose readiness hook returns `False` twice
+    then `True`; assert the retry loop calls it exactly 3 times within a fake `wait_timeout_s`
+    clock (inject a fake clock/sleep function, don't actually sleep in the test).
+  - `test_on_run_start_never_blocks_caller`: call the async-dispatch wrapper and assert it returns
+    before the fake hook's artificial delay elapses (prove "returns immediately," per EXTLINK-16).
+  - `test_on_run_stop_called_exactly_once_per_release`: construct a fake `ExternalHardware`-shaped
+    object, call `.release()`, assert `on_run_stop` was invoked exactly once — this is testing the
+    NEW code's own contract, not `Task.end()`'s wiring (which is existing, already-verified-by-
+    reading code, and does not need a new test — seePitfall 7/Architecture Patterns write-up).
+  - `test_run_ctx_shape`: assert the dict passed to `on_run_start` has exactly the six locked keys
+    (`run_id`, `session_id`, `subject_key`, `pilot`, `task_definition_id`, `started_at`) and no
+    others — a cheap regression guard against accidentally leaking a seventh field that would break
+    every existing subclass (the exact risk EXTLINK-16 calls out).
+- **(A) Regression-only, not new logic, but worth a one-line pin:** `Task.end()` already calls
+  `.release()` unconditionally on every hardware object (verified by reading `task.py:434-442`
+  this session) — a plan task should add a **narrow** regression test in `tests/test_mics_task_attrs.py`
+  (existing file) asserting `mics_task.end()` still calls `super().end()` (byte-diff-style check,
+  guards against a future edit silently dropping the call this whole chokepoint depends on).
+- **(B) NOT verifiable before the rig, state plainly:** whether `on_run_stop()`'s own CONTINUOUS
+  logging reaches ES. Per Open Question 1 / Pitfall 3, `event_dispatcher.stop()` runs before
+  `task.end()`/`release()` in `pilot.py`'s teardown — **do not write an acceptance test asserting
+  an ES event exists for the stop itself**; it is provably a race the plan cannot win without
+  editing `pilot.py` (out of scope). If Phase 26 needs stop-time ES visibility, log it as an
+  in-run event BEFORE the STOP/exception path unwinds, and test THAT instead.
+- **(B) USER-RUN, single checkpoint:** the actual `_wait_extlink_ready` pre-state firing on the real
+  FDA (does the pilot really block on the synthetic state, does the three-exit priority order hold
+  end-to-end) needs the real Pi's `FiniteDeterministicAutomaton` driven by `pilot.py::run_task`'s
+  real loop — the mechanics of `add_method`/`set_initial_method`/`add_transition` are stdlib-pure
+  and could theoretically be unit-tested against a bare `FiniteDeterministicAutomaton` instance
+  (which itself has zero `autopilot.hardware`/`autopilot.tasks` imports — verified: it only imports
+  `Event_Dispatcher` and `Event`, and `Event_Dispatcher.py` imports `pigpio`, which IS installable
+  without the Pi but talks to nothing real if unused) — **flag as a stretch goal**: a
+  `tests/test_wait_extlink_ready_transitions.py` that builds a `FiniteDeterministicAutomaton`
+  directly (bypassing `mics_task` entirely) and asserts the three-exit transition table is wired
+  correctly, IS agent-runnable if it avoids importing `mics_task`/`Hardware`. The full pre-state
+  injection wired through `load_fda_from_json()` is USER-RUN (that function lives inside
+  `mics_task.py`, which pulls in the full `autopilot` chain).
+
+#### 4. Device lease
+- **(A) Fully agent-verifiable, no Pi at all.** This is the cleanest subsystem in the phase — it is
+  100% backend (`api/`), living in `toolkit_dispatch.py`'s `preflight_validate`, the exact pattern
+  Phase 25's `view_key_unresolved` already added with zero new machinery. `api/tests/test_toolkit_dispatch.py`
+  (existing file) gains:
+  - `test_lease_blocks_second_run_same_host`: seed two `pilot_hardware_config` rows on two
+    different pilots with the same normalized `host`, simulate an active lease for pilot A, call
+    `preflight_validate` for pilot B's session → assert a new `device_held` (or equivalent) issue
+    naming pilot A's pilot/subject/run, exactly as EXTLINK-17 specifies.
+  - `test_lease_key_is_host_not_host_port`: two configs with the same `host` but different `port`
+    fields → assert they still collide on the SAME lease (proving `host:port` was correctly
+    rejected as the key, per the locked decision).
+  - `test_lease_released_on_manual_force_release`: call whatever force-release endpoint the plan
+    adds → assert a subsequent `preflight_validate` no longer reports the issue.
+  - `test_lease_released_when_reconciliation_marks_run_ended`: exercise the (rewritten, per
+    Correction 2) reconciliation logic directly against a fake/stale Redis `updated_at` timestamp
+    → assert the lease row is cleared. Test this against the reconciliation function in isolation
+    (call it directly with a fabricated stale timestamp), not by actually waiting out a real
+    timeout — direct call keeps the test fast and deterministic, avoiding the reconciliation loop's
+    real 5s-poll rhythm.
+  All of the above run via `docker compose exec api python -m pytest -q api/tests/test_toolkit_dispatch.py -k lease`
+  against the real (or test) Postgres — no Pi, no mocking of `zmq`/`msgpack` needed at all.
+
+#### 5. Liveness hook
+- **(A) Agent-verifiable, mirror-only, no Pi.** The hook contract is "a predicate function, default
+  = data-within-`stale_ms`, overridable per lib" — pure logic testable with a fake clock:
+  `tests/test_extlink_liveness.py` (new, `autopilot`-free if the predicate itself takes
+  `last_seen_ts`/`now_ts` as plain floats, not live pigpio ticks):
+  - `test_default_liveness_alive_within_window`: `last_seen = now - 1.0`, `stale_ms = 3000` →
+    `True`.
+  - `test_default_liveness_dead_outside_window`: `last_seen = now - 5.0`, `stale_ms = 3000` →
+    `False`.
+  - `test_liveness_independent_of_signal_staleness`: construct a signal with `stale_policy:
+    return_default` and an old timestamp, and a liveness hook returning `True` independently
+    (simulating "reachable but quiet") → assert `alive` stays `True` while the signal's own
+    `get_state()`-equivalent returns the declared default — proving EXTLINK-07's core split is
+    correctly decoupled in code, not just in the docstring.
+  - `test_lib_override_replaces_default`: pass a custom predicate at construction → assert the
+    default data-arrival check is never consulted (proving overridability, since OE needs to poll
+    HTTP status instead).
+- **(B) USER-RUN, single checkpoint:** does the CONTINUOUS event actually reach ES on a real
+  `alive` flip during a real run — this is the one place a genuine `Event_Dispatcher`/pigpio-tick
+  round-trip (verified this session: `dispatch_event()` requires a real `pigpio.pi` clock, with no
+  fallback timebase by design) is unavoidable. Fold into the same rig checkpoint as the
+  `sub_connect` end-to-end proof (EXTLINK-11-style smoke test) rather than a separate rig visit.
+
+#### 6. AST-extractor extension (`@signal`/`@event`/`@command`/`@decoder` metadata)
+- **(A) Fully agent-verifiable, no Pi, no docker even required for the parsing logic itself**
+  (pure `ast` stdlib) **but the endpoint round-trip is backend, dockerized:**
+  - `api/tests/test_hardware_libs.py` (existing file — confirm exact name via
+    `grep -rl decorator api/tests/` before creating a duplicate) gains
+    `test_extract_signal_decorator_literal_kwargs`, `test_extract_event_decorator_payload_dict_with_bare_types`
+    (the exact `payload={"object": str, "confidence": float}` case from Pitfall 5 — assert the
+    extractor does NOT raise and produces `{"object": "str", "confidence": "float"}`, string-typed),
+    `test_extract_command_decorator_args_and_return`, `test_extract_decoder_flag_present`.
+  - `test_upload_hardware_lib_with_extlink_decorators_end_to_end`: `POST /api/hardware-libs` with a
+    full `ExternalHardware` subclass source string → assert `ast_metadata.extlink` is populated
+    with the expected shape, run against the live docker compose `api` service exactly like every
+    other `hardware_libs.py` test.
+  Zero rig involvement anywhere in this subsystem — it is pure `ast.parse` plus an existing FastAPI
+  endpoint, both fully reachable from the agent's own environment.
+
+### What is genuinely NOT verifiable before the rig (single consolidated checkpoint)
+
+Everything below requires a live, bound Tornado IOLoop inside the actual `pilot.py` process, a real
+`pigpio` clock, or a real foreign publisher — none of which exist in the mirror. Per the Pi
+operational rules, the agent hands the user a single `<verify>` checklist rather than scattering
+rig touches across the plan:
+
+1. `router_bind`: a real DEALER (or the extended `extlink_smoke.py`) connects, pushes a signal, an
+   FDA transition fires within the target latency (EXTLINK-11, already the locked smoke test).
+2. `sub_connect`: a real (or synthetic-but-live) PUB publishes a foreign-format frame, the deployed
+   `@decoder` translates it, the resulting view key is readable — proves the IOLoop `add_callback`
+   registration actually works on the real Pi process, not just in a mocked unit test.
+3. The `_wait_extlink_ready` pre-state's full three-exit behavior wired through a real task start
+   (all-ready → proceeds; `EXTLINK_SKIP_WAIT` → proceeds with a warning; timeout → clean abort) —
+   the transition-table mechanics are agent-testable in isolation (see subsystem 3 above), but the
+   end-to-end wiring through `mics_task.__init__`/`load_fda_from_json` is not.
+4. `on_run_start`/`on_run_stop` firing on all three real teardown paths (normal completion, STOP
+   button, task exception) against the real `pilot.py::run_task` loop.
+5. Liveness flip → CONTINUOUS event → visible in ES (the pigpio-tick dependency, per Pitfall 3's
+   sibling finding on `Event_Dispatcher.dispatch_event()`).
+6. Egress worker under real network latency not blocking the FDA thread (subsystem 2's (B) item).
+7. The device lease's end-to-end trigger from a REAL pilot crash/disconnect (as opposed to the
+   fabricated-stale-timestamp unit test in subsystem 4's (A) list) — confirms the rewritten
+   reconciliation loop's Redis-staleness signal actually fires from a genuinely dropped
+   connection, not just from a hand-constructed test input.
+
+Everything else in this phase — the decoder, the egress queue mechanics, the lifecycle hook
+contracts, the entire device lease, the liveness predicate, and the AST extractor — is agent-
+verifiable in the docker compose stack or as pure-Python unit tests in the mirror, per the
+subsystem breakdown above. This is a real bias toward (A): of the six subsystems, only `sub_connect`
+and the lifecycle hooks' full wiring have NO agent-runnable proof at all; the device lease has
+NONE that require the rig.
+
+### Phase Requirements → Test Map
+
+| Req ID | Behavior | Test Type | Automated Command | File Exists? |
+|--------|----------|-----------|-------------------|-------------|
+| EXTLINK-14 | `@decoder` translates a foreign frame into signal/event updates | unit (Pi, agent-runnable) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py` | ❌ Wave 0 |
+| EXTLINK-14 | `sub_connect` selects SUB+connect, not ROUTER+bind | unit (Pi, agent-runnable, fake socket) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py -k role_selection` | ❌ Wave 0 |
+| EXTLINK-15 | Egress FIFO order, drop-newest, no-retry, alive-flip threshold | unit (Pi, agent-runnable, fake sink) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_egress.py` | ❌ Wave 0 |
+| EXTLINK-16 | `on_run_start` retried, non-blocking; `on_run_stop` fires once per release; `run_ctx` shape pinned | unit (Pi, agent-runnable, fake lib) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_lifecycle.py` | ❌ Wave 0 |
+| EXTLINK-16 | `mics_task.end()` still calls `super().end()` (regression pin on the existing chokepoint) | unit (Pi, agent-runnable) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_mics_task_attrs.py -k end` | ❌ Wave 0 (extend existing file) |
+| EXTLINK-17 | Device lease blocks second run, keyed on host not host:port, releases on force/reconciliation | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_toolkit_dispatch.py -k lease` | ❌ Wave 0 (extend existing file) |
+| EXTLINK-07 | Liveness predicate default + override + independence from signal staleness | unit (Pi, agent-runnable) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_liveness.py` | ❌ Wave 0 |
+| EXTLINK-09 | AST extractor emits `ast_metadata.extlink` incl. bare-type payload dicts | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_hardware_libs.py -k extlink` | ❌ Wave 0 (confirm exact existing filename first) |
+| EXTLINK-01/02/11 | `router_bind` end-to-end smoke test | manual + rig | USER-RUN: `python3 ~/pi-mirror/scripts/dev/extlink_smoke.py probe --pi-host ... --listen-port ... --source-id ...` | N/A — manual-only, justified: needs a real bound IOLoop on the Pi |
+| EXTLINK-14 | `sub_connect` end-to-end smoke test | manual + rig | USER-RUN: extended smoke script `publish` subcommand against the deployed Pi | N/A — manual-only, justified: no foreign publisher / live IOLoop in the mirror |
+| EXTLINK-13 | `_wait_extlink_ready` three-exit behavior end-to-end | manual + rig | USER-RUN: start a real task with a required external source, observe skip/timeout/proceed paths | N/A — manual-only, justified: requires `mics_task.__init__`/`pilot.py::run_task` live |
+
+### Sampling Rate
+
+- **Per task commit:** the specific test file touched, e.g.
+  `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_egress.py` (agent-runnable, since it
+  has no `autopilot.*` import); `docker compose exec api python -m pytest -q api/tests/test_toolkit_dispatch.py -k lease`
+  (backend).
+- **Per wave merge:** `docker compose exec api python -m pytest -q` (full backend suite, must stay
+  green — rebuild the `api` container first, since it has no bind mount, per this project's own
+  documented gotcha); `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py tests/test_extlink_egress.py tests/test_extlink_lifecycle.py tests/test_extlink_liveness.py` (every
+  new `autopilot`-free Pi test file, agent-runnable as a batch).
+- **Phase gate:** full backend suite green, all agent-runnable Pi-mirror tests green, PLUS the
+  single consolidated rig checkpoint above (`router_bind` smoke, `sub_connect` smoke, full
+  lifecycle wiring, liveness→ES, egress-under-real-latency, lease-from-real-disconnect) confirmed
+  by the user before `/gsd:verify-work`.
+
+### Wave 0 Gaps
+
+- [ ] `~/pi-mirror/tests/test_extlink_decoder.py` — new, `autopilot`-free, covers EXTLINK-14/08.
+- [ ] `~/pi-mirror/tests/test_extlink_egress.py` — new, `autopilot`-free, covers EXTLINK-15.
+- [ ] `~/pi-mirror/tests/test_extlink_lifecycle.py` — new, `autopilot`-free, covers EXTLINK-16.
+- [ ] `~/pi-mirror/tests/test_extlink_liveness.py` — new, `autopilot`-free, covers EXTLINK-07.
+- [ ] Extend `~/pi-mirror/tests/test_mics_task_attrs.py` — regression pin on `mics_task.end()` →
+      `super().end()`, covers EXTLINK-16's chokepoint dependency.
+- [ ] Extend `api/tests/test_toolkit_dispatch.py` — device lease tests, covers EXTLINK-17.
+- [ ] Extend (confirm exact filename first — `grep -rl "class HardwareLib\|extract_ast_metadata" api/tests/`)
+      the hardware-libs AST test file — covers EXTLINK-09.
+- [ ] Framework install (agent-side, dev host only, NOT the Pi): `pip install msgpack` in whatever
+      environment runs the new `autopilot`-free `tests/test_extlink_*.py` files — needed so the
+      wire-codec tests can call `msgpack.packb`/`unpackb` directly rather than mocking them.
+- [ ] Framework install (Pi, USER-RUN): `msgpack` pinned for Python 3.7.3 — see Open Question 3;
+      resolve the exact version via a real `pip install` on the rig, don't hardcode a guess.
+- [ ] Confirm whether `~/pi-mirror/scripts/dev/extlink_smoke.py` needs a `publish` subcommand added
+      for the `sub_connect` rig checkpoint, or whether a separate throwaway script is cleaner —
+      plan-time decision, not research.
+
 ## Sources
 
 ### Primary (HIGH confidence — direct code reads + live SSH, this session)
@@ -536,6 +810,7 @@ class _EgressWorker:
 - `/home/ido/mics-backend/orchestrator/orchestrator/orchestrator_station.py` (lines 231-490, 822-995) — `start_run`, `stop_run`, `on_task_error`, `_inject_backend_toolkit_spec`, `_send_hardware_libs_if_needed`, `_run_watchdog`, `_redis_touch`
 - Live SSH (read-only) to the Pi: `~/.venv/autopilot` package check confirming `msgpack` is absent, pyzmq `23.0.0b1`, tornado `6.1`, Python `3.7.3`; `~/Apps/mice_interactive_home_cage/environment.yml` pins (`pyzmq==23.0.0b2`, `tornado==6.1`, `python=3.7.16`); `run_pilot.sh` venv-activation confirmation
 - `/home/ido/mics-backend/.planning/phases/23-compute-primitives-variables/23-RESEARCH.md` — format/structure precedent for this document
+- Dev-host import check (this session, addendum): `cd ~/pi-mirror/autopilot && python3 -c "import autopilot"` reproduces Phase 23's finding — fails on `ModuleNotFoundError: No module named 'npyscreen'` via `autopilot/__init__.py:4`'s unconditional `from autopilot.setup import setup_autopilot`; `msgpack` and `zmq` also confirmed absent from the dev host's Python — informs the Validation Architecture section's design-for-testability split
 
 ### Secondary (MEDIUM confidence)
 - Tornado official docs (`tornado.ioloop` module docs, current stable) — `IOLoop.add_callback()` is the only thread-safe cross-thread entry point. Verified via WebSearch this session, cross-referenced against pyzmq's own eventloop-integration docs describing the identical pattern.
@@ -550,6 +825,7 @@ class _EgressWorker:
 - Standard stack (msgpack, pyzmq, tornado versions): HIGH — pinned by live SSH into the actual rig venv, not assumed.
 - Architecture (IOLoop threading, egress pattern, lifecycle chokepoints): HIGH — every claim traced through actual code with line numbers, not inferred from the context doc's claims alone. Two of the context doc's own assumptions (msgpack transitivity, `_run_watchdog` availability) were found to be incorrect by this verification.
 - Pitfalls: HIGH for the ones backed by direct code reads (IOLoop threading, event-dispatcher-stop ordering, `ast.literal_eval`); MEDIUM for the msgpack exact-version pin (needs a user-run `pip install` to confirm).
+- Validation Architecture: HIGH — per-subsystem A/B split verified against actual dev-host import behavior (not assumed), the existing `Task.end()`/`release()` chokepoint, and the existing preflight issue-list extension point; the `event_dispatcher.stop()`-before-`release()` ordering is folded in as an explicit non-goal so no plan writes an untestable acceptance criterion.
 
 **Research date:** 2026-08-03
 **Valid until:** 30 days for the architecture findings (stable, verified against code that won't drift quickly); re-verify the msgpack version pin at planning time if more than a few days pass, since it depends on an action (Wave 0 pip install) not yet taken.

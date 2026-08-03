@@ -802,7 +802,22 @@ lifecycle hooks, device lease, control-only zero-signal modules). Phase 24 (`har
 markers are dispatched as ordinary state/trigger actions, so no new action vocabulary). Phase 17
 (free-form `pilot_hardware_config`). Phase 13 (preflight issue system).
 
-**Plans:** 0 plans (run `/gsd:plan-phase 26`)
+**Plans:** 13 plans in 4 waves
+
+Plans:
+- [ ] 26-01-PLAN.md — Wave 0 backend test contracts (artifact path/record, OE client, migration, preflight kinds)
+- [ ] 26-02-PLAN.md — Wave 0 Pi-mirror test contracts (autopilot-free OE client + marker contract)
+- [ ] 26-03-PLAN.md — EARLY rig checkpoint: confirm the OE REST surface before path code is written
+- [ ] 26-04-PLAN.md — device-neutral artifact path resolver + unknown-token 422 at config save
+- [ ] 26-05-PLAN.md — device-neutral run_artifacts table, record store, and read-back API
+- [ ] 26-06-PLAN.md — backend Open Ephys REST client (mode control, read-back path composition)
+- [ ] 26-07-PLAN.md — Pi-side autopilot-free Open Ephys REST client + marker payload builder
+- [ ] 26-08-PLAN.md — device-neutral stop registry + backend force-stop on unclean run end
+- [ ] 26-09-PLAN.md — device-neutral preflight issue kinds + HardwareCheckModal mirror
+- [ ] 26-10-PLAN.md — seeded first-party OpenEphys lib (ExternalHardware subclass + seeder)
+- [ ] 26-11-PLAN.md — artifact-target endpoint + orchestrator wiring + per-run device opt-out
+- [ ] 26-12-PLAN.md — React: per-device artifact rows, opt-out toggle, marker-label autocomplete
+- [ ] 26-13-PLAN.md — the single consolidated rig checkpoint
 
 **Success criteria:**
 1. Starting a session on a pilot with an `OpenEphys` module configured drives OE from IDLE to RECORD

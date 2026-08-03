@@ -73,7 +73,7 @@ claimed by some task.
 | EPHYS-01 | `set_mode(host, port, "RECORD")` issues `PUT /api/status` with body `{"mode":"RECORD"}` | unit (backend + Pi, mocked HTTP) | `docker compose exec api python -m pytest -q api/tests/test_openephys_client.py -k set_mode` | ❌ W0 |
 | EPHYS-01 | A faked `GET /api/status` returning `{"mode":"RECORD"}` makes `on_run_start` **refuse without ever calling** `PUT /api/status` — proves "never take over" | unit (backend + Pi) | `... -k already_recording` | ❌ W0 |
 | EPHYS-01 | Recording-config PUT body contains only real OE fields (`parent_directory`, `base_text`, `prepend_text`, `append_text`, `default_record_engine`, `start_new_directory`) — never an invented one | unit (backend + Pi) | `... -k recording_config_payload` | ❌ W0 |
-| EPHYS-02 | Folder template resolves all tokens (`{project}/{experiment}/{subject}/{session}/{run}/{date}`) against a seeded fixture chain | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_openephys_folder_resolution.py` | ❌ W0 |
+| EPHYS-02 | Folder template resolves all tokens (`{project}/{experiment}/{subject}/{session}/{run}/{date}`) against a seeded fixture chain | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_artifact_path_resolution.py` | ❌ W0 |
 | EPHYS-02 | A template containing an unknown token is **rejected at save with 422 naming the token** | unit (backend) | `... -k rejects_unknown_token` | ❌ W0 |
 | EPHYS-02 | A subject in two projects resolves **deterministically and does not raise** — the locked "pick first, make it visible" rule | unit (backend) | `... -k ambiguous_project` | ❌ W0 |
 | EPHYS-02 | Ambiguous resolution **emits a warning** and the chosen project/experiment is reported | unit (backend) | `... -k ambiguous_warns` | ❌ W0 |
@@ -85,7 +85,8 @@ claimed by some task.
 | EPHYS-04 | `send_marker()` **enqueues and returns immediately** — never blocks the caller | unit (Pi mirror, agent, fake egress) | `... -k enqueues_not_blocks` | ❌ W0 |
 | EPHYS-04 | The dual-log fires **regardless of whether the HTTP send later succeeds** — the positive record survives total network failure | unit (Pi mirror, agent) | `... -k logged_regardless` | ❌ W0 |
 | EPHYS-04 | Run-start and run-stop markers are emitted automatically, bracketing the recording | unit (Pi mirror, agent) | `... -k auto_brackets` | ❌ W0 |
-| EPHYS-05 | OE unreachable surfaces a preflight issue, **not an unhandled 500** | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_toolkit_dispatch.py -k openephys` | ❌ W0 (extend) |
+| EPHYS-05 | A device unreachable surfaces a **device-neutral** `external_device_unreachable` issue carrying the device name — **not** an OE-specific kind, and not an unhandled 500 | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_toolkit_dispatch.py -k external_device` | ❌ W0 (extend) |
+| **GENERIC** | The artifact table, path resolver, collision check, and preflight kinds contain **no Open Ephys knowledge** — asserted by a test that resolves a path and writes an artifact record for a fabricated non-OE device | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_artifact_path_resolution.py -k device_neutral` | ❌ W0 |
 | EPHYS-05 | Already-recording surfaces its own distinct preflight issue | unit (backend) | `... -k already_recording_issue` | ❌ W0 (extend) |
 | EPHYS-05 | New issue kinds are registered in `PREFLIGHT_ISSUE_KINDS` **and** mirrored in `HardwareCheckModal.tsx`'s `PreflightIssue` union | unit (backend) + read | `... -k issue_kinds_registered` | ❌ W0 (extend) |
 | EPHYS-01/03 | Backend force-stop: reconciliation detecting an unclean run end issues the IDLE call **and** releases the lease | unit (backend, mocked HTTP) | `... -k force_stop` | ❌ W0 |
@@ -98,7 +99,9 @@ claimed by some task.
 ## Wave 0 Requirements
 
 - [ ] `api/tests/test_openephys_client.py` — new — EPHYS-01, mocked HTTP
-- [ ] `api/tests/test_openephys_folder_resolution.py` — new — EPHYS-02 tokens + collision + ambiguity
+- [ ] `api/tests/test_artifact_path_resolution.py` — new — EPHYS-02 tokens + collision + ambiguity,
+      **plus the device-neutrality assertion** (resolve a path and write an artifact record for a
+      fabricated non-OE device, proving no Open Ephys knowledge leaked into the shared layer)
 - [ ] Extend the existing DB-migration test file — EPHYS-03 migration idempotency.
       **Confirm the filename first:** `grep -rl run_hardware_lib_kind_migration api/tests/`
 - [ ] `~/pi-mirror/tests/test_openephys_markers.py` — new, `autopilot`-free (fakes only) — EPHYS-04.

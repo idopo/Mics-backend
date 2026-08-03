@@ -172,6 +172,64 @@ which today has none. Keep it in a small dedicated module (not `api/main.py`, no
 `toolkit_dispatch.py` — both are near their size limits) and share the client shape with the Pi-side
 lib where practical rather than writing the OE REST calls twice.
 
+### GENERIC-BY-DESIGN — added 2026-08-03, overrides OE-specific wording elsewhere in this file
+
+**User directive:** the file/directory handling and the way MICS connects to an external device's
+output must be designed generically, because **DeepLabCut and later modules need the same thing**.
+Anywhere this document says "OE record-start timestamp", "which OE host", or otherwise names Open
+Ephys in what is really a device-neutral concern, **the generic reading wins.**
+
+**Placement decision:** build the generic layer **inside Phase 26**, with `OpenEphys` as its first
+consumer. Rejected: pushing it into Phase 18's substrate — architecturally the cleaner home, but
+Phase 18 is already planned, verified, and has no file/path concept at all, so absorbing this would
+mean a second full re-plan of 12 plans for the same end state.
+
+**Depth decision: shared modules + a thin declarative contract.** Not a speculative capability
+framework — DeepLabCut is the only other consumer currently on the roadmap.
+
+**What MUST be device-agnostic (no OE knowledge anywhere in these):**
+
+1. **The recording/artifact record table.** Keyed `(run_id, device_name)`. Device-neutral columns:
+   `device_name`, `resolved_path`, `started_at`, `ended_at`, `host`, `coverage_complete`, plus the
+   project/experiment name snapshot. **Device-specific fields go in a JSON blob** — OE's
+   `experiment_number`/`recording_number` live there, DLC's camera identity will live there. Do not
+   add an OE-named column.
+   - Name the table for artifacts in general, not for ephys.
+2. **The path-template resolver.** `{project}/{experiment}/{subject}/{session}/{run}/{date}` token
+   substitution, unknown-token rejection, and the many-to-many ambiguity rule have **nothing to do
+   with ephys**. This is a shared backend module any artifact-producing device calls — NOT a method
+   on the `OpenEphys` lib. DLC must be able to use the identical template syntax and get identical
+   resolution semantics.
+3. **The collision check** (resolved path already recorded) — operates on the artifact table, so it
+   is generic for free.
+4. **Preflight issue kinds.** Use device-neutral kinds carrying a device name — e.g.
+   `external_device_unreachable`, not `openephys_unreachable`. Otherwise DLC adds a parallel kind for
+   an identical condition and `HardwareCheckModal` grows a near-duplicate branch per device.
+   - Where a condition is genuinely device-specific (OE "already RECORDING"), a specific kind is
+     fine — but check first whether it generalizes (e.g. "device busy with another operation").
+5. **The API + session-view surfacing.** The endpoint and the React component list artifacts for a
+   run **by device**, so DLC rows appear alongside ephys rows with no UI change.
+
+**The declarative contract (thin, not a framework):** a device declares that it produces artifacts —
+and in return gets path resolution, the artifact record, collision checking, and coverage tracking
+for free. A device implements one hook: **"given the run context and the resolved target path, start
+producing, and report back the true final path."** OE implements it via REST + `GET /api/recording`
+read-back; DLC will implement it however DLC works. **Everything else is shared.**
+
+**What legitimately stays OE-specific:**
+- `api/seed_libs/openephys.py` and the Pi-side `OpenEphys` class.
+- `openephys_client.py` (both sides) — REST URL/payload construction, mode transitions,
+  already-recording detection, `experiment_number`/`recording_number` read-back.
+- The backend force-stop's actual IDLE call (though *when* to force-stop is generic — see below).
+
+**Also generalize the orphaned-artifact cleanup:** the reconciliation trigger ("run ended uncleanly →
+tell the device to stop") is device-neutral; only the command itself is device-specific. Structure it
+so DLC can register a stop action without touching the reconciliation logic.
+
+> **Planner guidance:** this changes module boundaries, not scope size. The work is the same work —
+> it just lands in device-neutral modules with a thin OE adapter, instead of one OE-shaped
+> implementation. Do not gold-plate: two consumers (OE now, DLC later) is the design target, not N.
+
 ### Cross-phase gap flagged for Phase 18 execution
 Research found that Phase 18's `socket_plan` (plan 18-05) always returns either a `router_bind` or a
 `sub_connect` plan — **there is no "no transport" mode**. But EXTLINK-18 requires a zero-signal

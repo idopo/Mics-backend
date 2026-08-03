@@ -5,6 +5,7 @@ import type { FdaAction, ToolkitRead, HardwareModule, AstMethod } from '../types
 import { getHardwareModuleMethods } from '../api/hardware_modules'
 import { isComputeModule, labelStyle } from './ActionEditor'
 import ArgInput from './ArgInput'
+import { withArgAt } from './computeArgs.mts'
 
 interface Props {
   action: FdaAction
@@ -73,7 +74,11 @@ export default function ComputeActionFields({ action, toolkit, hwModules, taskDe
 
   function handleOpChange(value: string): void {
     const [modName, methodName] = value.split('::')
-    onChange({ ref: modName, method: methodName, args: [] })
+    // Seed every parameter with its default rather than []. An op the researcher picks but
+    // never edits must still dispatch a complete call — args: [] reaches the Pi as
+    // random_float() and raises TypeError at run time.
+    const newArgs = methodsByModule[modName]?.find(m => m.name === methodName)?.args ?? []
+    onChange({ ref: modName, method: methodName, args: withArgAt(newArgs, undefined, -1, null) })
   }
 
   function commitOutputName(rawName: string): void {
@@ -160,15 +165,13 @@ export default function ComputeActionFields({ action, toolkit, hwModules, taskDe
             {arg.name} {arg.annotation ? `(${arg.annotation})` : ''} ⓘ
           </label>
           <ArgInput
-            value={(action.args ?? [])[i] ?? (arg.default !== undefined ? arg.default : 0)}
+            value={withArgAt(argList, action.args, -1, null)[i]}
             toolkit={toolkit}
             annotation={arg.annotation ?? null}
             variableNames={variableNames}
-            onChange={v => {
-              const newArgs = [...(action.args ?? [])]
-              newArgs[i] = v
-              onChange({ args: newArgs })
-            }}
+            // Rebuild dense every time: writing straight into a copy of action.args made a
+            // sparse array that serialized as [null, 1], and the Pi got random_float(None, 1).
+            onChange={v => onChange({ args: withArgAt(argList, action.args, i, v) })}
           />
         </div>
       ))}

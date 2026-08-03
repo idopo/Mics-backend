@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T10:31:21.648Z"
+last_updated: "2026-08-03T10:46:30.924Z"
 progress:
   total_phases: 22
   completed_phases: 6
-  total_plans: 44
-  completed_plans: 37
-  percent: 86
+  total_plans: 47
+  completed_plans: 38
+  percent: 83
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **7/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plan 07)
+**Phase:** 23 — Compute Primitives + Variables — **8/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plans 07/08)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [█████████░] 86%
+**Progress:** [████████░░] 83%
 
 ### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
 
@@ -94,6 +94,29 @@ upstream of the ZMQ plugin with sorting configured. Without it there are no spik
 no unit IDs to declare, which makes 27 unplannable as scoped. Rig configuration, not MICS work.
 
 ### Phase 23 status (2026-08-03)
+
+**Plan 08 executed (2026-08-03):** CMP-13/14 delivered — the compute action in the FDA editor.
+The action-type `<select>` gained exactly one new entry, `compute` (verified: 1 new `<option>`
+line across the whole plan's diff), gated off `TriggerAssignmentPanel`'s action lists via
+`ArgInput.tsx:76`'s `allowTriggerContext` pattern (`TriggerAssignmentPanel.tsx` diff confirmed
+empty). New `ComputeActionFields.tsx` (177 lines) renders the compact row
+`[output] = [op ▾] ( [args] )`: one flattened op `<select>` with an `<optgroup>` per compute
+module (fetched via `useQueries` on the same `['hardware-module-methods', id]` key
+`PilotHardwareConfig.tsx` already uses — no second fetch path), args driven by the selected
+op's AST signature via the existing `ArgInput`, and a mandatory output combobox with a
+"— new variable… —" sentinel that auto-declares into `fdaJson.variables` on blur (rejecting
+empty names and collisions with an existing variable or toolkit flag). `onDeclareVariable`
+threaded `TaskEditor` → `StateBodyPanel` → `ActionEditor` → `ComputeActionFields`; since
+`variableNames` is derived from `fdaJson.variables` on every render and `ConditionBuilder`
+already consumes it (plan 24-08), a freshly typed output name is a selectable transition
+operand in the same render pass — no save round-trip (CMP-14, verify-only). `tsc --noEmit`
+and `npm run build` clean after every task; bundle `dist/TaskEditor-zd-oW4B_.js`. **One
+ordering deviation** (plan's own documented precedent, à la 25-04): `onDeclareVariable` was
+added to `ActionEditor`'s Props in Task 1 rather than Task 3, since Task 1 needed it to render
+`ComputeActionFields` and keep that task's own `tsc` green — Task 3 then had zero
+`ActionEditor.tsx` diff. Behavioural click-through (pick compute → grouped ops → type new
+output → appears in ConditionBuilder → save round-trips) is explicitly DEFERRED to plan
+23-10's checkpoint, per this plan's own `<verification>` note. See `23-08-SUMMARY.md`.
 
 **Plan 07 executed (2026-08-03):** CMP-15/17/19 delivered — preflight tells the truth about
 compute and gains the two issue kinds this phase promised. `preflight_validate` step 6 is now
@@ -559,6 +582,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23]: Phase 23 Plan 02: compute-lib storage substrate (kind column, upload gate, seed lib, auto-provisioning) landed and verified against real Postgres dev DB
 - [Phase 23]: Plan 23-05: single lib-version resolver (pin->toolkit_default->stable->active->none) delivered; fourth active rung added beyond CONTEXT's literal chain to avoid breaking existing rig toolkits
 - [Phase 23-compute-primitives-variables]: [Phase 23-07]: lib_version_unresolved checked independently of missing/incomplete_config in step 6's loop (before the cfg_row fetch), since CMP-17's undeployable-lib check is orthogonal to whether the pilot has configured the module at all
+- [Phase 23-08]: onDeclareVariable added to ActionEditor's Props one task early (Task 1, not Task 3) to keep that task's own tsc green rendering ComputeActionFields; ActionEditor's own separate TYPE_COLORS const also gained a compute entry alongside StateBodyPanel's so the open action card's own chip isn't gray by fallback; a typed "new variable" name colliding with an existing variable/flag is rejected (inline message) rather than silently reused
 - [Phase 23-compute-primitives-variables]: [Phase 23-07]: task_def_inspect.py uses a Depends(get_sa_session) generator matching toolkit_dispatch.py's shape (not pilot_hardware_config.py's bare with-block) so the mocked-db.execute TestClient pattern already used in test_view_key_preflight.py works
 
 ## Accumulated Context

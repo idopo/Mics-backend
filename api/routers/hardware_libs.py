@@ -15,6 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from auth import verify_token
 from db import engine
 from fda_utils import ref_label, scan_fda_for_refs
+from lib_version_resolution import resolve_lib_version_id
 from models import (
     HardwareLib,
     HardwareLibVersion,
@@ -592,12 +593,31 @@ def rollback_version(lib_id: int, body: RollbackBody, _: dict = Depends(verify_t
 # ---------------------------------------------------------------------------
 
 @router.get("/toolkits/{toolkit_id}/hardware-libs")
-def list_toolkit_hardware_libs(toolkit_id: int, _: dict = Depends(verify_token)):
+def list_toolkit_hardware_libs(
+    toolkit_id: int, task_def_id: int | None = None, _: dict = Depends(verify_token),
+):
+    """List a toolkit's hardware libs, each carrying the CMP-17 resolution (Plan 23-05):
+    `resolved_version_id`/`resolved_state`/`resolved_source_code`/`resolution_reason`, computed
+    by `resolve_lib_version_id` with the task def's `hw_lib_versions` pin when `task_def_id` is
+    given. Resolution still runs with no `task_def_id` (the pin rung simply never fires).
+    Existing keys are unchanged so the orchestrator's current reads keep working during rollout.
+    """
     db = _SA_SessionLocal()
     try:
         toolkit = db.get(TaskToolkit, toolkit_id)
         if not toolkit:
             raise HTTPException(status_code=404, detail="Toolkit not found")
+
+        pinned: dict[int, int] = {}
+        if task_def_id:
+            td_row = db.execute(
+                sa_text("SELECT hw_lib_versions FROM task_definitions WHERE id = :id"),
+                {"id": task_def_id},
+            ).fetchone()
+            hw_versions = td_row.hw_lib_versions if td_row and td_row.hw_lib_versions else {}
+            if isinstance(hw_versions, dict):
+                pinned = {int(k): v for k, v in hw_versions.items()}
+
         links = db.query(ToolkitHardwareLib).filter(
             ToolkitHardwareLib.toolkit_id == toolkit_id
         ).all()
@@ -608,6 +628,16 @@ def list_toolkit_hardware_libs(toolkit_id: int, _: dict = Depends(verify_token))
                 av = db.get(HardwareLibVersion, lib.active_version_id) if lib.active_version_id else None
                 entry = _lib_dict(lib, av)
                 entry["default_version_id"] = link.default_version_id
+
+                resolved_id, reason = resolve_lib_version_id(
+                    db, lib.id, toolkit_id=toolkit_id, pinned_version_id=pinned.get(lib.id),
+                )
+                resolved_version = db.get(HardwareLibVersion, resolved_id) if resolved_id else None
+                entry["resolved_version_id"] = resolved_id
+                entry["resolved_state"] = resolved_version.state if resolved_version else None
+                entry["resolved_source_code"] = resolved_version.source_code if resolved_version else None
+                entry["resolution_reason"] = reason
+
                 result.append(entry)
         return {"libs": result}
     finally:

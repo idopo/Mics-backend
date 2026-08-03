@@ -217,7 +217,6 @@ def test_dispatch_spec_emits_stable_source_when_stable_exists_and_no_pin():
     assert resp.json()["hardware"]["Modules"]["MPR121"]["MPR121"]["source_code"] == "STABLE_SOURCE"
 
 
-@pytest.mark.xfail(reason="CMP-17: resolved_version_id/resolved_state/resolution_reason not implemented until plan 23-05", strict=False)
 def test_toolkit_hardware_libs_carries_resolution_fields_per_lib():
     """GET /toolkits/{id}/hardware-libs?task_def_id=N must carry resolved_version_id,
     resolved_state and resolution_reason per lib. list_toolkit_hardware_libs lives in
@@ -226,13 +225,13 @@ def test_toolkit_hardware_libs_carries_resolution_fields_per_lib():
     from models import HardwareLib, HardwareLibVersion, TaskToolkit
 
     lib = SimpleNamespace(
-        id=10, name="compute_ops", filename="compute_ops.py", ast_metadata=None,
+        id=10, name="compute_ops", filename="compute_ops.py", kind="compute", ast_metadata=None,
         active_version_id=100, stable_version_id=None, created_at=None, updated_at=None,
     )
     active_version = SimpleNamespace(
         id=100, hardware_lib_id=10, version_number=1, source_code="ACTIVE", sha256_hash="x",
-        state="beta", ast_metadata=None, created_at=None, stable_at=None, stable_reason=None,
-        stable_pilot=None, validation_error=None,
+        state="beta", ast_metadata=None, declared_imports=None, created_at=None, stable_at=None,
+        stable_reason=None, stable_pilot=None, validation_error=None,
     )
     link = SimpleNamespace(hardware_lib_id=10, default_version_id=None)
 

@@ -46,15 +46,34 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
   hierarchy MICS already models. *(User chose this over mirroring the ES run key.)*
 - **Template lives as a lib default, overridable per pilot** in `pilot_hardware_config.config` —
   the same class-defaults + per-pilot-override split Phase 18 locked for every other setting.
-- **Collision → refuse to start.** If the target folder already exists, fail the readiness gate with
-  a message naming the path. Because `run_id` is unique, a collision means something is genuinely
-  wrong (re-used run, clock problem, stale folder). Never write into or over an existing recording.
+- **Collision → refuse to start.** Intent stands: never write into or over an existing recording.
   Rejected: numeric suffixes (silently produces two folders for one run) and letting OE auto-increment
   (hands naming authority to OE precisely where MICS must be authoritative).
+  > **⚠ MECHANISM WEAKENED 2026-08-03 by research.** The OE REST API has **no directory-listing
+  > endpoint**, so MICS cannot ask the OE machine whether a folder already exists. The check becomes a
+  > **MICS-side uniqueness check against the recording table** — we refuse if *we* already recorded
+  > something at that resolved path. **Residual gap, accepted:** a folder created manually in the OE
+  > GUI, or by anything other than MICS, is invisible to this check. Closing it would require SSH or a
+  > filesystem mount to the OE host — a new integration surface this phase does not take on.
 - **Researchers may edit the template** in the pilot hardware config UI, but **the save endpoint
   rejects unknown tokens.** Folder layout is an experimental-workflow concern, not a code concern —
   requiring a developer would just push researchers into out-of-band manual renaming. Token
   validation is what stops a typo from silently yielding an unanalysable path.
+
+- **Ambiguity resolution (decided 2026-08-03 after research):** the schema is **many-to-many on both
+  edges** — `Subject`↔`Project` via `subject_projects`, `Experiment`↔`Protocol` via
+  `experiment_protocols` — so a run has no inherently unique project or experiment. Resolution:
+  - Use the **same `LIMIT 1` pragmatic shortcut `preflight_validate` already uses**. Do NOT redesign
+    the Subject/Project/Experiment schema in this phase — that is a separate, larger change.
+  - **Make the ambiguity visible rather than silent:** log a warning whenever a subject resolves to
+    more than one project, or a protocol to more than one experiment, at resolution time.
+  - **Surface which project and experiment were chosen** in the recording-record API response and in
+    the session/run view, so a researcher catches a wrong pick immediately instead of finding an
+    unexpectedly-labelled folder weeks later.
+  - The snapshot fields (below) mean a wrong pick is at least permanently recorded, not lost.
+  - Accepted cost: a genuinely ambiguous case lands data under an arbitrary-but-recorded choice.
+    Rejected: refusing to start on ambiguity (would block sessions whenever a subject is legitimately
+    enrolled in two projects, which the schema explicitly permits).
 
 > **Risk this choice carries, and its mitigation.** A project/experiment hierarchy embeds mutable
 > metadata in the path: renaming an experiment later would orphan already-written paths. **This is
@@ -63,8 +82,15 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
 > hierarchy without the resolved-path persistence.
 
 ### What MICS records about each recording
-- **Fields:** the **resolved absolute path** as computed at run start, OE record-start and
-  record-stop timestamps, and which OE host wrote it.
+- **Fields:** the **resolved absolute path**, OE record-start and record-stop timestamps, and which
+  OE host wrote it.
+  > **⚠ REFINED 2026-08-03 by research — the resolved path must be READ BACK, not predicted.** Open
+  > Ephys imposes its own nesting (`Record Node <id>/experiment<N>/recording<M>/…`) *beneath* whatever
+  > directory MICS sets, and does not hand back a ready-made full path. After `on_run_start` succeeds,
+  > MICS must issue a follow-up `GET /api/recording` to read `experiment_number` / `recording_number`
+  > and construct the path it persists. **Always read back; never predict**, regardless of what the
+  > counters turn out to do. This strengthens rather than changes the decision — persisting a computed
+  > guess would have recorded a path the data isn't actually at.
 - **Storage: a small dedicated table keyed on `(run_id, device_name)`.** Chosen over new columns on
   `session_runs` because DeepLabCut — already on the roadmap — will need to record video paths the
   same way; columns don't scale past the first device. Chosen over stuffing it in
@@ -104,11 +130,13 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
   recording" may be a colleague's session. Refusing is recoverable; taking over destroys data with
   no warning. Rejected: force-to-IDLE-and-restart, and attach-to-existing (the latter breaks the
   path-persistence guarantee — data lands somewhere MICS didn't choose or record).
-- **Disk-space precheck: yes, if the OE REST API exposes free space** — block below a configurable
-  threshold during the readiness gate. **Research must confirm the API actually reports it**; if it
-  does not, drop the check rather than inventing one. Rationale: a session dying 40 minutes in
-  because the disk filled is the most expensive failure mode here — the animal's time is
-  unrecoverable.
+- ~~**Disk-space precheck**~~ — **DROPPED 2026-08-03 by the user's own conditional.** The decision was
+  "yes *if* the API exposes free space, else skip". Research confirmed against the official Open Ephys
+  documentation that **no disk-space endpoint exists anywhere in the REST API**. Per the stated rule
+  we drop the check rather than invent one (e.g. we are NOT adding SSH or a filesystem mount to the
+  OE host to stat the disk — that would be a new integration surface the phase never asked for).
+  The underlying risk — a session dying 40 minutes in because the disk filled — remains unmitigated
+  and is accepted for this phase.
 - **Recording stops mid-run → log, flip `alive`, and surface prominently in pilot status.**
   Consistent with the Phase 18 mid-run policy (don't kill a behavioural session over an accessory),
   but loud rather than log-only, so a mid-run failure isn't discovered at analysis time. The
@@ -143,6 +171,19 @@ to one. Phase 26 builds exactly that channel, so **Phase 26 closes it**:
 which today has none. Keep it in a small dedicated module (not `api/main.py`, not
 `toolkit_dispatch.py` — both are near their size limits) and share the client shape with the Pi-side
 lib where practical rather than writing the OE REST calls twice.
+
+### Cross-phase gap flagged for Phase 18 execution
+Research found that Phase 18's `socket_plan` (plan 18-05) always returns either a `router_bind` or a
+`sub_connect` plan — **there is no "no transport" mode**. But EXTLINK-18 requires a zero-signal
+control-only module (exactly what OE's control side is) to instantiate, bind, participate in the
+readiness gate, and use the egress path. So either every control-only module must declare a `role`
+and an unused port, or Phase 18 needs a third mode. **Resolve this during Phase 18 execution, not
+here** — Phase 26 must not fork the transport design. Flagged so it is not discovered mid-Phase-26.
+
+### Dependencies — no new ones needed
+Research confirmed `requests==2.27.1` is already pinned in `~/pi-mirror/environment.yml` and already
+imported elsewhere on the Pi, and `httpx` is already an `api/` dependency. **Unlike Phase 18's
+msgpack gap, this phase adds no new dependency on either side** — no user-run pip step required.
 
 ### Claude's Discretion
 - Exact REST call sequence and endpoint shapes against the OE API.

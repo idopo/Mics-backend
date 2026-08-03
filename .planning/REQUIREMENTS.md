@@ -9,7 +9,7 @@
 
 ### FDA Foundation (Pi)
 
-- [ ] **FDA-01**: Pi can start a task with `state_machine` kwarg containing v2 FDA JSON, producing identical behavior to the hardcoded version
+- [x] **FDA-01**: Pi can start a task with `state_machine` kwarg containing v2 FDA JSON, producing identical behavior to the hardcoded version
 - [ ] **FDA-02**: `load_fda_from_json()` in `mics_task` handles both v1 (states list) and v2 (states object with entry_actions) formats
 - [ ] **FDA-03**: State entry_actions are executed in order: hardware calls via semantic ref, flag updates, timer calls, special actions (INC_TRIAL_COUNTER), custom toolkit method calls
 - [ ] **FDA-04**: SEMANTIC_HARDWARE dict maps friendly names to (group, id) tuples; entry actions use `ref` not `hardware['group']['id']`
@@ -29,11 +29,11 @@
 
 ### Trigger Assignments (Pi)
 
-- [ ] **TRIG-01**: `apply_trigger_assignments()` reads `trigger_assignments` from FDA JSON and appends handlers to `self.triggers[pin]`
+- [x] **TRIG-01**: `apply_trigger_assignments()` reads `trigger_assignments` from FDA JSON and appends handlers to `self.triggers[pin]`
 - [ ] **TRIG-02**: `touch_detector` handler calls `hw.detect_change()`, updates `view[LICKER{n}]`, optionally emits CONTINUOUS — does NOT replace the existing `handle_trigger` path
 - [ ] **TRIG-03**: `digital_input` handler updates `view[view_key]` with current GPIO level — logging still fires unconditionally via `execute_trigger()`
 - [ ] **TRIG-04**: If `trigger_assignments` is absent from FDA JSON, `self.triggers` is unchanged (backward compatible)
-- [ ] **TRIG-05**: All trigger hardware continues to dispatch `Hardware_Event` via `execute_trigger()` regardless of trigger_assignments configuration
+- [x] **TRIG-05**: All trigger hardware continues to dispatch `Hardware_Event` via `execute_trigger()` regardless of trigger_assignments configuration
 
 ### Hot-Reload (Pi + Orchestrator)
 

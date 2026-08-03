@@ -348,19 +348,15 @@ class MicsApiClient:
     # Hardware Lib Endpoints
     # -----------------------
 
-    def get_toolkit_hardware_libs(self, toolkit_id: int) -> list[dict]:
-        resp = self._get(f"/api/toolkits/{toolkit_id}/hardware-libs")
+    def get_toolkit_hardware_libs(self, toolkit_id: int, task_def_id: int | None = None) -> list[dict]:
+        """GET /api/toolkits/{id}/hardware-libs — each entry carries the backend's own CMP-17
+        resolved_version_id/resolved_state/resolved_source_code/resolution_reason when
+        task_def_id is given (pin rung); resolution still runs without it."""
+        url = f"/api/toolkits/{toolkit_id}/hardware-libs"
+        if task_def_id is not None:
+            url += f"?task_def_id={task_def_id}"
+        resp = self._get(url)
         return resp.get("libs", []) if isinstance(resp, dict) else []
-
-    def get_hw_lib_version(self, lib_id: int, version_id: int) -> dict:
-        """Fetch a specific version by scanning the versions list."""
-        try:
-            versions = self._get(f"/api/hardware-libs/{lib_id}/versions")
-            versions = versions if isinstance(versions, list) else []
-            return next((v for v in versions if v["id"] == version_id), {})
-        except Exception as e:
-            self.logger.warning("Failed to get hw_lib version %s for lib %s: %s", version_id, lib_id, e)
-            return {}
 
     def patch_hardware_lib_version(self, version_id: int, ok: bool, error: str | None, pilot: str):
         self._patch(

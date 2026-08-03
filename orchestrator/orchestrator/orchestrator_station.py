@@ -324,6 +324,7 @@ class OrchestratorStation:
 
         # 6️⃣ Resolve toolkit_id and send hardware libs before START
         task_def_id = task.get("task_definition_id")
+        task_def_id_int = int(task_def_id) if task_def_id else None
         toolkit_id = None
         if task_def_id:
             try:
@@ -347,11 +348,10 @@ class OrchestratorStation:
                 )
             # Inject HARDWARE/FLAGS/PARAMS/PREFS_HARDWARE for backend-authored toolkits
             pilot_db_id = run_meta["pilot_id"]
-            self._inject_backend_toolkit_spec(task, toolkit_id, pilot_db_id, task_def_id=int(task_def_id) if task_def_id else None)
+            self._inject_backend_toolkit_spec(task, toolkit_id, pilot_db_id, task_def_id=task_def_id_int)
 
         try:
-            hw_lib_versions = (task_def_full or {}).get("hw_lib_versions") or {}
-            self._send_hardware_libs_if_needed(pilot_key, toolkit_id, hw_lib_versions=hw_lib_versions)
+            self._send_hardware_libs_if_needed(pilot_key, toolkit_id, task_def_id=task_def_id_int)
         except Exception:
             logger.exception("Failed to send LOAD_HARDWARE_LIBS to %s; continuing with START", pilot_key)
 
@@ -850,54 +850,49 @@ class OrchestratorStation:
             )
 
     def _send_hardware_libs_if_needed(
-        self, pilot_key: str, toolkit_id: int | None, hw_lib_versions: dict | None = None
+        self, pilot_key: str, toolkit_id: int | None, task_def_id: int | None = None
     ):
-        """Send LOAD_HARDWARE_LIBS to the Pi before START using versions from task def."""
+        """Send LOAD_HARDWARE_LIBS to the Pi before START, using the backend's OWN resolved_*
+        fields (CMP-17) instead of re-deriving pin -> toolkit_default -> stable -> active here
+        -- the backend owns the chain, the orchestrator reads the answer.
+
+        Sends ONE LOAD_HARDWARE_LIBS message per lib (not one batched message) with
+        test_import=True and the top-level version_id the Pi's existing l_load_hardware_libs
+        already reads and reports back in a single HARDWARE_LIB_TEST_RESULT -- the only shape
+        that attributes a test-import failure to the right version with NO Pi-side change
+        (CMP-19b). This activates a round-trip implemented-but-dead since Phase 09: a compute
+        lib whose declared stdlib import is unavailable on that Pi now surfaces pre-run instead
+        of mid-session, and a broken hardware lib finally gets its validation_error recorded.
+        """
         if toolkit_id is None:
             return
 
-        libs = self.api.get_toolkit_hardware_libs(toolkit_id)
+        libs = self.api.get_toolkit_hardware_libs(toolkit_id, task_def_id=task_def_id)
         if not libs:
             return
 
-        hw_lib_versions = hw_lib_versions or {}
-
-        deployable = []
         for lib in libs:
-            # hw_lib_versions keys are string lib_ids (JSONB)
-            version_id = hw_lib_versions.get(str(lib["id"])) or hw_lib_versions.get(lib["id"])
-            if version_id:
-                version = self.api.get_hw_lib_version(lib["id"], version_id)
-                if version.get("state") in ("beta", "stable"):
-                    deployable.append({
-                        "filename": lib["filename"],
-                        "source_code": version["source_code"],
-                    })
-                else:
-                    logger.warning(
-                        "Version %s of %s is unvalidated — skipping",
-                        version_id, lib["filename"],
-                    )
-            else:
-                if lib.get("active_state") in ("beta", "stable"):
-                    deployable.append({
-                        "filename": lib["filename"],
-                        "source_code": lib["source_code"],
-                    })
-                else:
-                    logger.warning(
-                        "Skipping unvalidated hw lib %s (state=%s)",
-                        lib["filename"], lib.get("active_state"),
-                    )
+            reason = lib.get("resolution_reason")
+            version_id = lib.get("resolved_version_id")
+            if reason == "none" or not version_id:
+                logger.warning(
+                    "Skipping hw lib %s for toolkit %s: no deployable version (reason=%s)",
+                    lib.get("filename"), toolkit_id, reason,
+                )
+                continue
 
-        if not deployable:
-            return
-
-        logger.info(
-            "Sending LOAD_HARDWARE_LIBS to %s: %s",
-            pilot_key, [d["filename"] for d in deployable],
-        )
-        self.gateway.send(pilot_key, "LOAD_HARDWARE_LIBS", {"libs": deployable})
+            logger.info(
+                "Sending LOAD_HARDWARE_LIBS to %s: %s (version_id=%s reason=%s)",
+                pilot_key, lib["filename"], version_id, reason,
+            )
+            self.gateway.send(pilot_key, "LOAD_HARDWARE_LIBS", {
+                "libs": [{
+                    "filename": lib["filename"],
+                    "source_code": lib["resolved_source_code"],
+                }],
+                "test_import": True,
+                "version_id": version_id,
+            })
 
     def handle_hardware_lib_test_result(self, msg: Message):
         data = msg.value or {}

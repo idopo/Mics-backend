@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import type { FdaVariable, ToolkitRead } from '../types'
+import VariableUsagePanel from './VariableUsagePanel'
 
 interface Props {
   variables: Record<string, FdaVariable>
   toolkit: ToolkitRead | null
+  taskDefId?: number
   onChange: (updated: Record<string, FdaVariable>) => void
 }
 
@@ -37,7 +39,7 @@ function parseInitialValue(raw: string): unknown {
  * Renaming rejects collisions with existing variable names or toolkit.flags — the Pi raises
  * ValueError on that collision at load time and the backend 422s, so this catches it first.
  */
-export default function VariablesPanel({ variables, toolkit, onChange }: Props): JSX.Element {
+export default function VariablesPanel({ variables, toolkit, taskDefId, onChange }: Props): JSX.Element {
   const [renameErrors, setRenameErrors] = useState<Record<string, string>>({})
   const names = Object.keys(variables)
   const flagKeys = Object.keys(toolkit?.flags ?? {})
@@ -139,6 +141,13 @@ export default function VariablesPanel({ variables, toolkit, onChange }: Props):
       <button className="button-secondary" style={{ fontSize: '12px', width: '100%' }} onClick={add}>
         + Add variable
       </button>
+
+      <details style={{ marginTop: '12px' }}>
+        <summary style={{ fontSize: '11px', color: 'var(--muted)', cursor: 'pointer' }}>
+          Inspect usage
+        </summary>
+        <VariableUsagePanel taskDefId={taskDefId} />
+      </details>
     </div>
   )
 }

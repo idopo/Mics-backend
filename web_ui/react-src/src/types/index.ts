@@ -294,6 +294,18 @@ export interface FdaVariable {
   initial_value?: unknown
 }
 
+/** One variable's writer/reader locations, from GET /api/task-definitions/{id}/variable-usage. */
+export interface VariableUsage {
+  writers: string[]
+  readers: string[]
+  never_written: boolean
+  initial_value: unknown
+}
+
+export interface VariableUsageResponse {
+  variables: Record<string, VariableUsage>
+}
+
 export interface FdaTriggerAssignment {
   trigger_name: string   // hardware key that fires the interrupt, e.g. "TOUCH_INT"
   /** Ordered action list using the same schema as a state's entry_actions. The ONLY vocabulary. */

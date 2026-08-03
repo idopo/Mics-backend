@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { TaskDefinitionFull, FdaJson } from '../types'
+import type { TaskDefinitionFull, FdaJson, VariableUsageResponse } from '../types'
 
 export const getTaskDefinitions = () =>
   apiFetch<TaskDefinitionFull[]>('/api/task-definitions')
@@ -25,3 +25,7 @@ export const createTaskDefinition = (payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+
+/** Per-variable writers/readers for the FDA editor's read-only inspector (plan 23-07). */
+export const getVariableUsage = (taskDefId: number) =>
+  apiFetch<VariableUsageResponse>(`/api/task-definitions/${taskDefId}/variable-usage`)

@@ -783,6 +783,7 @@ export default function TaskEditor() {
               <VariablesPanel
                 variables={fdaJson.variables ?? {}}
                 toolkit={toolkit}
+                taskDefId={numId}
                 onChange={updated => setFdaJson(prev => prev ? { ...prev, variables: updated } : prev)}
               />
               <div style={{ borderTop: `1px solid ${BORDER}`, margin: '4px 0' }} />

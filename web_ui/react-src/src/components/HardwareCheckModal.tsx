@@ -12,6 +12,7 @@ export interface PreflightIssue {
   module_name: string
   issue: 'missing' | 'incomplete_config' | 'class_mismatch' | 'fda_ref_unresolved' | 'view_key_unresolved'
        | 'variable_never_written' | 'lib_version_unresolved' | 'compute_lib_import_failed'
+       | 'state_wait_unsatisfiable'
   detail: string
   expected_class?: string
   stored_class?: string
@@ -49,6 +50,7 @@ const NON_CONFIG_ISSUES = new Set<PreflightIssue['issue']>([
   'variable_never_written',
   'lib_version_unresolved',
   'compute_lib_import_failed',
+  'state_wait_unsatisfiable',
 ])
 
 interface HardwareCheckModalProps {
@@ -324,7 +326,8 @@ function ModuleIssueEditor({
   if (
     issue.issue === 'variable_never_written' ||
     issue.issue === 'lib_version_unresolved' ||
-    issue.issue === 'compute_lib_import_failed'
+    issue.issue === 'compute_lib_import_failed' ||
+    issue.issue === 'state_wait_unsatisfiable'
   ) {
     return <ComputeIssueDetail issue={issue} />
   }

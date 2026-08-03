@@ -6,6 +6,17 @@ import type { PreflightIssue } from './HardwareCheckModal'
  * version promotion on the Hardware Libraries page, or a lib source fix — never a config PUT.
  */
 export default function ComputeIssueDetail({ issue }: { issue: PreflightIssue }): JSX.Element {
+  if (issue.issue === 'state_wait_unsatisfiable') {
+    return (
+      <div>
+        <p style={{ margin: '0 0 8px', fontSize: '14px', fontFamily: 'monospace' }}>{issue.module_name}</p>
+        <p style={{ margin: 0, fontSize: '13px', color: 'var(--subtext0)' }}>
+          {issue.detail || 'Every exit from this state depends on a value fixed when the state is entered — the run can hang with no error.'}
+        </p>
+      </div>
+    )
+  }
+
   if (issue.issue === 'variable_never_written') {
     return (
       <div>

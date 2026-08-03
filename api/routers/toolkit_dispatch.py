@@ -13,6 +13,7 @@ from db import engine
 from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
 from lib_version_resolution import resolve_lib_version_id
 from variable_scan import variable_never_written_issues
+from wait_analysis import unsatisfiable_wait_issues
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +159,7 @@ PREFLIGHT_ISSUE_KINDS = frozenset({
     "variable_never_written",     # CMP-15: a transition reads a variable nothing ever writes
     "lib_version_unresolved",     # CMP-17 rung 5: no beta/stable version deployable for a lib
     "compute_lib_import_failed",  # CMP-19c RESERVED: compute lib failed to import on the Pi
+    "state_wait_unsatisfiable",   # CMP-15b: every exit from a state is blocked by a frozen variable
 })
 
 
@@ -453,6 +455,16 @@ def preflight_validate(
         except Exception:
             logger.warning(
                 "preflight_validate: variable_never_written scan failed for session %s pilot %s",
+                session_id, pilot_id, exc_info=True,
+            )
+
+        # 10. CMP-15b: a state whose every exit is gated on a variable its own entry_actions
+        # froze on entry. Same non-blocking posture — a hang has no error to catch later.
+        try:
+            issues.extend(unsatisfiable_wait_issues(td_full.fda_json))
+        except Exception:
+            logger.warning(
+                "preflight_validate: unsatisfiable_wait scan failed for session %s pilot %s",
                 session_id, pilot_id, exc_info=True,
             )
 

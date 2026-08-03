@@ -686,12 +686,15 @@ def test_lib_version_resolved_no_lib_version_unresolved_issue():
     assert [i for i in body["issues"] if i["issue"] == "lib_version_unresolved"] == []
 
 
-def test_preflight_issue_kinds_frozenset_has_eight_kinds_including_new_two():
+def test_preflight_issue_kinds_frozenset_is_complete():
+    """Pinned so a new kind cannot be added without also being surfaced in the UI — the
+    `PreflightIssue` union and NON_CONFIG_ISSUES in HardwareCheckModal.tsx must match."""
     from routers.toolkit_dispatch import PREFLIGHT_ISSUE_KINDS
-    assert len(PREFLIGHT_ISSUE_KINDS) == 8
+    assert len(PREFLIGHT_ISSUE_KINDS) == 9
     assert "variable_never_written" in PREFLIGHT_ISSUE_KINDS
     assert "lib_version_unresolved" in PREFLIGHT_ISSUE_KINDS
     assert "compute_lib_import_failed" in PREFLIGHT_ISSUE_KINDS
+    assert "state_wait_unsatisfiable" in PREFLIGHT_ISSUE_KINDS
 
 
 def test_compute_lib_import_failed_issue_constructor_shape():

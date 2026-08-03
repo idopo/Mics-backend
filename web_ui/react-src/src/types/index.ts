@@ -431,11 +431,13 @@ export interface TaskDefinitionFull {
 // --- Hardware Libs (Phase 9) ---
 
 export type LibState = 'unvalidated' | 'beta' | 'stable'
+export type LibKind = 'hardware' | 'compute'
 
 export interface HardwareLib {
   id: number
   name: string
   filename: string
+  kind: LibKind
   ast_metadata: Record<string, unknown> | null
   active_version_id: number | null
   stable_version_id: number | null
@@ -453,6 +455,7 @@ export interface HardwareLibVersion {
   source_code: string
   sha256_hash: string
   state: LibState
+  declared_imports: string[] | null
   ast_metadata: Record<string, unknown> | null
   created_at: string
   stable_at: string | null
@@ -483,6 +486,8 @@ export interface HardwareModule {
   description: string | null
   created_at: string
   lib_filename: string | null
+  // Joined from the module's lib; the FDA editor's compute op picker (plan 23-08) filters on this.
+  lib_kind: LibKind | null
 }
 
 export interface HardwareModuleMethods {

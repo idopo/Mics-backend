@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { HardwareLib, HardwareLibVersion, HwLibVersionEntry, HwLibDiff } from '../types'
+import type { HardwareLib, HardwareLibVersion, HwLibVersionEntry, HwLibDiff, LibKind } from '../types'
 
 export async function listHardwareLibs(): Promise<HardwareLib[]> {
   return apiFetch('/api/hardware-libs')
@@ -9,10 +9,17 @@ export async function getHardwareLib(id: number): Promise<HardwareLib> {
   return apiFetch(`/api/hardware-libs/${id}`)
 }
 
-export async function uploadHardwareLib(name: string, file: File): Promise<HardwareLib> {
+export async function uploadHardwareLib(
+  name: string,
+  file: File,
+  kind: LibKind = 'hardware',
+  declaredImports: string[] = [],
+): Promise<HardwareLib> {
   const fd = new FormData()
   fd.append('name', name)
   fd.append('file', file)
+  fd.append('kind', kind)
+  fd.append('declared_imports', JSON.stringify(declaredImports))
   return apiFetch('/api/hardware-libs', { method: 'POST', body: fd })
 }
 

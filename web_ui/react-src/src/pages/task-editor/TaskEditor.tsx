@@ -381,6 +381,14 @@ export default function TaskEditor() {
     setFdaJson(prev => prev ? { ...prev, states: { ...prev.states, [stateName]: updated } } : prev)
   }
 
+  // Auto-declare (CMP-13): typing a new compute output name writes it into fdaJson.variables
+  // immediately, so it's a selectable transition operand in the same render pass (CMP-14).
+  const declareVariable = useCallback((name: string) => {
+    setFdaJson(prev => prev && !(name in (prev.variables ?? {}))
+      ? { ...prev, variables: { ...(prev.variables ?? {}), [name]: {} } }
+      : prev)
+  }, [])
+
   const bootstrapFromToolkit = () => {
     if (!toolkit?.states?.length) return
     setFdaJson({
@@ -759,6 +767,7 @@ export default function TaskEditor() {
               versionStamp={versionStamp}
               variableNames={variableNames}
               detectorChannels={detectorChannels}
+              onDeclareVariable={declareVariable}
               onChange={updated => updateStateBody(selectedState, updated)}
             />
           ) : (

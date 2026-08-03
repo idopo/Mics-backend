@@ -54,10 +54,12 @@ interface Props {
   /** Declared FdaJson.variables names — valid `output` targets and key_template tokens. */
   variableNames?: string[]
   detectorChannels?: DetectorChannelGroup[]
+  /** Declares a new name into FdaJson.variables — forwarded to ActionEditor's compute action. */
+  onDeclareVariable?: (name: string) => void
   onChange: (updated: FdaState) => void
 }
 
-export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, onChange }: Props) {
+export default function StateBodyPanel({ stateName, state, toolkit, hwModules, taskDefId, versionStamp, variableNames, detectorChannels, onDeclareVariable, onChange }: Props) {
   const isPassthrough = !state.entry_actions?.length && (toolkit?.states?.includes(stateName) ?? false)
   const actions = state.entry_actions ?? []
 
@@ -144,6 +146,7 @@ export default function StateBodyPanel({ stateName, state, toolkit, hwModules, t
                     versionStamp={versionStamp}
                     variableNames={variableNames}
                     detectorChannels={detectorChannels}
+                    onDeclareVariable={onDeclareVariable}
                     onChange={updated => updateAction(i, updated)}
                   />
                   <button

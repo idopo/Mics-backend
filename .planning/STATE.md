@@ -30,9 +30,56 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
 **Progress:** [███████░░░] 72%
 
-### Phase 18 status (2026-08-03) — context revised, REPLAN REQUIRED
+### Phase 18 status (2026-08-03) — RE-PLANNED, 12 plans ready to execute
 
-Not started; planning only. `18-CONTEXT.md` was **revised** in a discussion session driven by
+**Planning complete 2026-08-03.** Research → validation strategy → 12 plans in 5 waves →
+plan-checker **VERIFICATION PASSED** (all 18 EXTLINK IDs covered, no same-wave file collisions,
+every Pi rule honoured). Not executed. Next action is `/gsd:execute-phase 18`, but note the
+execution order still puts 23 and 25 ahead of it.
+
+**Wave structure:** W1 = 18-01/02/03 (test contracts, agent) + 18-04 (msgpack pin, USER-RUN) ·
+W2 = 18-05/06/07/08 · W3 = 18-09/10 · W4 = 18-11 · W5 = 18-12 (single consolidated rig checkpoint).
+
+**Three research findings that changed the design** (all contradicted the pre-research context):
+1. **`msgpack` is NOT on the Pi** — verified by SSH into `~/.venv/autopilot`; nothing in the codebase
+   uses it (wire format is JSON). Genuine new dependency, pin needed for **Python 3.7.3**. Plan 18-04
+   is a USER-RUN step that resolves the pin by real `pip install` rather than guessing.
+2. **The backend reconciliation the lease depends on does not exist.** `orchestrator_station.py::_run_watchdog`
+   is dead code (thread-start commented out) with a broken staleness rule (wall-clock since
+   `started_at`, never refreshed — would kill every normal multi-minute session). Built in 18-09,
+   keyed on `_redis_touch`'s `updated_at`.
+3. **IOLoop thread hazard:** `init_hardware()` runs in the Pilot's `run_task` thread, not the thread
+   driving the IOLoop. `IOLoop.current()` inside `.bind()` would silently create a loop nothing polls.
+   Must pass `self.node.loop` and register via `add_callback()`.
+
+**Load-bearing design constraint discovered during validation planning:** `import autopilot.*` fails
+on the dev host (npyscreen missing). So all pure logic — wire codec, `@decoder` dispatch, stale-policy
+resolver, liveness predicate, egress worker, ready-gate decision — lives in **`autopilot`-free sibling
+modules** (`external_hardware_wire.py`, `external_hardware_runtime.py`), loaded by the Wave-0 tests via
+`importlib.util.spec_from_file_location` (by path, never a dotted import). Without this split every Pi
+test in the phase becomes USER-RUN and the agent-side feedback loop disappears.
+
+**Cross-phase coupling with Phase 23 plan 07** (which executed concurrently in another session on
+2026-08-03): 23-07 added `PREFLIGHT_ISSUE_KINDS` (frozenset) to `api/routers/toolkit_dispatch.py` —
+now the single registry of preflight issue kinds — plus a reserved-issue-shape helper precedent.
+Phase 18 adds **two** kinds (`device_held`, `extlink_config_invalid`), both registered there and both
+mirrored into `HardwareCheckModal.tsx`'s `PreflightIssue` union (a frontend file the roadmap's
+original file list omitted). Lease preflight tests go in `api/tests/test_view_key_preflight.py`, not
+`test_toolkit_dispatch.py`.
+
+**Known acceptance-criterion trap, recorded so it is not re-introduced:** do NOT assert that
+`on_run_stop()` emits a CONTINUOUS event visible in ES. `event_dispatcher.stop()` runs before
+`task.end()`/`release()` in `pilot.py`'s teardown, so the event provably races. Verify stop by
+effect — device idle, lease released.
+
+**Residual risk accepted and documented in 18-08/18-09/18-12:** Phase 18's safety net releases the
+lease row and marks the run errored, but does **not** command the foreign device to stop — the
+backend has no channel to one, by design. A crashed pilot can leave an external recorder running.
+Closing that belongs to Phase 26, which owns the OE control channel.
+
+---
+
+*Superseded planning note (kept for provenance):* `18-CONTEXT.md` was **revised** in a discussion session driven by
 `docs/open_ephys_integration.pdf`, to generalize the phase so **OpenEphys is its first consumer**.
 `18-01-PLAN.md` and `18-02-PLAN.md` were written against the pre-revision context and are now
 **superseded** — moved to `.planning/phases/18-extlink-pi-transport/superseded/` (Phase 23

@@ -33,6 +33,15 @@ def _base_name(base: ast.expr) -> str | None:
     return base.id if isinstance(base, ast.Name) else None
 
 
+def class_names(source_code: str) -> set[str]:
+    """Every top-level class defined in this source. Empty on a parse failure.
+
+    Lets a caller tell "class absent from the lib" apart from "class present but its ancestry
+    escapes the file" — `resolve_class_methods` returns (set(), False) for both.
+    """
+    return set(_parse_classes(source_code))
+
+
 def resolve_class_methods(source_code: str, class_name: str) -> tuple[set[str], bool]:
     """Method names on `class_name` including bases DEFINED IN THE SAME SOURCE.
 

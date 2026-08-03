@@ -15,7 +15,7 @@ from db import engine
 from detector_keys import module_detector_channels
 from fda_utils import ref_label, scan_fda_for_refs
 from fda_validation import reject_if_hard_errors
-from hw_introspect import toolkit_hw_capabilities
+from hw_introspect import class_names, resolve_class_methods, toolkit_hw_capabilities
 from models import (
     BackendToolkitCreate,
     BackendToolkitPatch,
@@ -703,6 +703,31 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
         db.close()
 
 
+def _lib_source(db: OrmSession, lib_id: int, pinned_version_id: int | None) -> str | None:
+    """Source of the pinned lib version, falling back to the lib's active version.
+
+    `hardware_libs` stores no source of its own — only a cached copy of the active version's
+    ast_metadata — so the active source always comes through active_version_id.
+    """
+    if pinned_version_id:
+        row = db.execute(
+            sa_text("SELECT source_code FROM hardware_lib_versions WHERE id = :id"),
+            {"id": pinned_version_id},
+        ).fetchone()
+        if row and row.source_code:
+            return row.source_code
+
+    row = db.execute(
+        sa_text(
+            "SELECT v.source_code FROM hardware_libs l "
+            "JOIN hardware_lib_versions v ON v.id = l.active_version_id "
+            "WHERE l.id = :id"
+        ),
+        {"id": lib_id},
+    ).fetchone()
+    return row.source_code if row else None
+
+
 def _validate_task_definition(
     db: OrmSession,
     fda_json: dict,
@@ -725,9 +750,9 @@ def _validate_task_definition(
     # trial_counter is implicitly available in every toolkit (incremented via INC_TRIAL_COUNTER ZMQ message)
     current_flag_names = set((toolkit.flags or {}).keys()) | {"trial_counter"}
 
-    # Build a map of module_name → class_name for hardware method validation
+    # Build a map of module_name → (class_name, hardware_lib_id) for hardware method validation
     module_ids = list(toolkit.hardware_module_ids or [])
-    hw_module_map: dict[str, str] = {}  # module_name → class_name
+    hw_module_map: dict[str, tuple[str, int]] = {}
     if module_ids:
         module_rows = db.execute(
             sa_text("SELECT name, class_name, hardware_lib_id FROM hardware_modules WHERE id = ANY(:ids)"),
@@ -735,8 +760,12 @@ def _validate_task_definition(
         ).fetchall()
         hw_module_map = {row.name: (row.class_name, row.hardware_lib_id) for row in module_rows}
 
-    # Build class_name → method_names map from lib AST.
-    # If task_def_id is given, prefer the version stored in hw_lib_versions over the lib's active AST.
+    # Resolve each module's methods from the lib SOURCE, not the flat per-class ast_metadata:
+    # a module's class_name is routinely a subclass (module 'MPR121' → Touch_Detector(MPR121)),
+    # and its methods live on an in-file ancestor. resolve_class_methods walks those bases;
+    # extract_ast_metadata deliberately does not — it is the diffing/constructor-arg format —
+    # so reading it here reported every inherited method as missing.
+    # If task_def_id is given, prefer the version pinned in hw_lib_versions over the lib's active one.
     hw_versions: dict[str, int] = {}
     if task_def_id:
         td_row = db.execute(
@@ -746,35 +775,19 @@ def _validate_task_definition(
         if td_row and td_row.hw_lib_versions:
             hw_versions = td_row.hw_lib_versions
 
-    lib_class_methods: dict[str, set[str]] = {}  # class_name → {method_names}
-    libs_with_ast: set[int] = set()  # lib_ids for which AST was successfully loaded
-    seen_lib_ids: set[int] = set()
+    module_methods: dict[str, tuple[set[str], bool]] = {}  # module_name → (methods, ancestry_closed)
+    missing_class: set[str] = set()  # module_names whose class_name is absent from its lib source
+    lib_sources: dict[int, str | None] = {}
     for mod_name, (cls_name, lib_id) in hw_module_map.items():
-        if lib_id not in seen_lib_ids:
-            seen_lib_ids.add(lib_id)
-            ast_meta = None
-
-            sel_id = hw_versions.get(str(lib_id))
-            if sel_id:
-                v_row = db.execute(
-                    sa_text("SELECT ast_metadata FROM hardware_lib_versions WHERE id = :id"),
-                    {"id": sel_id},
-                ).fetchone()
-                if v_row and v_row.ast_metadata:
-                    ast_meta = v_row.ast_metadata if isinstance(v_row.ast_metadata, dict) else json.loads(v_row.ast_metadata)
-
-            if ast_meta is None:
-                lib_row = db.execute(
-                    sa_text("SELECT ast_metadata FROM hardware_libs WHERE id = :id"),
-                    {"id": lib_id},
-                ).fetchone()
-                if lib_row and lib_row.ast_metadata:
-                    ast_meta = lib_row.ast_metadata if isinstance(lib_row.ast_metadata, dict) else json.loads(lib_row.ast_metadata)
-
-            if ast_meta:
-                libs_with_ast.add(lib_id)
-                for cls in ast_meta.get("classes", []):
-                    lib_class_methods[cls["name"]] = {m["name"] for m in cls.get("methods", [])}
+        if lib_id not in lib_sources:
+            lib_sources[lib_id] = _lib_source(db, lib_id, hw_versions.get(str(lib_id)))
+        source = lib_sources[lib_id]
+        if not source:
+            continue  # no source to check against — stay silent rather than guess
+        if cls_name not in class_names(source):
+            missing_class.add(mod_name)
+        else:
+            module_methods[mod_name] = resolve_class_methods(source, cls_name)
 
     errors: list[str] = []
     for ref_entry in refs:
@@ -790,11 +803,15 @@ def _validate_task_definition(
             if hw_module_map and ref not in hw_module_map:
                 errors.append(f"{label}: hardware module '{ref}' not in toolkit modules")
             elif ref in hw_module_map and method is not None:
-                cls_name, lib_id = hw_module_map[ref]
-                if lib_id in libs_with_ast:
-                    if cls_name not in lib_class_methods:
-                        errors.append(f"{label}: class '{cls_name}' not found in lib AST")
-                    elif method not in lib_class_methods[cls_name]:
+                cls_name = hw_module_map[ref][0]
+                if ref in missing_class:
+                    errors.append(f"{label}: class '{cls_name}' not found in lib AST")
+                elif ref in module_methods:
+                    methods, ancestry_closed = module_methods[ref]
+                    # An open ancestry (the common case — Hardware is imported, never defined in
+                    # the lib) means the method set is incomplete, so an absent name proves
+                    # nothing. Reporting it anyway is what badged inherited methods as broken.
+                    if ancestry_closed and method not in methods:
                         errors.append(f"{label}: {ref}.{method} not found in lib (class {cls_name})")
 
     if errors:

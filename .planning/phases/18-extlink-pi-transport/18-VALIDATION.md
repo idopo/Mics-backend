@@ -79,7 +79,7 @@ map each task onto a row here, and every row must be claimed by some task.
 | EXTLINK-16 | `on_run_start` returns before the hook's artificial delay elapses (proves non-blocking) | unit (Pi mirror, agent) | `... -k never_blocks` | ❌ W0 |
 | EXTLINK-16 | `on_run_stop` invoked exactly once per `.release()` | unit (Pi mirror, agent) | `... -k stop_called_once` | ❌ W0 |
 | EXTLINK-16 | `run_ctx` has exactly the six locked keys and no seventh | unit (Pi mirror, agent) | `... -k run_ctx_shape` | ❌ W0 |
-| EXTLINK-16 | Regression pin: `mics_task.end()` still calls `super().end()` — the chokepoint everything depends on | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_mics_task_attrs.py -k end` | ❌ W0 (extend) |
+| EXTLINK-16 | Regression pin: `mics_task.end()` still calls `super().end()` — the chokepoint everything depends on. **CORRECTED at planning:** must be written as an `ast.parse` over the source text, NOT by importing `mics_task` (that import pulls the full `autopilot` chain and would make the row USER-RUN). Verified agent-runnable as written | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_mics_task_attrs.py -k end` | ❌ W0 (extend) |
 | EXTLINK-07 | Liveness default: alive inside window, dead outside | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_liveness.py` | ❌ W0 |
 | EXTLINK-07 | **Liveness independent of signal staleness** — reachable-but-quiet stays `alive` while its signal returns the declared default (the core EXTLINK-07 split, decoupled in code not just docstring) | unit (Pi mirror, agent) | `... -k independent` | ❌ W0 |
 | EXTLINK-07 | Lib-supplied predicate replaces the default entirely | unit (Pi mirror, agent) | `... -k override` | ❌ W0 |
@@ -92,7 +92,7 @@ map each task onto a row here, and every row must be claimed by some task.
 | EXTLINK-09 | `@event(payload={"object": str})` — bare type names are `ast.Name`, **not** `literal_eval`-safe; extractor must not raise and must emit string-typed `{"object": "str"}` | unit (backend) | `... -k payload_bare_types` | ❌ W0 (extend) |
 | EXTLINK-09 | `POST /api/hardware-libs` round-trip with a full `ExternalHardware` source → `ast_metadata.extlink` populated | integration (backend) | `... -k upload_extlink` | ❌ W0 (extend) |
 | EXTLINK-03/12 | Wire codec encode/decode round-trip; malformed bytes → `None`, counter incremented, never raises | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_wire.py` | ❌ W0 |
-| EXTLINK-13 | `_wait_extlink_ready` three-exit transition table wired correctly — built against a bare `FiniteDeterministicAutomaton`, bypassing `mics_task` | unit (Pi mirror, agent) — **stretch** | `cd ~/pi-mirror && python3 -m pytest -q tests/test_wait_extlink_ready_transitions.py` | ❌ W0 (stretch) |
+| EXTLINK-13 | **CORRECTED at planning — the original row was wrong.** It proposed building a bare `FiniteDeterministicAutomaton` to keep this agent-runnable, but `from autopilot.utils.FiniteDeterministicAutomaton import …` still executes `autopilot/__init__.py` → npyscreen, so it would have been USER-RUN either way. Replaced by contracting the gate's **decision** as a pure `ready_gate_decision(...)` function in the `autopilot`-free module — fully agent-runnable. The FDA *wiring* remains rig-only (row below) | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_lifecycle.py -k ready_gate` | ❌ W0 |
 | EXTLINK-01/02/11 | `router_bind` end-to-end: DEALER connects, pushes signal, FDA transition fires | manual + rig | USER-RUN smoke script | N/A |
 | EXTLINK-14 | `sub_connect` end-to-end against a live PUB | manual + rig | USER-RUN smoke script `publish` subcommand | N/A |
 | EXTLINK-13 | Full three-exit behavior through a real task start | manual + rig | USER-RUN | N/A |
@@ -113,8 +113,9 @@ map each task onto a row here, and every row must be claimed by some task.
 - [ ] Extend `~/pi-mirror/tests/test_mics_task_attrs.py` — `super().end()` regression pin — EXTLINK-16
 - [ ] Extend `api/tests/test_view_key_preflight.py` — device lease — EXTLINK-17
       *(NOT `test_toolkit_dispatch.py` — that covers dispatch-spec shape; preflight issue kinds live here)*
-- [ ] Extend the hardware-libs AST test file — EXTLINK-09.
-      **Confirm the target first:** `grep -rl "extract_ast_metadata" api/tests/`
+- [ ] **RESOLVED at planning:** `grep -rl "extract_ast_metadata" api/tests/` returns nothing, and
+      `test_hardware_libs_flag_broken.py` covers something else — so EXTLINK-09 gets a dedicated new
+      file `api/tests/test_hardware_libs_extlink.py` rather than extending an existing one
 - [ ] **Agent-side install:** `pip install msgpack` in the environment running the `autopilot`-free
       Pi-mirror tests, so the codec tests call real `packb`/`unpackb` instead of mocking
 - [ ] **USER-RUN install:** `msgpack` on the rig, pinned for **Python 3.7.3** — resolve the exact

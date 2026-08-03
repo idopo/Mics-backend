@@ -3,11 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../api/client'
 import { listHardwareModules, getHardwareModuleMethods } from '../api/hardware_modules'
 import type { HardwareModule, AstMethodArg } from '../types'
+import ComputeIssueDetail from './ComputeIssueDetail'
 
+// Issue kinds and their shape-specific fields are authored in
+// api/routers/toolkit_dispatch.py::PREFLIGHT_ISSUE_KINDS — mirror it, do not invent fields.
 export interface PreflightIssue {
   module_id: number | null
   module_name: string
   issue: 'missing' | 'incomplete_config' | 'class_mismatch' | 'fda_ref_unresolved' | 'view_key_unresolved'
+       | 'variable_never_written' | 'lib_version_unresolved' | 'compute_lib_import_failed'
   detail: string
   expected_class?: string
   stored_class?: string
@@ -23,7 +27,29 @@ export interface PreflightIssue {
   detector?: { ref: string; channel: number }
   /** view_key_unresolved, detector-channel shape only — this pilot's real channels for `detector.ref`. */
   available_channels?: number[]
+  /** variable_never_written only — the variable name nothing writes. */
+  variable?: string
+  /** lib_version_unresolved / compute_lib_import_failed only — the lib source filename. */
+  lib_filename?: string
+  /** lib_version_unresolved only — why no version could be resolved (e.g. "none"). */
+  reason?: string
+  /** compute_lib_import_failed only — the import error message. */
+  error?: string
 }
+
+/**
+ * None of these three names a `pilot_hardware_config` row — a variable-analysis result and a
+ * lib-resolution failure both live elsewhere (the task definition, the Hardware Libraries page).
+ * Shared by `handleStart` and the `pendingEdits` initialiser so a PUT is never issued for them —
+ * doing so would overwrite a good config with `{}` or hit an empty path segment (the bug plan
+ * 25-05 fixed for `view_key_unresolved`).
+ */
+const NON_CONFIG_ISSUES = new Set<PreflightIssue['issue']>([
+  'view_key_unresolved',
+  'variable_never_written',
+  'lib_version_unresolved',
+  'compute_lib_import_failed',
+])
 
 interface HardwareCheckModalProps {
   issues: PreflightIssue[]
@@ -295,6 +321,14 @@ function ModuleIssueEditor({
     return <ViewKeyIssueDetail issue={issue} />
   }
 
+  if (
+    issue.issue === 'variable_never_written' ||
+    issue.issue === 'lib_version_unresolved' ||
+    issue.issue === 'compute_lib_import_failed'
+  ) {
+    return <ComputeIssueDetail issue={issue} />
+  }
+
   if (issue.issue === 'missing' || issue.issue === 'fda_ref_unresolved') {
     return <MissingModuleEditor issue={issue} onReplaceEdits={onReplaceEdits} />
   }
@@ -348,9 +382,8 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
   const [pendingEdits, setPendingEdits] = useState<Record<string, Record<string, unknown>>>(() => {
     const init: Record<string, Record<string, unknown>> = {}
     for (const issue of issues) {
-      // view_key_unresolved names no config row to write — it belongs to the task
-      // definition or the pilot's hardware config, not a PUT this modal issues.
-      if (issue.issue === 'view_key_unresolved') continue
+      // Names no config row to write — see NON_CONFIG_ISSUES.
+      if (NON_CONFIG_ISSUES.has(issue.issue)) continue
       if (issue.issue === 'class_mismatch') {
         init[issue.module_name] = { ...issue.config }
       } else if (issue.issue === 'incomplete_config') {
@@ -380,9 +413,8 @@ export default function HardwareCheckModal({ issues, pilotId, onStart, onCancel 
     setSaveError('')
     try {
       for (const issue of issues) {
-        // view_key_unresolved names no config row to write — PUTting here would either
-        // overwrite a good config with {} or hit an empty path segment.
-        if (issue.issue === 'view_key_unresolved') continue
+        // Names no config row to write — see NON_CONFIG_ISSUES.
+        if (NON_CONFIG_ISSUES.has(issue.issue)) continue
         const edits = pendingEdits[issue.module_name] ?? {}
         const baseConfig = issue.config ?? {}
         const configToSave: Record<string, unknown> =

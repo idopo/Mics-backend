@@ -475,28 +475,48 @@ Plans:
 
 ---
 
-### Phase 23: Compute Primitives + Variables
-**Goal:** GUI-assembled FDA-JSON-v2 tasks can produce computed values (random draws, derived numbers/booleans) into named variables at state entry, and route on them via existing transitions — without writing Python or editing locked toolkit source. Delivers the library-backed computed-value loop end-to-end: Pi runtime (`variables` registry + `compute` action + curated stdlib primitives), backend validation + compute-library storage, and the GUI state-builder/transition wiring.
+### Phase 23: Compute Operations (Compute Libs)
+**Goal:** A researcher can compute a value inside a state, store it in a variable, and transition on it — without a developer editing locked toolkit source, and with every computation recorded in the event log. Compute operations are delivered as **user-extensible, versioned, auto-logged libraries** using the existing hardware-lib substrate, so a researcher can add a new operation (e.g. weighted choice, sampling without replacement) the same way they add a hardware driver.
 
-**Requirements:** CMP-01–06, CMP-10–15
+**Requirements:** CMP-01–06, CMP-10–19
 
-**Design context:** `~/.claude/plans/i-realized-something-the-ancient-pnueli.md` (locked decisions: curated primitives + first-class `variables` registry; branching stays in FDA transitions; stdlib `random`/`math` only; per-Pi packages explicitly deferred).
+**Design context:** `~/.claude/plans/i-realized-something-the-ancient-pnueli.md`, **revised 2026-08-03** — see `23-CONTEXT.md` for the locked reframe. The original "curated pure-function primitives" design is superseded.
 
-> **Renumbered from Phases 19–22 → single Phase 23** (three plans) to clear the MICS-Link SDK arc's reserved numbers (19–22), and structured as multiple plans under one phase per the established 09–13 pattern.
+> **Renumbered from Phases 19–22 → single Phase 23** to clear the MICS-Link SDK arc's reserved numbers (19–22), structured as multiple plans per the established 09–13 pattern.
 >
-> **Decoupled:** the `expr` escape-hatch (former CMP-07–09 — a sandboxed restricted-AST evaluator + `type:"expr"` action) was pulled out of this phase. The library-backed `compute` path covers current needs; `expr` is deferred (documented in the design spec, can become its own phase later). `compute` is fully self-sufficient — it rides on the same `variables`/`output` plumbing built in 23-01.
+> **Scope correction (2026-08-03):** the `variables` half of this phase **already shipped in Phase 24** (`mics_task.py` `load_fda_from_json` ~1017 — variables are Trackers registered in both `self.flags` and `self.view.view`, with `_validate_output_spec`/`_capture_output` writing any action's return value into them). CMP-01/02/14 are marked *built in 24*. The remaining delta is **the operations, their extensibility mechanism, backend validation, and the GUI.**
+>
+> **The reframe — a compute lib IS a hardware lib.** Same substrate (rows in `hardware_libs`/`hardware_lib_versions` + a new `kind` column; existing versioning, AST, promotion trail, and `LOAD_HARDWARE_LIBS` transport), deliberately different surface (`type:"compute"` in FDA-JSON and GUI). Runtime is a class subclassing `Hardware` (base is pure metadata, `pin = None`) so `@log_action` records the **operation**, not just the result — `log_action` only dispatches for `Mics_Tracker`/`Hardware` instances, so a module of pure functions would log nothing.
+>
+> **Decoupled/deferred:** the `expr` escape-hatch (former CMP-07–09) **and** inline Python typed into a state body. Both forfeit versioning and op logging (no object for `@log_action`), so neither can satisfy CMP-16. Python authoring happens in the hardware-lib editor; the state body only selects and wires. Third-party PyPI packages + per-Pi package management also deferred — CMP-19 reserves the hooks.
 
-**Plans (waves):**
-- **23-01-PLAN.md** (wave 1) — *Pi runtime: variables + compute + primitives* (CMP-01–06). `~/pi-mirror/.../tasks/mics_task.py` `load_fda_from_json()` (~683): parse top-level `variables`, instantiate as generic Trackers in `self.flags` + `self.view.view` (init_flags pattern), carry through `UPDATE_FDA` hot-reload store; `_build_action_callable()` (~525): add `compute` branch resolving args via `_resolve_arg` and `.set()`-ing `output`. New `~/pi-mirror/.../tasks/compute_primitives.py` — pure functions: random/copy (`random_choice`, `random_int`, `random_float`, `random_bool`, `assign`) + numeric/util (`add`, `subtract`, `multiply`, `divide`, `modulo`, `minimum`, `maximum`, `clamp`); numeric value-production only (no boolean-logic ops — branching stays in transitions). `_resolve_arg` gains a `{"view": name}` branch so a variable read back as an arg resolves (counter pattern `add(counter,1)→counter`). Confirm generic `Tracker` (utils/Tracker.py) is the untyped base.
-- **23-02-PLAN.md** (wave 2, depends 23-01; also Phase 9) — *Backend validation + compute-library storage* (CMP-10–12). `api/routers/toolkits.py` `_validate_task_definition()` (~661) delegates to a new `api/fda_validation.py` `_validate_variables(...)`: variables-registry + collision + reference validation (hard 422s, distinct from the soft hardware-drift path). `api/fda_utils.py`: extend recursive ref scanner for `compute` `output` names. `api/routers/hardware_libs.py`: AST extractor also emits module-level `functions`. Store the shared compute library as a (non-hardware) `hardware_libs` row reusing Phase-9 storage/versioning/AST — no new table.
-- **23-03-PLAN.md** (wave 3, depends 23-02; also Phase 3/12) — *GUI: compute state builder + variable wiring* (CMP-13–15). `web_ui/react-src/src/components/StateBodyPanel.tsx` + `ActionEditor.tsx`: `compute` editor (primitive picker from compute-lib AST + per-arg `ArgInput` + `output`), inline variable auto-declare. `ConditionBuilder.tsx`: operand dropdown from toolkit `FLAGS` + task `variables`. `pages/task-editor/TaskEditor.tsx`: `variables` serialize/deserialize + reachability warning. `types/index.ts`: FDA-JSON-v2 `variables` + `compute` types. `src/api/computeLibrary.ts`: fetch compute-library primitive signatures.
+**Plans:** 10 plans in 6 waves *(re-derived 2026-08-03 against the revised CONTEXT; the previous 3-plan split assumed the superseded design and is archived in `superseded/`)*
 
-**Success criteria (phase-level — see plans for per-slice detail):**
-1. *(23-01)* FDA-JSON-v2 with `"variables": { "target": {} }` + a `trial_onset` state `entry_actions` including `{ "type": "compute", "op": "random_bool", "args": [0.5], "output": "target" }` loads without error; `self.flags["target"]` and `self.view.view["target"]` are the same generic Tracker after load. Two guarded transitions on `{"view":"target","op":"==","rhs":{"literal":true}}`/`false` both fire across trials (recomputed once per entry, last-write-wins). All thirteen primitives resolve args via `_resolve_arg` (including a variable read back as an arg). `check_determinism()` stays safe (pure reads). Hot-reload instantiates a newly-added variable before rebuilding transitions.
-2. *(23-02)* `POST/PUT /api/task-definitions` returns 422 for: undeclared `output`, variable-name collision with FLAGS/SEMANTIC_HARDWARE/view key, transition referencing an undeclared variable. `fda_utils` scanner returns `compute` outputs. Compute library stored as a `hardware_libs` row; GET returns AST metadata (name + args per primitive).
-3. *(23-03)* StateBodyPanel offers a `compute` action; typing a new `output` auto-declares it into `variables` and makes it selectable in the ConditionBuilder operand dropdown; save serializes `variables` + the compute action to FDA-JSON-v2 and round-trips on reload. (Nice-to-have) editor warns on a transition reading a variable no reachable upstream state writes.
+Plans (waves):
+- [ ] 23-01-PLAN.md — **wave 1** — Wave 0: the three missing test files as executable contracts (CMP-04/12/17/19)
+- [ ] 23-02-PLAN.md — **wave 2** — DB substrate: `hardware_libs.kind`, declared imports, seed Compute Ops lib + COMPUTE module, auto-provisioned pilot config (CMP-04/12/19)
+- [ ] 23-03-PLAN.md — **wave 2** — Backend validation: compute hard-422s in the EXISTING `api/fda_validation.py`, compute-aware ref scanner, new `api/variable_scan.py` (CMP-10/11/15)
+- [ ] 23-04-PLAN.md — **wave 2** — Pi runtime: the `compute` branch in `_build_action_callable`, vocabulary, CLI validator (CMP-03/04/05/06)
+- [ ] 23-05-PLAN.md — **wave 3** — CMP-17 version resolution unified across dispatch / introspection / orchestrator; `test_import` activated (CMP-17/19)
+- [ ] 23-06-PLAN.md — **wave 3** — GUI: `kind` types, filter chip and compute upload on the existing Hardware Libraries page (CMP-12/18)
+- [ ] 23-07-PLAN.md — **wave 4** — Preflight: no `incomplete_config` false positive, self-healing compute config, `variable_never_written`, reserved issue kinds, variable-usage route (CMP-15/17/19)
+- [ ] 23-08-PLAN.md — **wave 4** — GUI: the ONE "compute" action-type entry, grouped op picker, auto-declaring output field (CMP-13/14)
+- [ ] 23-09-PLAN.md — **wave 5** — GUI: new preflight issues rendered (and excluded from the PUT loop), read-only variables inspector (CMP-14/15)
+- [ ] 23-10-PLAN.md — **wave 6** — Deploy + single rig-proof checkpoint: Pi suite, gonogo translation, ES evidence for both event types, GUI click-through (CMP-01/02/03/04/05/06/13/14/16/18)
 
-**Verification posture:** The Pi-side plan (23-01) is spec/edit-in-mirror only — `<verify>` blocks return commands for the user to run (sync `~/pi-mirror/` → Pi, restart pilot, run the gonogo-translation task); the agent does not run git, start/stop the pilot, or run Python on the Pi. Backend (23-02) and GUI (23-03) are agent-driven in the docker compose stack (call endpoints / verify DB via postgres MCP / rebuild web_ui).
+**Wave structure:** 1 → {02, 03, 04} → {05, 06} → {07, 08} → 09 → 10. Wave 2's three plans are
+fully parallel (backend substrate / backend validation / Pi mirror — no shared files). All Pi
+work is grouped so the user is asked to touch the rig exactly once, in plan 23-10.
+
+**Success criteria (phase-level):**
+1. *(Pi runtime)* An FDA-JSON-v2 task with `"variables": {"target": {}}` and a `trial_onset` compute action `random_bool(0.5) → target` loads and runs; two guarded transitions on `{"view":"target","op":"==","rhs":{"literal":true}}`/`false` both fire across trials, recomputed once per entry (last-write-wins). A variable read back as its own arg (`add(counter,1)→counter`) resolves. `check_determinism()` stays safe (guards read stored results only). Hot-reload re-creates variables before rebuilding transitions.
+2. *(Logging — CMP-16)* Both events reach the event log for each compute call: a `Hardware_Event` carrying the **op and its args**, and the `Tracker` set event carrying the **result**. Verified on-rig against the gonogo translation.
+3. *(Extensibility)* A researcher-authored compute lib created in the hardware-lib editor is versioned, promoted unvalidated→beta→stable, linked to a toolkit, shipped to the Pi by `LOAD_HARDWARE_LIBS`, and its ops appear in the GUI op picker from AST metadata — with no code change to the platform.
+4. *(Backend)* `POST/PUT /api/task-definitions` returns 422 for: undeclared `output`, variable-name collision with FLAGS/SEMANTIC_HARDWARE/view keys, transition referencing an undeclared variable. `fda_utils` scanner returns `compute` outputs. `kind` distinguishes compute libs; version resolution follows pin → toolkit default → **latest stable** → preflight issue (correcting the current pin → active chain for both lib kinds).
+5. *(GUI — uncluttered)* Hardware Libraries page gains a `kind` filter chip (no new page/nav). StateBodyPanel's action-type list gains **exactly one** entry, "Compute", rendering one compact row `[output var] = [op ▾] ( [args] )`. Typing a new `output` auto-declares it into `variables` and it is immediately selectable in the ConditionBuilder. Save round-trips.
+6. *(Discoverability — CMP-15)* A `variable_never_written` preflight issue surfaces through Phase 25's existing issue renderer when a transition reads a variable no reachable upstream state writes. Read-only variables inspector shows writers/readers per variable.
+
+**Verification posture:** Pi-side work is spec/edit-in-mirror only — `<verify>` blocks return commands for the **user** to run (sync `~/pi-mirror/` → Pi, restart pilot, run the gonogo-translation task); the agent does not run git on the Pi, start/stop the pilot, or run Python on the Pi. Backend and GUI work is agent-driven in the docker compose stack (call endpoints / verify DB via postgres MCP / rebuild web_ui).
 
 **Dependencies:** Phase 1 (`load_fda_from_json`, `_resolve_arg`, `_build_transition_lambda`, `init_flags` pattern), Phase 2 (`UPDATE_FDA` hot-reload path), Phase 9 (hardware_libs storage + AST extractor — for 23-02), Phase 3/12 (StateBodyPanel, ActionEditor, ConditionBuilder, TaskEditor — for 23-03).
 
@@ -535,13 +555,23 @@ Phase 17 (Free-Form Pilot Hardware Config)
 
 Phase 1 (Pi Foundation) + Phase 2 (UPDATE_FDA hot-reload)
     ↓ load_fda_from_json, _resolve_arg, init_flags pattern
-Phase 23 (Compute Primitives + Variables) — 3 plans:
-    23-01 Pi runtime: variables + compute + primitives   (wave 1)
-        ↓ variables registry + compute branch + output binding
-    23-02 Backend validation + compute-library storage   (wave 2 ← also Phase 9)
-        ↓ shapes accepted + compute-lib AST served
-    23-03 GUI: compute state builder + var wiring         (wave 3 ← also Phase 3/12)
-    (expr escape hatch decoupled/deferred — see Phase 23 note)
+Phase 23 (Compute Operations / Compute Libs) — 10 plans, 6 waves (re-planned 2026-08-03):
+    23-01 Wave 0 test contracts                          (wave 1)
+        ↓
+    23-02 DB substrate (kind, seed lib, provisioning)  ─┐
+    23-03 Backend validation + variable_scan           ─┼ (wave 2, parallel)
+    23-04 Pi runtime compute branch                    ─┘
+        ↓
+    23-05 CMP-17 version resolution + test_import       ─┐ (wave 3, parallel)
+    23-06 GUI kind filter chip                          ─┘
+        ↓
+    23-07 Preflight compute fixes + variable-usage route ─┐ (wave 4, parallel)
+    23-08 GUI compute action row                         ─┘
+        ↓
+    23-09 GUI preflight issues + variables inspector      (wave 5)
+        ↓
+    23-10 Deploy + rig proof (checkpoint)                 (wave 6)
+    (expr escape hatch + inline Python decoupled/deferred — see Phase 23 note)
 ```
 
 **Phase 1 can start today.** Phase 5 can also start in parallel with Phase 1 — they are fully independent. **Phase 9 can start after Phase 4 is complete** — it is independent of Phases 5–8.

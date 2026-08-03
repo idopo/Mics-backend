@@ -1,86 +1,160 @@
 # Phase 18: MICS-Link — Pi Transport + ExternalHardware — Context
 
-**Gathered:** 2026-05-31 (rewritten 2026-05-31 after alignment with Phases 09–13 flow)
-**Status:** Ready for planning
-**Source:** Master plan `/home/ido/.claude/plans/as-you-are-already-effervescent-hearth.md`, narrowed and re-aligned during this session.
+**Gathered:** 2026-05-31
+**Revised:** 2026-08-03 — generalized so OpenEphys is the first consumer (see `<revision_2026_08_03>`)
+**Status:** Ready for planning — **existing 18-01/18-02 plans are SUPERSEDED and must be re-planned**
+**Source:** Master plan `/home/ido/.claude/plans/as-you-are-already-effervescent-hearth.md`, narrowed 2026-05-31; refinement session 2026-08-03 driven by `docs/open_ephys_integration.pdf`.
 
 <domain>
 ## Phase Boundary
 
-Pi gains a structured, crash-safe input channel that lets external software running on other computers (DeepLabCut, OpenEphys, photometry rigs, …) push data into the existing View / FDA framework. **The flow uses the existing Phase 09–13 + Phase 17 plumbing end-to-end.** No new DB tables. No new top-level dispatch kwarg. No new prefs.json block. The `ExternalHardware` subclass IS a hardware library; an instance of it IS a hardware module; its per-pilot network params live in the existing `pilot_hardware_config.config` JSON.
+Pi gains a structured, crash-safe channel that lets external software running on other computers (OpenEphys, DeepLabCut, photometry rigs, …) participate in the existing View / FDA framework as **versioned, per-toolkit hardware modules**. **The flow uses the existing Phase 09–13 + Phase 17 plumbing end-to-end.** No new DB tables for the transport itself. No new top-level dispatch kwarg. No new prefs.json block. The `ExternalHardware` subclass IS a hardware library; an instance of it IS a hardware module; its per-pilot network params live in the existing `pilot_hardware_config.config` JSON.
 
 **In scope (Phase 18):**
 - New `ExternalHardware` Python base class with `@signal` / `@event` / `@command` decorators (Pi-side, in `~/pi-mirror/autopilot/autopilot/hardware/`).
-- Each instance owns its own ZMQ ROUTER socket bound to the `listen_port` from per-pilot config.
+- **Two transport roles** — `router_bind` (MICS-native SDK dials in) and `sub_connect` (Pi dials out to a foreign publisher), with a per-lib `@decoder` hook for foreign wire formats.
 - View Tracker auto-registration per signal + `<source_id>.alive` boolean tracker.
 - Per-signal stale policy (`hold_last` / `return_default` / `return_none`).
-- Heartbeat-driven liveness with `stale_ms` from per-pilot config.
+- **Lib-supplied liveness hook** with a data-arrival default.
+- **Egress path** — ordered, non-blocking outbound queue with a bounded buffer and drop accounting.
+- **Run lifecycle hooks** — `on_run_start(run_ctx)` / `on_run_stop()`, plus a backend safety net.
+- **Device lease** — backend-side arbitration for a device shared across pilots, surfaced as a preflight issue.
 - Ingress validation that drops unknown messages without raising into the IOLoop.
-- Small AST extractor extension in `api/routers/hardware_libs.py` so the three decorators land in `ast_metadata` (otherwise Phase 9 plumbing is untouched).
+- Small AST extractor extension in `api/routers/hardware_libs.py` so the decorators land in `ast_metadata`.
 - `mics_task.init_hardware()` post-pass that calls `.bind(ioloop, view)` on every `ExternalHardware` instance.
 - Standalone smoke-test DEALER script (`~/pi-mirror/scripts/dev/extlink_smoke.py`).
 
-**Out of scope (deferred to later MICS-Link phases):**
-- The `mics-link` Python SDK package (Phase 19).
-- Stub generation + bootstrap-zip endpoints + "Download SDK" GUI (Phase 20).
-- Per-pilot external-sources health dashboard + orchestrator WS forwarding (Phase 21).
-- DeepLabCut reference integration (Phase 22).
-- OpenEphys / photometry recipes (Phase 23).
+**Out of scope (deferred):**
+- The `mics-link` Python SDK package.
+- Stub generation + bootstrap-zip endpoints + "Download SDK" GUI.
+- Per-pilot external-sources health dashboard + orchestrator WS forwarding.
+- **The OpenEphys hardware lib itself** — Phase E1 (control/recording/folder) and E2 (firing rate over ZMQ). Phase 18 delivers only the substrate they stand on.
+- DeepLabCut reference integration.
 - **No `EXTLINK` block in `pilot/prefs.json`** — explicitly rejected. Network config lives only in `pilot_hardware_config.config`.
 - **No singleton `ExternalLink` class** on the Pi — explicitly rejected. Each `ExternalHardware` instance owns its own socket.
 
 </domain>
 
+<revision_2026_08_03>
+## Why this phase was revised
+
+Phase 18 as originally locked assumed **one** consumer shape: our own SDK, speaking our MessagePack envelope, **dialing into** the Pi's ROUTER. OpenEphys — now confirmed as the first real consumer — breaks three of those assumptions, and DeepLabCut will break the same ones later. Refining the base class now avoids writing it twice.
+
+**What OpenEphys needs that the original design does not provide:**
+
+1. **Opposite direction, foreign format.** The OE ZMQ Interface plugin is a **PUB socket publishing its own JSON-header + binary format** (carrying an OE sample number). It will never dial into us and never speak MessagePack. → transport `role` + `@decoder`.
+2. **Egress.** Phase 18 was input-only. OE needs `PUT /api/status {"mode":"RECORD"}`, a per-session save path, and event markers pushed mid-task. → egress queue + lifecycle hooks.
+3. **Session lifecycle.** Recording must start and stop with the run, and the resulting path must be recorded in MICS. → `on_run_start` / `on_run_stop` + backend safety net.
+
+**Plus a constraint from the rig:** the OE machine may be shared across pilots (sequentially, not simultaneously). One OE box has one record node, so two pilots issuing RECORD would clobber each other. → backend device lease.
+
+**User decisions driving the scope (2026-08-03 session):**
+- **Pi owns both channels** (HTTP control + ZMQ data) — chosen to minimise overhead and keep one clock domain, one versioned lib, one toolkit story. The backend owns *only* the lease, because the Pi cannot know about other pilots.
+- **v1 OE scope is firing rate + recording + save-folder naming**, with the folder path logged into MICS. This makes the ZMQ data path a v1 requirement, not a deferral.
+- **The OE machine is never used by two rigs simultaneously** — the lease is a safety net, not a scheduling system. No queue/notify UX.
+- **The TTL cable stays**; network markers run alongside it and the cutover happens later on measured evidence.
+
+**Consequence for planning:** `18-01-PLAN.md` and `18-02-PLAN.md` were written against the pre-revision context. 18-01 *is* the `external_hardware.py` base-class plan, so roles/decoder/liveness/egress/lifecycle invalidate it outright. 18-02's AST extractor must additionally emit the new metadata. **Both need re-planning.** Neither has been executed, so nothing is lost but planning time.
+
+</revision_2026_08_03>
+
 <decisions>
 ## Implementation Decisions
 
-### Mental model (locked)
+### Mental model (locked, unchanged)
 External sources are **virtual hardware modules** that flow through the existing Phase 9 / 10 / 11 / 13 / 17 pipeline like any GPIO module:
 - `ExternalHardware` subclass → uploaded via existing `/api/hardware-libs` (Phase 9), AST-validated.
-- A row in `hardware_modules` declares one instance (Phase 10) — `name` (e.g. `dlc_cam1`), `class_name` (e.g. `DLC_Cam1`), pinned `hw_lib_version`.
+- A row in `hardware_modules` declares one instance (Phase 10) — `name`, `class_name`, pinned `hw_lib_version`.
 - Per-pilot params live in `pilot_hardware_config.config` (Phase 17 — name-keyed, free-form JSON).
 - Selected by a toolkit via existing `hardware_module_ids` (Phase 11).
 - Dispatched on the existing `HARDWARE` + `PREFS_HARDWARE` channel via `toolkit_dispatch.py` (Phase 11). No new kwarg.
 - Preflight-validated (Phase 13) by `class_name` like any other module.
 
-### Topology (locked)
-**External connects to Pi, ONE port per instance.** Each `ExternalHardware` instance binds its own ROUTER on its own `listen_port`. The external SDK DEALER dials in with `identity = source_id`. The ROUTER rejects any DEALER frame whose identity ≠ the configured `source_id`.
+### Transport roles (NEW — 2026-08-03)
+Two roles, selected per instance by `role` in `pilot_hardware_config.config`:
 
-Two external modules on the same pilot = two ROUTER sockets on two ports. The first one might be `listen_port=5571`, the second `listen_port=5572`, etc. The user picks the ports when filling in `pilot_hardware_config.config`.
+- **`router_bind`** (original design, default) — the instance binds its own ROUTER on `listen_port`. A MICS-native SDK DEALER dials in with `identity = source_id`; frames whose identity ≠ `source_id` are dropped at the socket layer.
+- **`sub_connect`** (new) — the instance **dials out** to a foreign publisher at `host:connect_port` with a SUB socket. There is no DEALER identity to check, so the identity check does not apply in this role; `source_id` is retained purely as the **tracker-name prefix** (`oe.spike_rate`), which keeps view-key naming identical across both roles.
 
-### Per-pilot config schema (locked)
-A `pilot_hardware_config` row for an external module:
+The `@decoder` hook translates a foreign frame into declared signal/event updates. **It lives in the versioned hardware lib, not in platform code** — that is the whole point: the OE wire format becomes a versioned, promotable, per-toolkit artifact that a researcher can fix without a platform release. `sub_connect` sources still declare `@signal` / `@event` normally, so view keys, typed FDA reads, and the editor's pickers work identically for both roles.
+
+**Claude's discretion:** the exact `@decoder` signature and how it emits multiple updates from one frame.
+
+### Liveness (AMENDED — supersedes the original heartbeat-only rule)
+The original design assumed every source sends MICS `HB` frames. Foreign publishers don't. Resolution:
+
+- **Liveness is a lib-supplied hook** with a base-class default of "any successfully decoded message within `stale_ms` ⇒ alive". A lib may override it — OE will override to poll its HTTP status endpoint, which is the only signal that distinguishes *rig is off* from *rig is quiet*.
+- **`alive` means reachable/operational — NOT data-fresh.** A recording OE with no spikes for 30s is alive with stale signals. Signal freshness stays entirely with the existing per-signal stale policy (EXTLINK-06). The original design conflated these two; splitting them costs nothing because both mechanisms already exist.
+  - Rationale for rejecting "silence = stale": for a low-firing unit, a `stale_ms` generous enough to cover normal quiet periods would be minutes, making `alive` useless as a failure detector.
+- **Mid-run loss is logged, never automatically fatal.** Flip the `<source_id>.alive` tracker and emit the CONTINUOUS event (EXTLINK-07). The FDA author gates transitions on `not view.get_value("oe.alive")` if the experiment cares. MICS does not kill a behavioural session because an accessory went quiet.
+
+### Egress (NEW — 2026-08-03)
+Outbound calls (HTTP PUT, ZMQ send) must never execute on the FDA thread — that would inject exactly the jitter this integration exists to remove.
+
+- **One FIFO worker per device.** Event markers are a sequence; `cue_on` must reach the recording before `reward`. Single worker preserves order; latency cost is bounded by one in-flight call.
+- **Fire-and-forget, NO retry.** A retried marker arrives at the *wrong* timestamp — for alignment, a late marker is strictly worse than a missing one, because it silently corrupts co-registration instead of leaving a visible gap. On failure: log a CONTINUOUS event so post-hoc analysis knows a marker is missing, and continue. The TTL cable remains as the parallel path in v1.
+- **Bounded queue; on overflow drop the NEWEST**, increment a counter, and emit a CONTINUOUS event naming what was lost. The critical property is that **the loss is recorded** — silent truncation would make the event log look complete when it isn't. Mirrors the ingress bound (256 messages) already locked.
+  - Dropping oldest was rejected: the oldest entries are already sequenced and nearest delivery, so dropping them tears a hole mid-sequence.
+- **N consecutive egress failures flip `alive` false** (threshold in config, sane default). Reuses the tracker the FDA author already gates on, so "device is broken" has exactly one signal regardless of which direction broke.
+
+### Run lifecycle hooks (NEW — 2026-08-03)
+- `on_run_start(run_ctx)` fires **after** `.bind()`, **asynchronously** — it returns immediately and the existing `_wait_extlink_ready` pre-state polls until the lib reports ready or the timeout fires. Blocking was rejected: the pilot would be unresponsive with no visible state and STOP would not work, which is precisely why the synthetic pre-state exists.
+- **The hook is retried on an interval inside the wait window.** This turns a hard failure into a recoverable one — the researcher can start the session, notice OE isn't recording, fix it, and have the run proceed rather than losing the session.
+- `run_ctx` is a **single dict**: `run_id`, `session_id`, `subject_key`, `pilot` name, task-definition id, start timestamp. Explicit named args were rejected because every added field would break every `ExternalHardware` subclass ever written, including researcher-authored libs already promoted to stable.
+- `on_run_stop()` must run on **all Pi paths** — normal completion, STOP button, and task exception — **plus a backend safety net**: when a run ends without a clean stop (pilot crashed, lost power, network died), the backend releases the lease and issues the stop itself. Without the net, a Pi crash leaves OE recording indefinitely and the device permanently leased.
+
+### Readiness gate (AMENDED — generalizes EXTLINK-13)
+The gate's success condition changes from **"all required sources alive"** to **"all required sources *ready*"**, where readiness is lib-defined and defaults to `alive`.
+
+Rationale: for OE, what must be true before trial 1 is *"recording has started"*, not *"a packet arrived"*. A rig that is reachable but failed to enter RECORD would pass a liveness gate and then silently record nothing — the generalization catches that. For `router_bind` sources with no lifecycle hook, readiness == alive and behaviour is unchanged.
+
+Everything else about the gate is unchanged and still locked:
+- `required: bool` (default `true`) and `wait_timeout_s: int` (default `60`, range `[5, 600]`, `null` REJECTED at config save and at Pi-side init).
+- Synthetic `_wait_extlink_ready` FDA pre-state, injected **only** when ≥1 required external source exists (zero overhead otherwise).
+- Three exits in priority order: all required ready → user's initial state; manual skip via `EXTLINK_SKIP_WAIT` → user's initial state (warning + CONTINUOUS event); timeout at `max(wait_timeout_s)` → terminal `_extlink_timeout`, clean abort with a CONTINUOUS event listing sources that never became ready.
+- Three escape paths guarantee no hang: timeout (finite, always fires), manual skip, STOP button.
+
+### Device lease / arbitration (NEW — 2026-08-03)
+Needed because one OE box has one record node and may be pointed at by several pilots' configs.
+
+- **Lease key is derived from the normalized `host`** field in config. One physical box = one lease regardless of how many ports or modules target it — which matches the real constraint. `host:port` was rejected: the same OE machine would take separate leases for its HTTP and ZMQ modules and happily admit a second pilot.
+- **Hard-blocks the run, surfaced as a NEW preflight issue kind** alongside `missing` / `incomplete_config` / `class_mismatch` / `fda_ref_unresolved` in `api/routers/toolkit_dispatch.py`. Existing machinery, existing UI. Caught before the animal is in the box.
+- **The issue names the holder** — which pilot, subject, and run hold the device, and since when. In a shared lab this turns "it's broken" into "that run on pilot 2 is still going", actionable without a terminal.
+- **Released by the same backend reconciliation that stops orphaned recordings** (run no longer active ⇒ lease released) — one mechanism for both problems — **plus a manual force-release** for the case where reconciliation itself is wedged, so nobody is ever hard-stuck.
+- Scope note: because the OE machine is never used by two rigs *simultaneously*, this is a safety net. **No queue/notify/scheduling UX.**
+
+### Per-pilot config schema (AMENDED)
 ```json
 {
   "pilot_id": 1,
-  "name": "dlc_cam1",
+  "name": "oe",
   "config": {
-    "class_name": "DLC_Cam1",
-    "listen_port": 5571,
-    "source_id": "dlc_cam1",
+    "class_name": "OpenEphys",
+    "role": "sub_connect",
+    "host": "132.77.x.x",
+    "connect_port": 5556,
+    "source_id": "oe",
     "stale_ms": 3000,
-
     "required": true,
-    "wait_timeout_s": 60
+    "wait_timeout_s": 60,
+    "egress_fail_threshold": 3
   }
 }
 ```
-Six fields total. `class_name` is the Phase-17 contract field (mirrors physical modules). `listen_port`, `source_id`, `stale_ms` are the network communication essentials. `required` + `wait_timeout_s` drive the readiness gate (see decision below). No port lives in `prefs.json`; the Pi knows nothing about external modules until the toolkit dispatches.
+`listen_port` applies to `role: "router_bind"`; `connect_port` + `host` apply to `role: "sub_connect"`. `host` is also the lease key. `class_name` remains the Phase-17 contract field. Still **no schema change** — `api/routers/pilot_hardware_config.py:41` stores config as-is and explicitly delegates validation to the caller, so the new fields need no endpoint change. Validation of the new fields belongs in preflight.
 
-`wait_timeout_s` MUST be an int in `[5, 600]`. `null`/`None` is rejected at the Phase-17 save endpoint and at the Pi-side `ExternalHardware.__init__`. Default `60` is applied when the key is absent.
-
-### Transport + wire (locked)
-- One ZMQ ROUTER per `ExternalHardware` instance, bound on a task-local IOLoop via `ZMQStream` (same pattern Net_Node uses for its own ROUTER at `node.py:147-151`).
+### Transport + wire (locked, unchanged for `router_bind`)
+- One ZMQ socket per `ExternalHardware` instance, bound/connected on a task-local IOLoop via `ZMQStream` (same pattern Net_Node uses at `node.py:147-151`).
 - MessagePack envelope; kind discriminator `k`:
   - `SIG` — `{k, ts_src, seq, sig, v}` — signal update (latest-value semantics).
   - `EVT` — `{k, ts_src, seq, evt, p}` — event with payload.
   - `HB`  — `{k, ts_src, seq}` — heartbeat.
   - `ACK` — `{k, ts_src, cmd_id, result}` — command result.
   - Pi → SDK only: `CMD` — `{k, ts_pi, cmd_id, name, args}`.
+- `sub_connect` sources use their own foreign format; the `@decoder` normalizes into the same internal signal/event updates.
 - Pi stamps `ts_pi_recv` on every inbound message; **`ts_pi_recv` is canonical** for FDA reads and CONTINUOUS logging (avoids NTP skew).
 
-### Author-facing API (locked)
-
+### Author-facing API (locked, unchanged)
 ```python
 from autopilot.hardware.external_hardware import ExternalHardware, signal, event, command
 
@@ -90,9 +164,6 @@ class DLC_Cam1(ExternalHardware):
     @signal(default=0.0, stale_after_ms=200, stale_policy="hold_last")
     def left_paw_x(self) -> float: ...
 
-    @signal(default=0.0, stale_after_ms=200, stale_policy="return_default")
-    def left_paw_y(self) -> float: ...
-
     @event(payload={"object": str, "confidence": float})
     def object_detected(self): ...
 
@@ -100,159 +171,108 @@ class DLC_Cam1(ExternalHardware):
     def reset_tracker(self) -> None: ...
 ```
 
-Free outcomes from this declaration alone:
-- The AST extractor records the three sets `{signals, events, commands}` in `ast_metadata`.
-- The hw_libs upload path stores the lib like any other.
-- A `hardware_modules` row gets created via the existing UI/API for `DLC_Cam1`.
-- A `pilot_hardware_config` row holds the per-pilot network params.
-- On task dispatch, the resolved class lands in `self.HARDWARE` like any module.
-- After `super().init_hardware()`, the instance is in `self.hardware`; `mics_task.init_hardware` post-pass calls `.bind(ioloop, view)` which binds the ROUTER + registers trackers + starts heartbeat scan.
-- FDA reads work via `view.get_value("dlc_cam1.left_paw_x") > 0.5`.
-- `EVT object_detected` rides `Event_Dispatcher` CONTINUOUS pipe to ES.
+### `ExternalHardware.__init__` signature (locked, unchanged)
+Absorbs the kwargs the base `init_hardware` (`task.py`) passes to every hardware constructor (`event_dispatcher=`, `pi=`, `run_id=`, `name=`) plus the per-pilot config fields. Stores them; does NOT bind a socket. `.bind(ioloop, view)` does the heavy lifting. `is_trigger = False` class attribute so the base skips trigger callback assignment. Defines `.get_state()` returning `None` to satisfy the `View.get_value` contract at `task.py:204`.
 
-### `ExternalHardware.__init__` signature (locked)
-Must absorb the kwargs that the base `init_hardware` (in `task.py`) passes to every hardware constructor (`event_dispatcher=`, `pi=`, `run_id=`, `name=`) plus the per-pilot config fields (`listen_port`, `source_id`, `stale_ms`). The constructor stores them; it does NOT bind a socket yet. `.bind(ioloop, view)` later does the heavy lifting. Has `is_trigger = False` class attribute so the base `init_hardware` skips trigger callback assignment. Defines a `.get_state()` returning `None` to satisfy the `View.get_value` contract used at `task.py:204`.
+**Amended:** must tolerate a **control-only module with zero declared signals** (OE's HTTP side is exactly this). Liveness and the readiness gate must not assume signals exist.
 
-### Type contract (locked)
-A signal/command without a declared value type is a foot-gun: the FDA author writes `view.get_value("dlc_cam1.left_paw_x") > 0.5`, and the state-builder UI must render typed inputs for commands like `reset_tracker(level: int) -> bool`. Both need to know the type **before** the rig sends its first byte.
+### Type contract (locked, unchanged)
+Resolution order at class-build time inside `@signal`:
+1. Method return annotation. 2. `type(default)`. 3. Otherwise `TypeError` at import time.
 
-Resolution order at class-build time (inside the `@signal` decorator):
-1. Method return annotation (e.g. `def left_paw_x(self) -> float: ...`).
-2. `type(default)` (e.g. `default=0.0` → `float`).
-3. If neither resolves to one of `{int, float, bool, str}`, the decorator raises `TypeError` at import time. Loud, immediate, before any data flows.
+Allowed dtypes for v1: `int`, `float`, `bool`, `str`. Richer payloads go through `@event(payload={...})`.
 
-Allowed dtypes are restricted to MessagePack primitives for v1: `int`, `float`, `bool`, `str`. Richer payloads go through `@event(payload={...})`.
+Runtime contract on inbound SIG (`_dispatch_sig`): call `spec.dtype(raw)`; `bool` special-cased to require `isinstance(raw, bool)` (Python's `bool` is an `int` subclass, so `float(True)` would silently pass as `1.0`). On `TypeError`/`ValueError`: increment `type_mismatch_count`, log rate-limited (1/sec per signal), drop. Never raise into the IOLoop.
 
-Runtime contract on inbound SIG (`_dispatch_sig`):
-- Call `spec.dtype(raw_value)`.
-- `bool` is special-cased — require `isinstance(raw, bool)` (Python's `bool` is an `int` subclass, so `float(True)` would silently pass as `1.0` — we reject that).
-- On `TypeError` / `ValueError`: increment `type_mismatch_count`, log rate-limited (1/sec per signal), drop. Never raise into the Tornado IOLoop.
+`@command` captures parameter names + annotations + return annotation for the state-builder UI. AST extractor mirrors into `ast_metadata.extlink` (string-typed — the extractor cannot import the lib).
 
-`@command` captures parameter names + annotations + return annotation. The state-builder UI consumes this to render a typed call form before issuing `send_command`. AST extractor mirrors all of the above into `ast_metadata.extlink` (string-typed, since the extractor cannot import the lib): `signals[i].dtype` and `commands[i] = {name, args: [{name, dtype}], returns}`.
-
-### Readiness gate (locked)
-Reverse start order (external rig boots before Pi) is already solved by ZMQ DEALER local queueing — no design needed. Forward start order (Pi up first, external rig coming online later) needs a gate; today's plan would let the FDA enter its initial state immediately and read defaults until HBs arrive.
-
-Resolution:
-- Two new fields in `pilot_hardware_config.config` (Phase 17 free-form, no schema change):
-  - `required: bool` — default `true`. Strict default by design: cost of a forgotten opt-in is "experiment ran on defaults"; cost of an unwanted gate is "flip a checkbox."
-  - `wait_timeout_s: int` — default `60`. Range `[5, 600]`. `null` / `None` is REJECTED at both the Phase-17 save endpoint and the Pi-side `ExternalHardware.__init__` — tasks can never silently wait forever.
-- `mics_task` injects a synthetic `_wait_extlink_ready` FDA pre-state in front of the user-declared initial state **only when at least one required external source exists**. Tasks with zero required externals pay zero overhead and have no behavior change.
-- Three exits from the pre-state, in priority order:
-  1. **All required alive** → user's initial state (normal path).
-  2. **Manual skip** via orchestrator-relayed `EXTLINK_SKIP_WAIT` ZMQ message → user's initial state (warning logged + CONTINUOUS event recording the skip).
-  3. **Timeout** at `max(wait_timeout_s)` across required sources → terminal `_extlink_timeout` state. Session aborts cleanly with a `CONTINUOUS ExtlinkTimeout` event carrying the list of sources that never reached alive.
-- Three escape paths combined guarantee no task can hang:
-  - Timeout (finite, default 60s, max 600s — always fires).
-  - Manual skip (operator override via API → ZMQ → Pi).
-  - STOP button (existing path, always available — aborts the session including the wait state).
-
-Rationale for the synthetic state (vs a wait-loop before FSM start): the pre-state rides the existing FDA + status WebSocket machinery. The pilot's reported state is `_wait_extlink_ready` instead of mysteriously frozen; dashboards (Phase 21) get the state name for free; STOP is just another transition in the existing FDA, not a separate code path.
-
-Skip-wait transport:
-- Orchestrator API endpoint: `POST /api/run/{run_id}/extlink-skip-wait` → orchestrator forwards `EXTLINK_SKIP_WAIT` ZMQ message to the target pilot via the existing Net_Node channel.
-- Pi-side handler in `mics_task` sets `self._extlink_skip_wait = True`. The pre-state's transition guard re-evaluates on the next FDA tick.
-- The skip command is idempotent — sending it after the gate has already released is a no-op.
-
-### Stale policy (locked, per-signal)
+### Stale policy (locked, per-signal, unchanged)
 - `hold_last` — return last cached value regardless of age (default).
-- `return_default` — push declared default into the tracker when age > `stale_after_ms` (so `view.get_value(...)` returns it without per-call age math).
+- `return_default` — push declared default into the tracker when age > `stale_after_ms`.
 - `return_none` — push `None` into the tracker on stale.
-- Universal safety hatch: `<source_id>.alive` boolean tracker — FDA author can gate any transition on `not view.get_value("dlc_cam1.alive")` to force a safe state.
+- Universal safety hatch: the `<source_id>.alive` boolean tracker.
 
-### Liveness (locked)
-- SDK sends `HB` at its own cadence (recommendation: 1 Hz; not enforced).
-- Pi marks source alive while `now - last_seen_ms < stale_ms` (per-pilot config).
-- A Tornado `PeriodicCallback` runs at `stale_ms / 2` to detect transitions.
-- alive↔stale transition flips the `<source_id>.alive` Boolean_Tracker and dispatches a CONTINUOUS event.
-
-### Crash isolation (locked)
-- All inbound dispatch wrapped in try/except. Last-ditch firewall logs + drops; **never** raises into the IOLoop.
+### Crash isolation (locked, unchanged)
+- All inbound dispatch wrapped in try/except; last-ditch firewall logs + drops, **never** raises into the IOLoop.
 - Per-source incoming buffer bounded (256 messages); overflow drops oldest with a counter increment.
-- A non-matching DEALER identity is dropped at the socket layer (one ROUTER per source means the identity check is a single string compare per inbound frame).
-- Source crash = no more HBs = `alive=False` after `stale_ms`. No active recovery.
+- Non-matching DEALER identity dropped at the socket layer (`router_bind` only).
+- Source crash = liveness lapses = `alive=False`. No active recovery.
 
-### Multi-source (locked)
-- N external modules on one pilot = N `pilot_hardware_config` rows = N sockets = N ports.
-- Each instance independently bound; ports must be unique per pilot. UI / preflight should warn on duplicates (deferred to Phase 19+).
-
-### Hooks into existing Pi systems (locked)
-- **View / Tracker** (`autopilot/core/View.py`, `autopilot/utils/Tracker.py`) — each `@signal` registers a Tracker via `add_Tracker()`; each instance registers a `Boolean_Tracker` for `.alive`.
-- **Event_Dispatcher** (`autopilot/networking/Event_Dispatcher.py`) — `@event` messages dispatch through the existing CONTINUOUS pipeline to ES.
-- **mics_task.init_hardware** (`autopilot/tasks/mics_task.py` — newly overridden) — post-pass `.bind(ioloop, view)` on each `ExternalHardware` instance after `super().init_hardware()`.
-- **base task.py init_hardware** (`autopilot/tasks/task.py:162-217`) — UNCHANGED. Instantiates `ExternalHardware` like any other module because the subclass absorbs the standard kwargs and exposes `is_trigger = False` + `get_state()`.
-- **toolkit_dispatch.py** (`api/routers/toolkit_dispatch.py:28-112`) — UNCHANGED. Dispatched `HARDWARE` + `PREFS_HARDWARE` shape carries external modules transparently.
-- **api/routers/hardware_libs.py** AST extractor — EXTENDED to recognise `@signal` / `@event` / `@command` and emit the corresponding metadata. No new endpoint.
+### Multi-source (locked, unchanged)
+N external modules on one pilot = N `pilot_hardware_config` rows = N sockets. `listen_port` values must be unique per pilot.
 
 ### Security posture (v1, locked)
-- ROUTER binds `0.0.0.0` unauthenticated. Identity check rejects wrong DEALER ids. Acceptable on private LAN/VLAN. Documented.
-- CurveZMQ auth is a Phase 19+ follow-up.
+ROUTER binds `0.0.0.0` unauthenticated; identity check rejects wrong DEALER ids. SUB dials out to a trusted host. Acceptable on private LAN/VLAN. Documented. CurveZMQ auth is a later hardening phase.
 
 ### Pi operational rules (locked, MUST follow)
 Per [[feedback_pi_no_git]] and [[feedback_pi_start_stop]]:
-- **NEVER** run git on the Pi.
-- **NEVER** start/stop the Pi pilot process.
-- **NEVER** run any Python file on the Pi.
-- All file edits go to `~/pi-mirror/`. `<verify>` blocks for Pi files return commands for the user to run themselves.
-- Backend edits (`api/`) are agent-driven — that's docker compose, not Pi.
-- Reading from the Pi via SSH (grep, cat for verification) is fine.
+- **NEVER** run git on the Pi. **NEVER** start/stop the Pi pilot process. **NEVER** run any Python file on the Pi.
+- All file edits go to `~/pi-mirror/`. `<verify>` blocks for Pi files return commands for the **user** to run.
+- Backend edits (`api/`) are agent-driven — docker compose, not the Pi.
+- Reading from the Pi via SSH (grep, cat) is fine.
+
+### Claude's Discretion
+- Exact `@decoder` signature and multi-update emission shape.
+- Whether `role` is a config string or inferred from which port field is present (config string recommended for explicitness).
+- Egress queue depth and default `egress_fail_threshold`.
+- Liveness-hook polling interval and how it composes with the `stale_ms / 2` PeriodicCallback.
+- Internal representation of the lease (table vs column on an existing table).
+- Whether Phase 18 keeps its "MICS-Link" name now that it is the general external-device layer.
 
 </decisions>
+
+<code_context>
+## Existing Code Insights
+
+### Reusable Assets
+- `api/routers/toolkit_dispatch.py:246-336` — preflight already emits typed issues (`missing`, `incomplete_config`, `class_mismatch`, `fda_ref_unresolved`) with `module_id` so the React client can PUT a fix directly. **The device-lease block and new config validation are new issue kinds in this existing system — no new machinery, no new UI surface.**
+- `api/routers/pilot_hardware_config.py:41` — docstring states *"Config stored as-is (caller validates)"*. New config keys (`role`, `host`, `connect_port`, `egress_fail_threshold`) need **no endpoint or schema change**.
+- `api/detector_keys.py` — `derive_view_keys()` / `resolve_view_key_issues()` (Phase 25). This is the precedent for deriving view keys from `pilot_hardware_config.config` rather than from static class declarations — the mechanism Phase E2 will reuse for `oe.<unit>.rate` keys.
+- `~/pi-mirror/autopilot/autopilot/networking/node.py:136-157` — ZMQStream + Tornado IOLoop precedent; the new sockets mirror `node.py:147-151`.
+- `~/pi-mirror/autopilot/autopilot/hardware/timer.py:8-38` — software-only hardware with no physical pin; carries the `is_trigger = False` pattern.
+
+### Established Patterns
+- **Hardware-lib substrate as the extensibility mechanism** — Phase 23 established that a non-hardware concept (compute ops) rides `hardware_libs` + a `kind` discriminator to inherit versioning, AST metadata, promotion trail, and `LOAD_HARDWARE_LIBS` transport. `ExternalHardware` follows the same instinct; the `@decoder` living in the lib is the direct analogue.
+- **`@log_action` auto-logging** — only dispatches for `Mics_Tracker` / `Hardware` instances, which is why `ExternalHardware` must subclass `Hardware` for its events to reach ES.
+- **Preflight-as-gate** — Phase 13 established that cross-checks block at preflight rather than failing at run time on the Pi. The lease follows this.
+
+### Integration Points
+- `api/routers/hardware_libs.py` AST extractor — EXTENDED to recognise `@signal` / `@event` / `@command` (and now `@decoder`), emitting `ast_metadata.extlink`. No new endpoint.
+- `api/routers/toolkit_dispatch.py` — UNCHANGED for dispatch; EXTENDED for the lease + new-field preflight issues.
+- `~/pi-mirror/autopilot/autopilot/tasks/task.py:162-217` base `init_hardware` — UNCHANGED. `ExternalHardware` absorbs the standard kwargs and exposes `is_trigger = False` + `get_state()`.
+- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` — override `init_hardware()` for the `.bind(ioloop, view)` post-pass; also the host for lifecycle-hook firing and the `_wait_extlink_ready` pre-state.
+- `~/pi-mirror/autopilot/autopilot/core/View.py:5-44` + `utils/Tracker.py:5-48` — Tracker registration and `get_value`.
+- `~/pi-mirror/autopilot/autopilot/networking/Event_Dispatcher.py:34-46` — CONTINUOUS payload format for `@event`, liveness flips, and egress-failure logging.
+
+</code_context>
 
 <specifics>
 ## Specific Ideas
 
-### Codec
-Use `msgpack` (already a transitive dep through the existing pyzmq/tornado stack). Decoder must catch `msgpack.UnpackException` and return None; the receiver must drop None decodes silently with a counter increment.
-
-### Heartbeat tick
-Use Tornado `PeriodicCallback` at `stale_ms / 2` (default 1500 ms when `stale_ms=3000`). Checks `now - last_seen` per instance, flips `.alive` Tracker on transitions, emits CONTINUOUS event on the flip.
-
-### Validation
-- At class build time (in the `ExternalHardware` metaclass): collect declared signal/event/command names into `_declared_signals`, `_declared_events`, `_declared_commands`.
-- At message receive: if `sig` (or `evt`, `cmd`) not in the declared set, drop + log with rate-limit (1/sec per instance).
-- DEALER identity check: the ROUTER frame's first part is the identity. If it ≠ the configured `source_id`, drop without dispatch.
-
-### Smoke test
-- Lives at `~/pi-mirror/scripts/dev/extlink_smoke.py`.
-- Uses pyzmq + msgpack on the dev machine (NOT on the Pi).
-- Takes `--pi-host`, `--listen-port`, `--source-id` (the latter two come from the row the user created in `pilot_hardware_config` for the test module).
-- DEALER `identity = source_id` connects to `tcp://<PI_IP>:<listen_port>`.
-- Subcommands: `probe` (single SIG+EVT+HB+malformed frame) and `sustain` (10 Hz SIG + 1 Hz HB for N seconds).
-
-### Tracker naming
-`f"{source_id}.{signal_method_name}"` — e.g. `dlc_cam1.left_paw_x`. Plus `f"{source_id}.alive"` boolean.
-
-### Files to read (planner context)
-Backend side:
-- `mics-backend/api/routers/hardware_libs.py:1-100` — AST extractor (extended in this phase to recognise `@signal` / `@event` / `@command`).
-- `mics-backend/api/routers/hardware_modules.py` — module registry (NO change in this phase; classes auto-fit).
-- `mics-backend/api/routers/pilot_hardware_config.py` — Phase-17 free-form CRUD (NO change; config carries the four fields).
-- `mics-backend/api/routers/toolkit_dispatch.py:28-112` — dispatch spec (NO change; existing shape carries external modules).
-
-Pi side:
-- `~/pi-mirror/autopilot/autopilot/core/View.py:5-44` — Tracker registration + `get_value`.
-- `~/pi-mirror/autopilot/autopilot/utils/Tracker.py:5-48` — Tracker / Boolean_Tracker / `@log_action`.
-- `~/pi-mirror/autopilot/autopilot/networking/Event_Dispatcher.py:34-46` — CONTINUOUS payload format.
-- `~/pi-mirror/autopilot/autopilot/networking/node.py:136-157` — ZMQStream + Tornado IOLoop precedent (the new ROUTER mirrors `node.py:147-151`).
-- `~/pi-mirror/autopilot/autopilot/tasks/task.py:162-217` — base `init_hardware` (DO NOT modify; `ExternalHardware` constructor accommodates this path).
-- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py:83-142, 146-192` — `__init__` + `_resolve_hardware_classes` + `_merge_prefs_hardware` (override `init_hardware` here to add the bind post-pass).
-- `~/pi-mirror/autopilot/autopilot/hardware/timer.py:8-38` — precedent for software-only hardware with no physical pin (carries the `is_trigger = False` pattern).
+- Source document for the OE integration: `docs/open_ephys_integration.pdf` (and its `.md` twin). Confirms two channels — HTTP REST control on **37497**, ZMQ data on **5556 (default, configurable — confirm against the rig's plugin settings)**.
+- **The plugin transfers spikes, not firing rate.** Rate is derived by windowed counting, which in this design runs on the Pi. Two consequences that belong to Phase E2, not here: the OE signal chain needs a spike detector/sorter upstream of the ZMQ plugin or there are no spikes on the wire at all; and sorted unit IDs only exist if sorting is configured, so units of interest must be declared in `pilot_hardware_config.config`.
+- "Treat Open Ephys as just another piece of hardware in a MICS task" — the PDF's own framing matches the mental model this phase already locked, which is why no new dispatch path is warranted.
+- Codec: `msgpack` (already transitive through the pyzmq/tornado stack). Decoder must catch `msgpack.UnpackException`, return None, drop silently with a counter increment.
+- Heartbeat/liveness tick: Tornado `PeriodicCallback` at `stale_ms / 2` (1500 ms when `stale_ms=3000`).
+- Tracker naming: `f"{source_id}.{signal_method_name}"` plus `f"{source_id}.alive"` — identical in both roles.
+- Smoke test at `~/pi-mirror/scripts/dev/extlink_smoke.py`, run from the dev machine (NOT the Pi). Takes `--pi-host`, `--listen-port`, `--source-id`. Subcommands `probe` and `sustain`.
 
 </specifics>
 
 <deferred>
 ## Deferred Ideas
 
-Explicitly out-of-scope for Phase 18 (handled in later MICS-Link phases):
-- Python SDK package `mics-link` — Phase 19.
-- Stub-generation endpoint, bootstrap-zip endpoint, "Download SDK starter" UI button — Phase 20.
-- React health dashboard `/react/pilots/:pilot/external-sources`, orchestrator `EXTLINK_STATUS` forwarding, WS broadcast — Phase 21.
-- DeepLabCut reference hw_lib + template + end-to-end rig test — Phase 22.
-- OpenEphys / photometry recipes — Phase 23.
-- UI port-conflict warning for two external modules on the same pilot — Phase 19+.
-- CurveZMQ auth / TLS / token-based access control — future hardening phase.
-- Bulk-stream tier (high-rate continuous data piped through CONTINUOUS without going through FDA) — not in MICS-Link v1 at all.
+Explicitly out-of-scope for Phase 18:
+- **Phase E1 — OpenEphys Device (control):** REST client (RECORD/IDLE), per-run save-path template, `/api/message` markers, recording path persisted into MICS so the system has its own record of it, preflight reachability. Independently shippable; stops anyone touching the OE GUI.
+- **Phase E2 — Firing rate over ZMQ:** spike/event decoder, declared units + windowed rate estimator, `(ts_pi_recv, oe_sample)` sync-pair logging to ES, keys surfaced in the FDA editor via Phase 25's `detector_keys` mechanism.
+- **Phase E3 — TTL-vs-network validation:** both paths in one recording, quantify offset and jitter, report. **No cutover** — this is the evidence gate for a later decision to remove the cable.
+- DeepLabCut reference hw_lib + template + rig demo — reuses the refined base class and `sub_connect` for free. Paused by user request.
+- `mics-link` Python SDK package; stub generation + bootstrap-zip + "Download SDK" GUI.
+- React health dashboard for external sources; orchestrator `EXTLINK_STATUS` forwarding + WS broadcast.
+- UI port-conflict warning for two external modules on one pilot.
+- CurveZMQ auth / TLS / token-based access control.
+- Bulk-stream tier (high-rate continuous piped through CONTINUOUS without going through the FDA) — not in MICS-Link v1 at all. Note this is also why raw OE continuous @30 kHz is not a target for E2.
+- Device *scheduling* (queue, notify-when-free) — the lease hard-blocks only; the OE box is never used by two rigs simultaneously.
 
 </deferred>
 
@@ -260,3 +280,4 @@ Explicitly out-of-scope for Phase 18 (handled in later MICS-Link phases):
 
 *Phase: 18-extlink-pi-transport*
 *Context rewritten: 2026-05-31 — aligned with Phase 09–13 + 17 flow; dropped prefs.json EXTLINK and singleton ExternalLink*
+*Context revised: 2026-08-03 — transport roles + decoder, liveness split from staleness, egress queue, run lifecycle hooks, device lease; readiness gate generalized to "ready". Existing 18-01/18-02 plans superseded.*

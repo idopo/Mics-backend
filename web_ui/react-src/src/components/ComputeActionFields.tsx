@@ -55,7 +55,7 @@ export default function ComputeActionFields({ action, toolkit, hwModules, taskDe
     return (
       <p style={{ fontSize: '11px', color: 'var(--muted)', margin: 0 }}>
         No compute library is linked to this toolkit. Link one on the{' '}
-        <Link to="/react/hardware-libs-ui">Hardware Libraries</Link> page.
+        <Link to="/hardware-libs-ui">Hardware Libraries</Link> page.
       </p>
     )
   }

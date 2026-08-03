@@ -26,7 +26,7 @@ import StateNode from '../../components/StateNode'
 import { operandLabel } from '../../components/ConditionBuilder'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
-import TriggerAssignmentPanel, { isCompleteTrigger } from '../../components/TriggerAssignmentPanel'
+import TriggerAssignmentPanel, { isCompleteTrigger, isCompleteAction } from '../../components/TriggerAssignmentPanel'
 import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 
@@ -322,6 +322,20 @@ export default function TaskEditor() {
     const incomplete = (fdaJson.trigger_assignments ?? []).filter(a => !isCompleteTrigger(a))
     if (incomplete.length) {
       setSavedMsg(`Not saved — finish or remove trigger '${incomplete[0].trigger_name || '(unnamed)'}'`)
+      return
+    }
+    // Same rule for a state's entry_actions. A just-added action has no method yet, and the
+    // backend hard-422s a method-less hardware/timer/compute action (24-08) — without this
+    // hold, simply clicking "add action" turns the next autosave into a red error.
+    const halfBuilt = Object.entries(fdaJson.states ?? {})
+      .flatMap(([stateName, state]) =>
+        (state.entry_actions ?? []).map((a, i) => ({ stateName, action: a, i }))
+      )
+      .find(({ action }) => !isCompleteAction(action))
+    if (halfBuilt) {
+      setSavedMsg(
+        `Not saved — finish action[${halfBuilt.i}] in state '${halfBuilt.stateName}'`
+      )
       return
     }
     setSavedMsg('Unsaved…')

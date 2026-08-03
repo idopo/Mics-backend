@@ -11,13 +11,21 @@ import DetectorWriteWidget, { matchesDetectorWrite, buildDetectorWrite } from '.
  * The backend gate (api/fda_validation.py) stays authoritative for whether the ref
  * actually resolves; duplicating that here would just create vocabulary drift.
  */
-function isCompleteAction(action: FdaAction): boolean {
+export function isCompleteAction(action: FdaAction): boolean {
   switch (action.type) {
     // A hardware/timer call needs both the device and the method — `ref` alone would
     // save an action that does nothing on the Pi.
     case 'hardware':
     case 'timer':
       return Boolean(action.ref?.trim()) && Boolean(action.method?.trim())
+    // compute additionally needs `output`: the backend hard-422s a compute action that
+    // writes nowhere (api/fda_validation.py), so an output-less one is still half-built.
+    case 'compute':
+      return (
+        Boolean(action.ref?.trim()) &&
+        Boolean(action.method?.trim()) &&
+        Boolean(Array.isArray(action.output) ? action.output.length : action.output)
+      )
     case 'method':
     case 'flag':
     case 'special':

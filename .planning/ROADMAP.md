@@ -795,7 +795,7 @@ per subject/session, writes labelled event markers into the recording mid-task, 
 resulting path back into MICS — so a researcher never touches the Open Ephys GUI and the system
 knows where its own ephys data landed. Control-only: no neural data flows into the task yet.
 
-**Requirements:** EPHYS-01 through EPHYS-05
+**Requirements**: EPHYS-01, EPHYS-02, EPHYS-03, EPHYS-04, EPHYS-05
 
 **Depends on:** Phase 18 (`ExternalHardware` base class, egress queue, `on_run_start`/`on_run_stop`
 lifecycle hooks, device lease, control-only zero-signal modules). Phase 24 (`hardware` action type —
@@ -839,7 +839,7 @@ ordinary view key — so `view.get_value("oe.unit_A001_1.rate")` reads like any 
 transition can gate on it. Every inbound message's OE sample number is logged against `ts_pi_recv`,
 giving software co-registration of the two clocks.
 
-**Requirements:** EPHYS-06 through EPHYS-10
+**Requirements**: EPHYS-06, EPHYS-07, EPHYS-08, EPHYS-09, EPHYS-10
 
 **Depends on:** Phase 26 (the `OpenEphys` module, its config row, and the lease). Phase 18
 (`sub_connect` role + `@decoder` hook — the mechanism that lets a foreign PUB format be decoded
@@ -882,7 +882,7 @@ to the user, backend agent-driven.
 the TTL cable that is still in place, and produce the evidence needed to decide whether the cable can
 ever come out. This phase deliberately **does not remove the TTL** — it measures.
 
-**Requirements:** EPHYS-11, EPHYS-12
+**Requirements**: EPHYS-11, EPHYS-12
 
 **Depends on:** Phase 26 (network markers reaching the recording), Phase 27 (OE sample numbers paired
 with Pi timestamps).

@@ -28,7 +28,7 @@
 | 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
-| 18 | MICS-Link: Pi Transport + ExternalHardware | ZMQ ROUTER socket on Pi IOLoop + ExternalHardware base class with @signal/@event/@command + View Tracker auto-registration + stale policy + smoke test | EXTLINK-01–11 | ○ Pending |
+| 18 | MICS-Link: Pi Transport + ExternalHardware | The general external-device substrate: two transport roles (`router_bind` \| `sub_connect`) + per-lib `@decoder`, `ExternalHardware` base class with @signal/@event/@command, View Tracker auto-registration, stale policy **separate from** liveness, non-blocking egress queue, run lifecycle hooks, backend device lease, smoke test | EXTLINK-01–18 | ○ Pending — **context revised 2026-08-03, must be re-planned** (old plans in `superseded/`) |
 | 23 | 5/10 | In Progress|  | ◐ **5/10 plans executed 2026-08-03** — plan 01 (Wave 0) landed the three ❌ contract test files from `23-VALIDATION.md` (CMP-04/12/17/19), all failing/skipping/xfailing today for the right reason; plan 02 landed the compute-lib storage substrate (CMP-04/12/19: `hardware_libs.kind`, `declared_imports` allowlist, `release()` gate, seeded `COMPUTE` hardware module + auto-provisioned pilot config); plan 03 landed the backend save-time gate + variable-usage analysis (CMP-10/11/15: hard 422s for compute ref/method/output, `validate_compute_variables` collision/reference checks, new `api/variable_scan.py` writer/reader existence analysis); plan 04 (Wave 2) landed `type:"compute"` on the Pi runtime (CMP-03/04/05/06) — single-sourced into `fda_vocabulary.py`/`mics_task.py`/`tools/validate_fda.py`, mandatory `output` enforced at build time in both languages; one blocking bug fixed in-task (`_build_state_method` didn't recognize `compute`), one bug found and deliberately left for plan 23-10 to confirm (`hot_update_fda` re-declaring a variable name likely hits a Phase-24 collision-guard bug); plan 05 (Wave 3) landed the single lib-version resolution chain (CMP-17/19: `resolve_lib_version_id` pin→toolkit_default→stable→active[beta/stable]→none replacing three independently-wrong chains in dispatch/introspection/orchestrator; `test_import` activated on the Pi round-trip, dead since Phase 09, with zero Pi-side change) — a fourth "active" rung was added beyond CONTEXT's literal chain so existing rig toolkits keep dispatching (documented deviation); plans 06–10 remain |
 | 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments`; on a **sourceless** toolkit a constrained one-pick detector write drives the licker trackers with no way to cross pin and tracker; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–10, 11a, 12, 14–19 | ✓ **8/8 plans executed 2026-07-27** — rig-proven (runs 478/480/481: 144 triggers, 63 licker writes, 0 correctness errors); 8/8 save-time negative cases 422. ⚠ Pi test suite still never run (user-run) |
 | 25 | Detector-Derived View Keys | `LICKER*` keys derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight. **Absorbs TRIGA-13.** **DVK-09 added from rig evidence** — channels must be declarable, not assumed 0-based (a live spout is currently discarded); resolved 2026-07-29 to `first_channel` + count, no channel list. **DVK-11 added 2026-07-29** — operands store a detector ref + channel index, never the resolved per-pilot key. **DVK-10 added 2026-07-29** — `execute_trigger`'s over-broad `except KeyError` swallowed that discard as `"No valid trigger"`. Transitions on a licker key are unavailable until this lands | DVK-01–11 | ◐ **5/6 plans executed 2026-07-29** — plan 01 landed the backend derivation core (DVK-01/02/07/09/11); plan 02 landed the Pi runtime half (DVK-09/10/11: `first_channel` in `check_for_detectors`, `execute_trigger` error containment, `view_detector` build-time resolution); plan 03 wired preflight resolution (DVK-06/11: out-of-range channel / unreachable literal key / unresolvable `{device_name}` template all fail preflight with the pilot's actual wiring) and `detector_channels` onto every toolkit read route including `by-name`; plan 04 made detector channels first-class pickable view operands in the FDA editor (DVK-03/04/05/07/11: grouped `<optgroup>` picker emitting `{"view_detector": {"ref","channel"}}`, `key_template` suggestions, unknown-key preservation); plan 05 renders `view_key_unresolved` preflight issues in `HardwareCheckModal` (both shapes, no start gate, PUT loop provably skipped) and adds the `first_channel` config affordance with a live key preview (DVK-06/09) — only plan 06 (deploy + rig proof) remains |
@@ -442,35 +442,46 @@ Plans:
 ### Phase 18: MICS-Link — Pi Transport + ExternalHardware
 **Goal:** Pi gains a structured, crash-safe input channel that lets external software (DeepLabCut, OpenEphys, photometry, …) push data into the existing View / FDA framework. Author writes one `ExternalHardware` subclass with `@signal` / `@event` / `@command` decorators and uploads it as a regular hardware library (Phase 9). It is registered as a hardware module (Phase 10), its per-pilot network config (`{class_name, listen_port, source_id, stale_ms}`) lives in `pilot_hardware_config.config` (Phase 17 — free-form, no schema change), selected by a toolkit (Phase 11), dispatched on the existing `HARDWARE` + `PREFS_HARDWARE` channel (Phase 11), preflight-validated (Phase 13). On the Pi, each instance binds its own ROUTER on its `listen_port` and accepts only the configured `source_id` DEALER identity. FDA transitions read external data via the same `view.get_value(...)` API used for GPIO/I2C — zero new call sites, zero new dispatch shapes.
 
-**Requirements:** EXTLINK-01 through EXTLINK-11
+**Requirements:** EXTLINK-01 through EXTLINK-18 *(EXTLINK-07 and EXTLINK-13 amended 2026-08-03; EXTLINK-14–18 added the same day)*
 
-**Plans:** 2/2 plans
+> **⚠ CONTEXT REVISED 2026-08-03 — this phase must be RE-PLANNED.** The original design assumed one
+> consumer shape: our own SDK, speaking our MessagePack envelope, **dialing into** the Pi's ROUTER.
+> OpenEphys (Phases 26–28) breaks that, and DeepLabCut will break it the same way. `18-CONTEXT.md`
+> § `<revision_2026_08_03>` carries the full rationale. **The previous `18-01`/`18-02` plans were
+> written against the pre-revision context and are archived in `superseded/`** — neither was
+> executed. Five additions to the substrate: transport roles + `@decoder`, liveness split from
+> signal staleness, egress queue, run lifecycle hooks, device lease.
 
-Plans:
-- [ ] 18-01-PLAN.md — `external_hardware.py` only: `ExternalHardware` base class + `@signal` / `@event` / `@command` decorators + per-instance ROUTER socket helper (private composition) + View Tracker auto-registration + stale-policy reads + heartbeat-driven liveness
-- [ ] 18-02-PLAN.md — Small AST extractor extension in `api/routers/hardware_libs.py` so the three decorators land in `ast_metadata` (Phase 9 plumbing extended; same upload, same `/hardware-libs` API) + `mics_task.init_hardware()` post-pass that calls `hw.bind(ioloop, view)` on `ExternalHardware` instances + standalone smoke-test DEALER script
+**Plans:** 0 plans — run `/gsd:plan-phase 18`
 
 **Success criteria:**
 1. A standalone DEALER script (`~/pi-mirror/scripts/dev/extlink_smoke.py`) connects to the per-instance `listen_port` with the configured `source_id`, pushes `dlc_cam1.left_paw_x = 0.7`, and an FDA transition gated on `view.get_value("dlc_cam1.left_paw_x") > 0.5` fires within 50 ms.
-2. `<source_id>.alive` flips false on the Pi within `stale_ms` (from per-pilot config) after the SDK stops sending heartbeats; flip emits a CONTINUOUS event visible in ES.
-3. Per-signal stale policy probe: stop pushing a `return_default` signal; `view.get_value(...)` returns the declared default after `stale_after_ms`.
-4. Two `ExternalHardware` subclasses uploaded as hardware libs, each registered as a `hardware_module`, each given its own `pilot_hardware_config` row with a distinct `listen_port`, and both used in one toolkit on one task — both Trackers visible in View, two ROUTER sockets up, no cross-talk.
-5. A malformed inbound message (unknown signal name, bad MessagePack) is dropped + logged; pilot keeps running; no traceback in pilot logs.
-6. `pilot.py` LOAD_HARDWARE_LIBS path (unchanged from Phase 9) accepts an `ExternalHardware` subclass; instantiation happens through the standard hw_libs → hw_modules → toolkit-dispatch path with NO new Pi-side ingress.
-7. AST extractor (`api/routers/hardware_libs.py`) emits the declared signal/event/command metadata so the UI (Phase 19+) can render the per-source schema; no schema change to any DB table.
+2. **Both transport roles work.** `router_bind` behaves as above. A `sub_connect` instance dials out to a foreign publisher, its lib's `@decoder` translates the foreign frame into declared signals, and the resulting view keys are indistinguishable from a `router_bind` source's at the `view.get_value(...)` call site.
+3. **Liveness is separate from signal staleness.** A source that is reachable but sending no signal updates stays `alive == true` while its signals go stale per their declared policy. A lib-supplied liveness hook overrides the data-arrival default. Every flip emits a CONTINUOUS event visible in ES.
+4. Per-signal stale policy probe: stop pushing a `return_default` signal; `view.get_value(...)` returns the declared default after `stale_after_ms`.
+5. Two `ExternalHardware` subclasses uploaded as hardware libs, each registered as a `hardware_module`, each given its own `pilot_hardware_config` row, and both used in one toolkit on one task — both Trackers visible in View, no cross-talk.
+6. A malformed inbound message (unknown signal name, bad MessagePack, undecodable foreign frame) is dropped + logged; pilot keeps running; no traceback in pilot logs.
+7. `pilot.py` LOAD_HARDWARE_LIBS path (unchanged from Phase 9) accepts an `ExternalHardware` subclass; instantiation happens through the standard hw_libs → hw_modules → toolkit-dispatch path with NO new Pi-side ingress.
+8. AST extractor (`api/routers/hardware_libs.py`) emits the declared signal/event/command/decoder metadata; no schema change to any DB table.
+9. **Egress works and never blocks the FDA thread.** Outbound calls to one device are FIFO-ordered; a failed send is logged as a CONTINUOUS event and never retried; queue overflow drops the newest and records the loss; N consecutive failures flip `alive`.
+10. **Lifecycle hooks fire correctly.** `on_run_start(run_ctx)` runs async after `.bind()` and is retried inside the wait window; the readiness gate releases on *ready*, not merely *alive*. `on_run_stop()` runs on normal completion, STOP, and task exception — and the backend safety net fires when the Pi never reports back.
+11. **A control-only module with zero declared signals** instantiates, binds, participates in the readiness gate, and uses the egress path.
+12. **The device lease hard-blocks** a second run targeting a held device, surfaced as a preflight issue naming the holding pilot/subject/run; it is released by backend reconciliation when the run ends uncleanly, and by manual force-release.
 
 **Files to change:**
-- `mics-backend/api/routers/hardware_libs.py` (extend — AST extractor recognises `@signal` / `@event` / `@command`; metadata flows through the existing `ast_metadata` field)
-- `~/pi-mirror/autopilot/autopilot/hardware/external_hardware.py` (new — base class, decorators, private `_ExternalSocket` helper for ROUTER + codec + heartbeat, View Tracker auto-registration, stale policy)
-- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (extend — `init_hardware()` post-pass: after `super().init_hardware()`, walk `self.hardware`, for any `ExternalHardware` instance call `hw.bind(ioloop=self._task_ioloop, view=self.view)`)
-- `~/pi-mirror/scripts/dev/extlink_smoke.py` (new — standalone DEALER smoke test runnable from the dev machine; takes `--listen-port` and `--source-id`)
+- `mics-backend/api/routers/hardware_libs.py` (extend — AST extractor recognises `@signal` / `@event` / `@command` / `@decoder`; metadata flows through the existing `ast_metadata` field)
+- `mics-backend/api/routers/toolkit_dispatch.py` (extend — device-lease preflight issue kind + validation of the new config fields; dispatch shape itself UNCHANGED)
+- `~/pi-mirror/autopilot/autopilot/hardware/external_hardware.py` (new — base class, decorators, per-role socket helper, `@decoder` hook, View Tracker auto-registration, stale policy, liveness hook, egress queue, lifecycle hooks)
+- `~/pi-mirror/autopilot/autopilot/tasks/mics_task.py` (extend — `init_hardware()` bind post-pass, lifecycle-hook firing, `_wait_extlink_ready` pre-state keyed on *ready*)
+- `~/pi-mirror/scripts/dev/extlink_smoke.py` (new — standalone DEALER smoke test runnable from the dev machine)
 
-**NOT in scope (left to later MICS-Link phases):**
-- `mics-link` Python SDK package (Phase 19)
-- Stub generation + bootstrap-zip endpoints + "Download SDK" GUI button (Phase 20)
-- Per-pilot health dashboard React page + WS forwarding via orchestrator (Phase 21)
-- DeepLabCut reference hw_lib + template + rig demo (Phase 22)
-- OpenEphys / photometry recipes (Phase 23)
+**NOT in scope:**
+- `mics-link` Python SDK package; stub generation + bootstrap-zip endpoints + "Download SDK" GUI button
+- Per-pilot health dashboard React page + WS forwarding via orchestrator
+- **The OpenEphys hardware lib itself** — Phases 26 (control) and 27 (firing rate). Phase 18 delivers only the substrate they stand on.
+- DeepLabCut reference hw_lib + template + rig demo (reserved; inherits `sub_connect` for free)
+- Bulk-stream tier for high-rate continuous data — not in MICS-Link v1 at all
+- Device *scheduling* (queue / notify-when-free) — the lease hard-blocks only
 - No prefs.json EXTLINK block — explicitly rejected. Everything network-related lives in `pilot_hardware_config.config` (Phase 17 schema).
 
 **Dependencies:** Phase 9 (hardware_libs + AST extractor — this phase extends the extractor), Phase 10 (hardware_modules + pilot_hardware_config), Phase 11 (toolkit_dispatch.py spec emits HARDWARE + PREFS_HARDWARE), Phase 13 (preflight-validate by class_name), Phase 17 (pilot_hardware_config free-form name-keyed schema).

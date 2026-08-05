@@ -842,6 +842,18 @@ def update_task_definition(defn_id: int, payload: TaskDefinitionUpdate, _: dict 
             updates["display_name"] = payload.display_name
         if payload.toolkit_id is not None:
             updates["toolkit_id"] = payload.toolkit_id
+        if payload.ui_layout is not None:
+            updates["ui_layout"] = json.dumps(payload.ui_layout)
+
+        # A node drag is not an FDA edit (CANVAS-10). Re-running reject_if_hard_errors /
+        # _validate_task_definition here would re-validate the *stored* FDA on every drag —
+        # slow, and able to 4xx a pure layout write because of unrelated FDA state.
+        if (payload.fda_json is None and payload.display_name is None
+                and payload.toolkit_id is None and payload.ui_layout is not None):
+            db.execute(sa_text("UPDATE task_definitions SET ui_layout = :ui_layout WHERE id = :id"),
+                       {"ui_layout": updates["ui_layout"], "id": defn_id})
+            db.commit()
+            return {"status": "ok", "id": defn_id, "validation_status": defn.validation_status}
 
         # Re-validate against current toolkit state after applying changes
         effective_fda = payload.fda_json

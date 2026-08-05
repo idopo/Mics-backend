@@ -9,6 +9,7 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  MarkerType,
   type Node,
   type Edge,
   type Connection,
@@ -30,10 +31,16 @@ import { internalVariableNames } from '../../components/internalVariables.mts'
 import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
 import CanvasContextMenu from './CanvasContextMenu'
+import TransitionEdge from './TransitionEdge'
 import { condLabel } from '../../components/transitionLabel.mts'
 import { normaliseFda, parseStateWarnings } from '../../components/fdaNormalise.mts'
+import { assignEdgeGeometry } from '../../components/edgeGeometry.mts'
+import { columnRanks } from '../../components/fdaLayout.mts'
 
 const nodeTypes = { stateNode: StateNode }
+const edgeTypes = { transition: TransitionEdge }
+const EDGE_STROKE = '#475569'
+const EDGE_MARKER = { type: MarkerType.ArrowClosed, width: 18, height: 18, color: EDGE_STROKE }
 
 function fdaToNodes(fdaJson: FdaJson, toolkit: ToolkitRead | null, stateWarnings: Record<string, string>): Node[] {
   return Object.entries(fdaJson.states ?? {}).map(([name, state], i) => ({
@@ -45,13 +52,21 @@ function fdaToNodes(fdaJson: FdaJson, toolkit: ToolkitRead | null, stateWarnings
 }
 
 function fdaToEdges(fdaJson: FdaJson): Edge[] {
+  const ranks = columnRanks({
+    states: Object.keys(fdaJson.states ?? {}),
+    transitions: fdaJson.transitions ?? [],
+    initialState: fdaJson.initial_state,
+  })
+  const geometry = assignEdgeGeometry(fdaJson.transitions, ranks)
   return fdaJson.transitions.map((t: FdaTransition, i: number) => ({
-    id: `e-${i}`,
+    id: `e-${i}`, // ⚠ identity — four call sites parse this back
+    type: 'transition',
     source: t.from,
     target: t.to,
-    label: condLabel(t),
-    data: { transition: t },
-    style: { stroke: '#475569' },
+    label: condLabel(t), // unchanged text (plan 29-01)
+    data: { transition: t, geometry: geometry[i] },
+    markerEnd: EDGE_MARKER,
+    style: { stroke: EDGE_STROKE },
     labelStyle: { fill: '#94a3b8', fontSize: 11 },
     labelBgStyle: { fill: '#1e2130' },
   }))
@@ -263,10 +278,12 @@ export default function TaskEditor() {
     const tmpId = `e-tmp-${Date.now()}`
     setEdges(eds => addEdge({
       id: tmpId,
+      type: 'transition',
       source: params.source!,
       target: params.target!,
       label: 'new',
-      style: { stroke: '#475569' },
+      markerEnd: EDGE_MARKER,
+      style: { stroke: EDGE_STROKE },
     }, eds))
     setFdaJson(prev => {
       if (!prev) return prev
@@ -543,6 +560,7 @@ export default function TaskEditor() {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={handleEdgesChange}
               onConnect={onConnect}

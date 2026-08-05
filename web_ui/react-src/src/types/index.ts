@@ -430,6 +430,12 @@ export interface BackendToolkitPatchPayload {
   params_schema?: ParamDefinition[]
 }
 
+/** Canvas node positions for the FDA editor. Stored in task_definitions.ui_layout — never in
+ *  fda_json, which is content-hashed and shipped to the Pi (CANVAS-06). */
+export interface UiLayout {
+  nodes: Record<string, { x: number; y: number }>
+}
+
 export interface TaskDefinitionFull {
   id: number
   task_name: string
@@ -440,6 +446,7 @@ export interface TaskDefinitionFull {
   created_at: string
   validation_status: "ok" | "broken"
   validation_message: string | null
+  ui_layout?: UiLayout | null
 }
 
 // --- Hardware Libs (Phase 9) ---

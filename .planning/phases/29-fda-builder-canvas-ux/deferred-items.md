@@ -30,3 +30,18 @@ that work is committed.
 **Net test count:** 146 total (144 pass, 2 fail) after 29-01's 27 new tests (10 in
 `transitionLabel.test.mts`, 17 in `fdaNormalise.test.mts`) are added. All 27 of 29-01's own tests
 pass; the 2 failures are entirely within the pre-existing, unrelated `edgeGeometry.test.mts`.
+
+## 29-04: pre-existing frontend test failure (out of scope)
+
+Found during 29-04 Task 3 verification (`npm run test:unit`, 2026-08-05).
+
+- `web_ui/react-src/tests/fdaLayout.test.mts` — 1 failing case, `-0 !== 0` in a back-edge offset
+  calc — plus `tests/edgeGeometry.test.mts` — 1 failing case, a single-column back-span
+  classification.
+- Both files (and their `src/components/fdaLayout.mts` / `edgeGeometry.mts` counterparts, plus
+  `TaskEditor.tsx` / `CanvasContextMenu.tsx`) were already present, uncommitted, and unrelated to
+  this plan's `files_modified` before 29-04 execution started — CANVAS-13/14 back-edge-routing
+  work from a separate, still-in-progress session.
+- Not fixed here per the scope boundary rule (only auto-fix issues directly caused by the current
+  task's changes). 84 pre-existing baseline tests (the ones this plan actually touches indirectly
+  via `TaskDefinitionFull`) plus every other suite pass; 146/147 total pass.

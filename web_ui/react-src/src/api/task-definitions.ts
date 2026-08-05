@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { TaskDefinitionFull, FdaJson, VariableUsageResponse } from '../types'
+import type { TaskDefinitionFull, FdaJson, UiLayout, VariableUsageResponse } from '../types'
 
 export const getTaskDefinitions = () =>
   apiFetch<TaskDefinitionFull[]>('/api/task-definitions')
@@ -9,7 +9,7 @@ export const getTaskDefinition = (id: number) =>
 
 export const updateTaskDefinition = (
   id: number,
-  payload: { display_name?: string; fda_json?: FdaJson }
+  payload: { display_name?: string; fda_json?: FdaJson; ui_layout?: UiLayout }
 ) =>
   apiFetch<{ status: string; id: number }>(`/api/task-definitions/${id}`, {
     method: 'PUT',

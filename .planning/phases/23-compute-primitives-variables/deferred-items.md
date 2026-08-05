@@ -30,9 +30,45 @@ cleanup pass. One-line fix: add `"view"` to the trailing `elif atype not in (...
 it its own branch calling `_build_action_callable`'s existing key_template/source_ref checks
 early, for a load-time error instead of relying on `_build_action_callable` to raise later).
 
-**CLOSED — Plan 23-12 Task 2 (CMP-24c).** `"view"` added to the `elif atype not in (...)` tuple
-in `_build_state_method` (`mics_task.py`). Pinned by
-`tests/test_view_namespace_invariants.py::test_build_state_method_accepts_view_action_type`
-(agent-runnable, stdlib-only AST check) and by
-`tests/test_load_fda_from_json.py::TestViewNamespaceConsistency::test_view_action_in_state_body_loads`
-(USER-RUN, verified at 23-12's rig checkpoint).
+**STILL OPEN — descoped from Plan 23-12 (2026-08-05).** Was briefly fixed as CMP-24c, then
+reverted before deployment at the user's direction: the read-namespace change (CMP-20–23) is a
+UI-layer change, and this is an unrelated pre-existing bug about `view` *actions*, not `view`
+*operands*. Bundling it would have widened a live-rig deploy for a bug nobody was asking about.
+
+The fix is still the one described above (add `"view"` to the `elif atype not in (...)` tuple).
+It was verified to work — source edit, an AST test, and a behavioural test all existed and passed
+before being reverted. Reinstating it is a one-line source change plus re-adding those two tests.
+Nothing on the Pi was ever touched.
+
+**Suggested owner (unchanged):** whichever future plan next touches `_build_state_method`, or a
+dedicated small Pi-hygiene plan alongside item 2 below.
+
+## Plan 23-12 (descoped 2026-08-05)
+
+### 2. Auto-created `trial_counter` is registered in `self.flags` but not `self.view.view`
+
+**Found during:** Phase 23 plan 23-11/23-12 design discussion, while establishing whether
+`{"view": X}` is a total mirror of `{"flag": X}`.
+
+**Issue:** `mics_task.py` `load_fda_from_json` (~line 1042) auto-creates a `Trial_Tracker` for
+backward compat when a toolkit's `FLAGS` omits one, and registers it in `self.flags` **only** —
+unlike `init_flags` (`:339-340`) and the variables loop (`:1060-1061`), which both register the
+same object in `self.flags` AND `self.view.view`. It is the single hole in the flags↔view mirror.
+
+**Impact (narrow).** The backend's `_valid_flag_names` (`api/fda_validation.py`) explicitly
+whitelists `trial_counter`, so `{"view": "trial_counter"}` saves cleanly and then raises
+`KeyError` inside the transition lambda mid-run. Only reachable via hand-authored JSON or an
+already-stored definition: the auto-create branch fires exactly when the toolkit does *not*
+declare `trial_counter`, in which case it is absent from `toolkit.flags` and the GUI never offers
+it in the view picker either.
+
+**Why not fixed in 23-12:** not required by the read-namespace UI change (CMP-20–23). Fixed and
+then reverted before deployment at the user's direction, to keep the live-rig diff to the single
+edit CMP-23 actually depends on. Nothing was ever pushed to the Pi.
+
+**Fix:** assign the auto-created tracker to a local, then register it in both dicts — mirroring
+`init_flags`. Tests existed and passed (`test_view_namespace_invariants.py` AST checks plus two
+behavioural cases in `test_load_fda_from_json.py`); all were removed with the revert.
+
+**Suggested owner:** a small Pi-hygiene plan together with item 1 above — both are one-line
+`mics_task.py` fixes with tests already designed, and doing them together means one rig deploy.

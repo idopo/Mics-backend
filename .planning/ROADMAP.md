@@ -1061,6 +1061,19 @@ with Pi timestamps).
 **Verification posture:** Rig session required — commands returned to the user. Analysis is
 agent-driven against ES and the OE recording.
 
+### Phase 29: FDA Builder Canvas UX
+
+**Goal:** The task editor canvas is readable at a glance. Bidirectional transitions bow apart instead of crossing into an hourglass; every edge shows its own simplified condition label and an arrowhead; node positions survive a refresh, with a spaced layered auto-layout as the default and a right-click "Restore default layout" escape hatch.
+
+Pure UI/UX. No change to FDA semantics, validation, or anything sent to the Pi.
+
+**Requirements**: CANVAS-01 through CANVAS-12
+**Depends on:** Phase 12 (FDA state builder), Phase 16 (recursive condition tree — supplies the edge labels)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 29 to break down)
+
 ---
 *Created: 2026-03-15*
 *Last updated: 2026-05-28 — Phase 17 added: free-form pilot hardware config CRUD (HW-08, HW-11)*

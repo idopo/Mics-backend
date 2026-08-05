@@ -1074,6 +1074,15 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
   detector/sorter upstream of the ZMQ plugin, with sorting configured — the plugin transfers
   **spikes, not firing rate**, and sorted unit IDs do not exist without it. Rig configuration, not
   MICS work, but 27 is unplannable as scoped until confirmed.
+- **Phase 29 added (2026-08-05): FDA Builder Canvas UX.** Pure UI/UX work on the task editor
+  canvas — parallel/bidirectional transition edges bow apart instead of crossing, per-edge
+  condition labels and arrowheads, and node positions persisted in a new
+  `task_definitions.ui_layout` JSONB column with a layered auto-layout default and a
+  right-click "Restore default layout" action. Depends on Phase 12 (FDA state builder) and
+  Phase 16 (recursive condition tree, which supplies the edge labels) — **not** on Phase 28;
+  it is independent of the OpenEphys arc and can be scheduled at any point. Layout is
+  deliberately kept out of `fda_json` because `file_hash = sha256(fda_json)`, so a node drag
+  must not rewrite the task definition's content hash or ship layout to the Pi.
 
 ## Blockers
 

@@ -552,7 +552,31 @@ detection ships there (the flip, its CONTINUOUS event, the loud log line), prese
 and this phase does not need Phase 26, per the demo libs above. Phase 26 simply becomes a second
 consumer of the indicator when it lands. `26-CONTEXT.md` records the deferral and its accepted cost.
 
-**Plans:** 0 plans (run `/gsd:plan-phase 19`)
+**Plans:** 3 plans in 3 waves (planned 2026-08-05)
+
+Plans:
+- [ ] 19-01-PLAN.md — Wave 1: `state.py` health map + `.alive` suffix parser, `on_data` hook, `/pilots/live` merge
+- [ ] 19-02-PLAN.md — Wave 2: `deviceHealth.mts` render decision + `PilotLive.device_health` + the pilot-card badge
+- [ ] 19-03-PLAN.md — Wave 3: `dev_health_probe` end-to-end injector + the browser checkpoint
+
+> **Planning correction (2026-08-05):** `19-RESEARCH.md` finding F3 is wrong about the orchestrator
+> half. `GET /pilots/live` is served from **Redis**, not `state.snapshot()` — the `return
+> state.snapshot()` version is commented out at `orchestrator/orchestrator/api.py:14-19` and a
+> Redis-scanning implementation is registered at `:24`. So **`orchestrator/orchestrator/api.py` is in
+> scope** and is added to the file list below. Device health still stays in `OrchestratorState`
+> (in-memory) and is merged at read time: a Redis write from `on_data` would be a blocking network
+> call on the shared Tornado IOLoop, and Redis outlives an orchestrator restart, so a stale
+> `alive: false` could outlive both the run and the process.
+>
+> Also load-bearing and absent from the research: the Pi sends `alive` as **int 0/1, not a bool** —
+> `log_value.coerce_for_event` int-coerces every tracker value because `event.event_data.value` is
+> mapped `long` in `event_log_v2` and a long field rejects a bare bool with an HTTP 400.
+>
+> Plan 19-03 removes the rig from the critical path: the inbound wire format is one JSON frame from a
+> ZMQ DEALER and `/pilots/live`'s notion of a connected pilot is one Redis hash, so the whole chain
+> is exercisable with no Pi and no device. Success criterion 6 becomes a five-second addition to the
+> next run that already has an external device (Phase 18's `18-12` kill-the-source step is its
+> natural host), not a booked session.
 
 **Success criteria:**
 1. `OrchestratorState` carries per-pilot device health, written from the CONTINUOUS handler under
@@ -579,14 +603,27 @@ requires it).
   handler thread, read by the `/pilots/live` HTTP thread.
 - `orchestrator/orchestrator/orchestrator_station.py` — `on_data` also routes `*.alive` CONTINUOUS
   payloads into the state. No new ZMQ key; it rides the existing CONTINUOUS channel.
+- `orchestrator/orchestrator/api.py` — **added during planning.** `list_live_pilots` merges
+  `state.get_device_health(pilot_key)` into each pilot entry. `/pilots/live` is Redis-backed, so
+  `snapshot()` alone never reaches the browser; see the planning correction above.
+- `orchestrator/orchestrator/dev_health_probe.py` (new) — dev-only diagnostic that fabricates a
+  connected pilot in Redis and pushes a real `<device>.alive` CONTINUOUS frame over the real ZMQ
+  socket, so the whole surface is verifiable without a Pi.
 - `web_ui/react-src/src/types/index.ts` — `PilotLive` (line 1) gains `device_health`. Its current
   shape is exactly `{ connected, state, active_run, updated_at }`.
 - `web_ui/react-src/src/pages/index/Index.tsx` — **`PilotCard` is a function inside this 129-line
   file, not a separate component module.** Extract it only if the file would pass 300 lines; it
   won't for this change.
-- `web_ui/app.py` — **expected to need NO change.** Its `/ws/pilots` handler forwards the
-  orchestrator's `/pilots/live` response verbatim, so a new `snapshot()` key reaches the browser
-  untouched. Confirm before assuming.
+- `web_ui/react-src/src/pages/index/deviceHealth.mts` (new) — the render decision as a pure,
+  node-tested module, following the established `src/components/trackerMethods.mts` pattern.
+- `web_ui/app.py` — **confirmed to need NO change.** `/ws/pilots` (`:49-89`) forwards
+  `resp.json()` verbatim on a 0.5 s poll and `/api/pilots` (`:39-44`) does the same, so a new
+  orchestrator key reaches the browser untouched. Plan 19-02 carries a source-level guard on that
+  fact, since a future reshape would break this phase silently.
+- **CSS:** `web_ui/react-src/src/style.css` does not exist — CLAUDE.md names the wrong path. The app
+  is styled by `web_ui/static/style.css`, where `.state-warning-badge` / `.state-warning-tooltip`
+  already exist and are an exact fit. No new class is invented. (Fixing CLAUDE.md is out of scope
+  here.)
 
 **Note there is no external-device UI in the React app today** — `grep -rln "extlink|external_device|source_id" web_ui/react-src/src` returns nothing. This phase builds the first live one.
 

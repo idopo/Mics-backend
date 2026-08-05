@@ -260,7 +260,10 @@
 | CMP-23 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
 | CMP-24 | Phase 23, Plan 12 (narrowed to 24b — `_resolve_arg` `get_state()`, Pi) | Deployed, not rig-exercised |
 | CMP-25 | Phase 23, Plan 12 (backend semantic-hardware valid_names) | Deployed, not rig-exercised |
-| CANVAS-01 through CANVAS-14 | Phase 29 (FDA Builder Canvas UX) | Pending |
+| CANVAS-07 | Phase 29, Plan 03 (FDA Canvas Auto-Layout — `fdaLayout.mts`) | Complete |
+| CANVAS-08 | Phase 29, Plan 03 (FDA Canvas Auto-Layout — `fdaLayout.mts`) | Complete |
+| CANVAS-14 | Phase 29, Plan 03 (FDA Canvas Auto-Layout — `fdaLayout.mts`) | Complete |
+| CANVAS-01 through CANVAS-06, CANVAS-09 through CANVAS-13 | Phase 29 (FDA Builder Canvas UX) | Pending |
 
 ### Compound Transition Conditions
 

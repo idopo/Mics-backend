@@ -30,7 +30,32 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
 **Progress:** [██████░░░░] 59%
 
-### Phase 29 status (2026-08-05) — plans 01, 04/8 executed
+### Phase 29 status (2026-08-05) — plans 01, 03, 04/8 executed
+
+**Plan 03 executed (2026-08-05):** CANVAS-07/08/14 delivered — the hand-rolled, dependency-free
+`fdaLayout.mts` (169 lines) that replaces `TaskEditor.tsx`'s index-grid node placement (three
+call sites) with a BFS-layered auto-layout. `columnRanks` runs the single BFS from
+`initial_state` (cycle-safe, unreachable states omitted) and is exported so `edgeGeometry.mts`
+(plan 29-02, same wave) classifies back-edges off the identical ranking rather than a second,
+potentially-disagreeing traversal — pinned exact map `{init:0, trial_onset:1, play_led:2,
+rand:3}` for the definition-186 topology that 29-02's tests depend on. `layeredLayout` centres
+each BFS-depth column about `y=0` (`COLUMN_SPACING=320`, `ROW_SPACING=180`) and (Task 3,
+CANVAS-14) packs unreachable states into a bounded grid block —
+`rowsPerColumn = max(connectedRows, ceil(sqrt(orphanCount)))` — instead of one unbounded
+trailing column; verified against the live definition-172 topology (14 states, 11 toolkit-synced
+orphans never wired up): all 14 placed, orphans span ≥2 columns bounded at the literal 4-row
+cap, strictly right of the connected graph, zero coordinate collisions. `placeNewState` scans
+the same lattice and never mutates its `taken` argument (the CANVAS-08 regression the plan
+exists to fix — the old grid could drop a new node on an existing one); `resolvePositions`
+returns stored positions byte-identical and fills only the gaps. 36 new `node --test` cases,
+`tsc -b` clean, one BFS confirmed (`grep -c "for (const\|while ("` = 9, exactly one `while`).
+One Task-1 test needed updating: its single-trailing-column assumption for 3 unreachable states
+with no `initial_state` was superseded by Task 3's bounded-block rule (now splits across 2
+columns); updated to assert the underlying CANVAS-07 guarantee instead. This plan's Wave 1 ran
+concurrently with plan 29-02 (`edgeGeometry.mts`), which is untracked and not in this plan's
+`files_modified` — never touched here; transient `npm run test:unit` failures from that file
+mid-edit were not this plan's concern and resolved once 29-02 landed (182/182 green at this
+plan's final commit). See `29-03-SUMMARY.md`.
 
 **Plan 01 executed (2026-08-05):** CANVAS-02/11 delivered — the pure, behaviour-preserving
 refactor that clears line-count and test-coverage headroom before any Phase 29 canvas feature

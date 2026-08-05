@@ -12,7 +12,23 @@ Behavioral research experiment management system for running tasks on Raspberry 
 | `cd web_ui/react-src && npm run build` | Rebuild React SPA only (faster than full compose rebuild) |
 
 Health check: `GET http://localhost:8000/health`
-No automated test suite — verify manually by calling relevant endpoints after changes.
+
+## Tests
+
+| Suite | Command | Scale |
+|---|---|---|
+| Backend (pytest) | `docker compose exec -T api python -m pytest -q tests/` | 352 pass, ~1.2s |
+| Frontend logic (`node --test`) | `cd web_ui/react-src && npm run test:unit` | 84 pass, ~0.1s |
+| Frontend typecheck | `cd web_ui/react-src && npx tsc -b` | — |
+
+Note the in-container path is `tests/`, not `api/tests/`.
+
+Frontend pattern: pure, testable logic goes in `web_ui/react-src/src/components/<name>.mts`
+with its test at `web_ui/react-src/tests/<name>.test.mts` (see `detectorOptions`,
+`operandTypes`, `argModes`). React components themselves have no test harness — extract the
+logic to an `.mts` module and test that.
+
+There is no end-to-end/UI test harness: rendering and rig behaviour are verified manually.
 
 ## Services
 

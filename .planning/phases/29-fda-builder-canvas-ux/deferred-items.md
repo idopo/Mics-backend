@@ -31,6 +31,25 @@ that work is committed.
 `transitionLabel.test.mts`, 17 in `fdaNormalise.test.mts`) are added. All 27 of 29-01's own tests
 pass; the 2 failures are entirely within the pre-existing, unrelated `edgeGeometry.test.mts`.
 
+## 29-02: `backSpan` wording ambiguity resolved against the pinned interface
+
+Found during Task 3 TDD (RED/GREEN cycle), 2026-08-05.
+
+The plan's Task 3 `<behavior>` list contains two directly conflicting statements about the
+`backSpan` field on a `pair`-kind edge with a single-column reversed span:
+- "`ranks = {A:0, B:1}` with `B→A` → `backSpan` 1 → `kind:'pair'`, NOT `back`"
+- "`backSpan` is 0 on every non-`back` entry, for every case above"
+
+The pinned `<interfaces>` docstring settles it: `backSpan` is "0 for every non-`back` edge;
+always >= 2 for a `back` edge." Implemented and tested against the interface + the closing
+bullet (the more specific, later-stated rule); the first bullet's "backSpan 1" describes the
+computed span used to DECIDE classification, not the stored field. Documented inline in the
+test itself so a future reader doesn't reintroduce the earlier wording as a bug fix.
+
+Also fixed in the same task: a genuine `-0` vs `0` bug in the sign-flip (`-canonical` on a zero
+canonical produces `-0`, which `assert.strictEqual`/`Object.is` treats as distinct from `0`).
+Normalised via `(m.reversed ? -canonical : canonical) || 0`. Rule 1 (bug), not a plan deviation.
+
 ## 29-04: pre-existing frontend test failure (out of scope)
 
 Found during 29-04 Task 3 verification (`npm run test:unit`, 2026-08-05).

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-05T14:54:44.379Z"
+last_updated: "2026-08-05T15:00:36.290Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 82
-  completed_plans: 44
-  percent: 56
+  completed_plans: 46
+  percent: 59
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 56%
+**Progress:** [██████░░░░] 59%
 
 ### Phase 29 status (2026-08-05) — plans 01, 04/8 executed
 
@@ -1067,6 +1067,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23-12]: CMP-25 unions semantic hardware into valid_names at validate_compute_variables's own call site, never inside _valid_flag_names — that helper also gates three write-side rules (flag-action ref, output slot, key_template token) resolving against self.flags on the Pi; widening it would let a hardware name save cleanly as a write target and KeyError at FDA load
 - [Phase 23-12]: CMP-24 narrowed from three Pi edits to one (24b, _resolve_arg -> get_state()) after building and testing all three — 24a/24c reverted before deployment per user direction to keep the live-rig diff to exactly what CMP-23 depends on; both remain fully designed/tested and captured as a pending GSD todo rather than lost
 - [Phase 23-12]: CMP-24b and CMP-25 recorded explicitly as "deployed but not rig-exercised", never as verified — task def 186 (the only rig-available toolkit) never routes a {"view": hardware} argument through _resolve_arg, and its toolkit has semantic_hardware=null, so neither fix's own code path was live during the sign-off run
+- [Phase 29]: 29-02: backSpan is 0 on every non-back EdgeGeometry entry (pinned interface + plan's closing rule), resolving a contradictory plan bullet; -0/+0 normalised in the pair sign-flip offset
+- [Phase 29]: 29-03: fdaLayout.mts columnRanks/layeredLayout/placeNewState/resolvePositions — single-BFS layered layout, bounded CANVAS-14 orphan block (rowsPerColumn=max(connectedRows,ceil(sqrt(orphans)))), lattice-scan placeNewState never mutates taken
 
 ## Accumulated Context
 

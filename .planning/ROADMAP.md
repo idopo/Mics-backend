@@ -1069,7 +1069,7 @@ Pure UI/UX. No change to FDA semantics, validation, or anything sent to the Pi.
 
 **Requirements**: CANVAS-01 through CANVAS-14
 **Depends on:** Phase 12 (FDA state builder), Phase 16 (recursive condition tree — supplies the edge labels)
-**Plans:** 2/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 - [x] 29-01-PLAN.md — W1 · make room in TaskEditor.tsx: extract condLabel + FDA normalisers to tested .mts modules, extract the context menu — done 2026-08-05, see `29-01-SUMMARY.md`

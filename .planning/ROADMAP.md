@@ -523,7 +523,7 @@ Plans:
 ### Phase 23: Compute Operations (Compute Libs)
 **Goal:** A researcher can compute a value inside a state, store it in a variable, and transition on it — without a developer editing locked toolkit source, and with every computation recorded in the event log. Compute operations are delivered as **user-extensible, versioned, auto-logged libraries** using the existing hardware-lib substrate, so a researcher can add a new operation (e.g. weighted choice, sampling without replacement) the same way they add a hardware driver.
 
-**Requirements:** CMP-01–06, CMP-10–19
+**Requirements:** CMP-01–06, CMP-10–25
 
 **Design context:** `~/.claude/plans/i-realized-something-the-ancient-pnueli.md`, **revised 2026-08-03** — see `23-CONTEXT.md` for the locked reframe. The original "curated pure-function primitives" design is superseded.
 

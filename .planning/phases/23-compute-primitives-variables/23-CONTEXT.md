@@ -198,11 +198,76 @@ if/else. Compute ops only produce values. **No `if`-action type.**
 Compute runs **at state entry**, so transition guards only read the stored result and
 `check_determinism()` never re-runs randomness.
 
+### Operand-namespace consistency (LOCKED 2026-08-05 — plan 23-11, CMP-20–25)
+
+Added after rig use of plans 01–10. Not new compute capability — a consistency pass over the
+operand pickers. **The governing rule: write by name (flag/tracker actions); read anything
+through `view`.**
+
+**The trigger.** Declared variables work in transition conditions and appear in the flags
+dropdown, but are invisible inside `if`/`else` conditions in the state builder. Cause is a
+single React call site — `IfActionEditor.tsx:82-87` renders `<ConditionBuilder>` with
+`condition/toolkit/detectorChannels/onChange` and drops `variableNames` **and**
+`hwModuleNames`, even though the same component forwards `variableNames` into its then/else
+`ActionEditor`s (lines 108, 183). Everything below the GUI already works: `fda_utils.py::
+_scan_action_conditions` walks `if`-action conditions, `fda_validation.py::
+validate_compute_variables` accepts the operands, and `_build_condition_operand` is the *same*
+builder transitions use. Not a design decision — a wiring bug.
+
+**The equivalence is exact, and was verified before adoption — do not re-litigate it.**
+`{flag: X}` → `self.flags[X].value`; `{view: X}` → `self.view.view[X].get_state()`, and
+`Tracker.get_state()` is literally `return self.value`. `init_flags` (`mics_task.py:339-340`)
+and the variables loop (`:1060-1061`) register the **same Tracker instance** in both dicts. So
+retiring `flag` from the *read* pickers changes nothing at runtime. `view` is the strict
+superset: flags + variables + hardware + detector-derived keys (which are view-only, which is
+why Phase 25's licker comparison uses view — that choice was correct).
+
+**`{hardware: X}` is retired because it is broken, not merely redundant.**
+`_build_condition_operand` (`mics_task.py:633-634`) reads `_hw.value`; no `Hardware` class,
+subclass, or seed lib defines `.value` — the base (`hardware/__init__.py:148-153`) has only
+`hardware_state` / `get_state()`. That operand raises `AttributeError` whenever evaluated. The
+working read path for hardware is `{view: X}` → `get_state()`.
+
+**Backward compatibility — escape, not migration.** Stored `{flag:...}` / `{hardware:...}`
+operands must round-trip untouched. Use the **keep-current escape the codebase already applies
+twice** (`ArgInput.tsx:82` for the trigger pill, `ConditionBuilder.tsx:122` for unknown view
+keys): render the legacy type in the `<select>` only when the stored operand already has that
+shape, labelled legacy; it disappears once edited. Do **not** rewrite saved definitions and do
+**not** drop the type from `getOperandType` — a `<select>` whose `value` is absent from its
+options renders blank and the next `setType` silently corrupts the operand. Backend and Pi keep
+both branches.
+
+**Two invariant holes this promotes to load-bearing** (both must land with the UI change, or the
+rule has live counterexamples):
+- `trial_counter` auto-created at `mics_task.py:1042-1044` goes into `self.flags` only, never
+  `self.view.view` — and `_valid_flag_names` whitelists the name, so `{"view":"trial_counter"}`
+  saves cleanly then `KeyError`s mid-run on any toolkit whose FLAGS lacks a Trial_Tracker.
+- `validate_compute_variables`'s `valid_names` (`fda_validation.py:245`) omits
+  `toolkit.semantic_hardware`, while `ConditionBuilder.tsx:100` already offers it in the view
+  picker — a 422 on semantic (non-backend-authored) toolkits **today**.
+
+**Also in scope, same theme:**
+- `ArgInput` gains `view` replacing `! Flag` (CMP-23) — an argument value is a read. `_resolve_arg`
+  has supported `{"view": key}` since Phase 24 (`:511-518`); no picker could emit it.
+- `_resolve_arg`'s view branch reads `.value`, `_build_condition_operand`'s reads `get_state()`.
+  Unify on `get_state()` or "view means one thing everywhere" is false for hardware.
+- `_build_state_method`'s pre-validation loop (`:901`) rejects `type:"view"` — closes the open
+  item in `deferred-items.md`. A `view` action works inside an `if` branch (the loop does not
+  recurse) but raises at FDA load directly in a state body.
+- Variables selectable as a `type:"flag"` action ref (CMP-22, the write side), mapped to the
+  `'Tracker'` method set — **not** the `?? 'Counter_Tracker'` default, whose `decrement`/`reset`
+  entries do not exist in `Tracker.py` at all and `AttributeError` on the rig. Remove those two.
+
+**Unchanged:** flags are still declared on toolkits and written with tracker methods in the state
+builder. This is a read-path change only.
+
 ### Claude's Discretion
 
 - Internal structure of the compute device class / method dispatch.
 - React component decomposition within the existing StateBodyPanel/ActionEditor/ConditionBuilder.
 - Test harness shapes (negative-test cases, the gonogo-translation verification task).
+- Exact presentation of the legacy-operand escape (label wording, whether it is visually muted),
+  so long as it round-trips and cannot silently rewrite.
 
 </decisions>
 

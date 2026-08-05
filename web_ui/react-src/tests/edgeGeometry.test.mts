@@ -8,7 +8,13 @@
 // explicit extension on the cross-file import.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assignEdgeGeometry } from '../src/components/edgeGeometry.mts'
+import {
+  assignEdgeGeometry,
+  quadraticControlPoint,
+  quadraticPath,
+  pointOnQuadratic,
+  selfLoopPath,
+} from '../src/components/edgeGeometry.mts'
 
 function physicalOffset(g: { offset: number; reversed: boolean }): number {
   return g.reversed ? -g.offset : g.offset
@@ -140,4 +146,82 @@ test('pair grouping is by unordered pair: A->B/B->A share a group, A->B/A->C do 
   const separate = assignEdgeGeometry([{ from: 'A', to: 'B' }, { from: 'A', to: 'C' }])
   assert.equal(separate[0].groupSize, 1)
   assert.equal(separate[1].groupSize, 1)
+})
+
+// ---------------------------------------------------------------------------
+// Task 2: curve maths and self-loop path
+// ---------------------------------------------------------------------------
+
+test('quadraticControlPoint with offset 0 is exactly the midpoint', () => {
+  const a = { x: 0, y: 0 }
+  const b = { x: 100, y: 40 }
+  const c = quadraticControlPoint(a, b, 0)
+  assert.equal(c.x, 50)
+  assert.equal(c.y, 20)
+})
+
+test('quadraticControlPoint displaces along the normal by the given offset', () => {
+  const a = { x: 0, y: 0 }
+  const b = { x: 100, y: 0 }
+  const c = quadraticControlPoint(a, b, 50)
+  // Normal convention: n = normalize({x: -(b.y-a.y), y: b.x-a.x}) => for a horizontal chord
+  // pointing +x, the normal is {x: 0, y: 1} (screen-down), so a positive offset moves +y.
+  assert.equal(c.x, 50)
+  assert.equal(c.y, 50)
+})
+
+test('reversing endpoints with the same offset flips the control point to the other side', () => {
+  const a = { x: 0, y: 0 }
+  const b = { x: 100, y: 0 }
+  const forward = quadraticControlPoint(a, b, 50)
+  const backward = quadraticControlPoint(b, a, 50)
+  assert.equal(forward.x, backward.x)
+  assert.equal(forward.y, -backward.y)
+})
+
+test('pointOnQuadratic endpoints match a and b; midpoint of a symmetric bow leaves the chord', () => {
+  const a = { x: 0, y: 0 }
+  const b = { x: 100, y: 0 }
+  const c = quadraticControlPoint(a, b, 50)
+  assert.deepEqual(pointOnQuadratic(a, c, b, 0), a)
+  assert.deepEqual(pointOnQuadratic(a, c, b, 1), b)
+  const mid = pointOnQuadratic(a, c, b, 0.5)
+  assert.notEqual(mid.y, 0)
+})
+
+test('pointOnQuadratic produces no NaN for a degenerate chord', () => {
+  const a = { x: 5, y: 5 }
+  const c = quadraticControlPoint(a, a, 10)
+  const mid = pointOnQuadratic(a, c, a, 0.5)
+  assert.ok(!Number.isNaN(mid.x))
+  assert.ok(!Number.isNaN(mid.y))
+  assert.ok(!Number.isNaN(c.x))
+  assert.ok(!Number.isNaN(c.y))
+})
+
+test('quadraticPath emits the pinned SVG path shape', () => {
+  const a = { x: 0, y: 0 }
+  const b = { x: 100, y: 0 }
+  const c = quadraticControlPoint(a, b, 50)
+  const path = quadraticPath(a, c, b)
+  assert.match(path, /^M [-\d.]+,[-\d.]+ Q [-\d.]+,[-\d.]+ [-\d.]+,[-\d.]+$/)
+})
+
+test('selfLoopPath with zero extra radius is a legible non-NaN path with an apex above both endpoints', () => {
+  const source = { x: 100, y: 50 }
+  const target = { x: 0, y: 50 }
+  const { path, labelPoint } = selfLoopPath(source, target, 0)
+  assert.ok(path.length > 0)
+  assert.ok(!path.includes('NaN'))
+  assert.ok(labelPoint.y < source.y)
+  assert.ok(labelPoint.y < target.y)
+})
+
+test('selfLoopPath with a larger extraRadius moves the label further from the node', () => {
+  const source = { x: 100, y: 50 }
+  const target = { x: 0, y: 50 }
+  const small = selfLoopPath(source, target, 0)
+  const large = selfLoopPath(source, target, 40)
+  const distance = (p: { x: number; y: number }) => Math.hypot(p.x - (source.x + target.x) / 2, p.y - source.y)
+  assert.ok(distance(large.labelPoint) > distance(small.labelPoint))
 })

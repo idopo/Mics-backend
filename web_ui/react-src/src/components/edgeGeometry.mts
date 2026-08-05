@@ -1,28 +1,23 @@
 /**
- * Pure geometry behind CANVAS-01/02/04/13: which transitions share a "parallel group", how far
- * each bows off the straight line, where its label rides, how a self-loop is drawn, and (a later
- * task) how a multi-column backward transition routes clear of the states it spans.
+ * Pure geometry behind CANVAS-01/02/04/13: parallel-group membership, bow offset, label
+ * position, self-loop shape, and (a later task) back-edge routing — all derived from the
+ * transition list alone. No imports; takes structural `{ from, to }` inputs.
  *
- * THE SIGN-FLIP TRAP (read before touching assignEdgeGeometry): `TransitionEdge` only ever knows
- * its own source/target endpoints, so it can only bow along the normal of its own direction
- * vector — for A->B that normal points one physical way, for B->A the opposite physical way.
- * Handing the two members of a bidirectional pair naively opposite emitted offsets (-S/2, +S/2)
- * therefore puts BOTH curves on the SAME physical side (the hourglass bug this phase fixes). The
- * fix: canonicalise the pair to [min(from,to), max(from,to)], compute one CANONICAL offset per
- * member ordered by index, then flip the sign only for the member whose `from > to` (`reversed`).
- * A reversed member's emitted offset equals its NON-reversed sibling's, not its negative — do not
- * "fix" this into looking symmetric, that reintroduces the bug. See the test file's named cases.
- *
- * No imports. This module takes structural `{ from, to }` inputs and stays dependency-free.
+ * THE SIGN-FLIP TRAP: `TransitionEdge` only knows its own source/target, so it can only bow
+ * along the normal of ITS OWN direction — A->B's normal points one physical way, B->A's the
+ * opposite way. Handing a bidirectional pair naively opposite emitted offsets (-S/2, +S/2)
+ * therefore bows BOTH to the SAME physical side (the hourglass bug this phase fixes). Fix:
+ * canonicalise to [min(from,to), max(from,to)], compute one CANONICAL offset per member
+ * (ordered by index), then negate it only for the member with `from > to` (`reversed`). A
+ * reversed member's emitted offset equals its non-reversed sibling's, not its negative — do
+ * not "fix" this into looking symmetric, that reintroduces the bug.
  */
 
 export interface XY {
   x: number
   y: number
 }
-
 export type EdgeKind = 'pair' | 'self' | 'back'
-
 export interface EdgeGeometry {
   index: number
   kind: EdgeKind
@@ -34,15 +29,16 @@ export interface EdgeGeometry {
   backSpan: number
 }
 
-// Perpendicular spacing (px) between adjacent members of a same-direction/opposite-direction pair group.
-const PAIR_SPACING = 46
-// Radius growth (px) per additional self-loop stacked on the same node.
-const SELF_LOOP_SPACING = 26
-// Fractional stagger between adjacent group members' label positions along their own curve.
-const LABEL_STAGGER = 0.14
+const PAIR_SPACING = 46 // px between adjacent members of a same/opposite-direction pair group
+const SELF_LOOP_SPACING = 26 // px radius growth per additional self-loop on the same node
+const LABEL_STAGGER = 0.14 // fractional stagger between adjacent members' label positions
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+/** Round to 2 decimals so emitted SVG path strings are stable and testable. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 interface Member {
@@ -54,9 +50,7 @@ interface Member {
   backSpan: number
 }
 
-/**
- * Group transitions and assign each member an offset and label position.
- */
+/** Group transitions and assign each member an offset and label position. */
 export function assignEdgeGeometry(transitions: ReadonlyArray<{ from: string; to: string }>): EdgeGeometry[] {
   const members: Member[] = transitions.map((t, index) => {
     if (t.from === t.to) {
@@ -104,4 +98,52 @@ export function assignEdgeGeometry(transitions: ReadonlyArray<{ from: string; to
     })
   }
   return result
+}
+
+// Base radius (px) of a self-loop before any extraRadius widening.
+const BASE_LOOP_RADIUS = 40
+
+/**
+ * Normal convention (pinned, never vary): n = normalize({x: -(b.y-a.y), y: b.x-a.x}). For a
+ * horizontal chord pointing +x this is {x:0, y:1} (screen-down): a positive offset bows toward
+ * larger y. `assignEdgeGeometry`'s sign flip relies on this: reversing a/b flips the normal.
+ */
+export function quadraticControlPoint(a: XY, b: XY, offset: number): XY {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy)
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  if (len === 0) {
+    // Degenerate chord: fall back to a fixed direction rather than dividing by zero.
+    return { x: mid.x, y: mid.y - offset }
+  }
+  const nx = -dy / len
+  const ny = dx / len
+  return { x: mid.x + nx * offset, y: mid.y + ny * offset }
+}
+
+/** SVG path string `M ax,ay Q cx,cy bx,by`, coordinates rounded to 2 decimals for stability. */
+export function quadraticPath(a: XY, c: XY, b: XY): string {
+  return `M ${round2(a.x)},${round2(a.y)} Q ${round2(c.x)},${round2(c.y)} ${round2(b.x)},${round2(b.y)}`
+}
+
+/** Point on the quadratic Bezier a->c->b at parameter t (t=0 -> a, t=1 -> b). */
+export function pointOnQuadratic(a: XY, c: XY, b: XY, t: number): XY {
+  const u = 1 - t
+  return {
+    x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+    y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
+  }
+}
+
+/**
+ * Loop between a node's source handle (right, `source`) and target handle (left, `target`):
+ * leaves right, arcs above, re-enters left. `R` widens with `extraRadius` so N self-loops stack
+ * distinguishably.
+ */
+export function selfLoopPath(source: XY, target: XY, extraRadius: number): { path: string; labelPoint: XY } {
+  const R = BASE_LOOP_RADIUS + extraRadius
+  const path = `M ${round2(source.x)},${round2(source.y)} C ${round2(source.x + R)},${round2(source.y - R)} ${round2(target.x - R)},${round2(target.y - R)} ${round2(target.x)},${round2(target.y)}`
+  const labelPoint = { x: (source.x + target.x) / 2, y: Math.min(source.y, target.y) - R }
+  return { path, labelPoint }
 }

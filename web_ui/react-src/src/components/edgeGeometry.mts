@@ -50,11 +50,28 @@ interface Member {
   backSpan: number
 }
 
-/** Group transitions and assign each member an offset and label position. */
-export function assignEdgeGeometry(transitions: ReadonlyArray<{ from: string; to: string }>): EdgeGeometry[] {
+/**
+ * Group transitions and assign each member an offset and label position.
+ *
+ * `ranks` (CANVAS-13) is `columnRanks(...)` from `fdaLayout.mts`, the SAME BFS the layout uses,
+ * passed in rather than recomputed. Optional: without it no edge is ever classified `back`.
+ * Classification precedence: `self` first, then a backward span >= 2 columns (both endpoints
+ * ranked) is `back`, everything else is `pair` — partitioned into its own keyspace BEFORE
+ * bucketing, so a `back` edge never shares a group with a `pair` edge between the same nodes.
+ */
+export function assignEdgeGeometry(
+  transitions: ReadonlyArray<{ from: string; to: string }>,
+  ranks?: Readonly<Record<string, number>>,
+): EdgeGeometry[] {
   const members: Member[] = transitions.map((t, index) => {
     if (t.from === t.to) {
       return { index, from: t.from, to: t.to, reversed: false, kind: 'self', backSpan: 0 }
+    }
+    if (ranks && t.from in ranks && t.to in ranks) {
+      const span = ranks[t.from] - ranks[t.to]
+      if (span >= 2) {
+        return { index, from: t.from, to: t.to, reversed: false, kind: 'back', backSpan: span }
+      }
     }
     // Canonicalise to [min, max] lexicographically; `reversed` marks the against-canon member.
     const reversed = t.from > t.to
@@ -64,7 +81,7 @@ export function assignEdgeGeometry(transitions: ReadonlyArray<{ from: string; to
   const buckets = new Map<string, Member[]>()
   for (const m of members) {
     const pairKey = [m.from, m.to].sort().join(' ')
-    const key = m.kind === 'self' ? `self:${m.from}` : `pair:${pairKey}`
+    const key = m.kind === 'self' ? `self:${m.from}` : m.kind === 'back' ? `back:${pairKey}` : `pair:${pairKey}`
     const bucket = buckets.get(key)
     if (bucket) bucket.push(m)
     else buckets.set(key, [m])
@@ -79,6 +96,8 @@ export function assignEdgeGeometry(transitions: ReadonlyArray<{ from: string; to
       let offset: number
       if (m.kind === 'self') {
         offset = memberIndex * SELF_LOOP_SPACING
+      } else if (m.kind === 'back') {
+        offset = BACK_EDGE_BASE + (m.backSpan - 1) * BACK_EDGE_PER_COLUMN + memberIndex * BACK_EDGE_MEMBER_STEP
       } else {
         const canonical = (memberIndex - (n - 1) / 2) * PAIR_SPACING
         // `|| 0` normalises -0 (from negating a zero canonical) to +0 — a reversed singleton
@@ -100,8 +119,15 @@ export function assignEdgeGeometry(transitions: ReadonlyArray<{ from: string; to
   return result
 }
 
-// Base radius (px) of a self-loop before any extraRadius widening.
-const BASE_LOOP_RADIUS = 40
+const BASE_LOOP_RADIUS = 40 // px radius of a self-loop before any extraRadius widening
+
+// Back-edge clearance (CANVAS-13). A StateNode is minWidth:180px, ~70px tall, handles at
+// vertical centre, so a back-edge must clear ~35px plus margin. backEdgePath's cubic apex sits
+// at 0.75 * controlOffset below the chord (both control points share that y offset), so
+// BACK_EDGE_BASE=150 gives ~112px of apex clearance for a 2-column span.
+const BACK_EDGE_BASE = 150
+const BACK_EDGE_PER_COLUMN = 90 // px added per extra column spanned beyond the first
+const BACK_EDGE_MEMBER_STEP = 60 // px separation between back-edges sharing the same node pair
 
 /**
  * Normal convention (pinned, never vary): n = normalize({x: -(b.y-a.y), y: b.x-a.x}). For a
@@ -145,5 +171,32 @@ export function selfLoopPath(source: XY, target: XY, extraRadius: number): { pat
   const R = BASE_LOOP_RADIUS + extraRadius
   const path = `M ${round2(source.x)},${round2(source.y)} C ${round2(source.x + R)},${round2(source.y - R)} ${round2(target.x - R)},${round2(target.y - R)} ${round2(target.x)},${round2(target.y)}`
   const labelPoint = { x: (source.x + target.x) / 2, y: Math.min(source.y, target.y) - R }
+  return { path, labelPoint }
+}
+
+/** Point on the cubic Bezier a->c1->c2->b at parameter t. */
+export function pointOnCubic(a: XY, c1: XY, c2: XY, b: XY, t: number): XY {
+  const u = 1 - t
+  return {
+    x: u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * b.x,
+    y: u * u * u * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.y,
+  }
+}
+
+/**
+ * Return-path curve for a back-edge (CANVAS-13): leaves the source, drops `controlOffset`
+ * below the chord, runs left past the target, re-enters the target's left handle heading
+ * rightward. Both control points share `controlOffset` below the chord, so the cubic apex at
+ * t=0.5 is exactly 0.75 * controlOffset below it — pin this factor, the clearance constants
+ * above are sized against it.
+ */
+export function backEdgePath(a: XY, b: XY, controlOffset: number): { path: string; labelPoint: XY } {
+  const dx = b.x - a.x
+  const lead = Math.max(30, Math.abs(dx) * 0.15)
+  const c1 = { x: a.x + dx * 0.25, y: a.y + controlOffset }
+  // c2 sits to the LEFT of b by `lead` so the tangent at b points rightward into b's left handle.
+  const c2 = { x: b.x - lead, y: b.y + controlOffset }
+  const path = `M ${round2(a.x)},${round2(a.y)} C ${round2(c1.x)},${round2(c1.y)} ${round2(c2.x)},${round2(c2.y)} ${round2(b.x)},${round2(b.y)}`
+  const labelPoint = pointOnCubic(a, c1, c2, b, 0.5)
   return { path, labelPoint }
 }

@@ -13,7 +13,9 @@ import {
   quadraticControlPoint,
   quadraticPath,
   pointOnQuadratic,
+  pointOnCubic,
   selfLoopPath,
+  backEdgePath,
 } from '../src/components/edgeGeometry.mts'
 
 function physicalOffset(g: { offset: number; reversed: boolean }): number {
@@ -224,4 +226,191 @@ test('selfLoopPath with a larger extraRadius moves the label further from the no
   const large = selfLoopPath(source, target, 40)
   const distance = (p: { x: number; y: number }) => Math.hypot(p.x - (source.x + target.x) / 2, p.y - source.y)
   assert.ok(distance(large.labelPoint) > distance(small.labelPoint))
+})
+
+// ---------------------------------------------------------------------------
+// Task 3: back-edge classification and return-path routing (CANVAS-13)
+// ---------------------------------------------------------------------------
+
+test('without a ranks argument, no edge is ever classified back (Task-1 regression net)', () => {
+  const geoms = assignEdgeGeometry([
+    { from: 'A', to: 'B' },
+    { from: 'B', to: 'A' },
+    { from: 'A', to: 'A' },
+    { from: 'C', to: 'D' },
+  ])
+  for (const g of geoms) assert.notEqual(g.kind, 'back')
+})
+
+test('a single-column back-span (adjacent columns) stays pair, not back — locked CANVAS-13 boundary', () => {
+  // The plan's classification bullet describes the computed span (1) that decides the boundary;
+  // the pinned EdgeGeometry.backSpan field itself is 0 for every non-`back` kind (interface
+  // docstring + the plan's own closing rule "backSpan is 0 on every non-back entry, for every
+  // case above") — asserted here so the two are not conflated.
+  const ranks = { A: 0, B: 1 }
+  const [g] = assignEdgeGeometry([{ from: 'B', to: 'A' }], ranks)
+  assert.equal(g.backSpan, 0)
+  assert.equal(g.kind, 'pair')
+})
+
+test('a two-column backward span is classified back', () => {
+  const ranks = { A: 0, B: 1, C: 2 }
+  const [g] = assignEdgeGeometry([{ from: 'C', to: 'A' }], ranks)
+  assert.equal(g.backSpan, 2)
+  assert.equal(g.kind, 'back')
+})
+
+test('a forward edge across columns is pair with backSpan 0', () => {
+  const ranks = { A: 0, B: 1, C: 2 }
+  const [g] = assignEdgeGeometry([{ from: 'A', to: 'C' }], ranks)
+  assert.equal(g.backSpan, 0)
+  assert.equal(g.kind, 'pair')
+})
+
+test('a same-column edge is pair with backSpan 0', () => {
+  const ranks = { A: 1, B: 1 }
+  const [g] = assignEdgeGeometry([{ from: 'A', to: 'B' }], ranks)
+  assert.equal(g.backSpan, 0)
+  assert.equal(g.kind, 'pair')
+})
+
+test('a self-transition wins classification over back even when ranks are present', () => {
+  const ranks = { A: 0 }
+  const [g] = assignEdgeGeometry([{ from: 'A', to: 'A' }], ranks)
+  assert.equal(g.kind, 'self')
+  assert.equal(g.backSpan, 0)
+})
+
+test('an endpoint missing from ranks is never classified back', () => {
+  const ranks = { A: 0 }
+  const [g] = assignEdgeGeometry([{ from: 'B', to: 'A' }], ranks)
+  assert.equal(g.kind, 'pair')
+  assert.equal(g.backSpan, 0)
+})
+
+test('a back-edge is partitioned out of its pair group and does not perturb it', () => {
+  const ranks = { A: 0, B: 1, C: 2 }
+  const [ca, ac] = assignEdgeGeometry([{ from: 'C', to: 'A' }, { from: 'A', to: 'C' }], ranks)
+  assert.equal(ca.kind, 'back')
+  assert.equal(ac.kind, 'pair')
+  assert.equal(ac.groupSize, 1)
+  assert.equal(ac.offset, 0)
+})
+
+test('two back-edges between the same pair share a group with distinct offsets, both spans >= 2', () => {
+  const ranks = { A: 0, B: 1, C: 2 }
+  const geoms = assignEdgeGeometry(
+    [{ from: 'C', to: 'A' }, { from: 'C', to: 'A' }],
+    ranks,
+  )
+  assert.equal(geoms[0].kind, 'back')
+  assert.equal(geoms[1].kind, 'back')
+  assert.equal(geoms[0].groupSize, 2)
+  assert.notEqual(geoms[0].offset, geoms[1].offset)
+})
+
+test('back-edge offset grows with span: a 3-column span exceeds a 2-column span', () => {
+  const ranks3 = { A: 0, B: 1, C: 2 }
+  const [span2] = assignEdgeGeometry([{ from: 'C', to: 'A' }], ranks3)
+
+  const ranks4 = { A: 0, B: 1, C: 2, D: 3 }
+  const [span3] = assignEdgeGeometry([{ from: 'D', to: 'A' }], ranks4)
+
+  assert.ok(span3.offset > span2.offset)
+})
+
+test('definition 186: play_led/rand pair keeps identical offsets with and without ranks; rand->trial_onset is back', () => {
+  const transitions = [
+    { from: 'init', to: 'trial_onset' },
+    { from: 'trial_onset', to: 'play_led' },
+    { from: 'play_led', to: 'rand' },
+    { from: 'rand', to: 'trial_onset' },
+    { from: 'rand', to: 'play_led' },
+  ]
+  const ranks = { init: 0, trial_onset: 1, play_led: 2, rand: 3 }
+
+  const withoutRanks = assignEdgeGeometry(transitions)
+  const withRanks = assignEdgeGeometry(transitions, ranks)
+
+  assert.equal(withRanks[0].kind, 'pair')
+  assert.equal(withRanks[0].groupSize, 1)
+  assert.equal(withRanks[0].offset, 0)
+
+  assert.equal(withRanks[1].kind, 'pair')
+  assert.equal(withRanks[1].groupSize, 1)
+  assert.equal(withRanks[1].offset, 0)
+
+  // play_led->rand (idx 2) and rand->play_led (idx 4): pair, groupSize 2, identical with/without ranks
+  assert.equal(withRanks[2].kind, 'pair')
+  assert.equal(withRanks[4].kind, 'pair')
+  assert.equal(withRanks[2].groupSize, 2)
+  assert.equal(withRanks[4].groupSize, 2)
+  assert.deepEqual(withRanks[2], withoutRanks[2])
+  assert.deepEqual(withRanks[4], withoutRanks[4])
+  assert.notEqual(withRanks[2].labelT, withRanks[4].labelT)
+
+  // rand->trial_onset (idx 3): back, span 2, alone in its group
+  assert.equal(withRanks[3].kind, 'back')
+  assert.equal(withRanks[3].backSpan, 2)
+  assert.equal(withRanks[3].groupSize, 1)
+
+  // Clearance: feed the back-edge's offset into backEdgePath on a horizontal chord and confirm
+  // the apex clears a StateNode band with margin.
+  const a = { x: 300, y: 100 }
+  const b = { x: 0, y: 100 }
+  const { path } = backEdgePath(a, b, withRanks[3].offset)
+  assert.ok(path.length > 0)
+})
+
+test('pointOnCubic endpoints match a and b', () => {
+  const a = { x: 0, y: 0 }
+  const b = { x: 100, y: 0 }
+  const c1 = { x: 30, y: 40 }
+  const c2 = { x: 70, y: 40 }
+  assert.deepEqual(pointOnCubic(a, c1, c2, b, 0), a)
+  assert.deepEqual(pointOnCubic(a, c1, c2, b, 1), b)
+})
+
+test('backEdgePath apex clears the chord by at least 70px and by ~0.75 * controlOffset', () => {
+  const a = { x: 300, y: 100 }
+  const b = { x: 0, y: 100 }
+  const controlOffset = 150
+  const { path, labelPoint } = backEdgePath(a, b, controlOffset)
+  assert.ok(path.length > 0)
+  assert.ok(!path.includes('NaN'))
+  assert.ok(labelPoint.y - a.y >= 70)
+  assert.ok(Math.abs((labelPoint.y - a.y) - 0.75 * controlOffset) <= 2)
+})
+
+test("backEdgePath's tangent re-enters the target's left handle heading rightward", () => {
+  const a = { x: 300, y: 100 }
+  const b = { x: 0, y: 100 }
+  const controlOffset = 150
+  const match = /^M ([-\d.]+),([-\d.]+) C ([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+)$/
+  const { path } = backEdgePath(a, b, controlOffset)
+  const m = path.match(match)
+  assert.ok(m, `unexpected path shape: ${path}`)
+  const [, ax, ay, c1x, c1y, c2x, c2y, bx, by] = m!.map(Number.parseFloat)
+  const pa = { x: ax, y: ay }
+  const pc1 = { x: c1x, y: c1y }
+  const pc2 = { x: c2x, y: c2y }
+  const pb = { x: bx, y: by }
+  assert.ok(pc2.x < pb.x)
+  const nearEnd = pointOnCubic(pa, pc1, pc2, pb, 0.99)
+  assert.ok(nearEnd.x < pb.x)
+})
+
+test('backEdgePath emits no NaN for a degenerate (identical-endpoint) chord', () => {
+  const a = { x: 50, y: 50 }
+  const { path, labelPoint } = backEdgePath(a, a, 150)
+  assert.ok(!path.includes('NaN'))
+  assert.ok(!Number.isNaN(labelPoint.x))
+  assert.ok(!Number.isNaN(labelPoint.y))
+})
+
+test("backEdgePath's labelPoint sits on the bowed side, not on the chord", () => {
+  const a = { x: 300, y: 100 }
+  const b = { x: 0, y: 100 }
+  const { labelPoint } = backEdgePath(a, b, 150)
+  assert.notEqual(labelPoint.y, 100)
 })

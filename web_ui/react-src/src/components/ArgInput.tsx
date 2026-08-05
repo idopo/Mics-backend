@@ -1,30 +1,16 @@
 import type { ToolkitRead } from '../types'
 import NumericInput from './NumericInput'
 import StructuredInput from './StructuredInput'
-import { isStructuredAnnotation } from './computeArgs.mts'
-
-type ArgMode = 'literal' | 'param' | 'flag' | 'trigger'
-
-/** Handles both array [{name}] and dict {name:{}} shapes for params_schema. */
-export function getParamKeys(toolkit: ToolkitRead | null | undefined): string[] {
-  const schema = toolkit?.params_schema
-  if (!schema) return []
-  if (Array.isArray(schema)) return schema.map((p: { name: string }) => p.name)
-  return Object.keys(schema)
-}
-
-type LiteralInputKind = 'number' | 'bool' | 'text' | 'structured'
-
-function annotationToInputKind(ann: string | null | undefined): LiteralInputKind {
-  if (!ann) return 'text'
-  // list/dict get a parsing editor — a plain text input silently stored '["a","b"]' as a
-  // string and the Pi ran random.choice() over its characters.
-  if (isStructuredAnnotation(ann)) return 'structured'
-  const base = ann.replace(/Optional\[|\]/g, '').trim()
-  if (base === 'bool') return 'bool'
-  if (base === 'int' || base === 'float') return 'number'
-  return 'text'
-}
+import {
+  type ArgMode,
+  detectMode,
+  annotationToInputKind,
+  getParamKeys,
+  MODE_COLORS,
+  MODE_LABELS,
+  MODE_TOOLTIPS,
+  ALL_MODES,
+} from './argModes.mts'
 
 interface Props {
   value: unknown
@@ -36,39 +22,6 @@ interface Props {
   allowTriggerContext?: boolean
   onChange: (updated: unknown) => void
 }
-
-function detectMode(value: unknown): ArgMode {
-  if (value !== null && typeof value === 'object') {
-    if ('param' in (value as object)) return 'param'
-    if ('flag' in (value as object)) return 'flag'
-    if ('trigger' in (value as object)) return 'trigger'
-  }
-  return 'literal'
-}
-
-// ── Colors for mode pills ───────────────────────────────────────────────────
-const MODE_COLORS: Record<ArgMode, string> = {
-  literal: '#6b7280',
-  param: '#22c55e',
-  flag: '#f59e0b',
-  trigger: '#38bdf8',
-}
-
-const MODE_LABELS: Record<ArgMode, string> = {
-  literal: '# Literal',
-  param: '$ Param',
-  flag: '! Flag',
-  trigger: '@ Trigger',
-}
-
-const MODE_TOOLTIPS: Record<ArgMode, string> = {
-  literal: 'A fixed value baked into the FDA. Does not change between runs.',
-  param: 'Resolved from a protocol parameter at runtime. Set in the protocol step config.',
-  flag: "Resolved from a flag's current value at runtime. Changes during the session.",
-  trigger: 'The level or timestamp of the hardware event that fired this trigger. Only available inside a trigger action list.',
-}
-
-const ALL_MODES: ArgMode[] = ['literal', 'param', 'flag', 'trigger']
 
 export default function ArgInput({ value, toolkit, annotation, variableNames, allowTriggerContext, onChange }: Props) {
   const mode = detectMode(value)

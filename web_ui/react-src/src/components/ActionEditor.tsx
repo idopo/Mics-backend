@@ -6,6 +6,11 @@ import HardwareActionFields from './HardwareActionFields'
 import ViewActionFields from './ViewActionFields'
 import ComputeActionFields from './ComputeActionFields'
 import OutputCapture from './OutputCapture'
+import {
+  TRACKER_METHODS,
+  getTrackerMethods,
+  defaultArgForTrackerType,
+} from './trackerMethods.mts'
 
 // ── Action type metadata ────────────────────────────────────────────────────
 
@@ -29,43 +34,6 @@ const TYPE_LABELS: Record<string, string> = {
   special:  'SPECIAL',
   view:     'VIEW',
   compute:  'COMPUTE',
-}
-
-// ── Tracker method tables ────────────────────────────────────────────────────
-
-export interface TrackerMethod {
-  name: string
-  hasArg: boolean
-  description: string
-}
-
-const TRACKER_METHODS: Record<string, TrackerMethod[]> = {
-  Counter_Tracker: [
-    { name: 'increment', hasArg: false, description: 'Add 1 to this counter' },
-    { name: 'decrement', hasArg: false, description: 'Subtract 1 from this counter' },
-    { name: 'reset',     hasArg: false, description: 'Reset to its starting value' },
-    { name: 'set',       hasArg: true,  description: 'Set to an exact value' },
-  ],
-  Boolean_Tracker: [
-    { name: 'set',    hasArg: true,  description: 'Set to an exact value' },
-    { name: 'toggle', hasArg: false, description: 'Flip between true and false' },
-  ],
-  Trial_Tracker: [
-    { name: 'increment', hasArg: false, description: 'Increment trial count (dispatches INC_TRIAL_COUNTER to orchestrator)' },
-    { name: 'set',       hasArg: true,  description: 'Set trial count to an exact value' },
-  ],
-  Tracker: [
-    { name: 'increment', hasArg: false, description: 'Add 1 to this tracker' },
-    { name: 'set',       hasArg: true,  description: 'Set to any value' },
-  ],
-}
-
-function getTrackerMethods(trackerType: string): TrackerMethod[] {
-  return TRACKER_METHODS[trackerType] ?? TRACKER_METHODS['Tracker']
-}
-
-function defaultArgForTrackerType(trackerType: string): unknown {
-  return trackerType === 'Boolean_Tracker' ? false : 0
 }
 
 /** Shared with HardwareActionFields — exported to avoid duplicating the predicate. */

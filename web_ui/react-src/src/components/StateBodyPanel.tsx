@@ -1,6 +1,6 @@
 import type { FdaState, FdaAction, ToolkitRead, HardwareModule, DetectorChannelGroup } from '../types'
 import ActionEditor from './ActionEditor'
-import { operandLabel } from './ConditionBuilder'
+import { operandLabel } from './operandTypes.mts'
 
 // ── Action type color chips ──────────────────────────────────────────────────
 

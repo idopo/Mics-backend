@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import type { FdaAction, ToolkitRead, HardwareModule, AstMethod } from '../types'
 import { getHardwareModuleMethods } from '../api/hardware_modules'
 import ArgInput from './ArgInput'
-import { labelStyle, isTimerModule, type TrackerMethod } from './ActionEditor'
+import { labelStyle, isTimerModule } from './ActionEditor'
+import type { TrackerMethod } from './trackerMethods.mts'
 
 // Module-level method cache: keyed by "moduleId/versionStamp" to stay version-aware.
 // versionStamp changes whenever the version assignment for the task def changes.

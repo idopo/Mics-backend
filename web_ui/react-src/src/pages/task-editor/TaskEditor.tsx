@@ -35,18 +35,24 @@ import TransitionEdge from './TransitionEdge'
 import { condLabel } from '../../components/transitionLabel.mts'
 import { normaliseFda, parseStateWarnings } from '../../components/fdaNormalise.mts'
 import { assignEdgeGeometry } from '../../components/edgeGeometry.mts'
-import { columnRanks } from '../../components/fdaLayout.mts'
+import { columnRanks, resolvePositions, type XY } from '../../components/fdaLayout.mts'
+import { useLayoutPersistence } from './useLayoutPersistence'
 
 const nodeTypes = { stateNode: StateNode }
 const edgeTypes = { transition: TransitionEdge }
 const EDGE_STROKE = '#475569'
 const EDGE_MARKER = { type: MarkerType.ArrowClosed, width: 18, height: 18, color: EDGE_STROKE }
 
-function fdaToNodes(fdaJson: FdaJson, toolkit: ToolkitRead | null, stateWarnings: Record<string, string>): Node[] {
-  return Object.entries(fdaJson.states ?? {}).map(([name, state], i) => ({
+function fdaToNodes(
+  fdaJson: FdaJson,
+  toolkit: ToolkitRead | null,
+  stateWarnings: Record<string, string>,
+  positions: Record<string, XY>,
+): Node[] {
+  return Object.entries(fdaJson.states ?? {}).map(([name, state]) => ({
     id: name,
     type: 'stateNode',
-    position: { x: (i % 4) * 270, y: Math.floor(i / 4) * 170 },
+    position: positions[name] ?? { x: 0, y: 0 }, // belt-and-braces; resolvePositions covers every state
     data: { name, state, isInitial: name === fdaJson.initial_state, toolkit, warning: stateWarnings[name] },
   }))
 }
@@ -129,6 +135,7 @@ export default function TaskEditor() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const layout = useLayoutPersistence(numId)
 
   const stateWarnings = useMemo(
     () => taskDef?.validation_status === 'broken' ? parseStateWarnings(taskDef.validation_message) : {},
@@ -155,9 +162,21 @@ export default function TaskEditor() {
   const [canvasInited, setCanvasInited] = useState(false)
   useEffect(() => {
     if (!fdaJson || canvasInited) return
-    setNodes(fdaToNodes(fdaJson, toolkit, stateWarnings))
+    const positions = resolvePositions(
+      {
+        states: Object.keys(fdaJson.states ?? {}),
+        transitions: fdaJson.transitions ?? [],
+        initialState: fdaJson.initial_state,
+      },
+      taskDef?.ui_layout?.nodes ?? null,
+    )
+    layout.seed(positions)
+    setNodes(fdaToNodes(fdaJson, toolkit, stateWarnings, positions))
     setEdges(fdaToEdges(fdaJson))
     setCanvasInited(true)
+  // taskDef deliberately excluded — see seededIdRef comment above; adding it here would
+  // re-hydrate positions (and drop unsaved drags) on every window-focus refetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fdaJson, toolkit, canvasInited])
 
   // Sync warning badges when validation status changes (e.g. after save)
@@ -465,6 +484,9 @@ export default function TaskEditor() {
           <span style={{ fontSize: '12px', color: savedMsg.startsWith('Error') ? 'var(--error)' : 'var(--green)', flexShrink: 0 }}>
             {savedMsg}
           </span>
+        )}
+        {layout.layoutMsg && (
+          <span style={{ fontSize: '12px', color: 'var(--muted)', flexShrink: 0 }}>{layout.layoutMsg}</span>
         )}
         {missingInitial && (
           <span style={{ color: '#f87171', fontSize: 12, marginRight: 8, flexShrink: 0 }}>

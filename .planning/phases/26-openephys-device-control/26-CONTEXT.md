@@ -141,7 +141,7 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
   (don't kill a behavioural session over an accessory). The behavioural data stays valid and the
   researcher decides whether to stop.
 
-  **AMENDED 2026-08-05 — the "surface prominently in pilot status" half is DEFERRED to Phase 26.1,
+  **AMENDED 2026-08-05 — the "surface prominently in pilot status" half is DEFERRED to Phase 19,
   deliberately and with the cost stated.** The original wording said *loud rather than log-only, so
   a mid-run failure isn't discovered at analysis time* — but it turned out to depend on
   infrastructure that does not exist and that Phase 18 explicitly excluded: its NOT-in-scope list
@@ -156,9 +156,9 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
 
   **What Phase 26 delivers:** the flip itself, via `oc.liveness_ok`'s run-active clause, plus the
   `alive` CONTINUOUS event in ES and a loud pilot-log line. **What it does not:** any in-session
-  visual indication. Until 26.1 lands, a mid-run recording loss IS discoverable only after the fact
+  visual indication. Until Phase 19 lands, a mid-run recording loss IS discoverable only after the fact
   — the cost this decision originally rejected, now accepted knowingly rather than by omission.
-  Phase 26.1 is NOT a blocker for Phase 26: detection ships here, presentation ships there.
+  Phase 19 is NOT a blocker for Phase 26: detection ships here, presentation ships there.
 
 ### Lib delivery and opt-out
 - **The `OpenEphys` lib ships as a seeded first-party lib** — `api/seed_libs/openephys.py`, seeded

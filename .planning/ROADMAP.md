@@ -520,6 +520,78 @@ Plans:
 
 ---
 
+### Phase 19: Per-Pilot Device Health Surface
+
+**Goal:** An `ExternalHardware` device going unreachable mid-run becomes visible **while the session
+is running**, not at analysis time. Any `<source_id>.alive` tracker flip reaches the live pilot
+payload and lights a warning affordance on the pilot card, so a researcher can decide whether to
+stop. Device-neutral: OpenEphys is the first consumer, DeepLabCut and photometry light the same
+indicator for free.
+
+**Requirements**: EXTLINK-07 (the surfacing half), and the amended `26-CONTEXT.md` mid-run decision.
+
+**Why this is its own phase.** `alive` is a Phase 18 concept — EXTLINK-07 owns the generic
+`<source_id>.alive` tracker — but Phase 18's NOT-in-scope list explicitly excludes *"Per-pilot health
+dashboard React page + WS forwarding via orchestrator"*, and EXTLINK-07's surfacing commitment stops
+at the ES event. Phase 26 then locked *"surface prominently in pilot status"* without noticing it had
+written a decision across that scope boundary. Building it inside 26 would put generic Phase 18
+substrate in the OpenEphys phase; reopening Phase 18 would invalidate a verdict earned over six
+plan-checker iterations. So it is separated, and `26-CONTEXT.md` now records the deferral and its
+cost explicitly.
+
+**Dependencies:** Phase 18, and **only** Phase 18. It supplies the `<source_id>.alive` trackers, the
+CONTINUOUS flip event, and — importantly — a device to prove this against: `18-12-PLAN.md` builds
+demo libs including `DemoControl` (`role: "none"`), registers `oe_ctl.alive`, and already has a
+kill-the-source step confirming `alive` flips to `false`. **So this phase needs no OpenEphys and can
+execute immediately after 18.**
+
+**Relationship to Phase 26:** none, in either direction. Phase 26 does not depend on this phase —
+detection ships there (the flip, its CONTINUOUS event, the loud log line), presentation ships here —
+and this phase does not need Phase 26, per the demo libs above. Phase 26 simply becomes a second
+consumer of the indicator when it lands. `26-CONTEXT.md` records the deferral and its accepted cost.
+
+**Plans:** 0 plans (run `/gsd:plan-phase 19`)
+
+**Success criteria:**
+1. `OrchestratorState` carries per-pilot device health, written from the CONTINUOUS handler under
+   the same lock as every other mutator, and `snapshot()` exposes it — defaulting to `{}`, never
+   `None`, so the common no-external-device case needs no null check.
+2. The health map is keyed by full tracker name and matched on the **`.alive` suffix**, never on a
+   device class name — a second device type lights it with zero orchestrator change.
+3. `WS /ws/pilots` carries it to the browser. `web_ui/app.py` forwards the orchestrator's
+   `/pilots/live` response verbatim, so this should need no proxy change — confirm before assuming.
+4. The React pilot card renders a visible warning when a device is not alive during an active run,
+   and shows nothing when there are no external devices.
+5. A pilot's health map is cleared wherever `active_run` is cleared, so a stale warning cannot
+   outlive the run that produced it.
+6. Rig proof: power the OE box off mid-run and see the pilot card change without a page reload.
+
+**NOT in scope:** a full per-pilot health dashboard page; historical health charts; alerting or
+notification outside the browser; any automatic run abort on liveness loss (EXTLINK-07 makes
+mid-run liveness loss never automatically fatal — the FDA author gates on it if the experiment
+requires it).
+
+**Files to change** (verified against the live source, 2026-08-05):
+- `orchestrator/orchestrator/state.py` — `OrchestratorState` gains a per-pilot `device_health` dict
+  and `snapshot()` exposes it. Take `self._lock` like every other mutator: written from the ZMQ
+  handler thread, read by the `/pilots/live` HTTP thread.
+- `orchestrator/orchestrator/orchestrator_station.py` — `on_data` also routes `*.alive` CONTINUOUS
+  payloads into the state. No new ZMQ key; it rides the existing CONTINUOUS channel.
+- `web_ui/react-src/src/types/index.ts` — `PilotLive` (line 1) gains `device_health`. Its current
+  shape is exactly `{ connected, state, active_run, updated_at }`.
+- `web_ui/react-src/src/pages/index/Index.tsx` — **`PilotCard` is a function inside this 129-line
+  file, not a separate component module.** Extract it only if the file would pass 300 lines; it
+  won't for this change.
+- `web_ui/app.py` — **expected to need NO change.** Its `/ws/pilots` handler forwards the
+  orchestrator's `/pilots/live` response verbatim, so a new `snapshot()` key reaches the browser
+  untouched. Confirm before assuming.
+
+**Note there is no external-device UI in the React app today** — `grep -rln "extlink|external_device|source_id" web_ui/react-src/src` returns nothing. This phase builds the first live one.
+
+---
+
+---
+
 ### Phase 23: Compute Operations (Compute Libs)
 **Goal:** A researcher can compute a value inside a state, store it in a variable, and transition on it — without a developer editing locked toolkit source, and with every computation recorded in the event log. Compute operations are delivered as **user-extensible, versioned, auto-logged libraries** using the existing hardware-lib substrate, so a researcher can add a new operation (e.g. weighted choice, sampling without replacement) the same way they add a hardware driver.
 
@@ -863,69 +935,6 @@ agent does not run git on the Pi, start/stop the pilot, or run Python on the Pi.
 
 ---
 
-### Phase 26.1: Per-Pilot Device Health Surface
-
-**Goal:** An `ExternalHardware` device going unreachable mid-run becomes visible **while the session
-is running**, not at analysis time. Any `<source_id>.alive` tracker flip reaches the live pilot
-payload and lights a warning affordance on the pilot card, so a researcher can decide whether to
-stop. Device-neutral: OpenEphys is the first consumer, DeepLabCut and photometry light the same
-indicator for free.
-
-**Requirements**: EXTLINK-07 (the surfacing half), and the amended `26-CONTEXT.md` mid-run decision.
-
-**Why this is its own phase.** `alive` is a Phase 18 concept — EXTLINK-07 owns the generic
-`<source_id>.alive` tracker — but Phase 18's NOT-in-scope list explicitly excludes *"Per-pilot health
-dashboard React page + WS forwarding via orchestrator"*, and EXTLINK-07's surfacing commitment stops
-at the ES event. Phase 26 then locked *"surface prominently in pilot status"* without noticing it had
-written a decision across that scope boundary. Building it inside 26 would put generic Phase 18
-substrate in the OpenEphys phase; reopening Phase 18 would invalidate a verdict earned over six
-plan-checker iterations. So it is separated, and `26-CONTEXT.md` now records the deferral and its
-cost explicitly.
-
-**Dependencies:** Phase 18 (`<source_id>.alive` trackers and the CONTINUOUS flip event must exist).
-Phase 26 in practice — not a hard dependency, but OE is the first device that can actually light the
-indicator, so end-to-end proof needs it. **Phase 26 does NOT depend on this phase**: detection ships
-in 26, presentation ships here.
-
-**Plans:** 0 plans (run `/gsd:plan-phase 26.1`)
-
-**Success criteria:**
-1. `OrchestratorState` carries per-pilot device health, written from the CONTINUOUS handler under
-   the same lock as every other mutator, and `snapshot()` exposes it — defaulting to `{}`, never
-   `None`, so the common no-external-device case needs no null check.
-2. The health map is keyed by full tracker name and matched on the **`.alive` suffix**, never on a
-   device class name — a second device type lights it with zero orchestrator change.
-3. `WS /ws/pilots` carries it to the browser. `web_ui/app.py` forwards the orchestrator's
-   `/pilots/live` response verbatim, so this should need no proxy change — confirm before assuming.
-4. The React pilot card renders a visible warning when a device is not alive during an active run,
-   and shows nothing when there are no external devices.
-5. A pilot's health map is cleared wherever `active_run` is cleared, so a stale warning cannot
-   outlive the run that produced it.
-6. Rig proof: power the OE box off mid-run and see the pilot card change without a page reload.
-
-**NOT in scope:** a full per-pilot health dashboard page; historical health charts; alerting or
-notification outside the browser; any automatic run abort on liveness loss (EXTLINK-07 makes
-mid-run liveness loss never automatically fatal — the FDA author gates on it if the experiment
-requires it).
-
-**Files to change** (verified against the live source, 2026-08-05):
-- `orchestrator/orchestrator/state.py` — `OrchestratorState` gains a per-pilot `device_health` dict
-  and `snapshot()` exposes it. Take `self._lock` like every other mutator: written from the ZMQ
-  handler thread, read by the `/pilots/live` HTTP thread.
-- `orchestrator/orchestrator/orchestrator_station.py` — `on_data` also routes `*.alive` CONTINUOUS
-  payloads into the state. No new ZMQ key; it rides the existing CONTINUOUS channel.
-- `web_ui/react-src/src/types/index.ts` — `PilotLive` (line 1) gains `device_health`. Its current
-  shape is exactly `{ connected, state, active_run, updated_at }`.
-- `web_ui/react-src/src/pages/index/Index.tsx` — **`PilotCard` is a function inside this 129-line
-  file, not a separate component module.** Extract it only if the file would pass 300 lines; it
-  won't for this change.
-- `web_ui/app.py` — **expected to need NO change.** Its `/ws/pilots` handler forwards the
-  orchestrator's `/pilots/live` response verbatim, so a new `snapshot()` key reaches the browser
-  untouched. Confirm before assuming.
-
-**Note there is no external-device UI in the React app today** — `grep -rln "extlink|external_device|source_id" web_ui/react-src/src` returns nothing. This phase builds the first live one.
-
----
 
 ### Phase 27: OpenEphys Firing Rate over ZMQ
 

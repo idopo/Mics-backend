@@ -273,7 +273,7 @@ catch — `required: false` against a busy box, a failed `on_run_start`, the opt
 opt-out still created a phantom artifact row, making 26-13 check 9 unachievable; and the ownership
 test was `xfail` with no plan ever retiring the marker, so it carried zero signal.
 
-### Phase 26.1 created — the mid-run alarm had no home
+### Phase 19 created — the mid-run alarm had no home
 
 Iteration 6 also surfaced that `26-CONTEXT.md`'s locked *"surface prominently in pilot status"* is
 implemented by **nothing**, and cannot be: `OrchestratorState` carries no tracker values, so
@@ -283,11 +283,11 @@ forgotten task — `alive` is EXTLINK-07's, and **Phase 18's NOT-in-scope list e
 *"Per-pilot health dashboard React page + WS forwarding via orchestrator"*. Phase 26 locked a
 decision that depends on infrastructure Phase 18 deliberately deferred and nothing picked up.
 
-Resolved as **new Phase 26.1** (device-neutral, matched on the `.alive` suffix so any
+Resolved as **new Phase 19** (placed right after 18, its true home) (device-neutral, matched on the `.alive` suffix so any
 `ExternalHardware` device lights it). Building it inside 26 would put Phase 18 substrate in the
-OpenEphys phase; reopening 18 would invalidate a verdict earned over six iterations. **26.1 is NOT a
+OpenEphys phase; reopening 18 would invalidate a verdict earned over six iterations. **Phase 19 is NOT a
 blocker for 26** — detection ships in 26 (the `alive` flip, its CONTINUOUS event, the loud log
-line), presentation ships in 26.1. `26-CONTEXT.md` now records the deferral and its cost explicitly,
+line), presentation ships in Phase 19. `26-CONTEXT.md` now records the deferral and its cost explicitly,
 rather than shipping the reduced scope by omission.
 
 ⚠ **Phase 26 has NOT been re-checked since the iteration-6 fixes** — the checker ran against the

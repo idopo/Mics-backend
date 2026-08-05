@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-05T15:12:49.629Z"
+last_updated: "2026-08-05T15:19:02.840Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 82
-  completed_plans: 48
-  percent: 61
+  completed_plans: 49
+  percent: 62
 ---
 
 # STATE: MICS Backend
@@ -28,9 +28,37 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 61%
+**Progress:** [██████░░░░] 62%
 
-### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06/8 executed
+### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
+
+**Plan 07 executed (2026-08-05):** CANVAS-08/09 delivered — the last `TaskEditor.tsx` diff of the
+phase. Task 1 retired the two remaining index-grid placement sites: `addState` and the
+toolkit-sync effect now both call `placeNewState(layout.current())` and immediately
+`layout.record(...)` the result, so a newly created/synced node can never land on a positioned
+one and survives a refresh without needing a drag first (`grep -n "% 4) \* 270"` returns nothing;
+`grep -c "placeNewState("` = 2). The toolkit-sync effect's `missing`/placement computation was
+lifted outside the `setNodes` updater — it had been calling `setFdaJson` from inside a `setNodes`
+updater, a pre-existing React purity violation this plan was the natural moment to fix since the
+placement call had to move out anyway. `deleteState` gained a comment explaining why the layout
+map is deliberately not pruned (`resolvePositions` self-heals the stale key on next load). Task 2
+added a `paneMenu` behind a new `onPaneContextMenu`, rendered through the same
+`CanvasContextMenu` component the node menu already uses (`grep -c "<CanvasContextMenu"` = 2, one
+component, one style), and a `restoreLayout` action using `layeredLayout` (discards the stored
+arrangement — the whole point of the action) followed by `layout.replaceAll` (persists
+immediately) — CANVAS-09's "the way back must survive a refresh" is satisfied by construction.
+`onPaneClick`/`onNodeContextMenu`/`onPaneContextMenu` cross-clear so the two menus can never both
+be open. `npm run test:unit` 182/182, `tsc -b` clean, `npm run build` clean, `TaskEditor.tsx`
+**788 → 806 lines** (well under this plan's own ≤850 gate and the phase's ≤873 cap, 67 lines of
+headroom remain). The optional viewport-refit polish (`useReactFlow().fitView()` after restore)
+was explicitly skipped per the plan's own escape hatch: no `ReactFlowProvider` exists anywhere in
+the tree, and adding one to support a single instance method would restructure beyond scope for a
+polish-only step. `web_ui` container rebuilt and restarted; `main.js` mtime confirmed fresh,
+`/health` returns 200 — a servable bundle is ready for plan 29-08's checkpoint. `git diff --stat`
+across both task commits touches only `TaskEditor.tsx`. No deviations. Same known
+`requirements mark-complete` traceability gap as prior Phase 29 plans (CANVAS-08/09 not found as
+checkbox rows in `REQUIREMENTS.md`) — completion tracked via this section and
+`roadmap update-plan-progress 29` instead. See `29-07-SUMMARY.md`.
 
 **Plan 06 executed (2026-08-05):** CANVAS-05/07/10 delivered — `useLayoutPersistence.ts` (73
 lines), a debounced `ui_layout` PUT hook kept textually and behaviourally separate from the FDA
@@ -1139,6 +1167,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23-12]: CMP-24b and CMP-25 recorded explicitly as "deployed but not rig-exercised", never as verified — task def 186 (the only rig-available toolkit) never routes a {"view": hardware} argument through _resolve_arg, and its toolkit has semantic_hardware=null, so neither fix's own code path was live during the sign-off run
 - [Phase 29]: 29-02: backSpan is 0 on every non-back EdgeGeometry entry (pinned interface + plan's closing rule), resolving a contradictory plan bullet; -0/+0 normalised in the pair sign-flip offset
 - [Phase 29]: 29-03: fdaLayout.mts columnRanks/layeredLayout/placeNewState/resolvePositions — single-BFS layered layout, bounded CANVAS-14 orphan block (rowsPerColumn=max(connectedRows,ceil(sqrt(orphans)))), lattice-scan placeNewState never mutates taken
+- [Phase 29]: 29-07: both remaining index-grid placement sites (addState, toolkit-sync effect) now route through placeNewState and immediately layout.record() the placement; restoreLayout uses layeredLayout (discard) + layout.replaceAll (persist), not resolvePositions — CANVAS-09 requires the restore to survive a refresh, not merely redraw
+- [Phase 29]: 29-07: deleteState deliberately does not prune the layout map — resolvePositions already drops entries for states absent from the FDA on next load, so the stale key self-heals
 
 ## Accumulated Context
 

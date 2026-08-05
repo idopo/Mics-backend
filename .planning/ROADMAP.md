@@ -902,9 +902,22 @@ notification outside the browser; any automatic run abort on liveness loss (EXTL
 mid-run liveness loss never automatically fatal — the FDA author gates on it if the experiment
 requires it).
 
-**Files to change:** `orchestrator/orchestrator/state.py`, `orchestrator/orchestrator/orchestrator_station.py`
-(`on_data`), `web_ui/react-src/src/types/index.ts`, and the pilot-card component under
-`web_ui/react-src/src/pages/index/`.
+**Files to change** (verified against the live source, 2026-08-05):
+- `orchestrator/orchestrator/state.py` — `OrchestratorState` gains a per-pilot `device_health` dict
+  and `snapshot()` exposes it. Take `self._lock` like every other mutator: written from the ZMQ
+  handler thread, read by the `/pilots/live` HTTP thread.
+- `orchestrator/orchestrator/orchestrator_station.py` — `on_data` also routes `*.alive` CONTINUOUS
+  payloads into the state. No new ZMQ key; it rides the existing CONTINUOUS channel.
+- `web_ui/react-src/src/types/index.ts` — `PilotLive` (line 1) gains `device_health`. Its current
+  shape is exactly `{ connected, state, active_run, updated_at }`.
+- `web_ui/react-src/src/pages/index/Index.tsx` — **`PilotCard` is a function inside this 129-line
+  file, not a separate component module.** Extract it only if the file would pass 300 lines; it
+  won't for this change.
+- `web_ui/app.py` — **expected to need NO change.** Its `/ws/pilots` handler forwards the
+  orchestrator's `/pilots/live` response verbatim, so a new `snapshot()` key reaches the browser
+  untouched. Confirm before assuming.
+
+**Note there is no external-device UI in the React app today** — `grep -rln "extlink|external_device|source_id" web_ui/react-src/src` returns nothing. This phase builds the first live one.
 
 ---
 

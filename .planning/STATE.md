@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-05T15:00:36.290Z"
+last_updated: "2026-08-05T15:06:16.445Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 82
-  completed_plans: 46
-  percent: 59
+  completed_plans: 47
+  percent: 60
 ---
 
 # STATE: MICS Backend
@@ -28,9 +28,29 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 59%
+**Progress:** [██████░░░░] 60%
 
-### Phase 29 status (2026-08-05) — plans 01, 03, 04/8 executed
+### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05/8 executed
+
+**Plan 05 executed (2026-08-05):** CANVAS-01/02/03/04/13 delivered — the custom `TransitionEdge`
+react-flow edge component that replaces default straight-line edges, consuming plan 29-02's
+`edgeGeometry.mts` and plan 29-03's `fdaLayout.mts` `columnRanks` with zero geometry maths
+reimplemented (`grep -n "Math\."` on the new file returns nothing). Task 1 added
+`TransitionEdge.tsx` (78 lines): branches on `geometry.kind` (`pair`/`self`/`back`), guards
+`Number.isFinite` on all four coordinates and returns `null` rather than emit a `NaN` SVG path
+(the handle-less initial-state edge case), and falls back to a `DEFAULT_GEOMETRY` constant for a
+stale edge missing `data.geometry`. Task 2 rewrote `fdaToEdges` in `TaskEditor.tsx` to compute
+`columnRanks(...)` then `assignEdgeGeometry(transitions, ranks)`, storing `geometry[i]` on each
+edge's `data`; added `edgeTypes={transition: TransitionEdge}` to `<ReactFlow>` and
+`markerEnd: EDGE_MARKER` (`MarkerType.ArrowClosed`) to every edge including `onConnect`'s
+temporary edge. Edge identity (`e-${index}`, 4 `parseInt(...replace('e-',''))` parse sites)
+confirmed untouched. `npm run test:unit` 182/182, `tsc -b` clean, `npm run build` clean,
+`TaskEditor.tsx` **745 → 763 lines** (well under the plan's ≤808 gate, 45 lines of headroom
+remain before the phase's ≤873 cap). `git diff --stat` confined to the plan's two
+`files_modified`. No deviations — both tasks' automated `<verify>` blocks passed on the first
+attempt. Visual confirmation (bowed arcs, arrowhead tangents, self-loops) deliberately deferred
+to plan 29-08's consolidated checkpoint; `docker compose up --build web_ui` not run here. See
+`29-05-SUMMARY.md`.
 
 **Plan 03 executed (2026-08-05):** CANVAS-07/08/14 delivered — the hand-rolled, dependency-free
 `fdaLayout.mts` (169 lines) that replaces `TaskEditor.tsx`'s index-grid node placement (three

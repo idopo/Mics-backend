@@ -112,6 +112,49 @@ and `CLAUDE.md` calls this file out by name under "Avoid". The layered layout al
 `TransitionEdge` component, and the layout-persistence hook each go in their own new module.
 Net change to `TaskEditor.tsx` must not increase its line count.
 
+### Locked decision 4 — Back-edge routing and orphan packing are in scope (added 2026-08-05)
+
+Added after the plans were written and verified, on the user's question "are we built to deal
+with multiple edges crossing other nodes?" The answer against the plan as it stood was no, and
+the evidence came from real definitions rather than a hypothetical:
+
+**Task definition 186 (`source_less_toolkit FDA_tes_interuuppt`)** — the graph the user named.
+BFS layout gives four single-node columns:
+
+```
+[init] ──▶ [trial_onset] ──▶ [play_led] ⇄ [rand]
+              ▲                              │
+              └──────────────────────────────┘
+                     rand → trial_onset
+```
+
+Of its 5 transitions, CANVAS-01 handles four. The fifth, `rand → trial_onset`, runs backward
+across two columns straight through `play_led` — and is **unpaired** (there is no
+`trial_onset → rand`), so the pair-grouping rule never even considers it. This is structural,
+not a tuning problem: pair offset only ever separates edges that share a node pair.
+
+→ **CANVAS-13.** Detect a backward edge (target column strictly left of source column) and bow
+it clear of the intervening band on one consistent side, magnitude scaled to columns spanned.
+A backward edge spanning one column stays on the CANVAS-01 pair path — it is adjacent and has
+nothing to clear.
+
+**Task definitions 172 / 161 / 155** — 14, 11, and 11 states respectively, with only **3**
+appearing in any transition. CANVAS-07's "unreachable states go in a trailing column" would
+render an 11-node vertical stack beside a 3-node graph. These are toolkit states appended by
+the sync effect (`TaskEditor.tsx:268-300`) that were never wired into the FDA.
+
+→ **CANVAS-14.** Unreachable states wrap into a grid block rather than one unbounded column.
+
+Both land as additional cases in `edgeGeometry.mts` (29-02) and `fdaLayout.mts` (29-03) — the
+modules those plans already create. No new architecture, no new dependency; locked decisions
+1–3 are untouched.
+
+**Also noted, deliberately accepted:** for a linear chain every column holds one node, so all
+nodes sit at y=0 — the flat row the user originally objected to. For a chain that *is* the
+correct reading; the objection was really that the old index grid produced a row that carried
+no meaning. What made the flat row unreadable here was the back-edges crossing it, which is
+what CANVAS-13 fixes.
+
 ### Claude's Discretion
 
 - Exact offset geometry (curvature, px separation per index, label stagger fractions) — tune
@@ -151,8 +194,11 @@ Net change to `TaskEditor.tsx` must not increase its line count.
   offset curves prove insufficient on denser graphs).
 - Dagre or ELK layout with crossing minimisation — revisit if FDA graphs grow past what the
   simple layered algorithm arranges cleanly.
-- Edge routing that avoids passing *through* unrelated nodes. The offset fixes pair overlap,
-  not global obstacle avoidance.
+- ~~Edge routing that avoids passing *through* unrelated nodes.~~ **Partially pulled into scope
+  2026-08-05 — see "Locked decision 4" below.** The *backward-edge* case (CANVAS-13) is now in
+  scope because real data showed it is not an edge case. What remains deferred is general
+  obstacle avoidance: a *forward* edge spanning several columns can still pass near a node in
+  between, and nothing routes around arbitrary geometry after the user drags nodes manually.
 - Per-user layouts. `ui_layout` is one shared arrangement per task definition, matching how the
   lab shares one account.
 

@@ -1067,7 +1067,7 @@ agent-driven against ES and the OE recording.
 
 Pure UI/UX. No change to FDA semantics, validation, or anything sent to the Pi.
 
-**Requirements**: CANVAS-01 through CANVAS-12
+**Requirements**: CANVAS-01 through CANVAS-14
 **Depends on:** Phase 12 (FDA state builder), Phase 16 (recursive condition tree — supplies the edge labels)
 **Plans:** 8 plans in 5 waves
 

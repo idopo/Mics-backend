@@ -216,10 +216,43 @@ no Phase 26 plan mentioned the hook at all. Fixed in 26-10 / 26-13 / 26-VALIDATI
   unreachable host** — the check that actually proves the poll is off the shared IOLoop — and that
   the construction rule holds, with an explicit repin-to-good-version afterward.
 
-⚠ **Phase 26's VERIFICATION PASSED verdict is now partly stale** — 26-10, 26-13 and 26-VALIDATION.md
-were edited after it. The edits are additive and localized to the Phase 18 seam, so a full re-plan
-is not warranted; re-run the plan-checker on 26 before `/gsd:execute-phase 26`, or verify at execute
-time. Phase 26 is blocked on Phase 18 regardless, so there is no rush.
+**Phase 26 re-verified 2026-08-05 after those edits.** The checker returned ISSUES FOUND — **2
+blockers, both introduced by the `c1d5629` edit itself**, which is exactly what a re-verification is
+for:
+
+1. **The new `liveness_hook` spec contradicted a locked CONTEXT decision.** `c1d5629` specified the
+   hook as "True if `get_status` returns a dict" — pure reachability. But `26-CONTEXT.md` locks
+   *"Recording stops mid-run → log, flip `alive`, and surface prominently"*, and after the edit
+   `liveness_hook` was the ONLY base-class mechanism a lib had for that. A box that answers but has
+   dropped out of RECORD would have read `alive=true` forever, silently dropping a locked decision
+   with no test failing. **Fixed:** the predicate is composite — reachable AND, while a run is
+   active, still in `RECORD`.
+2. **The mandated bounded HTTP timeout had nowhere to live.** `c1d5629` required a client timeout
+   "comfortably under the poll interval", but neither client plan shipped a factory taking one —
+   `DEFAULT_TIMEOUT_S = 5.0` is the only knob, and at the canonical `stale_ms: 3000` the poll is
+   every 1.5 s, so the default is 3.3× the interval: the exact stacking the new text warned about.
+   Worse, the plan that would have to supply it (26-07) executes a wave *earlier* than 26-10, so the
+   executor's only outs were a private helper or a hand-rolled transport. **Fixed:** `make_client(timeout_s)`
+   added to 26-07/26-06 (mirrored in the 26-01/26-02 contracts), and `stale_ms` + `liveness_timeout_s`
+   are now documented as a **pair** with a stated invariant (`liveness_timeout_s < stale_ms / 2000`),
+   defaulting to `6000` / `2.0` rather than inheriting Phase 18's canonical `3000`.
+
+**The composite predicate lives in `oc.liveness_ok(status, run_active)`, not in the seeded lib** —
+`api/seed_libs/openephys.py` imports `ExternalHardware` and therefore `autopilot`, so nothing in it
+is unit-testable on the dev host. Factoring the decision into the `autopilot`-free client (same
+family as `decide_start` / `is_already_recording`) is what makes the locked mid-run rule provable by
+an agent instead of only at the rig. 26-02 pins four cases (`-k liveness_ok`); a validation row was
+added, since before this the decision was proven by nothing.
+
+Also fixed: 26-13's resume-signal still said "nine checks" while the gate needs ten (a blocking
+human gate that under-counts can be satisfied with step 4a never run); the new AST guard matched the
+*first* class in the file rather than `OpenEphys` by name; `26-11`'s device-neutrality check used
+`grep -c`, which exits 1 on zero matches — the desired result — aborting its `&&` chain before
+`docker compose up`; `is_ready()` is now named directly and added to 18-10-SUMMARY's mandatory
+contract list, so 26-10's pointer to it resolves.
+
+⚠ **Phase 26 has NOT been re-checked since these fixes** — the checker ran against the pre-fix state.
+Re-run it before `/gsd:execute-phase 26`. Phase 26 is blocked on Phase 18 regardless.
 
 **Gap fixed 2026-08-03 — `role: "none"` (control-only, no inbound transport).** Phase 26 planning
 exposed that two transport roles were not enough. The plans already handled a class with zero

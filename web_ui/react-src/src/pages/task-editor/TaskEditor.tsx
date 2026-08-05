@@ -20,126 +20,20 @@ import { getTaskDefinition, updateTaskDefinition } from '../../api/task-definiti
 import { getToolkitsByName } from '../../api/toolkits'
 import { getHwLibVersions } from '../../api/hardware_libs'
 import { getHardwareModule } from '../../api/hardware_modules'
-import type { FdaJson, FdaTransition, FdaCondition, FdaOperand, FdaState, ToolkitRead, HardwareModule, ConditionGroup, ConditionNode, FdaTriggerAssignment } from '../../types'
+import type { FdaJson, FdaTransition, FdaState, ToolkitRead, HardwareModule, ConditionNode } from '../../types'
 import { isConditionBranch } from '../../types'
 import StateNode from '../../components/StateNode'
-import { operandLabel } from '../../components/operandTypes.mts'
 import { ConditionGroupsEditor } from '../../components/ConditionGroupsEditor'
 import StateBodyPanel from '../../components/StateBodyPanel'
 import TriggerAssignmentPanel, { isCompleteTrigger, isCompleteAction } from '../../components/TriggerAssignmentPanel'
 import { internalVariableNames } from '../../components/internalVariables.mts'
 import VariablesPanel from '../../components/VariablesPanel'
 import HwLibVersionModal from './HwLibVersionModal'
+import CanvasContextMenu from './CanvasContextMenu'
+import { condLabel } from '../../components/transitionLabel.mts'
+import { normaliseFda, parseStateWarnings } from '../../components/fdaNormalise.mts'
 
 const nodeTypes = { stateNode: StateNode }
-
-// Normalise a stored transition to v2 format (handles legacy from_state/next_state/condition)
-function normaliseTransition(t: Record<string, unknown>): FdaTransition {
-  const from: string = (t.from ?? t.from_state ?? '') as string
-  const to: string   = (t.to   ?? t.next_state  ?? '') as string
-
-  // Already has condition_tree — use as-is (canonical Phase 16+ format)
-  if (t.condition_tree !== undefined) {
-    return { from, to, condition_tree: t.condition_tree as ConditionNode, description: t.description as string | undefined }
-  }
-
-  // Migrate condition_groups (DNF) → OR-of-AND tree
-  const groups = t.condition_groups as ConditionGroup[] | undefined
-  if (groups && groups.length > 0) {
-    // Build OR-of-AND tree
-    const andNodes = groups
-      .filter(g => g.conditions.length > 0)
-      .map(g =>
-        g.conditions.length === 1
-          ? g.conditions[0]
-          : ({ op: 'AND' as const, children: g.conditions })
-      )
-    const tree: ConditionNode | null =
-      andNodes.length === 0 ? null :
-      andNodes.length === 1 ? andNodes[0] :
-      { op: 'OR', children: andNodes }
-    return { from, to, condition_tree: tree ?? undefined, description: t.description as string | undefined }
-  }
-
-  // Migrate legacy conditions[] → single AND-leaf (or null if empty)
-  let legacyConditions: FdaCondition[] = (t.conditions ?? []) as FdaCondition[]
-  if (legacyConditions.length === 0 && t.condition) {
-    const c = t.condition as Record<string, unknown>
-    if ('left' in c) {
-      legacyConditions = [c as unknown as FdaCondition]
-    } else {
-      legacyConditions = [{ left: { view: (c.view ?? '') as string }, op: (c.op ?? '==') as FdaCondition['op'], right: (c.rhs ?? 0) as FdaOperand }]
-    }
-  }
-  const tree: ConditionNode | undefined =
-    legacyConditions.length === 0 ? undefined :
-    legacyConditions.length === 1 ? legacyConditions[0] :
-    { op: 'AND', children: legacyConditions }
-
-  return { from, to, condition_tree: tree, description: t.description as string | undefined }
-}
-
-function condLabel(t: FdaTransition): string {
-  const tree = t.condition_tree
-  if (!tree) return '(unconditional)'
-  return renderTreeLabel(tree, null)
-}
-
-function renderTreeLabel(node: ConditionNode, parentOp: 'AND' | 'OR' | null): string {
-  if (!isConditionBranch(node)) {
-    // Leaf: render as "left op right"
-    return `${operandLabel(node.left)} ${node.op} ${operandLabel(node.right)}`
-  }
-  const childLabels = node.children.map(c => renderTreeLabel(c, node.op))
-  const sep = node.op === 'AND' ? ' ∧ ' : ' ∨ '
-  const joined = childLabels.join(sep)
-  // Add parens when this node's op has lower precedence than parent's op
-  // OR inside AND needs parens: (A ∨ B) ∧ C
-  const needsParens = parentOp !== null && (
-    (node.op === 'OR' && parentOp === 'AND') ||
-    (node.op === 'AND' && parentOp === 'OR')
-  )
-  return needsParens ? `(${joined})` : joined
-}
-
-
-function normaliseFda(fdaJson: FdaJson): FdaJson {
-  return {
-    ...fdaJson,
-    transitions: (fdaJson.transitions ?? []).map(t => normaliseTransition(t as unknown as Record<string, unknown>)),
-    trigger_assignments: (fdaJson.trigger_assignments ?? []).map(normaliseTriggerAssignment),
-    variables: fdaJson.variables ?? {},
-  }
-}
-
-/**
- * Heal a trigger assignment saved before the handler enum was removed.
- *
- * Legacy rows (e.g. task definitions 181 and 185) carry `handler` and no `actions`
- * at all, so rendering `a.actions.length` throws and the whole editor fails to mount.
- * `actions` is required in the current schema, so default it and drop the dead keys.
- */
-function normaliseTriggerAssignment(a: FdaTriggerAssignment): FdaTriggerAssignment {
-  const { handler: _handler, config: _config, ...rest } =
-    a as FdaTriggerAssignment & { handler?: unknown; config?: unknown }
-  return {
-    ...rest,
-    trigger_name: rest.trigger_name ?? '',
-    actions: Array.isArray(rest.actions) ? rest.actions : [],
-  }
-}
-
-function parseStateWarnings(validationMessage: string | null | undefined): Record<string, string> {
-  if (!validationMessage) return {}
-  const result: Record<string, string> = {}
-  for (const line of validationMessage.split('\n')) {
-    const m = line.match(/^State '([^']+)': (.+)$/)
-    if (m) {
-      result[m[1]] = result[m[1]] ? `${result[m[1]]}\n${m[2]}` : m[2]
-    }
-  }
-  return result
-}
 
 function fdaToNodes(fdaJson: FdaJson, toolkit: ToolkitRead | null, stateWarnings: Record<string, string>): Node[] {
   return Object.entries(fdaJson.states ?? {}).map(([name, state], i) => ({
@@ -677,36 +571,14 @@ export default function TaskEditor() {
               <MiniMap nodeColor={() => '#2563eb'} style={{ background: '#1e2130' }} />
             </ReactFlow>
             {ctxMenu && (
-              <div
-                style={{
-                  position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
-                  background: 'var(--panel)', border: '1px solid var(--border)',
-                  borderRadius: 6, padding: '4px 0', zIndex: 1000,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                }}
-                onMouseLeave={() => setCtxMenu(null)}
-              >
-                <button
-                  style={{
-                    display: 'block', width: '100%', padding: '6px 14px',
-                    background: 'none', border: 'none', color: 'var(--text)',
-                    cursor: 'pointer', textAlign: 'left', fontSize: 13,
-                  }}
-                  onClick={() => { setInitialState(ctxMenu.nodeId); setCtxMenu(null) }}
-                >
-                  Set as Initial State
-                </button>
-                <button
-                  style={{
-                    display: 'block', width: '100%', padding: '6px 14px',
-                    background: 'none', border: 'none', color: '#f87171',
-                    cursor: 'pointer', textAlign: 'left', fontSize: 13,
-                  }}
-                  onClick={() => { deleteState(ctxMenu.nodeId); setCtxMenu(null) }}
-                >
-                  Delete State
-                </button>
-              </div>
+              <CanvasContextMenu
+                x={ctxMenu.x} y={ctxMenu.y}
+                onClose={() => setCtxMenu(null)}
+                items={[
+                  { label: 'Set as Initial State', onClick: () => setInitialState(ctxMenu.nodeId) },
+                  { label: 'Delete State', danger: true, onClick: () => deleteState(ctxMenu.nodeId) },
+                ]}
+              />
             )}
             </>
           )}

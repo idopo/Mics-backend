@@ -604,6 +604,9 @@ export default function TaskEditor() {
                 e.preventDefault()
                 setCtxMenu({ nodeId: node.id, x: e.clientX, y: e.clientY })
               }}
+              onNodeDragStop={(_e, node, dragged) =>
+                layout.record((dragged.length ? dragged : [node]).map(n => ({ id: n.id, position: n.position })))
+              }
               fitView
             >
               <Background color="#1e2130" gap={20} />

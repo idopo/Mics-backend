@@ -186,13 +186,40 @@ read-only inspection of the local mirror permitted.
 - `liveness_hook` must be declared at **class level**; an instance-level assignment is invisible to
   `validate_role_liveness` and raises at construction (fails closed, but confusingly).
 
-**Downstream obligation created for Phase 26 — not yet met.** `26-13-PLAN.md:134` keys OE readiness
-on `on_run_start`, and no Phase 26 plan mentions `liveness_hook` — but a `role: "none"` module
-without one now **fails at construction**. One line in the OE lib fixes it; touch 26-10/26-13 when
-18 lands. `26-10-PLAN.md:86` also still guesses `bind(ioloop)` against the shipped
-`bind(ioloop, view)`. `18-10-SUMMARY.md` is now an explicit downstream contract recording
-`bind(ioloop, view)`, `_egress` + enqueue semantics, `liveness_hook`, the `@decoder` signature, and
-Tracker naming — 26-10 already says it will read that summary.
+**Downstream obligation created for Phase 26 — CLOSED 2026-08-05.** Phase 18's new construction rule
+meant a `role: "none"` module without a class-level `liveness_hook` would fail at construction, and
+no Phase 26 plan mentioned the hook at all. Fixed in 26-10 / 26-13 / 26-VALIDATION.md:
+
+- **26-10 `<interfaces>`** — corrected `bind(ioloop)` → **`bind(ioloop, view)`**, added
+  `liveness_hook = None` to the consumed surface, and spelled out the construction rule plus the
+  class-level-vs-instance trap (`validate_role_liveness` reads `type(self)`, so a hook assigned in
+  `__init__` is invisible and raises confusingly). Also pinned that `alive` has one writer in the
+  base (`_recompute_alive`) — this lib must never write the Tracker directly.
+- **26-10 Task 1** — `liveness_hook(self, last_msg_ts_ms, now_ms, stale_ms)` is now a specified,
+  mandatory class-level method: one `oc.get_status(...)` call, True on a status dict, False on any
+  error, never raises, all three timestamp args deliberately ignored (they exist for the
+  data-arrival default a socketless device can't use). **Requires a bounded client timeout** —
+  `LivenessPoller.stop()` uses a bounded join, so an untimed GET against an unreachable host
+  outlives `release()` and stacks at the `stale_ms / 2` poll rate. The vague "the readiness hook
+  (whatever the shipped base class names it)" line now states explicitly that readiness ≠ liveness:
+  `liveness_hook` answers *is the box reachable*, readiness answers *has recording started*.
+- **26-10 Task 1 verify** — AST check extended to require `liveness_hook` **in the class body**.
+- **26-10 Task 2** — documents the hand-entered `pilot_hardware_config.config` shape in the seeded
+  lib's module docstring (the hardware-libs UI renders it), including that `role: "none"` is
+  mandatory with no default, and why `host` is still required with no inbound socket (egress target
+  + device-lease key). New fifth seeding test asserting the class-level hook on the **stored**
+  source, so a drifted seed is caught in CI rather than on the rig.
+- **26-13 step 4a** (new rig check, count 9 → 10) — proves on real hardware that liveness and
+  readiness are distinct (box on but IDLE ⇒ `alive=true`, not ready), that the outbound poll flips
+  `alive` when the box is powered off while the behavioural session keeps running (EXTLINK-07: loss
+  of liveness is never automatically fatal), that **STOP stays responsive while the poll hits an
+  unreachable host** — the check that actually proves the poll is off the shared IOLoop — and that
+  the construction rule holds, with an explicit repin-to-good-version afterward.
+
+⚠ **Phase 26's VERIFICATION PASSED verdict is now partly stale** — 26-10, 26-13 and 26-VALIDATION.md
+were edited after it. The edits are additive and localized to the Phase 18 seam, so a full re-plan
+is not warranted; re-run the plan-checker on 26 before `/gsd:execute-phase 26`, or verify at execute
+time. Phase 26 is blocked on Phase 18 regardless, so there is no rush.
 
 **Gap fixed 2026-08-03 — `role: "none"` (control-only, no inbound transport).** Phase 26 planning
 exposed that two transport roles were not enough. The plans already handled a class with zero

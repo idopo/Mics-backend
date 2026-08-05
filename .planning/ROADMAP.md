@@ -809,7 +809,11 @@ lifecycle hooks, device lease, control-only zero-signal modules). Phase 24 (`har
 markers are dispatched as ordinary state/trigger actions, so no new action vocabulary). Phase 17
 (free-form `pilot_hardware_config`). Phase 13 (preflight issue system).
 
-**Plans:** 13 plans in 4 waves
+**Plans:** 13 plans in 4 waves — plan-checker PASSED 2026-08-03. ⚠ **26-10, 26-13 and
+26-VALIDATION.md were edited 2026-08-05** to meet Phase 18's new `role: "none"` rule (a control-only
+module must declare a class-level `liveness_hook` or it raises at construction), so that verdict is
+partly stale. The edits are additive and confined to the Phase 18 seam — re-run the checker before
+`/gsd:execute-phase 26`, or verify at execute time. Blocked on Phase 18 regardless.
 
 Plans:
 - [ ] 26-01-PLAN.md — Wave 0 backend test contracts (artifact path/record, OE client, migration, preflight kinds)

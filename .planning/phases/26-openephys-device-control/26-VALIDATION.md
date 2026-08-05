@@ -90,7 +90,8 @@ claimed by some task.
 | EPHYS-05 | Already-recording surfaces its own distinct preflight issue | unit (backend) | `... -k already_recording_issue` | ❌ W0 (extend) |
 | EPHYS-05 | New issue kinds are registered in `PREFLIGHT_ISSUE_KINDS` **and** mirrored in `HardwareCheckModal.tsx`'s `PreflightIssue` union | unit (backend) + read | `... -k issue_kinds_registered` | ❌ W0 (extend) |
 | EPHYS-01/03 | Backend force-stop: reconciliation detecting an unclean run end issues the IDLE call **and** releases the lease | unit (backend, mocked HTTP) | `... -k force_stop` | ❌ W0 |
-| EPHYS-01–05 | Consolidated rig checkpoint (see below) | manual + rig | USER-RUN | N/A |
+| EPHYS-01/02 | **`role: "none"` liveness contract (Phase 18 EXTLINK-07/18).** `OpenEphys` declares a class-level `liveness_hook`; absent, the module raises at construction rather than hanging the readiness gate. Asserted structurally on the seeded lib source | unit (backend, AST) | `docker compose exec api python -m pytest -q api/tests/test_seed_openephys.py -k liveness_hook` | ❌ W0 |
+| EPHYS-01–05 | Consolidated rig checkpoint (see below), **including step 4a** — liveness vs readiness are genuinely distinct on real hardware, the outbound status poll flips `alive` when the box is powered off, STOP stays responsive while the poll hits an unreachable host (proving the poll is off the shared IOLoop), and the construction rule holds | manual + rig | USER-RUN | N/A |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

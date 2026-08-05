@@ -222,7 +222,8 @@ def validate_compute_variables(
     Reference half: every `{"view": name}` / `{"flag": name}` condition operand (transitions,
     `wait_condition`, `if`-action conditions — all reached via `scan_fda_condition_operands`)
     must name something resolvable: a toolkit flag, a declared variable, `trial_counter`, a
-    module name, or a detector view key. `{"view_detector": ...}` operands are plan 25-01's own
+    module name, a detector view key, or (CMP-25) a toolkit's semantic hardware name — `view`
+    reads a strict superset of `flag`. `{"view_detector": ...}` operands are plan 25-01's own
     shape and are skipped entirely (matched neither key below); literal operands are ignored.
     """
     if toolkit is None:
@@ -231,9 +232,10 @@ def validate_compute_variables(
     module_names = module_names or set()
     detector_keys = detector_keys or set()
 
+    semantic_hw = set((getattr(toolkit, "semantic_hardware", None) or {}).keys())
+
     variables = fda_json.get("variables") or {}
     if isinstance(variables, dict):
-        semantic_hw = set((getattr(toolkit, "semantic_hardware", None) or {}).keys())
         for name in variables:
             if name in semantic_hw:
                 errors.append(f"variable '{name}' collides with a toolkit hardware name")
@@ -242,7 +244,12 @@ def validate_compute_variables(
             elif name in detector_keys:
                 errors.append(f"variable '{name}' collides with a detector-derived view key")
 
-    valid_names = _valid_flag_names(fda_json, toolkit) | module_names | detector_keys
+    # CMP-25: a condition operand READS, and `view` reads a superset of `flag` — toolkit
+    # hardware included. Unioned here rather than inside _valid_flag_names because that helper
+    # also gates flag-action refs, output slots and key_template tokens (via :96 ->
+    # _validate_action), all of which resolve against self.flags on the Pi. A hardware name is
+    # not in self.flags; widening the helper would let three invalid constructs save cleanly.
+    valid_names = _valid_flag_names(fda_json, toolkit) | module_names | detector_keys | semantic_hw
     for entry in scan_fda_condition_operands(fda_json):
         operand = entry["operand"]
         if not isinstance(operand, dict):

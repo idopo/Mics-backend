@@ -593,6 +593,93 @@ def test_literal_operand_ignored():
 
 
 # ---------------------------------------------------------------------------
+# validate_compute_variables: CMP-25 — semantic hardware as a condition-operand read
+# (Plan 23-12 Task 1). Union at the validate_compute_variables call site only — see
+# <backend_decision> in 23-12-PLAN.md. Cases pinned so `-k semantic_hardware` selects all four.
+# ---------------------------------------------------------------------------
+
+def test_semantic_hardware_is_a_valid_condition_operand():
+    toolkit = make_toolkit(
+        semantic_hardware={"LED0": {}, "VALVE0": {}},
+        flags={"hit_counter": {}},
+        is_backend_authored=False,
+    )
+    fda = {
+        "transitions": [
+            {"condition_tree": {"left": {"view": "LED0"}, "op": "==", "right": 1}},
+        ],
+    }
+    errors = validate_compute_variables(fda, toolkit, module_names=set(), detector_keys=set())
+    assert errors == []
+
+
+def test_semantic_hardware_valid_inside_an_if_action_condition():
+    toolkit = make_toolkit(
+        semantic_hardware={"LED0": {}, "VALVE0": {}},
+        flags={"hit_counter": {}},
+        is_backend_authored=False,
+    )
+    fda = {
+        "states": {
+            "idle": {
+                "entry_actions": [
+                    {
+                        "type": "if",
+                        "condition": {"left": {"view": "VALVE0"}, "op": "==", "right": 1},
+                        "then": [],
+                        "else": [],
+                    },
+                ],
+            },
+        },
+    }
+    errors = validate_compute_variables(fda, toolkit, module_names=set(), detector_keys=set())
+    assert errors == []
+
+
+def test_semantic_hardware_is_still_not_a_valid_flag_action_ref():
+    """Regression guard on <backend_decision>: fails the moment _valid_flag_names is widened
+    instead of unioning at the validate_compute_variables call site."""
+    toolkit = make_toolkit(
+        semantic_hardware={"LED0": {}, "VALVE0": {}},
+        flags={"hit_counter": {}},
+        is_backend_authored=False,
+    )
+    fda = {
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [{"type": "flag", "ref": "LED0", "method": "set", "args": [1]}],
+            }
+        ],
+    }
+    errors = validate_trigger_assignments(fda, toolkit)
+    assert any("LED0" in e and "not declared" in e for e in errors)
+
+
+def test_unknown_operand_still_rejected_after_semantic_hardware_union():
+    toolkit = make_toolkit(
+        semantic_hardware={"LED0": {}, "VALVE0": {}},
+        flags={"hit_counter": {}},
+        is_backend_authored=False,
+    )
+    errors = validate_compute_variables(
+        _condition_fda({"view": "not_a_thing"}), toolkit, module_names=set(), detector_keys=set()
+    )
+    assert any("not_a_thing" in e for e in errors)
+
+
+def test_backend_authored_toolkit_unaffected_by_semantic_hardware_union():
+    """A backend-authored toolkit (empty semantic_hardware, names supplied via module_names)
+    already worked before this change and must keep working."""
+    toolkit = make_toolkit(is_backend_authored=True)
+    errors = validate_compute_variables(
+        _condition_fda({"view": "Right_LED"}), toolkit, module_names={"Right_LED"}, detector_keys=set()
+    )
+    assert errors == []
+
+
+# ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
 

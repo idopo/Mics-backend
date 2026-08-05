@@ -5,12 +5,13 @@ import {
   type ArgMode,
   detectMode,
   annotationToInputKind,
+  visibleArgModes,
   getParamKeys,
   MODE_COLORS,
   MODE_LABELS,
   MODE_TOOLTIPS,
-  ALL_MODES,
 } from './argModes.mts'
+import { buildViewOptions, isKnownViewOption } from './detectorOptions.mts'
 
 interface Props {
   value: unknown
@@ -29,12 +30,19 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
   const flagKeys = [...new Set([...Object.keys(toolkit?.flags ?? {}), ...(variableNames ?? [])])]
   const inputKind = annotationToInputKind(annotation)
 
-  // Defensive: if the stored value is already a trigger operand, keep offering the trigger
+  // The arg picker offers plain view keys only — no detector channels (the Pi's _resolve_arg
+  // has no view_detector branch) and no hwModuleNames (would require threading it through
+  // every action-fields component; the free-text fallback covers that case).
+  const viewGroups = buildViewOptions(Object.keys(toolkit?.semantic_hardware ?? {}), flagKeys, [])
+  const viewKeys = viewGroups.flatMap(g => g.items.map(item => item.value))
+
+  // Defensive: if the stored value is already a trigger (or flag) operand, keep offering that
   // pill even when this editor wasn't opted into it (e.g. a state body re-opened after edits
   // made inside a trigger's action list) — never silently corrupt the stored value.
-  const visibleModes = allowTriggerContext || mode === 'trigger' ? ALL_MODES : ALL_MODES.filter(m => m !== 'trigger')
+  const visibleModes = visibleArgModes(mode, !!allowTriggerContext)
 
   const switchMode = (next: ArgMode) => {
+    if (next === mode) return   // re-clicking the active pill must not re-seed and destroy the stored key
     if (next === 'literal') {
       if (inputKind === 'bool') onChange(false)
       else if (inputKind === 'number') onChange(0)
@@ -42,6 +50,8 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
       else onChange('')
     } else if (next === 'param') {
       onChange({ param: paramKeys[0] ?? '' })
+    } else if (next === 'view') {
+      onChange({ view: viewKeys[0] ?? '' })
     } else if (next === 'flag') {
       onChange({ flag: flagKeys[0] ?? '' })
     } else {
@@ -131,6 +141,36 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
           />
         )
       )}
+
+      {mode === 'view' && (viewGroups.length > 0 ? (
+        <select
+          value={(value as { view: string }).view ?? ''}
+          onChange={e => onChange({ view: e.target.value })}
+          style={{ width: '100%' }}
+        >
+          {/* Keep-current-value escape, same as ConditionBuilder's: a stored key the backend
+              cannot model must survive a round trip instead of being silently rewritten. */}
+          {!isKnownViewOption((value as { view: string }).view ?? '', viewGroups) && (value as { view: string }).view && (
+            <option value={(value as { view: string }).view}>{(value as { view: string }).view} (unknown)</option>
+          )}
+          <option value="">— pick —</option>
+          {viewGroups.map(group => (
+            <optgroup key={group.label} label={group.label}>
+              {group.items.map(item => (
+                <option key={item.value} value={item.value} title={item.title}>{item.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={(value as { view: string }).view ?? ''}
+          onChange={e => onChange({ view: e.target.value })}
+          placeholder="view key"
+          style={{ width: '100%' }}
+        />
+      ))}
 
       {mode === 'flag' && (
         flagKeys.length > 0 ? (

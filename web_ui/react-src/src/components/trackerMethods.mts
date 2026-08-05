@@ -8,10 +8,11 @@ export interface TrackerMethod {
 }
 
 export const TRACKER_METHODS: Record<string, TrackerMethod[]> = {
+  // decrement/reset removed 2026-08-05 (CMP-22): neither exists on any Tracker.py class —
+  // picking one saved cleanly and raised AttributeError on the rig. Zero of 153 task
+  // definitions used either at the time of removal (verified against the dev DB).
   Counter_Tracker: [
     { name: 'increment', hasArg: false, description: 'Add 1 to this counter' },
-    { name: 'decrement', hasArg: false, description: 'Subtract 1 from this counter' },
-    { name: 'reset',     hasArg: false, description: 'Reset to its starting value' },
     { name: 'set',       hasArg: true,  description: 'Set to an exact value' },
   ],
   Boolean_Tracker: [

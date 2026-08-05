@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  TRACKER_METHODS,
   getTrackerMethods,
   defaultArgForTrackerType,
   trackerTypeForRef,
@@ -43,4 +44,23 @@ test('trackerTypeForRef: a name both a flag and a variable resolves to the decla
     trackerTypeForRef('my_var', { my_var: { tracker_type: 'Boolean_Tracker' } }, ['my_var']),
     'Boolean_Tracker',
   )
+})
+
+test('TRACKER_METHODS.Counter_Tracker is increment + set only', () => {
+  assert.deepEqual(getTrackerMethods('Counter_Tracker').map(m => m.name), ['increment', 'set'])
+})
+
+test('no tracker method table anywhere offers decrement or reset', () => {
+  for (const methods of Object.values(TRACKER_METHODS)) {
+    for (const m of methods) {
+      assert.notEqual(m.name, 'decrement')
+      assert.notEqual(m.name, 'reset')
+    }
+  }
+})
+
+test('a declared variable resolves to the Tracker set, not Counter_Tracker', () => {
+  const methods = getTrackerMethods(trackerTypeForRef('my_var', {}, ['my_var']))
+  assert.deepEqual(methods.map(m => m.name), ['increment', 'set'])
+  assert.notDeepEqual(methods, getTrackerMethods('Counter_Tracker'))
 })

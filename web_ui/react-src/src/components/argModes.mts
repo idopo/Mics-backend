@@ -3,7 +3,7 @@
 import type { ToolkitRead } from '../types/index.ts'
 import { isStructuredAnnotation } from './computeArgs.mts'
 
-export type ArgMode = 'literal' | 'param' | 'flag' | 'trigger'
+export type ArgMode = 'literal' | 'param' | 'view' | 'flag' | 'trigger'
 
 export type LiteralInputKind = 'number' | 'bool' | 'text' | 'structured'
 
@@ -29,6 +29,7 @@ export function annotationToInputKind(ann: string | null | undefined): LiteralIn
 export function detectMode(value: unknown): ArgMode {
   if (value !== null && typeof value === 'object') {
     if ('param' in (value as object)) return 'param'
+    if ('view' in (value as object)) return 'view'
     if ('flag' in (value as object)) return 'flag'
     if ('trigger' in (value as object)) return 'trigger'
   }
@@ -39,6 +40,8 @@ export function detectMode(value: unknown): ArgMode {
 export const MODE_COLORS: Record<ArgMode, string> = {
   literal: '#6b7280',
   param: '#22c55e',
+  // 'view' reuses the view ACTION's pink from ActionEditor's TYPE_COLORS — same concept, same colour.
+  view: '#ec4899',
   flag: '#f59e0b',
   trigger: '#38bdf8',
 }
@@ -46,20 +49,26 @@ export const MODE_COLORS: Record<ArgMode, string> = {
 export const MODE_LABELS: Record<ArgMode, string> = {
   literal: '# Literal',
   param: '$ Param',
-  flag: '! Flag',
+  view: '~ View',
+  flag: '! Flag (legacy)',
   trigger: '@ Trigger',
 }
 
 export const MODE_TOOLTIPS: Record<ArgMode, string> = {
   literal: 'A fixed value baked into the FDA. Does not change between runs.',
   param: 'Resolved from a protocol parameter at runtime. Set in the protocol step config.',
-  flag: "Resolved from a flag's current value at runtime. Changes during the session.",
+  view: 'Read a value from the live view at run time — toolkit flags, declared variables, and hardware state. The read namespace.',
+  flag: 'Legacy read form, kept so this saved argument round-trips. Switch to View — it reads the same value.',
   trigger: 'The level or timestamp of the hardware event that fired this trigger. Only available inside a trigger action list.',
 }
 
-export const ALL_MODES: ArgMode[] = ['literal', 'param', 'flag', 'trigger']
+/** 'flag' is escape-only — never in the base list, only appended by visibleArgModes when the
+ *  stored value is already a flag operand. */
+export const ALL_MODES: ArgMode[] = ['literal', 'param', 'view', 'trigger']
 
-/** Today's rule, lifted out of ArgInput.tsx:82. Task 3 adds the flag legacy escape. */
+/** Defensive: if the stored value is already a trigger (or flag) operand, keep offering that
+ *  pill even when this editor wasn't opted into it — never silently corrupt the stored value. */
 export function visibleArgModes(mode: ArgMode, allowTriggerContext: boolean): ArgMode[] {
-  return allowTriggerContext || mode === 'trigger' ? ALL_MODES : ALL_MODES.filter(m => m !== 'trigger')
+  const base = allowTriggerContext || mode === 'trigger' ? ALL_MODES : ALL_MODES.filter(m => m !== 'trigger')
+  return mode === 'flag' ? [...base, 'flag'] : base
 }

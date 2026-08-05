@@ -35,12 +35,6 @@ test('annotationToInputKind maps bool/number/structured/text', () => {
   assert.equal(annotationToInputKind('str'), 'text')
 })
 
-test('visibleArgModes: trigger present iff allowed or already stored', () => {
-  assert.deepEqual(visibleArgModes('literal', false), ['literal', 'param', 'flag'])
-  assert.deepEqual(visibleArgModes('literal', true), ALL_MODES)
-  assert.deepEqual(visibleArgModes('trigger', false), ALL_MODES)
-})
-
 test('getParamKeys handles array and dict params_schema shapes, and null', () => {
   assert.deepEqual(getParamKeys({ params_schema: [{ name: 'a' }, { name: 'b' }] } as never), ['a', 'b'])
   assert.deepEqual(getParamKeys({ params_schema: { a: {}, b: {} } } as never), ['a', 'b'])
@@ -54,4 +48,33 @@ test('MODE_LABELS/COLORS/TOOLTIPS have an entry for every mode', () => {
     assert.equal(typeof MODE_COLORS[m], 'string')
     assert.equal(typeof MODE_TOOLTIPS[m], 'string')
   }
+})
+
+// ── CMP-23: view argument mode + the flag legacy escape ─────────────────────
+
+test('detectMode recognises a view operand', () => {
+  assert.equal(detectMode({ view: 'x' }), 'view')
+})
+
+test('visibleArgModes: a fresh literal offers literal/param/view — no flag, no trigger', () => {
+  assert.deepEqual(visibleArgModes('literal', false), ['literal', 'param', 'view'])
+})
+
+test('visibleArgModes: with allowTriggerContext, trigger joins the list', () => {
+  assert.deepEqual(visibleArgModes('literal', true), ['literal', 'param', 'view', 'trigger'])
+})
+
+test('visibleArgModes: the trigger escape survives (mode already trigger)', () => {
+  assert.deepEqual(visibleArgModes('trigger', false), ['literal', 'param', 'view', 'trigger'])
+})
+
+test('visibleArgModes: the flag legacy pill appears only because the stored value is a flag', () => {
+  assert.deepEqual(visibleArgModes('flag', false), ['literal', 'param', 'view', 'flag'])
+  assert.deepEqual(visibleArgModes('flag', true), ['literal', 'param', 'view', 'trigger', 'flag'])
+})
+
+test('MODE_LABELS/COLORS/TOOLTIPS have a view entry', () => {
+  assert.equal(typeof MODE_LABELS.view, 'string')
+  assert.equal(typeof MODE_COLORS.view, 'string')
+  assert.equal(typeof MODE_TOOLTIPS.view, 'string')
 })

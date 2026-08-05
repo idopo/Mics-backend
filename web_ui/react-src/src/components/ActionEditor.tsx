@@ -1,16 +1,12 @@
-import { useEffect } from 'react'
 import type { FdaAction, ToolkitRead, HardwareModule, DetectorChannelGroup } from '../types'
 import ArgInput from './ArgInput'
 import IfActionEditor from './IfActionEditor'
 import HardwareActionFields from './HardwareActionFields'
 import ViewActionFields from './ViewActionFields'
 import ComputeActionFields from './ComputeActionFields'
+import FlagActionFields from './FlagActionFields'
 import OutputCapture from './OutputCapture'
-import {
-  TRACKER_METHODS,
-  getTrackerMethods,
-  defaultArgForTrackerType,
-} from './trackerMethods.mts'
+import { getTrackerMethods, defaultArgForTrackerType, trackerTypeForRef } from './trackerMethods.mts'
 
 // ── Action type metadata ────────────────────────────────────────────────────
 
@@ -122,7 +118,13 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
   const flagKeys = Object.keys(toolkit?.flags ?? {})
   // Split flags: trial counter flags vs regular flags
   const trialFlagKeys  = flagKeys.filter(k => toolkit?.flags?.[k]?.tracker_type === 'Trial_Tracker')
-  const regularFlagKeys = flagKeys.filter(k => toolkit?.flags?.[k]?.tracker_type !== 'Trial_Tracker')
+  // CMP-22: declared variables are a valid flag-write ref too — same self.flags namespace on
+  // the Pi, resolved through the 'Tracker' method set via trackerTypeForRef, never the
+  // Counter_Tracker default.
+  const regularFlagKeys = [...new Set([
+    ...flagKeys.filter(k => toolkit?.flags?.[k]?.tracker_type !== 'Trial_Tracker'),
+    ...(variableNames ?? []),
+  ])]
   const callableMethods = toolkit?.callable_methods ?? []
 
   const toolkitModules = hwModules.filter(m => toolkit?.hardware_module_ids?.includes(m.id))
@@ -151,7 +153,7 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
       onChange({ type: 'flag', ref: trialFlagKeys[0] ?? '', method: 'increment', args: [] })
     } else if (t === 'flag') {
       const firstFlag = regularFlagKeys[0] ?? ''
-      const trackerType = toolkit?.flags?.[firstFlag]?.tracker_type ?? 'Counter_Tracker'
+      const trackerType = trackerTypeForRef(firstFlag, toolkit?.flags, variableNames ?? [])
       const firstMethodDef = getTrackerMethods(trackerType)[0]
       const firstMethod = firstMethodDef?.name ?? 'increment'
       const args = firstMethodDef?.hasArg ? [defaultArgForTrackerType(trackerType)] : []
@@ -173,31 +175,6 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
       onChange({ type: t as FdaAction['type'], ref: '', args: [] })
     }
   }
-
-  function handleFlagChange(flagName: string) {
-    const trackerType = toolkit?.flags?.[flagName]?.tracker_type ?? 'Counter_Tracker'
-    const firstMethodDef = getTrackerMethods(trackerType)[0]
-    const firstMethod = firstMethodDef?.name ?? 'increment'
-    const args = firstMethodDef?.hasArg ? [defaultArgForTrackerType(trackerType)] : []
-    update({ ref: flagName, method: firstMethod, args })
-  }
-
-  // Current flag method meta (for regular flags)
-  const flagTrackerType = action.type === 'flag'
-    ? (toolkit?.flags?.[action.ref ?? '']?.tracker_type ?? 'Counter_Tracker')
-    : 'Counter_Tracker'
-  const flagMethodDefs = getTrackerMethods(flagTrackerType)
-  const currentFlagMethodDef = flagMethodDefs.find(m => m.name === action.method)
-  const flagMethodNeedsArg = currentFlagMethodDef?.hasArg ?? false
-
-  // Auto-initialize args for flag actions loaded from DB where args is empty but method needs one.
-  // The display default in ArgInput is only cosmetic; args stays [] unless we write it here.
-  useEffect(() => {
-    if (action.type !== 'flag' || uiType !== 'flag') return
-    if (!flagMethodNeedsArg || (action.args ?? []).length > 0) return
-    update({ args: [defaultArgForTrackerType(flagTrackerType)] })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [action.method, action.ref, flagMethodNeedsArg])
 
   // ── Legacy special action ────────────────────────────────────────────────
   if (action.type === 'special') {
@@ -252,93 +229,18 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
         />
       )}
 
-      {/* ── Trial counter action ─────────────────────────────────────────── */}
-      {action.type === 'flag' && uiType === 'trial' && (
-        <>
-          <div>
-            <label style={labelStyle} title="Which Trial_Tracker flag to update? increment dispatches INC_TRIAL_COUNTER to the orchestrator.">
-              Trial counter ⓘ
-            </label>
-            {trialFlagKeys.length === 1 ? (
-              <div style={{ fontSize: '12px', fontFamily: 'monospace', color: 'var(--text)' }}>
-                {trialFlagKeys[0]}
-              </div>
-            ) : trialFlagKeys.length > 1 ? (
-              <select value={action.ref || trialFlagKeys[0]} onChange={e => update({ ref: e.target.value, method: 'increment', args: [] })} style={{ width: '100%' }}>
-                {trialFlagKeys.map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
-            ) : (
-              <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} placeholder="trial flag name" style={{ width: '100%' }} />
-            )}
-          </div>
-          <div>
-            <label style={labelStyle}>Operation</label>
-            <select value={action.method ?? 'increment'} onChange={e => update({ method: e.target.value, args: [] })} style={{ width: '100%' }}>
-              {TRACKER_METHODS['Trial_Tracker'].map(m => (
-                <option key={m.name} value={m.name} title={m.description}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          {action.method === 'set' && (
-            <div>
-              <label style={labelStyle}>Value</label>
-              <ArgInput
-                value={(action.args ?? [])[0] ?? 0}
-                toolkit={toolkit}
-                annotation="int"
-                variableNames={variableNames}
-                allowTriggerContext={allowTriggerContext}
-                onChange={v => update({ args: [v] })}
-              />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── Flag action (Counter / Boolean / base Tracker — not Trial) ────── */}
-      {action.type === 'flag' && uiType === 'flag' && (
-        <>
-          <div>
-            <label style={labelStyle} title="Which counter, boolean, or value tracker to update?">Flag ⓘ</label>
-            {regularFlagKeys.length > 0 ? (
-              <select value={action.ref ?? ''} onChange={e => handleFlagChange(e.target.value)} style={{ width: '100%' }}>
-                {!regularFlagKeys.includes(action.ref ?? '') && <option value={action.ref ?? ''}>{action.ref ?? '—'}</option>}
-                {regularFlagKeys.map(k => (
-                  <option key={k} value={k}>{k} ({toolkit?.flags?.[k]?.tracker_type ?? 'Tracker'})</option>
-                ))}
-              </select>
-            ) : (
-              <input type="text" value={action.ref ?? ''} onChange={e => update({ ref: e.target.value })} style={{ width: '100%' }} />
-            )}
-          </div>
-          <div>
-            <label style={labelStyle} title={currentFlagMethodDef?.description ?? ''}>Operation ⓘ</label>
-            <select
-              value={action.method ?? flagMethodDefs[0]?.name ?? ''}
-              onChange={e => {
-                const newMethodDef = flagMethodDefs.find(m => m.name === e.target.value)
-                const args = newMethodDef?.hasArg ? [defaultArgForTrackerType(flagTrackerType)] : []
-                update({ method: e.target.value, args })
-              }}
-              style={{ width: '100%' }}
-            >
-              {flagMethodDefs.map(m => <option key={m.name} value={m.name} title={m.description}>{m.name}</option>)}
-            </select>
-          </div>
-          {flagMethodNeedsArg && (
-            <div>
-              <label style={labelStyle}>Value</label>
-              <ArgInput
-                value={(action.args ?? [])[0] ?? (flagTrackerType === 'Boolean_Tracker' ? false : 0)}
-                toolkit={toolkit}
-                annotation={flagTrackerType === 'Boolean_Tracker' ? 'bool' : null}
-                variableNames={variableNames}
-                allowTriggerContext={allowTriggerContext}
-                onChange={v => update({ args: [v] })}
-              />
-            </div>
-          )}
-        </>
+      {/* ── Trial counter / flag write action ──────────────────────────────── */}
+      {action.type === 'flag' && (uiType === 'trial' || uiType === 'flag') && (
+        <FlagActionFields
+          action={action}
+          uiType={uiType}
+          toolkit={toolkit}
+          trialFlagKeys={trialFlagKeys}
+          regularFlagKeys={regularFlagKeys}
+          variableNames={variableNames}
+          allowTriggerContext={allowTriggerContext}
+          onChange={update}
+        />
       )}
 
       {/* ── View action ──────────────────────────────────────────────────── */}

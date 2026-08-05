@@ -54,6 +54,17 @@ therefore **automated** (see map below), not manual curl steps — CANVAS-06 in 
 ("`file_hash` must not move on a layout-only PUT") is the kind of invariant that belongs in an
 assertion, not in a human's eyeballs.
 
+**Amendment (2026-08-05, after planning):** the phase gained two requirements,
+**CANVAS-13** (back-edge routing) and **CANVAS-14** (orphan packing), added from real data —
+definition 186's `rand → trial_onset` runs backward across two columns straight through
+`play_led`, and definitions 172 / 161 / 155 each carry 11+ unreachable toolkit states that
+CANVAS-07's single trailing column would render as an unbounded stack. Both land as additional
+cases in `edgeGeometry.mts` (plan 29-02) and `fdaLayout.mts` (plan 29-03), so both are largely
+**automatable** — the geometry decision is a pure function of the transition list plus the BFS
+ranking, exactly like CANVAS-01. Rows for both appear in the maps below. The manual half moves
+the walkthrough onto two named definitions (186 and 172) instead of "a definition with a
+bidirectional pair".
+
 ---
 
 ## Sampling Rate
@@ -83,10 +94,13 @@ with its actual task IDs rather than replacing the requirement mapping.
 | backend | CANVAS-05 | integration | `docker compose exec -T api python -m pytest -q tests/test_ui_layout.py` | `ADD COLUMN IF NOT EXISTS` migration + GET/PUT round-trip asserted in a new `api/tests/test_ui_layout.py`. |
 | backend | CANVAS-06 | integration | `docker compose exec -T api python -m pytest -q tests/test_ui_layout.py` | Assert `file_hash` is **unchanged** across a `ui_layout`-only PUT, and **does** change on an `fda_json` PUT. Both directions — the whole reason the column exists. |
 | backend | CANVAS-10 | integration | `docker compose exec -T api python -m pytest -q tests/test_ui_layout.py` | A layout-only PUT must succeed even when the stored `fda_json` would fail `reject_if_hard_errors`. Without a short-circuit, a drifted toolkit makes every node drag 4xx — a backend-origin CANVAS-10 violation. |
+| edge geometry | CANVAS-13 | unit | `npm run test:unit` | Back-edge classification and routing. Cases: `backSpan = ranks[from] - ranks[to]`; `>= 2` → `kind:'back'`, `=== 1` → stays `pair` (the locked boundary); unranked endpoint → never `back`; back-edges partitioned OUT of pair groups so **definition 186's `play_led ⇄ rand` offsets are byte-identical with and without `ranks`**; achieved apex clearance ≥ 70px (assert the clearance, NOT the constant — the cubic gives `0.75 × controlOffset`); `pointOnCubic(...,0.99).x < b.x` so the arrowhead enters the target's left handle pointing inward. |
+| layout | CANVAS-14 | unit | `npm run test:unit` | Orphan grid block. Named case is definition 172 (3 connected + 11 unreachable): all 14 placed; orphans occupy ≥ 2 distinct x; no orphan column holds more than `max(connectedRows, ceil(sqrt(orphanCount)))` = **4**; every orphan's x exceeds every connected state's x; zero coordinate collisions; `placeNewState` still returns a free slot around the block. |
+| layout | CANVAS-13 | unit | `npm run test:unit` | `columnRanks` is the single BFS, exported from `fdaLayout.mts` and passed into `assignEdgeGeometry` as a parameter. Assert it returns exactly `{init:0, trial_onset:1, play_led:2, rand:3}` for the 186 topology, omits unreachable states, and that `layeredLayout`'s column for every reachable state equals its `columnRanks` value — two BFS implementations could disagree and bow the curve clear of the wrong band. |
 | UI wiring | CANVAS-09 | manual | — | Pane context menu → restore → positions recomputed and persisted. |
 | UI wiring | CANVAS-10 | manual | — | Drag-persists-while-autosave-held. See negative case below. |
 | discipline | CANVAS-11 | automated | `wc -l web_ui/react-src/src/pages/task-editor/TaskEditor.tsx` | Gate: result must be **≤ 873**. Cheap, objective, and the requirement is otherwise easy to quietly violate. |
-| proof | CANVAS-12 | manual | — | Full walkthrough, below. |
+| proof | CANVAS-12 | manual | — | Full walkthrough, below — now run on definition **186**, whose 5 transitions exercise every routing case at once. |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -114,19 +128,25 @@ with its actual task IDs rather than replacing the requirement mapping.
 | Restore default layout | CANVAS-09 | Visual + interaction | Right-click empty canvas → menu appears in the same style as the node menu → "Restore default layout" → nodes snap to spaced layered arrangement → **hard-refresh → that arrangement persisted** (restore must save, not just redraw). |
 | Drag persists while autosave is held | CANVAS-10 | Requires deliberately dirty FDA state | Add a trigger assignment and leave it unnamed so the header shows `Not saved — finish or remove trigger…`. **While that hold is active**, drag a node. Hard-refresh. Node is where it was left, and the incomplete trigger was *not* saved. This is the single most important negative case in the phase — it proves layout and FDA persistence are genuinely separate paths. |
 | No FDA dirty-marking on drag | CANVAS-10 | Visual | With a clean saved FDA, drag a node → header must not flash "Unsaved…" for the drag itself. |
-| Full proof walkthrough | CANVAS-12 | End-to-end visual | Per CANVAS-12: bidirectional pair reads correctly → drag three nodes apart → hard-refresh → all three held → right-click → restore → refresh → restored arrangement held. |
+| Back-edge clears the states it spans | CANVAS-13 | Visual judgement on a curve; clearance in px is asserted in unit tests, but "does it read as a return path" is not | On definition **186**, `rand → trial_onset` must bow BELOW the row and pass clear of `play_led` — not through it, not clipping its border. Its arrowhead must arrive at `trial_onset`'s left handle pointing INTO the node, not away from it. Its condition label must be legible and not stacked on another. **Check 4 of plan 29-08's checkpoint — the only manual proof CANVAS-13 gets.** |
+| Back-edge survives a restore | CANVAS-13 | Visual | After "Restore default layout" on 186, the back-edge must again route clear of `play_led`. A failure here means the layout and the routing disagree about columns — they share one BFS by design, so it is a real defect, not cosmetic. Check 12. |
+| Orphan block is readable | CANVAS-14 | Visual — "readable" is the requirement, and it is a judgement | Open definition **172** (`bbb FDA`), right-click → "Restore default layout". The 3 connected states form a short chain; the 11 unreachable states must form a block of at most 4 per column beside it, not one 11-tall column running off-canvas. No overlap between orphans, or between an orphan and the chain. **Check 13 — the only look at CANVAS-14 anywhere in the phase.** |
+| Full proof walkthrough | CANVAS-12 | End-to-end visual | Per CANVAS-12 as amended: on definition **186**, all five transitions separately traceable with none crossing a node → drag three nodes apart → hard-refresh → all three held → right-click → restore → refresh → restored arrangement held. |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All automatable geometry (CANVAS-01, 02, 04, 07, 08) has unit coverage in `tests/*.test.mts`
+- [ ] All automatable geometry (CANVAS-01, 02, 04, 07, 08, 13, 14) has unit coverage in `tests/*.test.mts`
 - [ ] `TaskEditor.tsx` line count ≤ 873 (CANVAS-11)
 - [ ] `npm run test:unit` green — including the 84 pre-existing tests, no regressions
 - [ ] `pytest -q tests/` green — including the 352 pre-existing tests, no regressions
 - [ ] `npx tsc -b` clean
 - [ ] Every manual row above executed and recorded
 - [ ] CANVAS-10 negative case explicitly exercised, not assumed
+- [ ] CANVAS-13 back-edge check (29-08 check 4) and CANVAS-14 orphan-block check (check 13)
+      explicitly exercised — neither can be inferred from any other check
+- [ ] All THIRTEEN rows of plan 29-08's checkpoint table have a recorded result
 
 ---
 

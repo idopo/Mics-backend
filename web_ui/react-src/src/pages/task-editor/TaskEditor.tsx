@@ -35,7 +35,7 @@ import TransitionEdge from './TransitionEdge'
 import { condLabel } from '../../components/transitionLabel.mts'
 import { normaliseFda, parseStateWarnings } from '../../components/fdaNormalise.mts'
 import { assignEdgeGeometry } from '../../components/edgeGeometry.mts'
-import { columnRanks, resolvePositions, placeNewState, type XY } from '../../components/fdaLayout.mts'
+import { columnRanks, resolvePositions, placeNewState, layeredLayout, type XY } from '../../components/fdaLayout.mts'
 import { useLayoutPersistence } from './useLayoutPersistence'
 
 const nodeTypes = { stateNode: StateNode }
@@ -130,6 +130,7 @@ export default function TaskEditor() {
   const [addingState, setAddingState] = useState(false)
   const [newStateName, setNewStateName] = useState('')
   const [ctxMenu, setCtxMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
+  const [paneMenu, setPaneMenu] = useState<{ x: number; y: number } | null>(null)
   const [condModalOpen, setCondModalOpen] = useState(false)
   const [condModalTree, setCondModalTree] = useState<ConditionNode | null>(null)
 
@@ -391,6 +392,20 @@ export default function TaskEditor() {
     // (fdaLayout.mts) drops entries for states absent from the FDA the next time it loads.
   }
 
+  // Restore must DISCARD the stored arrangement (layeredLayout, not resolvePositions) and
+  // PERSIST it immediately (layout.replaceAll, not just setNodes) — CANVAS-09 requires the
+  // restored arrangement to survive the next refresh, not merely redraw on screen.
+  const restoreLayout = () => {
+    if (!fdaJson) return
+    const next = layeredLayout({
+      states: Object.keys(fdaJson.states ?? {}),
+      transitions: fdaJson.transitions ?? [],
+      initialState: fdaJson.initial_state,
+    })
+    setNodes(prev => prev.map(n => next[n.id] ? { ...n, position: next[n.id] } : n))
+    layout.replaceAll(next)
+  }
+
   const PANEL = 'var(--panel)'
   const BORDER = 'var(--border)'
   const MUTED = 'var(--muted)'
@@ -588,10 +603,17 @@ export default function TaskEditor() {
                 setSelectedEdgeId(null)
                 setSelectedState(null)
                 setCtxMenu(null)
+                setPaneMenu(null)
               }}
               onNodeContextMenu={(e, node) => {
                 e.preventDefault()
                 setCtxMenu({ nodeId: node.id, x: e.clientX, y: e.clientY })
+                setPaneMenu(null)
+              }}
+              onPaneContextMenu={e => {
+                e.preventDefault()
+                setPaneMenu({ x: e.clientX, y: e.clientY })
+                setCtxMenu(null)
               }}
               onNodeDragStop={(_e, node, dragged) =>
                 layout.record((dragged.length ? dragged : [node]).map(n => ({ id: n.id, position: n.position })))
@@ -610,6 +632,13 @@ export default function TaskEditor() {
                   { label: 'Set as Initial State', onClick: () => setInitialState(ctxMenu.nodeId) },
                   { label: 'Delete State', danger: true, onClick: () => deleteState(ctxMenu.nodeId) },
                 ]}
+              />
+            )}
+            {paneMenu && (
+              <CanvasContextMenu
+                x={paneMenu.x} y={paneMenu.y}
+                onClose={() => setPaneMenu(null)}
+                items={[{ label: 'Restore default layout', onClick: restoreLayout }]}
               />
             )}
             </>

@@ -258,8 +258,8 @@
 | CMP-21 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
 | CMP-22 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
 | CMP-23 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
-| CMP-24 | Phase 23, Plan 12 (Pi-side view/flags mirror) | Pending |
-| CMP-25 | Phase 23, Plan 12 (backend semantic-hardware valid_names) | Pending |
+| CMP-24 | Phase 23, Plan 12 (narrowed to 24b — `_resolve_arg` `get_state()`, Pi) | Deployed, not rig-exercised |
+| CMP-25 | Phase 23, Plan 12 (backend semantic-hardware valid_names) | Deployed, not rig-exercised |
 
 ### Compound Transition Conditions
 

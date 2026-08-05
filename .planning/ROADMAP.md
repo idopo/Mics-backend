@@ -29,7 +29,7 @@
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
 | 18 | MICS-Link: Pi Transport + ExternalHardware | The general external-device substrate: two transport roles (`router_bind` \| `sub_connect`) + per-lib `@decoder`, `ExternalHardware` base class with @signal/@event/@command, View Tracker auto-registration, stale policy **separate from** liveness, non-blocking egress queue, run lifecycle hooks, backend device lease, smoke test | EXTLINK-01–18 | ○ Pending — **context revised 2026-08-03, must be re-planned** (old plans in `superseded/`) |
-| 23 | 11/12 | In Progress|  | ✓ **Complete 2026-08-03** — 10/10 plans. Rig-proven across runs 535–550: compute action dispatches, executes, writes a variable and gates a transition through both branches; 41 draws with zero routing violations; CMP-16 pair intact 10/10 for a non-numeric output with zero rejected documents. Nine defects found and fixed during validation (deadlock preflight `state_wait_unsatisfiable`, sparse/null args, float-only-int inputs, stringified list arg, and two silently-dropped ES event types). See `23-HARDWARE-VALIDATION.md`. ⚠ Open: gonogo task never built (equivalent FDA validated instead); compute op **args** absent from the event log (CMP-16 partial); CMP-18 researcher-authored lib upload unproven on hardware; Pi unit tests still unrun on the Pi |
+| 23 | 12/12 | Complete   | 2026-08-05 | ✓ **Complete 2026-08-05** — 12/12 plans, all waves closed including the operand-namespace consistency pass (CMP-20–25). Rig-proven across runs 535–550 and 551: compute action dispatches, executes, writes a variable and gates a transition through both branches; 41 draws with zero routing violations; CMP-16 pair intact 10/10 for a non-numeric output with zero rejected documents; the one read namespace (`view`) drives real transitions with the legacy `flag`/`hardware` escape surviving a GUI resave byte-identical. See `23-HARDWARE-VALIDATION.md`. ⚠ Open: gonogo task never built (equivalent FDA validated instead); compute op **args** absent from the event log (CMP-16 partial); CMP-18 researcher-authored lib upload unproven on hardware; CMP-24b/CMP-25 deployed but not rig-exercised; CMP-24a/24c reverted before deploy (pending GSD todo); Pi unit tests still unrun on the Pi |
 | 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments`; on a **sourceless** toolkit a constrained one-pick detector write drives the licker trackers with no way to cross pin and tracker; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–10, 11a, 12, 14–19 | ✓ **8/8 plans executed 2026-07-27** — rig-proven (runs 478/480/481: 144 triggers, 63 licker writes, 0 correctness errors); 8/8 save-time negative cases 422. ⚠ Pi test suite still never run (user-run) |
 | 25 | Detector-Derived View Keys | `LICKER*` keys derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight. **Absorbs TRIGA-13.** **DVK-09 added from rig evidence** — channels must be declarable, not assumed 0-based (a live spout is currently discarded); resolved 2026-07-29 to `first_channel` + count, no channel list. **DVK-11 added 2026-07-29** — operands store a detector ref + channel index, never the resolved per-pilot key. **DVK-10 added 2026-07-29** — `execute_trigger`'s over-broad `except KeyError` swallowed that discard as `"No valid trigger"`. Transitions on a licker key are unavailable until this lands | DVK-01–11 | ◐ **5/6 plans executed 2026-07-29** — plan 01 landed the backend derivation core (DVK-01/02/07/09/11); plan 02 landed the Pi runtime half (DVK-09/10/11: `first_channel` in `check_for_detectors`, `execute_trigger` error containment, `view_detector` build-time resolution); plan 03 wired preflight resolution (DVK-06/11: out-of-range channel / unreachable literal key / unresolvable `{device_name}` template all fail preflight with the pilot's actual wiring) and `detector_channels` onto every toolkit read route including `by-name`; plan 04 made detector channels first-class pickable view operands in the FDA editor (DVK-03/04/05/07/11: grouped `<optgroup>` picker emitting `{"view_detector": {"ref","channel"}}`, `key_template` suggestions, unknown-key preservation); plan 05 renders `view_key_unresolved` preflight issues in `HardwareCheckModal` (both shapes, no start gate, PUT loop provably skipped) and adds the `first_channel` config affordance with a live key preview (DVK-06/09) — only plan 06 (deploy + rig proof) remains |
 
@@ -646,21 +646,21 @@ requires it).
 >
 > **Decoupled/deferred:** the `expr` escape-hatch (former CMP-07–09) **and** inline Python typed into a state body. Both forfeit versioning and op logging (no object for `@log_action`), so neither can satisfy CMP-16. Python authoring happens in the hardware-lib editor; the state body only selects and wires. Third-party PyPI packages + per-Pi package management also deferred — CMP-19 reserves the hooks.
 
-**Plans:** 11/12 plans executed
+**Plans:** 12/12 plans complete
 
 Plans (waves):
 - [x] 23-01-PLAN.md — **wave 1** — Wave 0: the three missing test files as executable contracts (CMP-04/12/17/19) — done 2026-08-03, see `23-01-SUMMARY.md`
-- [ ] 23-02-PLAN.md — **wave 2** — DB substrate: `hardware_libs.kind`, declared imports, seed Compute Ops lib + COMPUTE module, auto-provisioned pilot config (CMP-04/12/19)
+- [x] 23-02-PLAN.md — **wave 2** — DB substrate: `hardware_libs.kind`, declared imports, seed Compute Ops lib + COMPUTE module, auto-provisioned pilot config (CMP-04/12/19) — done 2026-08-03, see `23-02-SUMMARY.md`
 - [x] 23-03-PLAN.md — **wave 2** — Backend validation: compute hard-422s in the EXISTING `api/fda_validation.py`, compute-aware ref scanner, new `api/variable_scan.py` (CMP-10/11/15) — done 2026-08-03, see `23-03-SUMMARY.md`
-- [ ] 23-04-PLAN.md — **wave 2** — Pi runtime: the `compute` branch in `_build_action_callable`, vocabulary, CLI validator (CMP-03/04/05/06)
-- [ ] 23-05-PLAN.md — **wave 3** — CMP-17 version resolution unified across dispatch / introspection / orchestrator; `test_import` activated (CMP-17/19)
+- [x] 23-04-PLAN.md — **wave 2** — Pi runtime: the `compute` branch in `_build_action_callable`, vocabulary, CLI validator (CMP-03/04/05/06) — done 2026-08-03, see `23-04-SUMMARY.md`
+- [x] 23-05-PLAN.md — **wave 3** — CMP-17 version resolution unified across dispatch / introspection / orchestrator; `test_import` activated (CMP-17/19) — done 2026-08-03, see `23-05-SUMMARY.md`
 - [x] 23-06-PLAN.md — **wave 3** — GUI: `kind` types, filter chip and compute upload on the existing Hardware Libraries page (CMP-12/18) — done 2026-08-03, see `23-06-SUMMARY.md`
 - [x] 23-07-PLAN.md — **wave 4** — Preflight: no `incomplete_config` false positive, self-healing compute config, `variable_never_written`, reserved issue kinds, variable-usage route (CMP-15/17/19) — done 2026-08-03, see `23-07-SUMMARY.md`
 - [x] 23-08-PLAN.md — **wave 4** — GUI: the ONE "compute" action-type entry, grouped op picker, auto-declaring output field (CMP-13/14) — done 2026-08-03, see `23-08-SUMMARY.md`
 - [x] 23-09-PLAN.md — **wave 5** — GUI: new preflight issues rendered (and excluded from the PUT loop), read-only variables inspector (CMP-14/15) — done 2026-08-03, see `23-09-SUMMARY.md`
-- [ ] 23-10-PLAN.md — **wave 6** — Deploy + single rig-proof checkpoint: Pi suite, gonogo translation, ES evidence for both event types, GUI click-through (CMP-01/02/03/04/05/06/13/14/16/18)
-- [ ] 23-11-PLAN.md — **wave 7** — Operand pickers: one read namespace (`view`), legacy `flag`/`hardware` escape, variables in `if` conditions and as a write ref, `view` argument mode (CMP-20/21/22/23)
-- [ ] 23-12-PLAN.md — **wave 8** — `view` means one thing everywhere: semantic hardware as a condition read (backend), three Pi invariant fixes, consolidated rig sign-off for CMP-20–25 (CMP-24/25 + sign-off for 20–23)
+- [x] 23-10-PLAN.md — **wave 6** — Deploy + single rig-proof checkpoint: Pi suite, gonogo translation, ES evidence for both event types, GUI click-through (CMP-01/02/03/04/05/06/13/14/16/18) — done, see `23-10-SUMMARY.md`
+- [x] 23-11-PLAN.md — **wave 7** — Operand pickers: one read namespace (`view`), legacy `flag`/`hardware` escape, variables in `if` conditions and as a write ref, `view` argument mode (CMP-20/21/22/23) — done 2026-08-05, see `23-11-SUMMARY.md`
+- [x] 23-12-PLAN.md — **wave 8** — `view` means one thing everywhere: semantic hardware as a condition read (backend), Pi invariant fix (narrowed to CMP-24b), consolidated rig sign-off for CMP-20–25 (CMP-24/25 + sign-off for 20–23) — done 2026-08-05, see `23-12-SUMMARY.md`. CMP-24b/CMP-25 deployed but not rig-exercised; CMP-24a/24c reverted before deploy, tracked as a pending GSD todo.
 
 **Wave structure:** 1 → {02, 03, 04} → {05, 06} → {07, 08} → 09 → 10 → 11 → 12. Wave 2's three plans are
 fully parallel (backend substrate / backend validation / Pi mirror — no shared files). All Pi
@@ -713,7 +713,7 @@ Phase 17 (Free-Form Pilot Hardware Config)
 
 Phase 1 (Pi Foundation) + Phase 2 (UPDATE_FDA hot-reload)
     ↓ load_fda_from_json, _resolve_arg, init_flags pattern
-Phase 23 (Compute Operations / Compute Libs) — 12 plans, 8 waves (re-planned 2026-08-03; 11/12 added 2026-08-05):
+Phase 23 (Compute Operations / Compute Libs) — 12 plans, 8 waves (re-planned 2026-08-03; COMPLETE 2026-08-05, 12/12):
     23-01 Wave 0 test contracts                          (wave 1)
         ↓
     23-02 DB substrate (kind, seed lib, provisioning)  ─┐
@@ -732,7 +732,7 @@ Phase 23 (Compute Operations / Compute Libs) — 12 plans, 8 waves (re-planned 2
         ↓
     23-11 Operand pickers: one read namespace (CMP-20/21/22/23)   (wave 7)
         ↓
-    23-12 Pi + backend `view` invariants + sign-off (CMP-24/25)   (wave 8, checkpoint)
+    23-12 Pi + backend `view` invariants + sign-off (CMP-24/25)   (wave 8, checkpoint — DONE)
     (expr escape hatch + inline Python decoupled/deferred — see Phase 23 note)
 
 Phase 9 (hardware_libs + AST) + Phase 10 (hardware_modules)

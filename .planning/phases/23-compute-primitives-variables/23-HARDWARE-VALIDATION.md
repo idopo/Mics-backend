@@ -261,3 +261,60 @@ The lesson worth carrying into Phase 24: **five of the nine defects were invisib
 run** — nothing errored, validation passed, and the GUI looked correct while data was wrong or
 missing. Static checks did not catch a deadlock, a stringified list, or two silently dropped
 event types. Hardware validation is not a formality for this subsystem.
+
+---
+
+## Plan 23-12 — operand-namespace sign-off (2026-08-05)
+
+Rig: `pilot_raspberry_lior`. Task definition **186** (`source_less_toolkit FDA_tes_interuuppt`,
+toolkit 100, `is_backend_authored=true`, `semantic_hardware=null`). Pilot restarted by the user
+at ~12:21 UTC, after the 12:19 rsync — process uptime confirmed the run used the deployed code.
+
+### Verified on the rig — session run 551 (12:21:55–12:21:59, `completed`, no `error_type`)
+
+92 ES docs under `subject: bp_s113_r551`; 20 state transitions, 5 trials.
+
+| Requirement | Evidence |
+|---|---|
+| CMP-20 (read via `view`) | `{"view":"my_rand"}` drove transitions [3]/[4]: **7/7 draws routed to the matching branch** — 3 × `<0.5` → `play_led`, 4 × `>=0.5` → `trial_onset`. Both branches exercised. |
+| CMP-20 (legacy escape, runtime) | Stored `{"flag":"pin_number"}` (if-condition) and `{"flag":"level"}` (argument) inside `trigger_assignments[0].actions[1]` survived a GUI resave **byte-identical** and executed correctly at `:58.550`. This is the backward-compatibility guarantee holding on hardware. |
+| CMP-21 (variables in `if` conditions) | Editor-verified: `my_rand` appears under "Flags & variables" in a state-body `if` condition. |
+| CMP-22 / CMP-23 | Editor-verified alongside CMP-21. |
+| Phase 25 interop | `{"view_detector":{"ref":"MPR121","channel":1}}` (LICKER1) drove `trial_onset`↔`play_led` across all 5 trials. |
+| Compute interop | `random_float(0,1)` and `random_choice(['left','right'])` both varied correctly. |
+
+### Deployed but NOT exercised — state honestly
+
+- **CMP-24b** (`_resolve_arg` → `get_state()`): on the Pi and live, but task 186 uses `view` only
+  in transition conditions, which resolve through `_build_condition_operand`, never
+  `_resolve_arg`. **No run has yet passed a `{"view": <hardware>}` operand as an argument** —
+  the exact case this fix exists for. Smallest closing test: set a `view` action's `value` to a
+  view operand naming a hardware key, run once.
+- **CMP-25** (semantic hardware in condition `valid_names`): backend deployed, but toolkit 100 is
+  backend-authored with `semantic_hardware = null`, so the 422 path this fixes was never on.
+  Needs a semantic (non-backend-authored) toolkit to exercise.
+
+### Descoped before deployment (user decision) — see `deferred-items.md`
+
+**CMP-24a** (mirror auto-created `trial_counter` into `self.view.view`) and **CMP-24c** (accept
+`type:"view"` in `_build_state_method`'s pre-validation loop) were built, then reverted: neither
+is required by the read-namespace change, and the live-rig diff was kept to the single edit
+CMP-23 depends on. Confirmed by `difflib` against the running Pi: mirror vs live differed by
+**exactly one hunk** (the CMP-24b change plus two comment lines) before deploy.
+
+### Defect found during sign-off (environmental, not a phase defect)
+
+`web_ui/static/react/` accumulated a full set of **May 3 unhashed build artifacts**
+(`main.js`, `TaskEditor.js`, …). Vite's newer output is content-hashed, so a rebuild overwrites
+`main.js` but leaves the old chunks servable (HTTP 200). Because `main.js` is unhashed **and
+served with no `cache-control`**, a cached `main.js` loads the stale `TaskEditor.js` and the
+researcher silently runs months-old editor code. This is what made CMP-21 appear un-delivered
+until a hard refresh. Directory is gitignored build residue; a clean rebuild drops them.
+**Worth a permanent fix** (hash the entry, or purge the output dir pre-build) — filed to backlog.
+
+### Analysis-facing note
+
+`event.event_data.value` is mapped **`long`** in `event_log_v2`, so float variables truncate:
+`my_rand` reads `0` in every document. The true value is in **`value_raw`** (`0.1575`, `0.7050`,
+…); strings likewise use `value_str` with `value: null`. Anyone querying `value` for a float
+variable gets silent zeros.

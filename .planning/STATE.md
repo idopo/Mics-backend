@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-05T11:29:28.700Z"
+last_updated: "2026-08-05T12:46:31.212Z"
 progress:
   total_phases: 23
-  completed_phases: 6
-  total_plans: 72
-  completed_plans: 41
-  percent: 60
+  completed_phases: 7
+  total_plans: 74
+  completed_plans: 42
+  percent: 59
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **11/12 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plans 07/08 + Wave 5 plan 09 + Wave 7 plan 11 — CMP-20-23 operand-namespace consistency, frontend half). Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) is the last plan in the phase.
+**Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 60%
+**Progress:** [██████░░░░] 59%
 
 ### Phase 26 status (2026-08-03) — PLANNED, 13 plans, verification passed
 
@@ -433,7 +433,36 @@ question belongs to Phase 27, not 18 — whether the OE signal chain will have a
 upstream of the ZMQ plugin with sorting configured. Without it there are no spikes on the wire and
 no unit IDs to declare, which makes 27 unplannable as scoped. Rig configuration, not MICS work.
 
-### Phase 23 status (2026-08-03)
+### Phase 23 status (2026-08-03) — PHASE COMPLETE 2026-08-05 (12/12 plans)
+
+**Plan 12 executed (2026-08-05) — LAST PLAN, PHASE 23 CLOSED.** CMP-24/25 delivered — the
+Pi-side and backend halves of the `view` operand-namespace consistency pass, plus the
+consolidated rig sign-off for all six of CMP-20..25. Task 1 (`e2e09ce`): `validate_compute_variables`'s
+`valid_names` unions `toolkit.semantic_hardware` at the call site only (`fda_validation.py:245`) —
+semantic hardware is now a valid `view` condition-operand read, still rejected as a `flag`-action
+write ref (regression-guarded by a dedicated test case); `_valid_flag_names` byte-identical; full
+backend suite green (352 passed, 1 skipped); `fda_validation.py` 449 lines. Task 2 (`8f7a17c`)
+built all three planned Pi edits in `/home/ido/pi-mirror/autopilot/autopilot/tasks/mics_task.py`;
+a same-day scope-narrowing commit (`630d5b5`) then reverted two of them before deployment at the
+user's explicit direction — **only CMP-24b shipped** (`_resolve_arg`'s view branch now calls
+`get_state()` instead of reading `.value`, the one edit CMP-23's new `~ View` argument mode
+depends on). CMP-24a (mirror auto-created `trial_counter` into `self.view.view`) and CMP-24c
+(accept `type:"view"` in `_build_state_method`'s pre-validation loop) were built with passing
+tests, then reverted — neither is required by the read-namespace change, and bundling them would
+have widened the live-rig deploy for unrelated bugs. Both fully described (fix + tests) in
+`deferred-items.md` and captured as the pending GSD todo `2026-08-05-reinstate-cmp-24a-and-cmp-24c-pi-view-mirror-fixes.md`.
+Task 3's rig checkpoint was signed off 2026-08-05 against session run 551 (task def 186, toolkit
+100, `completed`, no `error_type`, 92 ES docs, 20 state transitions, 5 trials): CMP-20's `view`
+read routed **7/7** `random_float` draws to the matching branch with both branches exercised, and
+a stored legacy `{"flag":"pin_number"}`/`{"flag":"level"}` operand survived a GUI resave
+**byte-identical** and executed correctly — the backward-compatibility guarantee holding on
+hardware. CMP-21/22/23 editor-verified. **CMP-24b and CMP-25 are recorded as deployed but NOT
+rig-exercised, not as verified**: task def 186's `view` actions never reach `_resolve_arg` as an
+argument, and its toolkit is backend-authored with `semantic_hardware=null`, so neither fix's own
+code path was live during the sign-off run. A stale unhashed React bundle (`main.js`, no
+`cache-control`) was found and diagnosed as an environmental defect during sign-off, not a phase
+defect — filed as a second pending GSD todo. Full sign-off record:
+`23-HARDWARE-VALIDATION.md` § "Plan 23-12 — operand-namespace sign-off". See `23-12-SUMMARY.md`.
 
 **Plan 11 executed (2026-08-05):** CMP-20/21/22/23 delivered — the frontend half of the
 operand-namespace consistency pass (CMP-24/25, the Pi-side and backend halves, are plan 23-12).
@@ -985,6 +1014,9 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23-11]: IfActionEditor derives hwModuleNames from its already-received hwModules prop (one-line fix) instead of threading a new prop through 4 components — provably the same array TaskEditor.tsx:202 already derives its own hwModuleNames from
 - [Phase 23-11]: visibleOperandTypes(stored, hasToolkit) / visibleArgModes(mode, allowTriggerContext) are functions of what's ALREADY stored in a slot, not static lists — the legacy-operand escape (flag/hardware in conditions, flag in ArgInput) is offered only when the stored value already has that shape, and vanishes once edited; re-ran the decrement/reset preflight DB query live before deleting (0/153 task defs) rather than trusting the plan's stated result
 - [Phase 23-11]: ArgInput's new view mode offers plain view keys only — no detector channels (Pi's _resolve_arg has no view_detector branch) and no hwModuleNames (would require prop-threading through 5 components; free-text fallback covers it) — recorded scope decision for 23-12's checkpoint
+- [Phase 23-12]: CMP-25 unions semantic hardware into valid_names at validate_compute_variables's own call site, never inside _valid_flag_names — that helper also gates three write-side rules (flag-action ref, output slot, key_template token) resolving against self.flags on the Pi; widening it would let a hardware name save cleanly as a write target and KeyError at FDA load
+- [Phase 23-12]: CMP-24 narrowed from three Pi edits to one (24b, _resolve_arg -> get_state()) after building and testing all three — 24a/24c reverted before deployment per user direction to keep the live-rig diff to exactly what CMP-23 depends on; both remain fully designed/tested and captured as a pending GSD todo rather than lost
+- [Phase 23-12]: CMP-24b and CMP-25 recorded explicitly as "deployed but not rig-exercised", never as verified — task def 186 (the only rig-available toolkit) never routes a {"view": hardware} argument through _resolve_arg, and its toolkit has semantic_hardware=null, so neither fix's own code path was live during the sign-off run
 
 ## Accumulated Context
 
@@ -1082,44 +1114,30 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
-1. **Confirm Phase 23 Plan 02** landed cleanly (kind-column migration + `seed_compute.py` +
-   declared-imports allowlist — commits `feat(23-02): kind column...` and `feat(23-02): seed
-   Compute Ops lib...` are on disk from a concurrent execution observed during plan 03's run, but
-   no `23-02-SUMMARY.md` existed as of this note) and write its summary if missing.
-   See `23-02-PLAN.md` and `23-01-SUMMARY.md` "Next Phase Readiness".
-   (Plans 03 and 04, both Wave 2, are now also done — see "Phase 23 status" above,
-   `23-03-SUMMARY.md`, and `23-04-SUMMARY.md`. Plan 04's 4 pi-mirror files are staged for deploy
-   at plan 23-10, uncommitted in the pi-mirror working tree, same as plan 02's Phase 25 files
-   below. Plan 03's `variable_never_written_issues` is not yet wired into preflight — that is
-   plan 23-07's job.)
-2. **Execute Phase 25 Plan 06** (last plan in phase 25, still outstanding — deferred while phase
-   23 Wave 0 was picked up) — **deploy** plan 02's seven pi-mirror files (`fda_vocabulary.py`,
-   `mics_task.py`, `task.py`, and four `tests/` files — see `25-02-SUMMARY.md` "Next Phase
-   Readiness" for the exact rsync list) AND the plan 04/05 React rebuild (confirm the deployed
-   bundles are `dist/TaskEditor-B6-dKcPk.js`, `dist/HardwareCheckModal-DKJUfoGY.js`,
-   `dist/PilotHardwareConfig-B09He_Dl.js` — see `25-04-SUMMARY.md` and `25-05-SUMMARY.md` "Next
-   Phase Readiness" for the exact operand JSON / config round-trip to look for), run the three
-   new USER-RUN Pi test files plus the pre-existing suite, and rig-prove DVK-09 (channel 4 lands
-   in `LICKER4`) and DVK-11 (a transition on "MPR121 — channel 2" fires, then re-fires unchanged
-   after a `device_name` rename). Also owns the manual/behavioural verification of plan 04's
-   editor pickers (grouped `<optgroup>`s, the "(unknown)" flag, the S3 type-switch guard) and
-   plan 05's `HardwareCheckModal`/`PilotHardwareConfig` rendering (both `view_key_unresolved`
-   shapes, the edit-flow `first_channel` round-trip) — both deferred per their own
-   `<verification>` notes.
+1. **Phase 23 is CLOSED (12/12 plans, 2026-08-05).** No further action needed on it. Two pending
+   GSD todos carry forward the remaining real work: reinstating CMP-24a/24c (one rig deploy, fixes
+   and tests already designed — `2026-08-05-reinstate-cmp-24a-and-cmp-24c-pi-view-mirror-fixes.md`)
+   and the stale React bundle trap (`2026-08-05-fix-stale-react-bundle-trap-in-web-ui-static-output.md`).
+   Neither blocks any other phase. See "Phase 23 status" above and `23-12-SUMMARY.md`.
+2. **Execute Phase 25 Plan 06** (last plan in phase 25, still outstanding) — **deploy** plan 02's
+   seven pi-mirror files (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files —
+   see `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list) AND the plan 04/05 React
+   rebuild (confirm the deployed bundles are `dist/TaskEditor-B6-dKcPk.js`,
+   `dist/HardwareCheckModal-DKJUfoGY.js`, `dist/PilotHardwareConfig-B09He_Dl.js` — see
+   `25-04-SUMMARY.md` and `25-05-SUMMARY.md` "Next Phase Readiness" for the exact operand JSON /
+   config round-trip to look for), run the three new USER-RUN Pi test files plus the pre-existing
+   suite, and rig-prove DVK-09 (channel 4 lands in `LICKER4`) and DVK-11 (a transition on
+   "MPR121 — channel 2" fires, then re-fires unchanged after a `device_name` rename). Also owns the
+   manual/behavioural verification of plan 04's editor pickers (grouped `<optgroup>`s, the
+   "(unknown)" flag, the S3 type-switch guard) and plan 05's `HardwareCheckModal`/
+   `PilotHardwareConfig` rendering (both `view_key_unresolved` shapes, the edit-flow
+   `first_channel` round-trip) — both deferred per their own `<verification>` notes.
 3. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
-   outstanding from phase 24 and now larger after plan 02's additions, plus the new
-   `test_compute_ops.py` once plan 23-04 lands:
+   outstanding from phase 24 and now larger after phases 23/25's additions:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
-
-Note: Phase 23 was re-planned 2026-08-03 as 10 plans in 6 waves against a "compute-as-hardware-lib"
-reframe (see the `docs(23):` commits immediately before `test(23-01):` in git log) — the prior
-"plans are stale" note above no longer applies. Plan 01 (Wave 0 contract tests), Plan 03
-(backend compute validation + variable-scan), Plan 04 (Wave 2, Pi-runtime compute action), and
-Plan 05 (Wave 3, single lib-version resolution chain, CMP-17/19), and Plan 06 (Wave 3, kind-aware
-Hardware Libraries GUI, CMP-12/18) are done; see "Phase 23 status" above and
-`23-01-SUMMARY.md`/`23-03-SUMMARY.md`/`23-04-SUMMARY.md`/`23-05-SUMMARY.md`/`23-06-SUMMARY.md`.
-6/10 plans done. Remaining outstanding in phase 23: plans 07-10 (later waves) and Phase 25 plan 06
-(separate phase, still not executed).
+4. After 25 and the "review" step: **Phase 18** (re-planned, verification passed, blocked on
+   nothing — approved for `/gsd:execute-phase 18`), then **26 → 27 → 28** (the OpenEphys arc,
+   depends on 18). See execution order in "Roadmap Evolution" below.
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
 CMP-03/04/05/06/10/11/12/15/17/19 in `REQUIREMENTS.md` (same gap previously found for
@@ -1133,16 +1151,16 @@ on this STATE.md; position is tracked via the prose "Phase NN status" sections a
 file's established pattern.
 
 ---
-*Last updated: 2026-08-03 — phase 23 plan 06 executed (Wave 3): kind-aware Hardware Libraries GUI
-(CMP-12/18). `types/index.ts` gained `LibKind`/`HardwareLib.kind`/
-`HardwareLibVersion.declared_imports`/`HardwareModule.lib_kind`; `uploadHardwareLib` sends
-`kind`/`declared_imports`. `HardwareLibs.tsx` gained an All/Hardware/Compute filter chip row with
-counts (client-side filter, no new endpoint) and a kind-aware upload form (compute-only
-`declared_imports` input, stdlib-only helper text); `HardwareLibDetail.tsx` shows `kind` +
-`declared_imports` read-only. `apiFetch` already surfaced 422 `detail` verbatim — confirmed by
-reading `api/client.ts`, no change needed. `tsc --noEmit` and `npm run build` both clean
-(`dist/HardwareLibs-DPUByP4B.js`, `dist/HardwareLibDetail-CKGnbh6y.js`); `App.tsx`/`Layout.tsx`
-diffs both empty — no new page, no new route, no `NAV_LINKS` change. No deviations. See
-`23-06-SUMMARY.md`. Phase 23 now 6/10 plans done. Phase 25 plan 06 (last plan in that phase)
-remains outstanding. Next: phase 23 plans 07-10 (later waves) or phase 25 plan 06, per Next
-Actions above.*
+*Last updated: 2026-08-05 — phase 23 plan 12 executed, **PHASE 23 NOW COMPLETE (12/12 plans)**.
+CMP-25 (backend, semantic hardware as a valid `view` condition-operand read, still rejected as a
+`flag` write ref) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both
+deployed; CMP-24a/24c built and tested, then reverted before deploy per user direction (pending
+GSD todo `2026-08-05-reinstate-cmp-24a-and-cmp-24c-pi-view-mirror-fixes.md`). Rig sign-off
+recorded against session run 551: CMP-20's `view` read routed 7/7 draws correctly, both branches
+exercised; the legacy `{flag:...}` escape survived a GUI resave byte-identical; CMP-21/22/23
+editor-verified. **CMP-24b and CMP-25 are deployed but explicitly recorded as NOT rig-exercised**
+— task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its
+toolkit has `semantic_hardware=null`. Stale unhashed React bundle found during sign-off, filed as
+a second pending GSD todo, not a phase defect. See `23-12-SUMMARY.md` and
+`23-HARDWARE-VALIDATION.md`'s sign-off section. Next: Phase 25 plan 06 (last plan in that phase),
+then review → Phase 18 → 26 → 27 → 28, per Next Actions above.*

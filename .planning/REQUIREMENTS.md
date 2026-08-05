@@ -254,6 +254,12 @@
 | TRIGA-15 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
 | TRIGA-16 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
 | TRIGA-17 | Phase 24, Plan 08 (Trigger-Source Dropdown, Method Validation, Detector Write) | Complete |
+| CMP-20 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
+| CMP-21 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
+| CMP-22 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
+| CMP-23 | Phase 23, Plan 11 (Operand-Namespace Consistency Pass) | Complete |
+| CMP-24 | Phase 23, Plan 12 (Pi-side view/flags mirror) | Pending |
+| CMP-25 | Phase 23, Plan 12 (backend semantic-hardware valid_names) | Pending |
 
 ### Compound Transition Conditions
 

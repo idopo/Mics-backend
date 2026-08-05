@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-03T13:15:14.468Z"
+last_updated: "2026-08-05T11:29:28.700Z"
 progress:
-  total_phases: 22
-  completed_phases: 7
-  total_plans: 56
-  completed_plans: 40
-  percent: 72
+  total_phases: 23
+  completed_phases: 6
+  total_plans: 72
+  completed_plans: 41
+  percent: 60
 ---
 
 # STATE: MICS Backend
@@ -26,9 +26,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
-**Phase:** 23 — Compute Primitives + Variables — **9/10 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plans 07/08 + Wave 5 plan 09)
+**Phase:** 23 — Compute Primitives + Variables — **11/12 plans done** (Wave 0 + Wave 2 plans 02/03/04 + Wave 3 plans 05/06 + Wave 4 plans 07/08 + Wave 5 plan 09 + Wave 7 plan 11 — CMP-20-23 operand-namespace consistency, frontend half). Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) is the last plan in the phase.
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 72%
+**Progress:** [██████░░░░] 60%
 
 ### Phase 26 status (2026-08-03) — PLANNED, 13 plans, verification passed
 
@@ -434,6 +434,39 @@ upstream of the ZMQ plugin with sorting configured. Without it there are no spik
 no unit IDs to declare, which makes 27 unplannable as scoped. Rig configuration, not MICS work.
 
 ### Phase 23 status (2026-08-03)
+
+**Plan 11 executed (2026-08-05):** CMP-20/21/22/23 delivered — the frontend half of the
+operand-namespace consistency pass (CMP-24/25, the Pi-side and backend halves, are plan 23-12).
+Task 1 extracted the decision logic behind every operand picker into three new tested `.mts`
+modules (`operandTypes.mts`, `argModes.mts`, `trackerMethods.mts`), pinning today's behaviour
+with 21 `node --test` cases before anything changed — a pure, behaviour-preserving refactor that
+shrank `ConditionBuilder.tsx` 243→186 and `ArgInput.tsx` 224→177 and `ActionEditor.tsx` 457→425.
+Task 2 (CMP-20) narrowed `visibleOperandTypes` so a fresh condition operand offers only
+view/literal/param, with `flag`/`hardware` surfacing as a same-shape `(legacy)` escape — never
+both together — proven by round-trip assertion rather than inspection; (CMP-21) fixed the actual
+bug: `IfActionEditor.tsx:82-87` dropped `hwModuleNames`/`variableNames` when rendering its own
+`ConditionBuilder`, so a declared variable or semantic-hardware key was invisible inside an
+`if`/`else` condition in the state builder even though the same component already forwarded
+`variableNames` into its then/else `ActionEditor`s — a one-line wiring fix (`hwModuleNames`
+derived from the `hwModules` prop already in scope, matching `TaskEditor.tsx:202`'s own
+derivation, per the plan's explicit discretion grant to avoid four-file prop plumbing). Task 3
+(CMP-22) made declared variables selectable as a `type:"flag"` action's write `ref`: all three
+`?? 'Counter_Tracker'` tracker-type resolutions replaced by `trackerTypeForRef` so a variable
+resolves to the `Tracker` method set (increment/set), and a new `FlagActionFields.tsx` (143
+lines) extracted the trial-counter/flag JSX out of `ActionEditor.tsx` to hold it at 327 lines;
+`decrement`/`reset` removed from `TRACKER_METHODS.Counter_Tracker` after re-running the plan's
+preflight DB query live (0/153 task definitions reference either, matching the 2026-08-05
+finding) — neither exists on any `Tracker.py` class. (CMP-23) `ArgInput` gained a `~ View` mode
+reading the same namespace the condition pickers use (grouped select over toolkit flags +
+variables + semantic hardware, deliberately no detector channels — the Pi's `_resolve_arg` has
+no `view_detector` branch — and no `hwModuleNames`, the plan's own recorded scope decision);
+`! Flag` relabelled `! Flag (legacy)` and a `switchMode` re-click no-op guard added (mandatory
+once the flag pill is the only thing keeping a legacy stored key alive). `npm run test:unit`
+(84 pass, up from the 53 baseline), `tsc --noEmit`, and `npm run build` all clean after every
+task; `App.tsx`/`Layout.tsx`/`api/`/`orchestrator/`/pi-mirror diffs confirmed empty (frontend
+only, per plan). `docker compose up --build web_ui` deliberately NOT run — the rebuilt SPA and
+the behavioural click-through both belong to 23-12's consolidated rig checkpoint, after the
+Pi-side CMP-24 lands. No deviations from the plan. See `23-11-SUMMARY.md`.
 
 **Plan 09 executed (2026-08-03):** CMP-14/15 delivered — the user-facing half of the compute
 preflight work closes out. `HardwareCheckModal.tsx`'s `PreflightIssue` union gained
@@ -949,6 +982,9 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 23-08]: onDeclareVariable added to ActionEditor's Props one task early (Task 1, not Task 3) to keep that task's own tsc green rendering ComputeActionFields; ActionEditor's own separate TYPE_COLORS const also gained a compute entry alongside StateBodyPanel's so the open action card's own chip isn't gray by fallback; a typed "new variable" name colliding with an existing variable/flag is rejected (inline message) rather than silently reused
 - [Phase 23-compute-primitives-variables]: [Phase 23-07]: task_def_inspect.py uses a Depends(get_sa_session) generator matching toolkit_dispatch.py's shape (not pilot_hardware_config.py's bare with-block) so the mocked-db.execute TestClient pattern already used in test_view_key_preflight.py works
 - [Phase 23]: 23-09: NON_CONFIG_ISSUES Set replaces per-kind checks for which preflight issues may never trigger a config PUT; VariableUsagePanel refetches via refetchOnMount:'always' rather than versionStamp (which tracks hw-lib pins, not fda_json saves)
+- [Phase 23-11]: IfActionEditor derives hwModuleNames from its already-received hwModules prop (one-line fix) instead of threading a new prop through 4 components — provably the same array TaskEditor.tsx:202 already derives its own hwModuleNames from
+- [Phase 23-11]: visibleOperandTypes(stored, hasToolkit) / visibleArgModes(mode, allowTriggerContext) are functions of what's ALREADY stored in a slot, not static lists — the legacy-operand escape (flag/hardware in conditions, flag in ArgInput) is offered only when the stored value already has that shape, and vanishes once edited; re-ran the decrement/reset preflight DB query live before deleting (0/153 task defs) rather than trusting the plan's stated result
+- [Phase 23-11]: ArgInput's new view mode offers plain view keys only — no detector channels (Pi's _resolve_arg has no view_detector branch) and no hwModuleNames (would require prop-threading through 5 components; free-text fallback covers it) — recorded scope decision for 23-12's checkpoint
 
 ## Accumulated Context
 

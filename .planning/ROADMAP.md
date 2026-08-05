@@ -535,7 +535,7 @@ Plans:
 >
 > **Decoupled/deferred:** the `expr` escape-hatch (former CMP-07–09) **and** inline Python typed into a state body. Both forfeit versioning and op logging (no object for `@log_action`), so neither can satisfy CMP-16. Python authoring happens in the hardware-lib editor; the state body only selects and wires. Third-party PyPI packages + per-Pi package management also deferred — CMP-19 reserves the hooks.
 
-**Plans:** 10/10 plans complete
+**Plans:** 12 plans (10/12 complete — 23-11/23-12 added 2026-08-05, the CMP-20–25 operand-namespace pass)
 
 Plans (waves):
 - [x] 23-01-PLAN.md — **wave 1** — Wave 0: the three missing test files as executable contracts (CMP-04/12/17/19) — done 2026-08-03, see `23-01-SUMMARY.md`
@@ -548,8 +548,10 @@ Plans (waves):
 - [x] 23-08-PLAN.md — **wave 4** — GUI: the ONE "compute" action-type entry, grouped op picker, auto-declaring output field (CMP-13/14) — done 2026-08-03, see `23-08-SUMMARY.md`
 - [x] 23-09-PLAN.md — **wave 5** — GUI: new preflight issues rendered (and excluded from the PUT loop), read-only variables inspector (CMP-14/15) — done 2026-08-03, see `23-09-SUMMARY.md`
 - [ ] 23-10-PLAN.md — **wave 6** — Deploy + single rig-proof checkpoint: Pi suite, gonogo translation, ES evidence for both event types, GUI click-through (CMP-01/02/03/04/05/06/13/14/16/18)
+- [ ] 23-11-PLAN.md — **wave 7** — Operand pickers: one read namespace (`view`), legacy `flag`/`hardware` escape, variables in `if` conditions and as a write ref, `view` argument mode (CMP-20/21/22/23)
+- [ ] 23-12-PLAN.md — **wave 8** — `view` means one thing everywhere: semantic hardware as a condition read (backend), three Pi invariant fixes, consolidated rig sign-off for CMP-20–25 (CMP-24/25 + sign-off for 20–23)
 
-**Wave structure:** 1 → {02, 03, 04} → {05, 06} → {07, 08} → 09 → 10. Wave 2's three plans are
+**Wave structure:** 1 → {02, 03, 04} → {05, 06} → {07, 08} → 09 → 10 → 11 → 12. Wave 2's three plans are
 fully parallel (backend substrate / backend validation / Pi mirror — no shared files). All Pi
 work is grouped so the user is asked to touch the rig exactly once, in plan 23-10.
 
@@ -600,7 +602,7 @@ Phase 17 (Free-Form Pilot Hardware Config)
 
 Phase 1 (Pi Foundation) + Phase 2 (UPDATE_FDA hot-reload)
     ↓ load_fda_from_json, _resolve_arg, init_flags pattern
-Phase 23 (Compute Operations / Compute Libs) — 10 plans, 6 waves (re-planned 2026-08-03):
+Phase 23 (Compute Operations / Compute Libs) — 12 plans, 8 waves (re-planned 2026-08-03; 11/12 added 2026-08-05):
     23-01 Wave 0 test contracts                          (wave 1)
         ↓
     23-02 DB substrate (kind, seed lib, provisioning)  ─┐
@@ -616,6 +618,10 @@ Phase 23 (Compute Operations / Compute Libs) — 10 plans, 6 waves (re-planned 2
     23-09 GUI preflight issues + variables inspector      (wave 5)
         ↓
     23-10 Deploy + rig proof (checkpoint)                 (wave 6)
+        ↓
+    23-11 Operand pickers: one read namespace (CMP-20/21/22/23)   (wave 7)
+        ↓
+    23-12 Pi + backend `view` invariants + sign-off (CMP-24/25)   (wave 8, checkpoint)
     (expr escape hatch + inline Python decoupled/deferred — see Phase 23 note)
 
 Phase 9 (hardware_libs + AST) + Phase 10 (hardware_modules)

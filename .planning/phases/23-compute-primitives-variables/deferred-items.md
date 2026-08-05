@@ -29,3 +29,10 @@ of this plan's scope per the SCOPE BOUNDARY rule.
 cleanup pass. One-line fix: add `"view"` to the trailing `elif atype not in (...)` tuple (or give
 it its own branch calling `_build_action_callable`'s existing key_template/source_ref checks
 early, for a load-time error instead of relying on `_build_action_callable` to raise later).
+
+**CLOSED — Plan 23-12 Task 2 (CMP-24c).** `"view"` added to the `elif atype not in (...)` tuple
+in `_build_state_method` (`mics_task.py`). Pinned by
+`tests/test_view_namespace_invariants.py::test_build_state_method_accepts_view_action_type`
+(agent-runnable, stdlib-only AST check) and by
+`tests/test_load_fda_from_json.py::TestViewNamespaceConsistency::test_view_action_in_state_body_loads`
+(USER-RUN, verified at 23-12's rig checkpoint).

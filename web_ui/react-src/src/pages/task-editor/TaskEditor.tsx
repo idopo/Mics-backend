@@ -35,7 +35,7 @@ import TransitionEdge from './TransitionEdge'
 import { condLabel } from '../../components/transitionLabel.mts'
 import { normaliseFda, parseStateWarnings } from '../../components/fdaNormalise.mts'
 import { assignEdgeGeometry } from '../../components/edgeGeometry.mts'
-import { columnRanks, resolvePositions, type XY } from '../../components/fdaLayout.mts'
+import { columnRanks, resolvePositions, placeNewState, type XY } from '../../components/fdaLayout.mts'
 import { useLayoutPersistence } from './useLayoutPersistence'
 
 const nodeTypes = { stateNode: StateNode }
@@ -195,37 +195,28 @@ export default function TaskEditor() {
   // Also add any toolkit states missing from the current node set (e.g. new states added to toolkit after FDA was created).
   useEffect(() => {
     if (!fdaJson || !canvasInited) return
-    setNodes(prev => {
-      const updated = prev.map(n => ({
-        ...n,
-        data: {
-          ...n.data,
-          state: fdaJson.states[n.id] ?? n.data.state,
-          toolkit,
-          warning: stateWarnings[n.id],
-        },
-      }))
-      if (!toolkit?.states) return updated
-      const existingIds = new Set(prev.map(n => n.id))
-      const missing = toolkit.states.filter(s => !existingIds.has(s))
-      if (missing.length === 0) return updated
-      // Patch fdaJson.states so missing states get included on save
-      setFdaJson(f => f ? {
-        ...f,
-        states: { ...f.states, ...Object.fromEntries(missing.map(s => [s, {}])) },
-      } : f)
-      const offset = prev.length
-      missing.forEach((s, i) => {
-        updated.push({
-          id: s,
-          type: 'stateNode',
-          position: { x: ((offset + i) % 4) * 270, y: Math.floor((offset + i) / 4) * 170 },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data: { name: s, state: {} as any, isInitial: false, toolkit } as any,
-        })
-      })
-      return updated
+    setNodes(prev => prev.map(n => ({
+      ...n,
+      data: { ...n.data, state: fdaJson.states[n.id] ?? n.data.state, toolkit, warning: stateWarnings[n.id] },
+    })))
+    if (!toolkit?.states) return
+    const known = layout.current()
+    const missing = toolkit.states.filter(s => !(s in known))
+    if (missing.length === 0) return
+    const taken: Record<string, XY> = { ...known }
+    const placements = missing.map(s => {
+      const position = placeNewState(taken)
+      taken[s] = position
+      return { id: s, position }
     })
+    // Patch fdaJson.states so missing states get included on save
+    setFdaJson(f => f ? { ...f, states: { ...f.states, ...Object.fromEntries(missing.map(s => [s, {}])) } } : f)
+    setNodes(prev => [...prev, ...placements.map(({ id, position }) => ({
+      id, type: 'stateNode', position,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { name: id, state: {} as any, isInitial: false, toolkit } as any,
+    }))])
+    layout.record(placements)
   }, [fdaJson?.states, toolkit, stateWarnings])
 
   const saveMutation = useMutation({
@@ -354,8 +345,7 @@ export default function TaskEditor() {
     const name = newStateName.trim()
     if (!name || !fdaJson) return
     if (fdaJson.states[name]) { setNewStateName(''); setAddingState(false); return }
-    const existingCount = Object.keys(fdaJson.states).length
-    const isFirst = existingCount === 0 || !fdaJson.initial_state
+    const isFirst = Object.keys(fdaJson.states).length === 0 || !fdaJson.initial_state
     setFdaJson(prev => {
       if (!prev) return prev
       return {
@@ -364,15 +354,12 @@ export default function TaskEditor() {
         initial_state: isFirst ? name : prev.initial_state,
       }
     })
+    const position = placeNewState(layout.current())
     setNodes(prev => [
       ...prev.map(n => isFirst ? { ...n, data: { ...n.data, isInitial: false } } : n),
-      {
-        id: name,
-        type: 'stateNode',
-        position: { x: (existingCount % 4) * 270, y: Math.floor(existingCount / 4) * 170 },
-        data: { name, state: {}, isInitial: isFirst, toolkit },
-      },
+      { id: name, type: 'stateNode', position, data: { name, state: {}, isInitial: isFirst, toolkit } },
     ])
+    layout.record([{ id: name, position }])
     setNewStateName('')
     setAddingState(false)
     setSelectedState(name)
@@ -400,6 +387,8 @@ export default function TaskEditor() {
     setNodes(prev => prev.filter(n => n.id !== stateName))
     setEdges(prev => prev.filter(e => e.source !== stateName && e.target !== stateName))
     if (selectedState === stateName) setSelectedState(null)
+    // Deliberately not pruning the layout map: the stale key self-heals — resolvePositions
+    // (fdaLayout.mts) drops entries for states absent from the FDA the next time it loads.
   }
 
   const PANEL = 'var(--panel)'

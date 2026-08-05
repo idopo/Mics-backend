@@ -77,10 +77,15 @@ function dedupeItems(items: ViewOptionItem[], seen: Set<string>): ViewOptionItem
 }
 
 /**
- * Grouped view-operand options: Hardware (the devices) -> one group per detector, labelled by
- * device_name (never module_name) -> Flags & variables. Detector channels are always their own
- * group, separate from the "Hardware" group holding the device that produces them (DVK-03).
- * Empty groups are dropped.
+ * Grouped view-operand options: Hardware (the devices) -> Flags & variables -> one group per
+ * detector, labelled by device_name (never module_name). Detector channels are always their own
+ * group, separate from the "Hardware" group holding the device that produces them (DVK-03), and
+ * come last because they are the longest and least-reached-for entries. Empty groups are dropped,
+ * so a toolkit with no detectors shows no channel groups at all.
+ *
+ * Group order is also dedupe precedence (first occurrence of a value wins): hardware still
+ * outranks flags. Detector items cannot collide with either — they are opaque "@detector/..."
+ * tokens, never plain names — so moving them last changes presentation only.
  */
 export function buildViewOptions(
   hwNames: string[],
@@ -93,6 +98,11 @@ export function buildViewOptions(
   const hwItems = dedupeItems(hwNames.map(n => ({ value: n, label: n })), seen)
   if (hwItems.length > 0) groups.push({ label: 'Hardware', items: hwItems })
 
+  // DVK-07: detector channels never land here — this group is fed only from toolkit.flags /
+  // declared variables, never from `detectors`.
+  const flagItems = dedupeItems(flagNames.map(n => ({ value: n, label: n })), seen)
+  if (flagItems.length > 0) groups.push({ label: 'Flags & variables', items: flagItems })
+
   const sortedDetectors = [...detectors].sort((a, b) => a.module_name.localeCompare(b.module_name))
   for (const group of sortedDetectors) {
     const label = group.device_names.length > 0
@@ -104,11 +114,6 @@ export function buildViewOptions(
     if (group.conflict) entry.warning = buildConflictWarning(group)
     groups.push(entry)
   }
-
-  // DVK-07: detector channels never land here — this group is fed only from toolkit.flags /
-  // declared variables, never from `detectors`.
-  const flagItems = dedupeItems(flagNames.map(n => ({ value: n, label: n })), seen)
-  if (flagItems.length > 0) groups.push({ label: 'Flags & variables', items: flagItems })
 
   return groups
 }

@@ -209,7 +209,13 @@ export default function ActionEditor({ action, toolkit, hwModules, taskDefId, ve
           {(!allowTriggerContext || action.type === 'compute') && (
             <option value="compute">compute</option>
           )}
-          <option value="view">view</option>
+          {/* View is not a user-facing state-body action: the view is the *read* surface,
+              written indirectly by hardware/flag actions and by the detector-read macro under a
+              trigger. Offered only inside trigger actions (where detect-change lives), plus
+              whenever an already-stored view action needs to stay readable/editable. */}
+          {(allowTriggerContext || action.type === 'view') && (
+            <option value="view">view</option>
+          )}
           <option value="method">method</option>
           <option value="if">if</option>
         </select>

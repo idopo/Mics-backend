@@ -251,8 +251,48 @@ human gate that under-counts can be satisfied with step 4a never run); the new A
 `docker compose up`; `is_ready()` is now named directly and added to 18-10-SUMMARY's mandatory
 contract list, so 26-10's pointer to it resolves.
 
-⚠ **Phase 26 has NOT been re-checked since these fixes** — the checker ran against the pre-fix state.
-Re-run it before `/gsd:execute-phase 26`. Phase 26 is blocked on Phase 18 regardless.
+**Iterations 3–6 (2026-08-05).** The checker ran four more times. Iterations 3–5 found issues my own
+fixes had introduced (a default timeout colliding with Phase 18's canonical `stale_ms`; a single
+teardown flag doing two jobs, which stranded a box in RECORD after a failed IDLE; a stale sentence
+contradicting the fix three sections below it). **Iteration 4's was the serious one:** `on_run_stop`
+gated the IDLE only on "did the IDLE succeed yet", not on "is this recording ours" — so attempting a
+run against a box a colleague was already recording on would deterministically truncate their data
+at teardown, violating `26-CONTEXT.md`'s locked *"never take over"*. Now gated on `_record_issued`,
+with the same ownership check added to the backend force-stop (compare the box's `parent_directory`
+against the artifact row's `target_path`).
+
+Iteration 5 exposed that the relative-vs-absolute contract for `target_path` was **never pinned** —
+`26-04` said relative, `26-08` compared against an absolute, `26-10` said only "derived from". The
+ownership check would have silently never matched, making the force-stop a permanent no-op while
+still closing the artifact row. `target_path` is now ABSOLUTE via a required `artifact_root` config
+key, pinned identically in 26-01/26-04/26-08/26-10/26-13 and asserted by two new Wave-0 tests.
+
+Iteration 6's findings were **original Phase 26 gaps**, not fallout from the edits: `coverage_complete`
+was set True unconditionally on every clean stop (wrong for exactly the runs the flag exists to
+catch — `required: false` against a busy box, a failed `on_run_start`, the opt-out); the per-run
+opt-out still created a phantom artifact row, making 26-13 check 9 unachievable; and the ownership
+test was `xfail` with no plan ever retiring the marker, so it carried zero signal.
+
+### Phase 26.1 created — the mid-run alarm had no home
+
+Iteration 6 also surfaced that `26-CONTEXT.md`'s locked *"surface prominently in pilot status"* is
+implemented by **nothing**, and cannot be: `OrchestratorState` carries no tracker values, so
+`WS /ws/pilots` cannot carry `openephys.alive`, and the React app has no device-health surface
+(`grep -rn "alive" web_ui/react-src/src` → nothing). The cause is a scope-boundary mistake, not a
+forgotten task — `alive` is EXTLINK-07's, and **Phase 18's NOT-in-scope list explicitly excludes**
+*"Per-pilot health dashboard React page + WS forwarding via orchestrator"*. Phase 26 locked a
+decision that depends on infrastructure Phase 18 deliberately deferred and nothing picked up.
+
+Resolved as **new Phase 26.1** (device-neutral, matched on the `.alive` suffix so any
+`ExternalHardware` device lights it). Building it inside 26 would put Phase 18 substrate in the
+OpenEphys phase; reopening 18 would invalidate a verdict earned over six iterations. **26.1 is NOT a
+blocker for 26** — detection ships in 26 (the `alive` flip, its CONTINUOUS event, the loud log
+line), presentation ships in 26.1. `26-CONTEXT.md` now records the deferral and its cost explicitly,
+rather than shipping the reduced scope by omission.
+
+⚠ **Phase 26 has NOT been re-checked since the iteration-6 fixes** — the checker ran against the
+pre-fix state, and the `26-CONTEXT.md` amendment is newer still. Re-run it before
+`/gsd:execute-phase 26`. Phase 26 is blocked on Phase 18 regardless.
 
 **Gap fixed 2026-08-03 — `role: "none"` (control-only, no inbound transport).** Phase 26 planning
 exposed that two transport roles were not enough. The plans already handled a class with zero

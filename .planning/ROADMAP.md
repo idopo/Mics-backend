@@ -857,6 +857,57 @@ agent does not run git on the Pi, start/stop the pilot, or run Python on the Pi.
 
 ---
 
+### Phase 26.1: Per-Pilot Device Health Surface
+
+**Goal:** An `ExternalHardware` device going unreachable mid-run becomes visible **while the session
+is running**, not at analysis time. Any `<source_id>.alive` tracker flip reaches the live pilot
+payload and lights a warning affordance on the pilot card, so a researcher can decide whether to
+stop. Device-neutral: OpenEphys is the first consumer, DeepLabCut and photometry light the same
+indicator for free.
+
+**Requirements**: EXTLINK-07 (the surfacing half), and the amended `26-CONTEXT.md` mid-run decision.
+
+**Why this is its own phase.** `alive` is a Phase 18 concept — EXTLINK-07 owns the generic
+`<source_id>.alive` tracker — but Phase 18's NOT-in-scope list explicitly excludes *"Per-pilot health
+dashboard React page + WS forwarding via orchestrator"*, and EXTLINK-07's surfacing commitment stops
+at the ES event. Phase 26 then locked *"surface prominently in pilot status"* without noticing it had
+written a decision across that scope boundary. Building it inside 26 would put generic Phase 18
+substrate in the OpenEphys phase; reopening Phase 18 would invalidate a verdict earned over six
+plan-checker iterations. So it is separated, and `26-CONTEXT.md` now records the deferral and its
+cost explicitly.
+
+**Dependencies:** Phase 18 (`<source_id>.alive` trackers and the CONTINUOUS flip event must exist).
+Phase 26 in practice — not a hard dependency, but OE is the first device that can actually light the
+indicator, so end-to-end proof needs it. **Phase 26 does NOT depend on this phase**: detection ships
+in 26, presentation ships here.
+
+**Plans:** 0 plans (run `/gsd:plan-phase 26.1`)
+
+**Success criteria:**
+1. `OrchestratorState` carries per-pilot device health, written from the CONTINUOUS handler under
+   the same lock as every other mutator, and `snapshot()` exposes it — defaulting to `{}`, never
+   `None`, so the common no-external-device case needs no null check.
+2. The health map is keyed by full tracker name and matched on the **`.alive` suffix**, never on a
+   device class name — a second device type lights it with zero orchestrator change.
+3. `WS /ws/pilots` carries it to the browser. `web_ui/app.py` forwards the orchestrator's
+   `/pilots/live` response verbatim, so this should need no proxy change — confirm before assuming.
+4. The React pilot card renders a visible warning when a device is not alive during an active run,
+   and shows nothing when there are no external devices.
+5. A pilot's health map is cleared wherever `active_run` is cleared, so a stale warning cannot
+   outlive the run that produced it.
+6. Rig proof: power the OE box off mid-run and see the pilot card change without a page reload.
+
+**NOT in scope:** a full per-pilot health dashboard page; historical health charts; alerting or
+notification outside the browser; any automatic run abort on liveness loss (EXTLINK-07 makes
+mid-run liveness loss never automatically fatal — the FDA author gates on it if the experiment
+requires it).
+
+**Files to change:** `orchestrator/orchestrator/state.py`, `orchestrator/orchestrator/orchestrator_station.py`
+(`on_data`), `web_ui/react-src/src/types/index.ts`, and the pilot-card component under
+`web_ui/react-src/src/pages/index/`.
+
+---
+
 ### Phase 27: OpenEphys Firing Rate over ZMQ
 
 **Goal:** Live firing rate becomes a first-class task input. The Pi subscribes to the Open Ephys ZMQ

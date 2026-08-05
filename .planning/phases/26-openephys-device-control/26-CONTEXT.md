@@ -137,10 +137,28 @@ See `18-CONTEXT.md`. Restated here only because this phase depends on them:
   OE host to stat the disk — that would be a new integration surface the phase never asked for).
   The underlying risk — a session dying 40 minutes in because the disk filled — remains unmitigated
   and is accepted for this phase.
-- **Recording stops mid-run → log, flip `alive`, and surface prominently in pilot status.**
-  Consistent with the Phase 18 mid-run policy (don't kill a behavioural session over an accessory),
-  but loud rather than log-only, so a mid-run failure isn't discovered at analysis time. The
-  behavioural data stays valid and the researcher decides whether to stop.
+- **Recording stops mid-run → log and flip `alive`.** Consistent with the Phase 18 mid-run policy
+  (don't kill a behavioural session over an accessory). The behavioural data stays valid and the
+  researcher decides whether to stop.
+
+  **AMENDED 2026-08-05 — the "surface prominently in pilot status" half is DEFERRED to Phase 26.1,
+  deliberately and with the cost stated.** The original wording said *loud rather than log-only, so
+  a mid-run failure isn't discovered at analysis time* — but it turned out to depend on
+  infrastructure that does not exist and that Phase 18 explicitly excluded: its NOT-in-scope list
+  names *"Per-pilot health dashboard React page + WS forwarding via orchestrator"*, and EXTLINK-07's
+  surfacing commitment correspondingly stops at the ES event. `OrchestratorState` carries no tracker
+  values, so `WS /ws/pilots` cannot carry `openephys.alive`, and the React app has no device-health
+  surface at all (`grep -rn "alive" web_ui/react-src/src` → nothing).
+
+  That is substrate work, generic over every `ExternalHardware` device — not something Phase 26
+  should build for its own benefit, which would put a Phase 18 concept inside the OE phase and
+  repeat exactly the layering mistake the device-neutral artifact layer exists to avoid.
+
+  **What Phase 26 delivers:** the flip itself, via `oc.liveness_ok`'s run-active clause, plus the
+  `alive` CONTINUOUS event in ES and a loud pilot-log line. **What it does not:** any in-session
+  visual indication. Until 26.1 lands, a mid-run recording loss IS discoverable only after the fact
+  — the cost this decision originally rejected, now accepted knowingly rather than by omission.
+  Phase 26.1 is NOT a blocker for Phase 26: detection ships here, presentation ships there.
 
 ### Lib delivery and opt-out
 - **The `OpenEphys` lib ships as a seeded first-party lib** — `api/seed_libs/openephys.py`, seeded

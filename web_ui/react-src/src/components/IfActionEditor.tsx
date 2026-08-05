@@ -82,6 +82,8 @@ export default function IfActionEditor({ action, toolkit, hwModules, taskDefId, 
       <ConditionBuilder
         condition={action.condition ?? EMPTY_CONDITION}
         toolkit={toolkit}
+        hwModuleNames={hwModules.map(m => m.name)}
+        variableNames={variableNames}
         detectorChannels={detectorChannels}
         onChange={updateCondition}
       />

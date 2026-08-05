@@ -60,12 +60,26 @@ test('operandLabel formats each shape', () => {
   assert.equal(operandLabel({ view_detector: { ref: 'MPR121', channel: 2 } }), 'MPR121 ch2')
 })
 
-test('visibleOperandTypes: today\'s list, with a toolkit present', () => {
-  assert.deepEqual(visibleOperandTypes('view', true), ['view', 'literal', 'flag', 'param', 'hardware'])
+test('visibleOperandTypes: a fresh operand offers view/literal/param only', () => {
+  assert.deepEqual(visibleOperandTypes('view', true), ['view', 'literal', 'param'])
+  assert.deepEqual(visibleOperandTypes('literal', true), ['view', 'literal', 'param'])
+  assert.deepEqual(visibleOperandTypes('param', true), ['view', 'literal', 'param'])
 })
 
-test('visibleOperandTypes: today\'s list, without a toolkit', () => {
+test('visibleOperandTypes: a stored legacy operand appends ONLY its own type', () => {
+  assert.deepEqual(visibleOperandTypes('flag', true), ['view', 'literal', 'param', 'flag'])
+  assert.deepEqual(visibleOperandTypes('hardware', true), ['view', 'literal', 'param', 'hardware'])
+})
+
+test('visibleOperandTypes: the legacy escape applies with or without a toolkit', () => {
   assert.deepEqual(visibleOperandTypes('view', false), ['view', 'literal'])
+  assert.deepEqual(visibleOperandTypes('flag', false), ['view', 'literal', 'flag'])
+})
+
+test('visibleOperandTypes: switching away carries the key and drops the legacy option', () => {
+  const carried = buildOperand('view', getOperandKey({ flag: 'my_var' }), [])
+  assert.deepEqual(carried, { view: 'my_var' })
+  assert.deepEqual(visibleOperandTypes(getOperandType(carried), true), ['view', 'literal', 'param'])
 })
 
 test('LEGACY_OPERAND_TYPES contains exactly flag and hardware', () => {

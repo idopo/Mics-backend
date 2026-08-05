@@ -74,10 +74,8 @@ export function operandLabel(op: FdaOperand): string {
 }
 
 /** The type list a slot offers. `stored` is the type of the operand ALREADY in that slot —
- *  a legacy type is offered only to let it round-trip, never as a fresh choice.
- *  NOTE: this is today's (pre-CMP-20) list — Task 2 narrows it. */
-export function visibleOperandTypes(_stored: OperandType, hasToolkit: boolean): OperandType[] {
-  return hasToolkit
-    ? ['view', 'literal', 'flag', 'param', 'hardware']
-    : ['view', 'literal']
+ *  a legacy type is offered only to let it round-trip, never as a fresh choice. */
+export function visibleOperandTypes(stored: OperandType, hasToolkit: boolean): OperandType[] {
+  const base: OperandType[] = hasToolkit ? ['view', 'literal', 'param'] : ['view', 'literal']
+  return LEGACY_OPERAND_TYPES.has(stored) ? [...base, stored] : base
 }

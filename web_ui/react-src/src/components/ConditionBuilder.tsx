@@ -8,6 +8,8 @@ import {
   getOperandKey,
   resolveDetectorDisplayName,
   buildOperand,
+  visibleOperandTypes,
+  LEGACY_OPERAND_TYPES,
 } from './operandTypes.mts'
 
 const OPS = ['==', '!=', '>=', '<=', '>', '<'] as const
@@ -47,14 +49,22 @@ function OperandEditor({ operand, toolkit, hwModuleNames, variableNames, detecto
   const paramOpts = getParamKeys(toolkit)
   const viewGroups = buildViewOptions(hwOpts, flagOpts, detectors)
 
-  const allTypes: OperandType[] = toolkit
-    ? ['view', 'literal', 'flag', 'param', 'hardware']
-    : ['view', 'literal']
+  const allTypes: OperandType[] = visibleOperandTypes(type, !!toolkit)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
       <select value={type} onChange={e => setType(e.target.value as OperandType)} style={ss}>
-        {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        {allTypes.map(t => (
+          <option
+            key={t}
+            value={t}
+            title={LEGACY_OPERAND_TYPES.has(t)
+              ? 'Legacy operand form kept so this saved condition round-trips. Switch to view — it reads the same value.'
+              : undefined}
+          >
+            {t}{LEGACY_OPERAND_TYPES.has(t) ? ' (legacy)' : ''}
+          </option>
+        ))}
       </select>
 
       {type === 'view' && (viewGroups.length > 0 ? (

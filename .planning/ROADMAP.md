@@ -528,7 +528,9 @@ payload and lights a warning affordance on the pilot card, so a researcher can d
 stop. Device-neutral: OpenEphys is the first consumer, DeepLabCut and photometry light the same
 indicator for free.
 
-**Requirements**: EXTLINK-07 (the surfacing half), and the amended `26-CONTEXT.md` mid-run decision.
+**Requirements**: HEALTH-01, HEALTH-02, HEALTH-03, HEALTH-04, HEALTH-05, HEALTH-06 *(the surfacing
+half of EXTLINK-07, split out of Phase 18 whose scope explicitly excludes it; also closes the
+deferral recorded in `26-CONTEXT.md`'s amended mid-run decision)*
 
 **Why this is its own phase.** `alive` is a Phase 18 concept — EXTLINK-07 owns the generic
 `<source_id>.alive` tracker — but Phase 18's NOT-in-scope list explicitly excludes *"Per-pilot health

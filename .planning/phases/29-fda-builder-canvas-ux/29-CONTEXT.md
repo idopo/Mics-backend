@@ -60,9 +60,15 @@ rewrites the task definition's content hash and ships canvas coordinates to the 
 **Rejected: browser localStorage.** Per-browser and per-machine. This is a shared lab account
 — positions must follow the task definition to whoever opens it next.
 
-Implementation note: `fda_json`, `display_name`, and `toolkit_id` are **not declared on the
-ORM class** — they are read and written by raw SQL against the migrated columns. `ui_layout`
-follows that same pattern.
+Implementation note: `fda_json`, `display_name`, and `toolkit_name` are **not declared on the
+`TaskDefinition` ORM class** — they are read and written by raw SQL against the migrated
+columns. `ui_layout` follows that same pattern.
+
+*Corrected 2026-08-05 (plan-checker):* an earlier draft of this note also listed `toolkit_id`
+as raw-SQL-only. It is not — `toolkit_id`, `validation_status`, and `validation_message` are
+declared `Column`s (`api/models.py:526-528`). The raw-SQL-only set is exactly `fda_json`,
+`display_name`, `toolkit_name`. No plan action changes as a result; `ui_layout` is raw-SQL
+either way.
 
 ### Locked decision 2 — Default layout: hand-rolled layered, no new dependency
 

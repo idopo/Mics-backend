@@ -795,6 +795,7 @@ class TaskDefinitionUpdate(BaseModel):
     display_name: Optional[str] = None
     fda_json: Optional[Dict[str, Any]] = None
     toolkit_id: Optional[int] = None
+    ui_layout: Optional[Dict[str, Any]] = None
 
 
 class TaskDefinitionRead(BaseModel):

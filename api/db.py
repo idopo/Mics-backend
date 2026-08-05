@@ -63,6 +63,7 @@ def run_toolkit_migrations(eng):
         ("task_definitions", "toolkit_name",  "TEXT"),
         ("task_definitions", "display_name",  "TEXT"),
         ("task_definitions", "fda_json",      "JSONB"),
+        ("task_definitions", "ui_layout",     "JSONB"),
     ]
     with eng.connect() as conn:
         for table, col_name, col_type in migrations:

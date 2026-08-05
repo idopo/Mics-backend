@@ -683,7 +683,7 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
     try:
         row = db.execute(sa_text(
             "SELECT id, task_name, display_name, toolkit_name, fda_json, file_hash, created_at, toolkit_id, "
-            "validation_status, validation_message, hw_lib_versions "
+            "validation_status, validation_message, hw_lib_versions, ui_layout "
             "FROM task_definitions WHERE id = :id"
         ), {"id": defn_id}).fetchone()
         if not row:
@@ -700,6 +700,7 @@ def get_task_definition(defn_id: int, _: dict = Depends(verify_token)):
             "validation_status": row.validation_status or "ok",
             "validation_message": row.validation_message,
             "hw_lib_versions": row.hw_lib_versions or {},
+            "ui_layout": json.loads(row.ui_layout) if isinstance(row.ui_layout, str) else row.ui_layout,
         }
     finally:
         db.close()

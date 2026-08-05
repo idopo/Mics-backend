@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-05T12:51:30.866Z"
+last_updated: "2026-08-05T14:54:44.379Z"
 progress:
-  total_phases: 23
+  total_phases: 24
   completed_phases: 7
-  total_plans: 74
-  completed_plans: 42
-  percent: 59
+  total_plans: 82
+  completed_plans: 44
+  percent: 56
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,57 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 59%
+**Progress:** [██████░░░░] 56%
+
+### Phase 29 status (2026-08-05) — plans 01, 04/8 executed
+
+**Plan 01 executed (2026-08-05):** CANVAS-02/11 delivered — the pure, behaviour-preserving
+refactor that clears line-count and test-coverage headroom before any Phase 29 canvas feature
+code lands. Task 1 extracted `condLabel`/`renderTreeLabel` verbatim into a new
+`transitionLabel.mts`, pinned by 10 exact-string `node --test` cases (leaf, `(unconditional)`,
+AND/OR joins with the correct `∧`/`∨` separators, same-op nesting staying flat, opposite-op
+nesting gaining parens, a three-level AND>OR>AND nest parenthesising at both switch points, and
+the `?`/`?` null-operand fallback) — freezing CANVAS-02's label text so the 29-05/06/07 edge-
+routing plans cannot silently drift it. Task 2 extracted `normaliseTransition`/
+`normaliseTriggerAssignment`/`normaliseFda`/`parseStateWarnings` verbatim into a new
+`fdaNormalise.mts` (90 lines), with 17 new tests covering every legacy migration branch for the
+first time (all three `condition_groups` DNF shapes, the flat/singular legacy `conditions`
+shapes, the from_state/next_state key migration, and the handler/config-stripping healer for the
+task-definition-181/185 mount crash). Task 3 (CANVAS-11) lifted the inline node context menu into
+a reusable `CanvasContextMenu.tsx` and rewired `TaskEditor.tsx` to import from both new modules;
+`tsc -b`'s `noUnusedLocals` confirmed `isConditionBranch`/`ConditionNode` are still needed by
+`conditionSummary` and were kept. `TaskEditor.tsx` **873 → 745 lines** (128-line reduction,
+plan required ≥83). `npm run test:unit`/`tsc -b`/`npm run build` all clean; `git diff` confined
+to the plan's six `files_modified`. One out-of-scope discovery logged, not fixed: 2 pre-existing
+failing tests in the untracked `tests/edgeGeometry.test.mts` (CANVAS-13/14 back-edge-routing work
+from a separate in-progress session) — verified via `git stash` to predate this plan's changes;
+logged in `.planning/phases/29-fda-builder-canvas-ux/deferred-items.md`. No user-visible change;
+`docker compose up --build web_ui` deliberately not run (belongs to the 29-08 checkpoint). Note:
+`gsd-tools requirements mark-complete CANVAS-02 CANVAS-11` found no traceability checkbox rows in
+`REQUIREMENTS.md` (same known gap as CMP-*/DVK-*) — completion tracked via this section and
+`gsd-tools roadmap update-plan-progress 29` instead. See `29-01-SUMMARY.md`.
+
+**Plan 04 executed (2026-08-05):** CANVAS-05/06 delivered — `task_definitions.ui_layout` JSONB
+column, deliberately outside `fda_json` (`file_hash = sha256(fda_json)` must not move on a node
+drag). Task 1 added the migration tuple + `TaskDefinitionUpdate.ui_layout` +
+`GET /api/task-definitions/{id}` surface (raw `None` when never arranged); verified live —
+`\d task_definitions` shows `ui_layout | jsonb`, survives an `api` container restart. Task 2
+(TDD) added a layout-only PUT fast path in `update_task_definition` that writes the column and
+returns **before** `reject_if_hard_errors`/`_validate_task_definition` run — proven by a new
+real-DB `api/tests/test_ui_layout.py` (7 cases: round-trip, `file_hash` byte-identical on a
+layout-only PUT, `file_hash` DOES change on an `fda_json` PUT, `validation_status`/`_message`
+untouched by a layout-only PUT, a layout-only PUT survives a monkeypatched
+`reject_if_hard_errors` that raises, a combined `fda_json`+`ui_layout` PUT writes both and
+rehashes, GET on a never-arranged definition returns `ui_layout: None`); full backend suite
+**359 passed, 1 skipped** (up from 352/1, no regressions). Task 3 added the TypeScript
+`UiLayout` type and widened `updateTaskDefinition`'s payload; `FdaJson` untouched (mirrors what
+ships to the Pi). `wc -l api/routers/toolkits.py`: 992 → 1005 (net +13, under the plan's 20-line
+budget; the 500-line split remains deferred, not attempted here). Scope decisions recorded:
+`ui_layout` excluded from `list_task_definitions` (list response) and `TaskDefinitionCreate`/the
+ORM class. One out-of-scope discovery logged, not fixed: 1 pre-existing failing case each in the
+same untracked `tests/edgeGeometry.test.mts`/`fdaLayout.test.mts` (CANVAS-13/14 back-edge-routing
+work from the separate in-progress session noted in plan 01's paragraph above) — 146/147 frontend
+tests passing. Nothing consumes `ui_layout` yet — that is plan 29-06. See `29-04-SUMMARY.md`.
 
 ### Phase 26 status (2026-08-03) — PLANNED, 13 plans, verification passed
 

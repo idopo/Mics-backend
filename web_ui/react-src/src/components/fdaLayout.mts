@@ -68,6 +68,28 @@ function placeColumn(column: ReadonlyArray<string>, x: number, positions: Record
   })
 }
 
+/**
+ * Packs unreachable states into a bounded grid block after the connected graph (CANVAS-14),
+ * rather than one unbounded trailing column. Block height = the taller of the connected graph's
+ * tallest column or a roughly-square packing of the orphans themselves, so a handful of orphans
+ * beside a tall graph reads as a short row, not a needlessly cramped square.
+ */
+function placeOrphanBlock(
+  orphans: ReadonlyArray<string>,
+  connectedColumns: ReadonlyMap<number, string[]>,
+  maxRank: number,
+  positions: Record<string, XY>,
+): void {
+  let connectedRows = 1
+  for (const column of connectedColumns.values()) {
+    if (column.length > connectedRows) connectedRows = column.length
+  }
+  const rowsPerColumn = Math.max(connectedRows, Math.ceil(Math.sqrt(orphans.length)))
+  for (let start = 0, columnIndex = 0; start < orphans.length; start += rowsPerColumn, columnIndex++) {
+    placeColumn(orphans.slice(start, start + rowsPerColumn), (maxRank + 1 + columnIndex) * COLUMN_SPACING, positions)
+  }
+}
+
 /** BFS-ranked layered arrangement. Every input state appears in the result. */
 export function layeredLayout(input: LayoutInput): Record<string, XY> {
   const { states } = input
@@ -75,7 +97,6 @@ export function layeredLayout(input: LayoutInput): Record<string, XY> {
   if (states.length === 0) return positions
 
   const ranks = columnRanks(input) // the one BFS; not re-derived here
-
   const connectedColumns = new Map<number, string[]>()
   let maxRank = -1
   for (const state of states) {
@@ -89,9 +110,8 @@ export function layeredLayout(input: LayoutInput): Record<string, XY> {
     placeColumn(column, rank * COLUMN_SPACING, positions)
   }
 
-  // Unreachable states: trailing column for now. Task 3 replaces this with a bounded grid block.
   const orphans = states.filter(state => ranks[state] === undefined)
-  if (orphans.length > 0) placeColumn(orphans, (maxRank + 1) * COLUMN_SPACING, positions)
+  if (orphans.length > 0) placeOrphanBlock(orphans, connectedColumns, maxRank, positions)
 
   return positions
 }
@@ -109,7 +129,6 @@ function* rowOffsets(limit: number): Generator<number> {
 export function placeNewState(taken: Readonly<Record<string, XY>>): XY {
   const existing = Object.values(taken)
   const budget = existing.length + 3 // rows and columns to try before giving up on the lattice
-
   for (let col = 0; col <= budget; col++) {
     const x = col * COLUMN_SPACING
     for (const rowOffset of rowOffsets(budget)) {

@@ -112,12 +112,10 @@ test('a single state returns one entry without throwing', () => {
   assert.equal(Object.keys(result).length, 1)
 })
 
-test("initialState '' places every state, all in the trailing column (no root => all unreachable)", () => {
+test("initialState '' places every state — no root => all unreachable, packed into the orphan block (Task 3 bounds its shape)", () => {
   const input: LayoutInput = { states: ['A', 'B', 'C'], transitions: [{ from: 'A', to: 'B' }], initialState: '' }
   const result = layeredLayout(input)
   assert.equal(Object.keys(result).length, 3)
-  assert.equal(result.A.x, result.B.x)
-  assert.equal(result.B.x, result.C.x)
   assert.equal(coordSet(result).size, 3)
 })
 
@@ -265,4 +263,119 @@ test('non-finite or non-numeric stored coordinates are ignored, not propagated',
   assert.equal(Number.isFinite(result.A.x), true)
   assert.equal(Number.isFinite(result.A.y), true)
   assert.equal(Number.isFinite(result.B.x), true)
+})
+
+// ---------------------------------------------------------------------------
+// Task 3: pack unreachable states into a bounded grid block (CANVAS-14)
+// ---------------------------------------------------------------------------
+
+// Definition 172 ("bbb FDA"), verified against the live DB 2026-08-05: 14 states, only 3 wired
+// into any transition. The other 11 are toolkit states the sync effect appended, never wired up.
+const orphanNames = [
+  'off_led2', 'setTImer', 'play_led2', 'play_leds', 'inbar_state', 'trial_onset',
+  'number_is_above', 'number_is_below', 'state_end_trial', 'state_release_water', 'state_wait_for_lick',
+]
+const def172: LayoutInput = {
+  states: ['prepare_session', 'new_trial_onset', 'sadsd', ...orphanNames],
+  transitions: [
+    { from: 'prepare_session', to: 'new_trial_onset' },
+    { from: 'new_trial_onset', to: 'sadsd' },
+    { from: 'sadsd', to: 'new_trial_onset' },
+  ],
+  initialState: 'prepare_session',
+}
+
+test('definition 172: all 14 states placed (CANVAS-07 never-drop guarantee survives)', () => {
+  const result = layeredLayout(def172)
+  assert.equal(Object.keys(result).length, 14)
+})
+
+test('definition 172: the 11 orphans form a block, at least 2 distinct x values', () => {
+  const result = layeredLayout(def172)
+  const orphanXs = new Set(orphanNames.map(name => result[name].x))
+  assert.ok(orphanXs.size >= 2)
+})
+
+test('definition 172: bounded height — no orphan column holds more than the literal bound of 4', () => {
+  const result = layeredLayout(def172)
+  const byColumn = new Map<number, number>()
+  for (const name of orphanNames) {
+    const { x } = result[name]
+    byColumn.set(x, (byColumn.get(x) ?? 0) + 1)
+  }
+  assert.ok(Math.max(...byColumn.values()) <= 4)
+})
+
+test('definition 172: every orphan sits strictly right of every connected state', () => {
+  const result = layeredLayout(def172)
+  const connectedXs = ['prepare_session', 'new_trial_onset', 'sadsd'].map(name => result[name].x)
+  const maxConnectedX = Math.max(...connectedXs)
+  for (const name of orphanNames) assert.ok(result[name].x > maxConnectedX)
+})
+
+test('definition 172: all 14 coordinates distinct', () => {
+  const result = layeredLayout(def172)
+  assert.equal(coordSet(result).size, 14)
+})
+
+test("aspect scales with the connected graph: a 5-row-tall connected part keeps ≤5 orphans per orphan column, not ceil(sqrt(6))=3", () => {
+  const input: LayoutInput = {
+    states: ['ROOT', 'R1', 'R2', 'R3', 'R4', 'R5', 'O1', 'O2', 'O3', 'O4', 'O5', 'O6'],
+    transitions: ['R1', 'R2', 'R3', 'R4', 'R5'].map(to => ({ from: 'ROOT', to })),
+    initialState: 'ROOT',
+  }
+  const result = layeredLayout(input)
+  const orphans = ['O1', 'O2', 'O3', 'O4', 'O5', 'O6']
+  const byColumn = new Map<number, number>()
+  for (const name of orphans) byColumn.set(result[name].x, (byColumn.get(result[name].x) ?? 0) + 1)
+  assert.ok(Math.max(...byColumn.values()) <= 5)
+  assert.ok([...byColumn.values()].some(count => count > 3))
+})
+
+test('0 orphans: identical to a fully connected graph (no block artefacts)', () => {
+  const input: LayoutInput = { states: ['A', 'B'], transitions: [{ from: 'A', to: 'B' }], initialState: 'A' }
+  const result = layeredLayout(input)
+  assert.equal(Object.keys(result).length, 2)
+  assert.notEqual(result.A.x, result.B.x)
+})
+
+test('1 orphan: a single node, no wrapping artefacts', () => {
+  const input: LayoutInput = { states: ['A', 'ORPHAN'], transitions: [], initialState: 'A' }
+  const result = layeredLayout(input)
+  assert.equal(Object.keys(result).length, 2)
+})
+
+test('orphans referencing each other (an isolated cycle) still land in the block, both placed', () => {
+  const input: LayoutInput = {
+    states: ['IDLE', 'X', 'Y'],
+    transitions: [{ from: 'IDLE', to: 'IDLE' }, { from: 'X', to: 'Y' }, { from: 'Y', to: 'X' }],
+    initialState: 'IDLE',
+  }
+  const result = layeredLayout(input)
+  assert.equal(Object.keys(result).length, 3)
+  assert.ok(result.X.x > result.IDLE.x)
+  assert.ok(result.Y.x > result.IDLE.x)
+})
+
+test('placeNewState works around the definition-172 block: collides with nothing, including orphan slots', () => {
+  const layout = layeredLayout(def172)
+  const pos = placeNewState(layout)
+  const colSpacing = COLUMN_SPACING()
+  const rowSpacing = ROW_SPACING()
+  for (const existing of Object.values(layout)) {
+    const withinX = Math.abs(existing.x - pos.x) < colSpacing / 2
+    const withinY = Math.abs(existing.y - pos.y) < rowSpacing / 2
+    assert.equal(withinX && withinY, false)
+  }
+})
+
+test("initialState '': the whole graph is one bounded block, not a 14-tall column", () => {
+  const input: LayoutInput = { states: def172.states, transitions: def172.transitions, initialState: '' }
+  const result = layeredLayout(input)
+  assert.equal(Object.keys(result).length, 14)
+  const xs = new Set(Object.values(result).map(p => p.x))
+  assert.ok(xs.size >= 2)
+  const byColumn = new Map<number, number>()
+  for (const p of Object.values(result)) byColumn.set(p.x, (byColumn.get(p.x) ?? 0) + 1)
+  assert.ok(Math.max(...byColumn.values()) < 14)
 })

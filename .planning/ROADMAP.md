@@ -1069,7 +1069,7 @@ Pure UI/UX. No change to FDA semantics, validation, or anything sent to the Pi.
 
 **Requirements**: CANVAS-01 through CANVAS-14
 **Depends on:** Phase 12 (FDA state builder), Phase 16 (recursive condition tree — supplies the edge labels)
-**Plans:** 5/8 plans executed
+**Plans:** 6/8 plans executed
 
 Plans:
 - [x] 29-01-PLAN.md — W1 · make room in TaskEditor.tsx: extract condLabel + FDA normalisers to tested .mts modules, extract the context menu — done 2026-08-05, see `29-01-SUMMARY.md`
@@ -1077,7 +1077,7 @@ Plans:
 - [ ] 29-03-PLAN.md — W1 · fdaLayout.mts: shared columnRanks BFS, layered layout, orphan grid block, collision-free placement (+ tests)
 - [x] 29-04-PLAN.md — W1 · backend task_definitions.ui_layout JSONB + GET/PUT + layout-only fast path (+ pytest) — done 2026-08-05, see `29-04-SUMMARY.md`
 - [x] 29-05-PLAN.md — W2 · TransitionEdge.tsx custom edge: bowed arcs, per-edge labels, arrowheads, self-loops — done 2026-08-05, see `29-05-SUMMARY.md`
-- [ ] 29-06-PLAN.md — W3 · useLayoutPersistence hook: hydrate positions, debounced layout PUT off the FDA autosave path
+- [x] 29-06-PLAN.md — W3 · useLayoutPersistence hook: hydrate positions, debounced layout PUT off the FDA autosave path — done 2026-08-05, see `29-06-SUMMARY.md`
 - [ ] 29-07-PLAN.md — W4 · placement for new states + pane context menu with a persisting "Restore default layout"
 - [ ] 29-08-PLAN.md — W5 · consolidated gate sweep + CANVAS-12 human proof on definitions 186 + 172 (11 checks)
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-05T15:06:16.445Z"
+last_updated: "2026-08-05T15:12:49.629Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 82
-  completed_plans: 47
-  percent: 60
+  completed_plans: 48
+  percent: 61
 ---
 
 # STATE: MICS Backend
@@ -28,9 +28,34 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 60%
+**Progress:** [██████░░░░] 61%
 
-### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05/8 executed
+### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06/8 executed
+
+**Plan 06 executed (2026-08-05):** CANVAS-05/07/10 delivered — `useLayoutPersistence.ts` (73
+lines), a debounced `ui_layout` PUT hook kept textually and behaviourally separate from the FDA
+autosave, wired into `TaskEditor.tsx`'s canvas-init and drag paths. Task 1 built the hook: a
+ref-backed position map (`positionsRef`, not `useState` — a drag must not re-render the editor),
+`seed()` (no PUT — the layered layout is deterministic from the FDA, so re-deriving it costs
+nothing), `record()` (600ms debounce, used by drag), `replaceAll()` (immediate PUT, reserved for
+plan 29-07's "Restore default layout" action), and its own `layoutMsg` status string with no
+`invalidateQueries` (a refetch on every drag would re-trigger canvas-init hydration and churn the
+whole editor). Task 2 rewrote `fdaToNodes` to take a resolved positions map instead of deriving
+`x`/`y` from array index, and the canvas-init effect now calls
+`layout.seed(resolvePositions(states/transitions/initial, taskDef.ui_layout.nodes))` before
+building nodes — `taskDef` deliberately excluded from the effect's deps, same rationale as the
+existing `seededIdRef` guard (adding it would re-hydrate positions and drop unsaved drags on
+every window-focus refetch). Task 3 wired `onNodeDragStop` to `layout.record(...)` — the whole
+handler body, no `setFdaJson`/`setSavedMsg`/`saveMutation.mutate` anywhere in it or the hook
+(grep-verified) — then rebuilt the web_ui container and verified live: a curl PUT/GET round-trip
+on task definition 186 returned `ui_layout` verbatim with `file_hash` byte-identical before and
+after. `npm run test:unit` 182/182, `tsc -b` clean, `npm run build` clean, `TaskEditor.tsx`
+**763 → 788 lines** (42 lines of headroom remain under this plan's own 830-line gate). One
+Rule-1 auto-fix: the new hook's doc comment named the literal token `fdaJson` in prose, which
+the plan's own verification grep flagged as a false positive; reworded, no functional change.
+The CANVAS-10 negative case (a drag persists while the FDA autosave is held by an incomplete
+trigger) is deliberately deferred to plan 29-08's consolidated checkpoint, per this plan's own
+verification block. See `29-06-SUMMARY.md`.
 
 **Plan 05 executed (2026-08-05):** CANVAS-01/02/03/04/13 delivered — the custom `TransitionEdge`
 react-flow edge component that replaces default straight-line edges, consuming plan 29-02's

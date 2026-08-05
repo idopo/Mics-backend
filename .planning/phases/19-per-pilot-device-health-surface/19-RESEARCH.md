@@ -66,7 +66,27 @@ someone adds an eighth.
 the same locked block. One place, all callers covered forever, and it is impossible for the two to
 drift out of sync — which is the actual requirement.
 
-### F3 — `web_ui/app.py` needs NO change. Confirmed, not assumed.
+### F3 — ⚠ **PARTLY WRONG — corrected 2026-08-05 by the planner.** `web_ui/app.py` needs no change, but `orchestrator/orchestrator/api.py` DOES.
+
+> **The error:** this finding originally said a new key in `state.snapshot()` reaches the browser.
+> It does not. **`/pilots/live` is not `snapshot()`.** The snapshot-based handler is **commented
+> out** at `api.py:14-19`; the registered one at `:24` scans Redis:
+> ```python
+> for key in station.redis.scan_iter("pilot:*"):
+>     out[pilot_key] = {"connected": ..., "state": ..., "active_run": ..., "updated_at": ...}
+> ```
+> That is also why `PilotLive` declares exactly those four fields and not `snapshot()`'s
+> `last_seen_sec` / `ip` — a detail this doc noticed and drew the wrong conclusion from.
+>
+> **Consequence had it stood:** a plan touching only `snapshot()` would have shipped a field the
+> browser never receives, and it would have looked correct in every orchestrator-side assertion.
+>
+> **Resolution (planner's, verified):** keep the health map in `OrchestratorState` and **merge it at
+> read time in `api.py`** — one line. Do *not* write health into Redis: that is a blocking network
+> call on the shared IOLoop (the F1 hazard), and Redis outlives a restart, so a stale `alive: false`
+> could survive the run that produced it and violate HEALTH-05.
+
+The `web_ui/app.py` half below is correct and still stands.
 
 ```python
 # web_ui/app.py:49  @app.websocket("/ws/pilots")
@@ -102,6 +122,23 @@ Full relevant inventory, verified present: `.pilot-card`, `.pilot-card-header`, 
 `.pilot-run-grid`, `.pilot-status-dot`, `.pilot-offline`, `.pilot-offline-badge`, `.pilot-idle`,
 `.pilot-running`, `.dot-idle`, `.dot-running`, `.dot-offline`, `.status`, `.status-error`,
 `.status-running`, `.badge`, `.error`, `.icon-danger`.
+
+---
+
+### F5 — **ADDED by the planner, verified.** The Pi sends `alive` as int `0`/`1`, and the tracker name is nested.
+
+This doc never covered the payload shape, which was a gap — an `isinstance(raw, bool)` check would
+have compiled, passed review, and silently never fired.
+
+- **Tracker name lives at `msg.value["event"]["event_data"]["id"]`.**
+  `logging_utils.py:44` builds `event_data = {"id": self.name, "value": value, "result": result_value}`.
+- **The value is an int, not a bool.** `log_action` runs every tracker value through
+  `coerce_for_event`, and `log_value.py:71` returns `int(raw), None, None` for a raw bool. The reason
+  is downstream: `event.event_data.value` is mapped `long` in `event_log_v2`, and a `long` field
+  rejects a bare bool with HTTP 400.
+
+So the `.alive` match must read the nested `id` and treat the value as truthy-int. Note this also
+means the ES-side vocabulary and the state-side vocabulary agree — no separate encoding.
 
 ---
 

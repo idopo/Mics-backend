@@ -452,11 +452,14 @@ Plans:
 > executed. Five additions to the substrate: transport roles + `@decoder`, liveness split from
 > signal staleness, egress queue, run lifecycle hooks, device lease.
 
-**Plans:** 12 plans in 5 waves (planned 2026-08-03, after the context revision) — **⚠ RE-VERIFICATION
-PENDING.** Ten of the twelve were revised on 2026-08-03 (commit `64bbd2d`) to add transport
-`role: "none"` for control-only devices, after Phase 26 planning exposed the gap. **The passing
-plan-checker verdict predates that revision and is stale** — re-run the checker before or during
-execution. Unchanged: 18-04, 18-07.
+**Plans:** 12 plans in 5 waves (planned 2026-08-03, after the context revision) — **✅ RE-VERIFICATION
+PASSED 2026-08-05.** Ten of the twelve were revised on 2026-08-03 (commit `64bbd2d`) to add transport
+`role: "none"` for control-only devices, after Phase 26 planning exposed the gap. The plan-checker was
+re-run against the revised plans: iteration 1 found 3 blockers (the `role: "none"` liveness-override
+rule was implemented but tested nowhere; the `EgressWorker` seam would have forked Phase 26; the
+now-mandatory liveness override ran a blocking network call on the shared IOLoop), a planner revision
+closed them, and iteration 2 passed. See `.planning/STATE.md` § Phase 18 status for the full record.
+Unchanged throughout: 18-04, 18-07. **Approved for `/gsd:execute-phase 18`.**
 
 Plans:
 - [ ] 18-01-PLAN.md — Wave 0: Pi wire/decoder/liveness contract tests + agent msgpack install

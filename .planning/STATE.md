@@ -124,21 +124,75 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-03) — RE-PLANNED, 12 plans · ⚠ RE-VERIFICATION PENDING
+### Phase 18 status (2026-08-05) — RE-PLANNED, 12 plans · ✅ RE-VERIFICATION PASSED
 
-> **⚠ THE PASSING PLAN-CHECKER VERDICT IS STALE. DO NOT TREAT THESE PLANS AS VERIFIED.**
-> Verification passed on the plans as they stood at commit `07b0c27`. **Ten of the twelve plans were
-> subsequently revised** (commit `64bbd2d`) to fix the no-transport gap. The plan-checker has **not**
-> been re-run against the revised plans — the user opted to verify later.
->
-> **Revised:** 18-01, 18-02, 18-03, 18-05, 18-06, 18-08, 18-09, 18-10, 18-11, 18-12.
-> **Unchanged:** 18-04 (msgpack pin), 18-07 (AST extractor — never sees `role`, which is config not
-> class metadata, and already covered the zero-`@signal` half).
->
-> **To clear this:** re-run the plan-checker (`/gsd:plan-phase 18` will do it, or verify at execute
-> time). Things worth checking specifically: that no same-wave file collision was introduced, that the
-> four EXTLINK-18 validation rows are each claimed, and that `external_hardware_wire.py` still fits
-> its ≤300-line budget with the third role added.
+**The stale-verdict warning is cleared.** The plan-checker was re-run on 2026-08-05 against the
+post-`64bbd2d` plans. Iteration 1 returned **ISSUES FOUND** (3 blockers, 3 warnings, 3 info);
+a planner revision closed them; iteration 2 returned **VERIFICATION PASSED**. Phase 18 is approved
+for `/gsd:execute-phase 18`.
+
+**All three blockers were follow-through gaps left by the `role: "none"` revision** — the revision
+added the role but did not carry it into the test contracts or the two paths a socketless device
+forces:
+
+1. **The `108190e` liveness-override rule was implemented but verified nowhere.** "`role: "none"`
+   requires an explicit liveness override, raise at construction" existed only as prose in
+   `18-10-PLAN.md`, with no test row in 18-01/18-02 and no row in `18-VALIDATION.md` — the rule
+   landed *after* `64bbd2d` rewrote the plans. It was also unreachable by the agent, sitting in
+   `external_hardware.py`, which imports `autopilot`. **Fixed:** the predicate is now two pure
+   functions in the `autopilot`-free wire module — `requires_liveness_override(role)` and
+   `validate_role_liveness(role, has_override, class_name="")` — pinned in 18-01's `<interfaces>`,
+   tested by five `test_role_none_*` cases, implemented in 18-05, **called** (not re-implemented)
+   by 18-10, and given a rig-side deliberate-breakage step 6b in 18-12.
+2. **The egress seam would have forked Phase 26.** `18-02` pinned `EgressWorker(send_fn, …)` with
+   item-model tests, while `26-10-PLAN.md:90,169-171` already writes
+   `self._egress.enqueue(lambda: …)` — a zero-arg callable that the item model would store as data
+   and never invoke. **Fixed by adopting Phase 26's model**, which is the only one that works for a
+   socketless device: the base class has no transport-specific `send_fn` to supply, so "how to send"
+   belongs in each call site's closure. Pinned verbatim in 18-02/18-06/18-10 as
+   `EgressWorker(send_fn=lambda fn: fn(), …)`, attribute spelled **`_egress`**.
+3. **The now-mandatory liveness override would have blocked the shared IOLoop.** 18-10 put liveness
+   on a `PeriodicCallback` on the pilot's `Net_Node` loop — the same loop `18-06` already keeps
+   egress *off* because "a blocking HTTP PUT there freezes the STOP channel." Blocker 1 made this
+   certain rather than possible: every control-only module must carry an override, and a
+   control-only device's only liveness signal is an outbound call (OE polls `GET /api/status`).
+   **Fixed:** new `LivenessPoller` in `external_hardware_runtime.py` (daemon thread, cached `alive`,
+   edge-triggered `on_change`, never-raising `poll_once`), six contract cases in 18-02 including one
+   asserting the predicate runs on a different thread ident. The IOLoop keeps only a cached read.
+
+**Warnings also closed:** the ≤300-line "split the wire module" escape hatch was **removed** in
+18-05/18-06 — a path-loaded module (`spec_from_file_location`) has no package, so a split would have
+broken re-export and silently killed the agent-side test loop, the exact property `18-VALIDATION.md`
+exists to defend; trim prose instead. `18-VALIDATION.md` frontmatter is now `approved` /
+`nyquist_compliant: true` (`wave_0_complete` correctly still false). Git-rule wording unified across
+the seven Pi-touching plans: no git that **mutates** `/home/ido/pi-mirror`, no git on the Pi at all,
+read-only inspection of the local mirror permitted.
+
+**Advisories folded in after the PASS** (iteration-2 A1–A7, applied directly to the plans):
+- **`alive` now has exactly one writer, `_recompute_alive()`.** Liveness and the egress
+  failure-threshold both flip device health, and EXTLINK-15 requires *one* signal regardless of
+  direction — separate writers meant a liveness tick could silently overwrite the `False` the egress
+  counter had just written.
+- **`PeriodicCallback.start()/stop()` must go through `ioloop.add_callback`** — they use
+  `call_later`/`remove_timeout`, which are not thread-safe, and both `BIND_STEP_LIVENESS` and
+  `release()` run on the task thread. Same reason socket creation was already routed that way.
+- `LivenessPoller.stop()` must not fire `on_change` after stop is requested (bounded join means an
+  in-flight HTTP GET can outlive `release()` and touch a torn-down View) — new
+  `test_liveness_poller_no_on_change_after_stop`.
+- `-k drop_newest` was timing-dependent (the worker could free a slot mid-enqueue); now pinned
+  deterministic via a `started` Event.
+- `on_drop` must name the lost item by `__qualname__`, not log a bare `<lambda>` — otherwise
+  EXTLINK-15's "the loss is *recorded*" is not actually satisfied under the callable model.
+- `liveness_hook` must be declared at **class level**; an instance-level assignment is invisible to
+  `validate_role_liveness` and raises at construction (fails closed, but confusingly).
+
+**Downstream obligation created for Phase 26 — not yet met.** `26-13-PLAN.md:134` keys OE readiness
+on `on_run_start`, and no Phase 26 plan mentions `liveness_hook` — but a `role: "none"` module
+without one now **fails at construction**. One line in the OE lib fixes it; touch 26-10/26-13 when
+18 lands. `26-10-PLAN.md:86` also still guesses `bind(ioloop)` against the shipped
+`bind(ioloop, view)`. `18-10-SUMMARY.md` is now an explicit downstream contract recording
+`bind(ioloop, view)`, `_egress` + enqueue semantics, `liveness_hook`, the `@decoder` signature, and
+Tracker naming — 26-10 already says it will read that summary.
 
 **Gap fixed 2026-08-03 — `role: "none"` (control-only, no inbound transport).** Phase 26 planning
 exposed that two transport roles were not enough. The plans already handled a class with zero

@@ -1,10 +1,11 @@
 ---
 phase: 18
 slug: extlink-pi-transport
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-03
+revised: 2026-08-05
 ---
 
 # Phase 18 — Validation Strategy
@@ -55,10 +56,13 @@ running container. `docker compose up --build api` before trusting a backend tes
   `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_egress.py`, or
   `docker compose exec api python -m pytest -q api/tests/test_view_key_preflight.py -k lease`
 - **After every plan wave:** `docker compose exec api python -m pytest -q` (rebuild first) **plus**
-  `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py tests/test_extlink_egress.py tests/test_extlink_lifecycle.py tests/test_extlink_liveness.py`
+  `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_wire.py tests/test_extlink_decoder.py tests/test_extlink_egress.py tests/test_extlink_lifecycle.py tests/test_extlink_liveness.py tests/test_wait_extlink_ready_transitions.py tests/test_mics_task_attrs.py`
 - **Before `/gsd:verify-work`:** full backend suite green + all agent-runnable Pi-mirror tests green
   + the single consolidated rig checkpoint confirmed by the user
-- **Max feedback latency:** ~30 seconds (backend), ~2 seconds (Pi-mirror units)
+- **Max feedback latency:** ~2–4 minutes (backend) — the pytest run itself is ~30s, but the
+  `api` container has no bind mount, so **every** backend `<verify>` block in this phase prefixes
+  `docker compose up --build -d api` and the rebuild dominates. ~2 seconds (Pi-mirror units),
+  which is where the tight loop actually lives and why the `autopilot`-free split matters.
 
 ---
 
@@ -72,8 +76,10 @@ map each task onto a row here, and every row must be claimed by some task.
 | EXTLINK-14 | `@decoder` translates a foreign frame → declared signal/event updates; truncated frame returns empty, never raises; unknown field dropped, known fields still applied | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_decoder.py` | ❌ W0 |
 | EXTLINK-14 | `role: sub_connect` selects SUB + `.connect()`, skips DEALER-identity check; `router_bind` selects ROUTER + `.bind()` — via injected fake socket factory, no real socket | unit (Pi mirror, agent) | `... -k role_selection` | ❌ W0 |
 | EXTLINK-18 | **`role: "none"` returns a plan with NO socket** — `socket_plan` must not invent a port or fall back to a default role. Newly agent-testable (was rig-only before the 2026-08-03 gap fix) | unit (Pi mirror, agent) | `... -k role_none` | ❌ W0 |
+| EXTLINK-18 | **`role: "none"` with NO liveness override raises at construction** — `validate_role_liveness(ROLE_NONE, False, "DemoControl")` raises `ValueError` naming BOTH the class and the role; with an override it returns `None`; the two socketed roles never require one. A pure function in the `autopilot`-free wire module, so it has ONE definition (plan 18-10 calls it) and the agent can run it. Silently defaulting to `alive=True` is REJECTED | unit (Pi mirror, agent) | `... -k role_none` | ❌ W0 |
 | EXTLINK-18 | **Config validation accepts `role: "none"` with neither `listen_port` nor `connect_port`** and does not 422 on their absence | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_view_key_preflight.py -k role_none` | ❌ W0 (extend) |
 | EXTLINK-18 | A control-only instance still **registers `<source_id>.alive`, starts the liveness poll, starts the egress worker, and fires lifecycle hooks** — i.e. participates fully in the readiness gate despite having no socket | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_lifecycle.py -k control_only` | ❌ W0 |
+| EXTLINK-15 | **Egress items are ZERO-ARG CALLABLES** — the worker is wired `send_fn=lambda fn: fn()` and every test enqueues a callable whose side effect proves it was invoked. Pins the seam Phase 26 (`26-10-PLAN.md:169-171`) already builds on; a data-item model would store its lambdas and never call them | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_egress.py -k fifo` | ❌ W0 |
 | EXTLINK-15 | Egress FIFO order preserved under one worker | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_egress.py -k fifo` | ❌ W0 |
 | EXTLINK-15 | Overflow drops the **newest**, increments `dropped`, and items 1–2 (not 3) are the ones sent | unit (Pi mirror, agent) | `... -k drop_newest` | ❌ W0 |
 | EXTLINK-15 | Failure is never retried; worker survives and attempts the next item | unit (Pi mirror, agent) | `... -k no_retry` | ❌ W0 |
@@ -86,6 +92,7 @@ map each task onto a row here, and every row must be claimed by some task.
 | EXTLINK-07 | Liveness default: alive inside window, dead outside | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_liveness.py` | ❌ W0 |
 | EXTLINK-07 | **Liveness independent of signal staleness** — reachable-but-quiet stays `alive` while its signal returns the declared default (the core EXTLINK-07 split, decoupled in code not just docstring) | unit (Pi mirror, agent) | `... -k independent` | ❌ W0 |
 | EXTLINK-07 | Lib-supplied predicate replaces the default entirely | unit (Pi mirror, agent) | `... -k override` | ❌ W0 |
+| EXTLINK-07 | **The liveness predicate is evaluated OFF the shared Tornado IOLoop** — `LivenessPoller` runs it on a device-owned daemon thread, caches the result for a cheap read, swallows a raising predicate, and fires `on_change` edge-triggered. Mandatory now that `role: "none"` must carry an override whose only signal is an outbound call | unit (Pi mirror, agent) | `cd ~/pi-mirror && python3 -m pytest -q tests/test_extlink_lifecycle.py -k liveness_poller` | ❌ W0 |
 | EXTLINK-17 | Lease blocks a second run on the same host, issue names the holding pilot/subject/run | unit (backend) | `docker compose exec api python -m pytest -q api/tests/test_view_key_preflight.py -k lease` | ❌ W0 (extend) |
 | EXTLINK-17 | Lease key is **host**, not host:port — same host + different ports still collide | unit (backend) | `... -k lease_key_is_host` | ❌ W0 (extend) |
 | EXTLINK-17 | Manual force-release clears the issue | unit (backend) | `... -k force_release` | ❌ W0 (extend) |
@@ -101,6 +108,7 @@ map each task onto a row here, and every row must be claimed by some task.
 | EXTLINK-13 | Full three-exit behavior through a real task start | manual + rig | USER-RUN | N/A |
 | EXTLINK-16 | Hooks fire on all three real teardown paths | manual + rig | USER-RUN | N/A |
 | EXTLINK-18 | Zero-signal control-only module (**`role: "none"`, no socket**) binds and participates in the gate **on the real Pi** — the mechanism itself is now agent-tested above, so this row proves only the end-to-end wiring | manual + rig | USER-RUN | N/A |
+| EXTLINK-18 | The SAME control-only lib with its `liveness_hook` REMOVED fails at construction on the real Pi, logged by `init_hardware`'s per-module `except` naming the class and the role — the unhappy path of the rule above (plan 18-12 checkpoint step 6b) | manual + rig | USER-RUN | N/A |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -113,6 +121,13 @@ map each task onto a row here, and every row must be claimed by some task.
 - [ ] `~/pi-mirror/tests/test_extlink_egress.py` — new, `autopilot`-free — EXTLINK-15
 - [ ] `~/pi-mirror/tests/test_extlink_lifecycle.py` — new, `autopilot`-free — EXTLINK-16
 - [ ] `~/pi-mirror/tests/test_extlink_liveness.py` — new, `autopilot`-free — EXTLINK-07
+- [ ] `~/pi-mirror/tests/test_wait_extlink_ready_transitions.py` — new, `autopilot`-free —
+      EXTLINK-13. **Documented deviation from this document's original classification:** the
+      readiness-gate row was filed as a "stretch" on the assumption it needed a real
+      `FiniteDeterministicAutomaton`. It does not — any dotted `autopilot.*` import pulls
+      `autopilot/__init__.py` → npyscreen and would make the file USER-RUN either way — so plan
+      18-02 Task 3 contracts the gate's DECISION as a pure `ready_gate_decision(...)` instead,
+      making the row fully agent-runnable and leaving only the FDA wiring on the rig
 - [ ] Extend `~/pi-mirror/tests/test_mics_task_attrs.py` — `super().end()` regression pin — EXTLINK-16
 - [ ] Extend `api/tests/test_view_key_preflight.py` — device lease — EXTLINK-17
       *(NOT `test_toolkit_dispatch.py` — that covers dispatch-spec shape; preflight issue kinds live here)*
@@ -142,6 +157,7 @@ Python on the Pi; every item below is a command handed to the **user**.
 | Lifecycle hooks on all teardown paths | EXTLINK-16 | Requires the real `pilot.py::run_task` loop | Normal completion, STOP button, and an induced task exception |
 | Liveness flip → CONTINUOUS → ES | EXTLINK-07 | `dispatch_event()` needs a real `pigpio.pi` clock, no fallback timebase by design | Drop the source mid-run; confirm the event in ES |
 | Egress under real network latency | EXTLINK-15 | The property is "the FDA thread's timing is unaffected" — needs a real scheduler under real I/O | Hang the remote endpoint; confirm FDA timing unaffected |
+| Control-only lib missing its `liveness_hook` | EXTLINK-18 | The rule is a Pi-side CONSTRUCTION check — preflight is deliberately silent and the AST extractor has no opinion, so only a real task start can observe it | Repin the module to the override-less Lib B version, start the task, read the pilot log for the class+role message, repin back (plan 18-12 step 6b) |
 | Lease from a genuine pilot disconnect | EXTLINK-17 | Unit test uses a fabricated stale timestamp; this proves the Redis staleness signal fires from a real dropped connection | Kill the pilot mid-run; confirm the lease releases |
 
 ### Explicitly NOT an acceptance criterion
@@ -157,13 +173,26 @@ STOP/exception path unwinds and test that instead.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or a Wave 0 dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all ❌ references above
-- [ ] The `autopilot`-free sibling-module split is honoured — otherwise every Pi test becomes USER-RUN
-- [ ] Every manual-only row is justified and lands in the single consolidated rig checkpoint
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or a Wave 0 dependency
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all ❌ references above
+- [x] The `autopilot`-free sibling-module split is honoured — otherwise every Pi test becomes
+      USER-RUN. **Reinforced 2026-08-05:** plans 18-05 and 18-06 now FORBID splitting
+      `external_hardware_wire.py` / `external_hardware_runtime.py` into sibling modules. The
+      agent loads them BY PATH with `spec_from_file_location`, which yields one module object
+      with no package — a split would turn every attribute read into an `AttributeError` and
+      break ONLY the agent tests, silently, while the rig kept working. Trim prose to stay
+      under 300 lines; never split
+- [x] Every manual-only row is justified and lands in the single consolidated rig checkpoint
+- [x] No watch-mode flags
+- [x] Feedback latency: ~2s on the Pi-mirror units (the working loop). The backend's ~2–4 min
+      is rebuild-bound and irreducible without a bind mount — accepted, and the reason the
+      phase's pure logic was pushed into `autopilot`-free modules
+- [x] `nyquist_compliant: true` set in frontmatter
+- [ ] `wave_0_complete` — **NOT ticked. Wave 0 has not executed.** Plans 18-01/18-02/18-03/18-04
+      create the test files; flip this only once they are on disk and skipping/passing for the
+      right reason
 
-**Approval:** pending
+**Approval:** approved 2026-08-05 (revised alongside the plan revision that added the
+`role: "none"` liveness-override rule, the callable-egress model, and the off-IOLoop
+`LivenessPoller`)

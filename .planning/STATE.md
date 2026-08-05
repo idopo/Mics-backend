@@ -988,6 +988,16 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 
 ## Accumulated Context
 
+### Pending Todos
+
+2 pending (`/gsd:check-todos`):
+- **Reinstate CMP-24a and CMP-24c Pi view-mirror fixes** (`pi`) — two one-line `mics_task.py`
+  fixes, built with passing tests in phase 23-12 then reverted before deploy; one rig deploy for
+  both. Full diagnosis in `23-compute-primitives-variables/deferred-items.md`.
+- **Fix stale React bundle trap in web_ui static output** (`ui`) — unhashed `main.js` + no
+  `cache-control` + un-purged old chunks let a browser silently run months-old editor code after
+  a correct deploy. Cost a debugging cycle in phase 23.
+
 ### Roadmap Evolution
 
 - Phases 1–4 archived (2026-07-26): moved to `.planning/archive/`. Superseded and re-planned inside phases 9–17 — the system is well past them. **Ignore when reviewing GSD phases.** Phases 5–8 (Pi Code Editor) marked Deferred: never started, not in the current plan.

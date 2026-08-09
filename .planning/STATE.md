@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:30:16.315Z"
+last_updated: "2026-08-09T07:38:17.880Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 53
-  percent: 64
+  completed_plans: 54
+  percent: 66
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 64%
+**Progress:** [███████░░░] 66%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,37 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/07 of 15 done
+
+**Plan 07 executed (2026-08-09):** EXTLINK-09 delivered — Wave 2, closing the AST-extractor
+contract 18-03 pinned. New `api/extlink_ast.py` (116 lines): `extract_extlink_metadata` walks
+`@signal`/`@event`/`@command`/`@decoder` on source text without importing the target module,
+resolving `@signal` dtype from the return annotation first then `type(default)` (never raising —
+the extractor describes, the Pi's class-build-time `TypeError` enforces), and rendering `@event`
+payload dict values (bare type names like `str`/`float`) via `ast.unparse` rather than
+`ast.literal_eval`, which genuinely raises on them (Pitfall 5, asserted in the test itself). A
+class is only present in the result if it declares at least one of the four decorators; the
+zero-`@signal` control-only case (EXTLINK-18) still gets `signals: {}`. Task 2 wired the call into
+`api/routers/hardware_libs.py`'s `extract_ast_metadata`, reusing the already-parsed tree, adding
+an `extlink` key only when non-empty, wrapped in a narrow `try/except Exception` +
+`logger.warning` (Phase 25's defensive posture for new preflight steps — a lib upload must never
+500 on an unusual decorator); a new test (`test_extlink_signal_splat_kwargs_does_not_block_upload`,
+added beyond 18-03's pinned rows per this plan's own Task 2 prose) proves a `@signal(**kwargs)`
+splat still uploads 200 with `classes` intact. `test_hardware_libs_extlink.py` went from
+8 skipped + 1 xfail to **9/9 passing**; full backend suite **368 passed, 20 skipped** (up from
+18-03's 359/28 baseline — exactly the 9 tests in this file). Live-verified against the running
+stack: `POST /api/hardware-libs` on an `ExternalHardware` subclass returned
+`ast_metadata.extlink.OpenEphysProbeLive.signals.firing_rate.dtype == "float"` with `classes`
+unaffected; the probe lib was deleted afterward. One documented deviation: `hardware_libs.py`'s
+net diff (+11/-1) exceeded the plan's own "<=6 lines" target — the required `try/except` +
+`logger.warning` + `import logging` + reused-tree call didn't fit in 6 lines without sacrificing
+the defensive posture the same task mandates; correctness took priority per this project's
+coding-standards order. `gsd-tools requirements mark-complete EXTLINK-09` found no
+checkbox/traceability row (same known gap as prior EXTLINK/CMP/DVK plans) — tracked here and via
+`roadmap update-plan-progress 18` instead. Ran concurrently with plan 18-08 (device-lease,
+`api/device_lease.py`/`api/models.py`/`api/db.py`/`api/routers/toolkit_dispatch.py`/
+`api/tests/test_view_key_preflight.py`), which touches none of this plan's three files. See
+`18-07-SUMMARY.md`.
 
 **Plan 01 executed (2026-08-09):** EXTLINK-03/06/07/08/12/14/18 test contracts delivered —
 Wave 0, part A. Three `autopilot`-free pytest files under `/home/ido/pi-mirror/tests/`

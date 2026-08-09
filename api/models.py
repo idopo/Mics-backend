@@ -1,7 +1,7 @@
 # api/models.py
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, Dict, Any, List, Literal
 
 import enum
@@ -713,6 +713,27 @@ class PilotHardwareConfig(Base):
     name = Column(String, nullable=True)   # identity key; nullable for create_all compat on fresh DBs
     config = Column(SAJSON, nullable=False)
     __table_args__ = (UniqueConstraint("pilot_id", "name", name="uq_pilot_hw_config_pilot_name"),)
+
+
+# ============================================================
+# DEVICE LEASES (Phase 18, EXTLINK-17) — one row per externally-linked device (e.g. an
+# OpenEphys box), keyed on its normalized host. `host UNIQUE` is the arbitration primitive:
+# two pilots' configs pointing at the same physical box can never both hold a lease. Real CRUD
+# lives in api/device_lease.py via raw text() queries; this class only registers the table
+# with Base.metadata.create_all() for fresh deployments.
+# ============================================================
+
+class DeviceLease(Base):
+    __tablename__ = "device_leases"
+
+    id = Column(Integer, primary_key=True)
+    host = Column(String, nullable=False, unique=True)
+    pilot_id = Column(Integer, nullable=False)
+    pilot_name = Column(String, nullable=True)
+    session_id = Column(Integer, nullable=True)
+    run_id = Column(Integer, nullable=True)
+    subject_key = Column(String, nullable=True)
+    acquired_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 # ============================================================

@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Session as SQLModelSession, select
 from auth import verify_token
 from sqlalchemy import func, text as sa_text
-from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations, run_task_definition_toolkit_id_migration, run_hw_lib_pin_migrations, run_toolkit_backend_authored_migrations, run_task_definition_validation_migrations, run_toolkit_hw_lib_version_migration, run_pilot_hw_config_name_migration, run_hardware_lib_kind_migration
+from db import engine, get_session, run_subject_column_migrations, run_lab_column_migrations, run_toolkit_migrations, run_protocol_migrations, run_canonical_migrations, run_task_definition_toolkit_id_migration, run_hw_lib_pin_migrations, run_toolkit_backend_authored_migrations, run_task_definition_validation_migrations, run_toolkit_hw_lib_version_migration, run_pilot_hw_config_name_migration, run_hardware_lib_kind_migration, run_device_lease_migration
 from models import (
     Subject,
     SubjectCreate,
@@ -148,6 +148,7 @@ def startup():
     run_toolkit_hw_lib_version_migration(engine)
     run_pilot_hw_config_name_migration(engine)
     run_hardware_lib_kind_migration(engine)
+    run_device_lease_migration(engine)
     seed_compute_ops_lib(engine)
 
 

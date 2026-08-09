@@ -289,3 +289,24 @@ def run_hardware_lib_kind_migration(eng):
         conn.execute(text(
             "ALTER TABLE hardware_lib_versions ADD COLUMN IF NOT EXISTS declared_imports JSONB DEFAULT '[]'::jsonb"
         ))
+
+
+def run_device_lease_migration(eng):
+    """Phase 18 EXTLINK-17: device_leases table, keyed on normalized host. Idempotent — safe on
+    fresh deployments (Base.metadata.create_all already creates the table) and reruns."""
+    with eng.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS device_leases (
+              id SERIAL PRIMARY KEY,
+              host TEXT NOT NULL UNIQUE,
+              pilot_id INTEGER NOT NULL,
+              pilot_name TEXT,
+              session_id INTEGER,
+              run_id INTEGER,
+              subject_key TEXT,
+              acquired_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_device_leases_host ON device_leases (host)"
+        ))

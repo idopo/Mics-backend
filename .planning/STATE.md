@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:48:49.518Z"
+last_updated: "2026-08-09T08:13:58.940Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 57
-  percent: 69
+  completed_plans: 58
+  percent: 70
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 69%
+**Progress:** [███████░░░] 70%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,35 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09 of 15 done
+
+**Plan 09 executed (2026-08-09, resumed after an ENOSPC interrupt):** EXTLINK-16/17 delivered —
+closes the lease loop 18-08 only stored/gated. `api/routers/device_leases.py` (94 lines, thin
+composition over `api/device_lease.py`) exposes list/acquire/force-release/release-for-run/
+reconcile; `api/main.py` diff exactly 2 lines. `-k lease` went from 19 to 26/26 green, zero
+xfail/skip. The orchestrator now acquires a lease per `PREFS_HARDWARE` role-bearing host in
+`start_run` (keyed off the presence of `role`, so `role: "none"` control-only modules are
+covered per EXTLINK-18), releases in `stop_run`/`on_task_error` (both wrapped in try/except so a
+lease failure never masks the real path), and self-heals via a new 15s `_lease_reconcile_loop`
+daemon thread keyed on the live `_redis_touch` `updated_at` heartbeat — `_run_watchdog` stays
+dead code, left untouched, with a comment explaining why re-enabling it would kill every normal
+session. `HardwareCheckModal.tsx` mirrors `device_held`/`extlink_config_invalid` in the
+`PreflightIssue` union, with a new `DeviceHeldIssueDetail` component naming the holding
+pilot/subject/run and elapsed hold time; both kinds added to `NON_CONFIG_ISSUES` so neither can
+fire a destructive PUT. Full backend suite: **435 passed, 1 skipped**, zero failures. Live lease
+round-trip verified against the real dev DB (acquire fake host → GET shows it → force-release →
+GET empty again). **Resume note:** a prior agent hit host disk-full (ENOSPC) mid-Task-3; this
+session verified Tasks 1-2's three commits (`fa50c2d`, `806ee6c`, `6bb9f9e`) and Task 3's
+uncommitted working-tree diff were both syntactically complete (`ast.parse` / `tsc --noEmit` /
+`npm run build` all clean) before committing Task 3 (`834c270`) — no work was redone. One
+transient issue observed and NOT fixed (not this plan's bug): the orchestrator's reconcile loop
+logged `500` errors from `/api/device-leases/reconcile` during an 08:03 window that exactly
+overlapped the concurrently-running plan 18-13 editing `toolkit_dispatch.py`/`fda_validation.py`
+in the same shared checkout; reproduced the identical loop body manually after that window closed
+and it returns 200 every time — a transient `api`-process disruption from a different plan's
+edits, not a defect in this plan's code. `gsd-tools requirements mark-complete EXTLINK-16
+EXTLINK-17` found no checkbox/traceability rows (same known gap as every prior EXTLINK plan) —
+completion tracked here and via `roadmap update-plan-progress 18` instead. See `18-09-SUMMARY.md`.
 
 **Plan 08 executed (2026-08-09):** EXTLINK-10/17/18 delivered — the device-lease's storage and
 preflight gate, turning 18-03's 19 pinned lease tests from skip/xfail to 19/19 green. Task 1 added

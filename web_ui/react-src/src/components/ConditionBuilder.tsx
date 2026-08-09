@@ -47,7 +47,7 @@ function OperandEditor({ operand, toolkit, hwModuleNames, variableNames, detecto
   // are never added here, so the flag picker can never offer {"flag": "LICKER1"}.
   const flagOpts = [...new Set([...Object.keys(toolkit?.flags ?? {}), ...(variableNames ?? [])])]
   const paramOpts = getParamKeys(toolkit)
-  const viewGroups = buildViewOptions(hwOpts, flagOpts, detectors)
+  const viewGroups = buildViewOptions(hwOpts, flagOpts, detectors, toolkit?.extlink_signals ?? [])
 
   const allTypes: OperandType[] = visibleOperandTypes(type, !!toolkit)
 
@@ -71,10 +71,12 @@ function OperandEditor({ operand, toolkit, hwModuleNames, variableNames, detecto
         <>
           <select value={key} onChange={e => setKey(e.target.value)} style={ss}>
             {/* Keep-current-value escape (S6): a stored key the backend cannot model — a
-                Python-only tracker, an ExternalHardware signal, a hand-authored definition —
-                must survive a round trip instead of being silently rewritten to "" on save.
-                Flagged as unknown, not hidden. There is no legacy detector key to migrate here
-                (25-CONTEXT S6): the editor could never emit one before this plan. */}
+                Python-only tracker, a hand-authored definition, a key from a lib version that
+                has since been unassigned — must survive a round trip instead of being silently
+                rewritten to "" on save. Flagged as unknown, not hidden. An ExternalHardware
+                signal is now offered directly above (18-14) and no longer needs this escape,
+                but the other three cases still do. There is no legacy detector key to migrate
+                here (25-CONTEXT S6): the editor could never emit one before this plan. */}
             {!isKnownViewOption(key, viewGroups) && key !== '' && (
               <option value={key}>{key} (unknown)</option>
             )}

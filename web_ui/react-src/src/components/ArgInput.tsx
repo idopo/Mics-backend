@@ -31,9 +31,11 @@ export default function ArgInput({ value, toolkit, annotation, variableNames, al
   const inputKind = annotationToInputKind(annotation)
 
   // The arg picker offers plain view keys only — no detector channels (the Pi's _resolve_arg
-  // has no view_detector branch) and no hwModuleNames (would require threading it through
-  // every action-fields component; the free-text fallback covers that case).
-  const viewGroups = buildViewOptions(Object.keys(toolkit?.semantic_hardware ?? {}), flagKeys, [])
+  // has no view_detector branch, unchanged) and no hwModuleNames (would require threading it
+  // through every action-fields component; the free-text fallback covers that case). An
+  // ExternalHardware signal IS a plain view key ({view: "<source_id>.<signal>"}), which is
+  // exactly what _resolve_arg already consumes, so it belongs here (18-14).
+  const viewGroups = buildViewOptions(Object.keys(toolkit?.semantic_hardware ?? {}), flagKeys, [], toolkit?.extlink_signals ?? [])
   const viewKeys = viewGroups.flatMap(g => g.items.map(item => item.value))
 
   // Defensive: if the stored value is already a trigger (or flag) operand, keep offering that

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T08:28:23.826Z"
+last_updated: "2026-08-09T08:35:11.534Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 62
-  percent: 74
+  completed_plans: 63
+  percent: 76
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 74%
+**Progress:** [████████░░] 76%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,51 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/13/14/15 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/11/13/14/15 of 15 done
+
+**Plan 11 executed (2026-08-09):** EXTLINK-01/05/11/13/14/16/18 delivered — wires the substrate
+(18-05/06/10) into the running task. Task 1 added `mics_task.init_hardware()`: unchanged
+`super().init_hardware()` behaviour, then a bind post-pass over every `ExternalHardware` instance
+in `self.hardware`, passing `self.node.loop` explicitly (`grep -c "IOLoop.current()"` = 0 — the
+thread `Pilot.run_task()` spawns has no current loop, only a fresh unstarted one). **Correctness
+fix beyond the plan's literal text:** rather than constructing a second `LifecycleRunner`,
+`init_hardware()` calls the already-built-but-never-started `hw._lifecycle.start_async(run_ctx)`
+— `bind_lifecycle()` (18-10, `external_hardware_binding.py`) constructs this runner with a
+`stale_ms`-derived retry interval during `bind()` but had no `run_ctx` yet to start it with; grep
+confirmed zero other call sites for `start_async` on it anywhere. `self._task_definition_id` is
+captured from `kwargs` in `__init__` (the one `build_run_ctx` field not already an instance attr).
+Task 2 added `_wait_extlink_ready`/`_extlink_timeout`/`_install_extlink_gate`, called at the end
+of `load_fda_from_json`'s transition-registration step — a true no-op
+(`gate_timeout_s([...]) == 0`) whenever no required external source exists, preserving the
+zero-overhead guarantee. `_wait_extlink_ready` is an ordinary passthrough state
+(`return self.wait_for_condition()`, no new polling engine); the three exits (proceed / manual
+skip via a plain `EXTLINK_SKIP_WAIT` `Boolean_Tracker` settable through the FDA's *existing*
+`type:"flag"` trigger-assignment action, zero new ZMQ plumbing / timeout →
+`_extlink_timeout`, a terminal state whose `StopIteration` on the next `next()` call ends the task
+cleanly via `run_task`'s existing `finally: task.end()` path) compose entirely from
+`FiniteDeterministicAutomaton`'s ordinary `add_method`/`add_transition`/`set_initial_method` API.
+Both predicates derive from ONE `ready_gate_decision()` call per tick (`proceed_pred` always
+evaluated first by transition-list insertion order, both at `check_determinism` add-time and at
+runtime; `timeout_pred` only reads the cached result), making them mutually exclusive by
+construction; readiness polls `hw.is_ready()` directly per required instance, not
+`LifecycleRunner.ready`. `mics_task.py` grew 1485 → 1601 lines (+116, within the plan's own
+≤120-line budget after one trim pass). Task 3 added `scripts/dev/extlink_smoke.py` (231 lines,
+new) — `probe`/`sustain`/`publish` subcommands modeled on `Net_Node`'s literal DEALER template
+(`node.py:136-141`); `zmq`/`msgpack` imported lazily inside each handler (not module scope) per
+the plan's own `<done>` escape hatch, confirmed live this dev host has `msgpack` but no `zmq`.
+`probe`'s 2s poll-for-reply after a `SIG` push is honest about the wire protocol having no
+built-in ACK for a plain signal send (`external_hardware_ingress.py`'s `on_recv` never replies) —
+prints an explicit PASS either way rather than implying a handshake that doesn't exist. No
+subcommand for `role:"none"` (EXTLINK-18), documented in `publish --help`'s own text. Full agent
+suite (`test_extlink_wire/decoder/liveness/egress/lifecycle.py` +
+`test_wait_extlink_ready_transitions.py` + `test_mics_task_attrs.py`): **93 passed** (up from
+18-10's 92-passed baseline), 6 pre-existing unrelated failures (the same `npyscreen`-gap
+`test_mics_task_attrs.py` rows plan 18-02 already logged in `deferred-items.md`). Pre-edit
+mirror/Pi diff (plan-mandated): **empty** — mirror was not drifted. No git command was run
+against `/home/ido/pi-mirror` (user-owned repo) and no Python was run on the Pi.
+`gsd-tools requirements mark-complete` found no checkbox/traceability rows for the seven EXTLINK
+IDs (same known gap as every prior EXTLINK plan) — completion tracked here and via
+`roadmap update-plan-progress 18` instead. See `18-11-SUMMARY.md`.
 
 **Plan 15 executed (2026-08-09):** EXTLINK-20 delivered — `tools/extlink_driver/`, a cross-platform
 (macOS/Windows/Linux) hand driver a researcher runs on their own laptop, additional to plan 18-11's
@@ -1556,6 +1600,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: EXTLINK-19: extlink view keys aggregated in api/extlink_keys.py, wired into save gate + preflight; no new preflight issue kind
 - [Phase 18]: 18-14: buildViewOptions gains a 4th extlink param; operand shape is resolved key {view: source_id.signal}, not a ref, per plan design_decision
 - [Phase 18]: extlink_driver.py defers zmq/msgpack imports to mode handlers so --help works before either is installed; extlink_wire.py duplicates (not imports) the Pi's wire codec since the laptop has no pi-mirror checkout
+- [Phase 18]: 18-11: reused bind_lifecycle's already-constructed LifecycleRunner (hw._lifecycle.start_async) instead of building a second one; EXTLINK_SKIP_WAIT implemented as a plain flag settable via the existing type:flag trigger-assignment action, no new ZMQ plumbing
 
 ## Accumulated Context
 

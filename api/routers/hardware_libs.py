@@ -2,6 +2,7 @@
 import ast
 import hashlib
 import json
+import logging
 import os
 import py_compile
 import tempfile
@@ -75,7 +76,16 @@ def extract_ast_metadata(source_code: str) -> dict:
                 args[len(args) - len(defaults) + i]["default"] = ast.unparse(default)
             methods.append({"name": item.name, "args": args})
         classes.append({"name": node.name, "methods": methods})
-    return {"classes": classes}
+
+    result = {"classes": classes}
+    try:
+        from extlink_ast import extract_extlink_metadata
+        extlink = extract_extlink_metadata(tree)
+        if extlink:
+            result["extlink"] = extlink
+    except Exception as e:
+        logging.getLogger(__name__).warning("extlink metadata extraction failed: %s", e)
+    return result
 
 
 def validate_source(source_code: str, filename: str = "<string>") -> tuple[bool, str | None]:

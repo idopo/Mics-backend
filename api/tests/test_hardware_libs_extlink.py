@@ -228,11 +228,6 @@ def auth_headers():
     return {"Authorization": "Bearer test-token"}
 
 
-@pytest.mark.xfail(
-    reason="EXTLINK-09: extlink_ast not built until plan 18-07, and extract_ast_metadata does "
-           "not yet call it",
-    strict=False,
-)
 def test_extlink_upload_round_trip():
     pytest.importorskip("extlink_ast")
     resp = _client().post(
@@ -247,3 +242,31 @@ def test_extlink_upload_round_trip():
     assert "classes" in ast_metadata  # existing block unaffected
     assert ast_metadata["extlink"]["OpenEphysProbe"]["signals"]["firing_rate"]["dtype"] == "float"
     assert "start_recording" in ast_metadata["extlink"]["OpenEphysProbe"]["commands"]
+
+
+SIGNAL_SPLAT_SOURCE = '''
+from external_hardware import ExternalHardware, signal
+
+_SIGNAL_KWARGS = {"default": 0.0}
+
+
+class Weird(ExternalHardware):
+    @signal(**_SIGNAL_KWARGS)
+    def odd(self) -> float:
+        pass
+'''
+
+
+def test_extlink_signal_splat_kwargs_does_not_block_upload():
+    """`@signal(**kwargs)` is a splat -- nothing sensible can extract from it. The upload must
+    still succeed 200 with the `classes` block intact; extlink extraction failures are narrowly
+    caught and logged, never allowed to 500 the whole upload."""
+    pytest.importorskip("extlink_ast")
+    resp = _client().post(
+        "/api/hardware-libs",
+        data={"name": "weird_splat_signal", "kind": "hardware"},
+        files={"file": ("weird_splat_signal.py", SIGNAL_SPLAT_SOURCE, "text/x-python")},
+        headers=auth_headers(),
+    )
+    assert resp.status_code in (200, 201)
+    assert "classes" in resp.json()["ast_metadata"]

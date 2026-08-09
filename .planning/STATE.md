@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T08:24:25.475Z"
+last_updated: "2026-08-09T08:28:23.826Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 61
-  percent: 73
+  completed_plans: 62
+  percent: 74
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 73%
+**Progress:** [███████░░░] 74%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,40 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/13/14 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/13/14/15 of 15 done
+
+**Plan 15 executed (2026-08-09):** EXTLINK-20 delivered — `tools/extlink_driver/`, a cross-platform
+(macOS/Windows/Linux) hand driver a researcher runs on their own laptop, additional to plan 18-11's
+pass/fail `extlink_smoke.py`. `extlink_wire.py` (101 lines, stdlib + `msgpack` only, no `zmq`)
+duplicates the Pi's `external_hardware_wire.py` framing byte-for-byte
+(`msgpack.packb(..., use_bin_type=True)`, matched deliberately not chosen independently) —
+`coerce_value` returns real `bool`s (not `int`s) for `"true"`/`"false"`, parses a `{...}` token as
+JSON for the `@event` payload case; 25 TDD tests (RED confirmed via `ModuleNotFoundError` before
+the module existed) include 3 interop cases that load the Pi's REAL `external_hardware_wire.py` by
+path and feed it driver-built frames through its own `decode_envelope` — all 3 **PASSED, not
+skipped**. `extlink_driver.py` (175 lines) is a `zmq`/`msgpack`-deferred-import argparse CLI —
+`--pi-host`/`--listen-port`/`--source-id` plus mutually exclusive `--sweep SIGNAL` / `--rate N`
+(interactive stdin default) — proven to print `--help` and exit 0 on this dev host, which has no
+`zmq` installed; portability grep (`termios`/`curses`/`fcntl`/`os.fork`//dev/tty`) clean. `--sweep`
+is a genuine 20-step-up/20-step-down triangle wave so any threshold in range is crossed both
+directions; `--rate` sends the shared `seq` counter as payload and prints no latency number by
+design. `extlink_demo_fda.json` ships only the `wait`/`armed`/`fired` scaffold and the unconditional
+`fired -> wait` return edge — the two signal-gated transitions are deliberately absent so plan
+18-12's checkpoint must author them in the browser, not curl them in — verified against the REAL
+save gate (`fda_validation.collect_hard_errors` inside the running `api` container, zero errors)
+rather than a structural stand-in. `README.md` records the three copy-pasteable invocations against
+plan 18-12's `dlc_cam1`/`132.77.72.28:5599` demo module verbatim from `18-12-PLAN.md`, the
+`"dlc_cam1 signals"` option-group / `"left_paw_x (float)"` item-label recipe (cross-checked against
+`18-14-SUMMARY.md`, which landed concurrently in the same checkout), and the no-NTP-sync rationale
+for why no latency number is ever printed. One near-miss self-caught before it became a deviation:
+`extlink_wire.py`'s first docstring draft used the literal word "zmq" in prose, which the plan's own
+`grep -c zmq` verification step (correctly) flags — reworded to "socket-library import", a
+text-only fix re-verified with a full pytest re-run (25/25 still green). `ls
+~/pi-mirror/scripts/dev/` came up empty — `extlink_smoke.py` is plan 18-11's own deliverable,
+executing concurrently in the same checkout, and had not yet landed at verification time; not this
+plan's file, not fixed here. `gsd-tools requirements mark-complete EXTLINK-20` found no
+checkbox/traceability row (same known gap as every prior EXTLINK plan) — completion tracked here
+and via `roadmap update-plan-progress 18` instead. No other deviations. See `18-15-SUMMARY.md`.
 
 **Plan 14 executed (2026-08-09):** EXTLINK-19 (UI half) delivered — an `ExternalHardware` signal
 is now pickable in the FDA editor's view-operand selectors, closing the gap 18-13's SUMMARY
@@ -1522,6 +1555,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: Plan 18-10 (external_hardware.py) verified complete after ENOSPC interrupt recovery; no code changes needed
 - [Phase 18]: EXTLINK-19: extlink view keys aggregated in api/extlink_keys.py, wired into save gate + preflight; no new preflight issue kind
 - [Phase 18]: 18-14: buildViewOptions gains a 4th extlink param; operand shape is resolved key {view: source_id.signal}, not a ref, per plan design_decision
+- [Phase 18]: extlink_driver.py defers zmq/msgpack imports to mode handlers so --help works before either is installed; extlink_wire.py duplicates (not imports) the Pi's wire codec since the laptop has no pi-mirror checkout
 
 ## Accumulated Context
 

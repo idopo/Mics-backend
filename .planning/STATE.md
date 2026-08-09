@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:41:42.388Z"
+last_updated: "2026-08-09T07:48:49.518Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 56
-  percent: 68
+  completed_plans: 57
+  percent: 69
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 68%
+**Progress:** [███████░░░] 69%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,46 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08 of 15 done
+
+**Plan 08 executed (2026-08-09):** EXTLINK-10/17/18 delivered — the device-lease's storage and
+preflight gate, turning 18-03's 19 pinned lease tests from skip/xfail to 19/19 green. Task 1 added
+a `device_leases` table (`host TEXT UNIQUE` — the arbitration primitive; enforced by Postgres, not
+a Python single-holder check) via a new `DeviceLease` SQLAlchemy model plus an idempotent
+`run_device_lease_migration`, wired into `api/main.py`'s startup (a necessary 2-line addition
+beyond the plan's declared `files_modified`, since the migration cannot run without a startup
+call). `api/device_lease.py` (286 lines) implements the full 18-03-pinned contract:
+`normalize_host` collapses `host:port`/`http://host:port/`/whitespace to one key;
+`validate_extlink_config` checks unknown role, `sub_connect` missing host/connect_port,
+`router_bind` missing listen_port, `role: "none"` requiring host but neither port, missing
+`source_id`, `wait_timeout_s` outside `[5,600]`, non-positive `stale_ms`/`egress_fail_threshold`;
+`acquire_lease` is atomic via `INSERT ... ON CONFLICT (host) DO NOTHING` + read-back, never a
+SELECT-then-INSERT race; `reconcile_leases` is pure over an injected heartbeat map, never touching
+Redis itself (plan 18-09's orchestrator loop is the only Redis reader). Task 2 added
+`preflight_validate`'s step 11 — labelled "11" not "10" because CMP-15b's `unsatisfiable_wait_issues`
+block already occupied "# 10." inside the FDA guard, a pre-existing numbering collision this plan
+fixed in passing (Rule 1) — fed from a `lease_candidates` list collected in the existing step-6
+per-module loop rather than a second query pass, wrapped in the same non-blocking try/except every
+other step uses. `PREFLIGHT_ISSUE_KINDS` extended to 11 kinds. Both remaining `xfail` markers in
+`test_view_key_preflight.py` were removed once step 11 made them pass for real. To hold
+`toolkit_dispatch.py` at the plan's 480-line budget (file had already drifted from the plan's
+459-line baseline to 471 before this plan touched it), all lease/config logic lives in a new
+`device_lease.py` helper (`preflight_lease_and_config_issues`, beyond 18-03's originally pinned
+interface but explicitly anticipated by this plan's own escape-hatch text) — the router's step 11
+is a 4-line try/except call site. Full backend suite: **387 passed, 1 skipped** (up from 18-03's
+359/28 baseline plus plan 18-07's concurrent AST-extractor tests). Live-verified against the real
+dev DB: sessions 113/110/107 (pilot 1) all return `{"ok": true, "issues": []}` unchanged; sessions
+99/105 show pre-existing unrelated `missing`-config gaps, not lease/extlink issues — zero
+regression on real rig data. Migration idempotency verified by running it three times against the
+live dev DB with no error. **Shared-working-directory git race**: Task 1's four staged files
+(`api/device_lease.py`/`models.py`/`db.py`/`main.py`) landed inside the concurrently-executing
+plan 18-07's completion commit `44df463` rather than a dedicated 18-08 commit, because both agents
+shared one git index in the same checkout (no worktrees) and 18-07's plain `git commit` swept up
+whatever was staged at that moment; file *content* is verified correct and unaffected, only commit
+attribution. Task 2's commit (`fc1a103`) is unaffected. `gsd-tools requirements mark-complete
+EXTLINK-10 EXTLINK-17 EXTLINK-18` found no checkbox/traceability rows in `REQUIREMENTS.md` (same
+known gap as every prior EXTLINK plan) — completion tracked here and via
+`roadmap update-plan-progress 18` instead. See `18-08-SUMMARY.md`.
 
 **Plan 07 executed (2026-08-09):** EXTLINK-09 delivered — Wave 2, closing the AST-extractor
 contract 18-03 pinned. New `api/extlink_ast.py` (116 lines): `extract_extlink_metadata` walks
@@ -1365,6 +1404,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: Plan 18-05: first draft landed at 358 lines against the plan's own <=300-line Task-2 budget; trimmed prose/docstrings only (no logic change, no split) to 290 lines, re-verified all 57 tests still pass after the trim
 - [Phase 18]: Plan 18-06: EgressWorker/LivenessPoller stop() uses a bounded Event.wait/get(timeout) poll loop instead of a None sentinel through the queue, since a sentinel put() could itself block against a full queue with a wedged consumer
 - [Phase 18]: Plan 18-06: external_hardware_runtime.py trimmed from 348 to 298 lines via docstring-only condensation (no split, no logic change) to satisfy the plan's own <=300-line soft cap
+- [Phase 18]: Device lease acquire_lease uses INSERT ... ON CONFLICT (host) DO NOTHING + read-back for atomicity, never a Python single-holder check
 
 ## Accumulated Context
 

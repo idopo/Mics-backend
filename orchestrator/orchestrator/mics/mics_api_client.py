@@ -379,6 +379,39 @@ class MicsApiClient:
                 except Exception as e:
                     self.logger.warning("Failed to promote hw lib %s to stable: %s", lib.get("id"), e)
 
+    # -----------------------
+    # Device-lease Endpoints (Phase 18, EXTLINK-16/17)
+    # -----------------------
+
+    def list_device_leases(self) -> List[Dict[str, Any]]:
+        """GET /api/device-leases — all current leases."""
+        return self._get("/api/device-leases")
+
+    def acquire_device_lease(
+        self, host: str, pilot_id: int, pilot_name: Optional[str], session_id, run_id,
+        subject_key,
+    ) -> Dict[str, Any]:
+        """POST /api/device-leases/acquire — always 200; check `acquired`/`holder`."""
+        payload = {
+            "host": host, "pilot_id": pilot_id, "pilot_name": pilot_name,
+            "session_id": session_id, "run_id": run_id, "subject_key": subject_key,
+        }
+        return self._post("/api/device-leases/acquire", payload)
+
+    def release_device_leases_for_run(self, run_id: int) -> Dict[str, Any]:
+        """POST /api/device-leases/release-for-run/{run_id} — returns {"released": [hosts]}."""
+        return self._post(f"/api/device-leases/release-for-run/{run_id}", payload={})
+
+    def reconcile_device_leases(
+        self, heartbeats: Dict[str, str], stale_after_s: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """POST /api/device-leases/reconcile — releases any lease whose holder is absent from
+        `heartbeats` or whose heartbeat is older than `stale_after_s` (server default 90s)."""
+        payload: Dict[str, Any] = {"heartbeats": heartbeats}
+        if stale_after_s is not None:
+            payload["stale_after_s"] = stale_after_s
+        return self._post("/api/device-leases/reconcile", payload)
+
 
 
 

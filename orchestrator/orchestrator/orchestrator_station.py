@@ -14,6 +14,11 @@ from .state import OrchestratorState
 
 logger = logging.getLogger("orchestrator.station")
 
+# How often _lease_reconcile_loop posts the Redis heartbeat map to the backend. Matches the
+# hardcoded-constant convention every other daemon loop in this class already uses
+# (_ping_loop's `time.sleep(10)`, _run_watchdog's `time.sleep(5)`) rather than a config value.
+_LEASE_RECONCILE_INTERVAL_S = 15
+
 
 class OrchestratorStation:
     """
@@ -55,6 +60,7 @@ class OrchestratorStation:
 
         threading.Thread(target=self._trial_worker, daemon=True).start()
         # threading.Thread(target=self._run_watchdog, daemon=True).start()
+        threading.Thread(target=self._lease_reconcile_loop, daemon=True).start()
 
     def _ping_loop(self):
         while True:
@@ -377,6 +383,18 @@ class OrchestratorStation:
         except Exception:
             logger.exception("Failed to mark run %s as RUNNING in backend after sending START", run_id)
 
+        # 8️⃣.5 Acquire device leases for any extlink modules PREFS_HARDWARE just injected.
+        # Never fatal: preflight already gated this run, so a failed/conflicting acquire here
+        # is a race or a preflight bypass -- log loudly, never block a run preflight cleared.
+        try:
+            self._acquire_device_leases(
+                task, run_id=run_meta["id"], pilot_id=run_meta["pilot_id"],
+                pilot_name=pilot.get("name"), session_id=run_meta["session_id"],
+                subject_key=run_meta.get("subject_key"),
+            )
+        except Exception:
+            logger.exception("Failed acquiring device leases for run %s", run_id)
+
         # 9️⃣ Update local state & mirror to Redis
         active_run = {
             "id": run_meta["id"],
@@ -438,6 +456,15 @@ class OrchestratorStation:
             logger.exception("Failed to mark run %s STOPPED in backend after sending STOP", run_id)
             # No retries per request — log and continue
 
+        # 2️⃣.5 Release any device leases this run held. Clean-shutdown path; reconciliation
+        # (_lease_reconcile_loop) is the safety net for everything else (crash, network drop).
+        try:
+            released = self.api.release_device_leases_for_run(run_id)
+            if released.get("released"):
+                logger.info("Released device leases for run %s: %s", run_id, released["released"])
+        except Exception:
+            logger.exception("Failed releasing device leases for run %s", run_id)
+
         # 3) Clear orchestrator state + Redis mirror
         self.state.set_active_run(pilot_key, None)
         try:
@@ -482,6 +509,16 @@ class OrchestratorStation:
             error_type="TaskError",
             error_message=payload.get("error_message", ""),
         )
+
+        try:
+            released = self.api.release_device_leases_for_run(run["id"])
+            if released.get("released"):
+                logger.info(
+                    "Released device leases for errored run %s: %s",
+                    run["id"], released["released"],
+                )
+        except Exception:
+            logger.exception("Failed releasing device leases for errored run %s", run["id"])
 
         self.state.set_active_run(pilot_key, None)
         self._redis_set_active_run(pilot_key, None)
@@ -849,6 +886,42 @@ class OrchestratorStation:
                 toolkit_id,
             )
 
+    def _acquire_device_leases(
+        self, task: dict, *, run_id: int, pilot_id: int, pilot_name: str | None,
+        session_id: int, subject_key: str | None,
+    ) -> None:
+        """One `acquire_device_lease` call per `PREFS_HARDWARE` entry that declares a `role`
+        key -- that deliberately includes `role: "none"` control-only modules (EXTLINK-18):
+        they open no inbound socket, but they still command one physical box, which is
+        exactly what the lease arbitrates. Keyed off the presence of `role`, never a port
+        field, so this stays correct regardless of transport shape.
+        """
+        prefs_hardware = task.get("PREFS_HARDWARE") or {}
+        for module_name, cfg in prefs_hardware.items():
+            if not isinstance(cfg, dict) or "role" not in cfg:
+                continue
+            host = cfg.get("host")
+            if not host:
+                continue
+            try:
+                result = self.api.acquire_device_lease(
+                    host=host, pilot_id=pilot_id, pilot_name=pilot_name,
+                    session_id=session_id, run_id=run_id, subject_key=subject_key,
+                )
+            except Exception:
+                logger.warning(
+                    "Device lease acquire request failed for host %s (module %s)",
+                    host, module_name, exc_info=True,
+                )
+                continue
+            if not result.get("acquired"):
+                holder = result.get("holder") or {}
+                logger.warning(
+                    "Device lease NOT acquired for host %s (module %s) -- held by pilot"
+                    " %s (run %s); preflight should have caught this",
+                    host, module_name, holder.get("pilot_name"), holder.get("run_id"),
+                )
+
     def _send_hardware_libs_if_needed(
         self, pilot_key: str, toolkit_id: int | None, task_def_id: int | None = None
     ):
@@ -922,6 +995,54 @@ class OrchestratorStation:
         logger.info("Pushing UPDATE_FDA to pilot %s (key=%s)", pilot_name, pilot_key)
         self.gateway.send(pilot_key, "UPDATE_FDA", fda_json)
         logger.info("UPDATE_FDA sent to pilot %s", pilot_name)
+
+    def _lease_reconcile_loop(self):
+        """Feeds `device_lease.reconcile_leases` (plan 18-08) from the SAME `_redis_touch`
+        heartbeat every `on_state`/`on_ping` already refreshes on every message from a live
+        pilot -- a genuine liveness signal.
+
+        Do NOT confuse this with `_run_watchdog` below: that method is DEAD CODE (its
+        thread-start is commented out in `__init__` and must stay that way). It keys off
+        `active_run["started_at"]`, set once at `start_run()` and never refreshed, with an
+        `elapsed > 30` threshold -- re-enabling it would flag and error-out every behavioural
+        session longer than 30 seconds. This loop's `updated_at` is refreshed continuously,
+        which is what makes it safe to use as a staleness signal.
+        """
+        if not self.redis:
+            logger.info("Lease reconcile loop: Redis not configured, not starting")
+            return
+
+        logger.info(
+            "Lease reconcile loop started (interval=%ss)", _LEASE_RECONCILE_INTERVAL_S,
+        )
+        first_cycle = True
+        while True:
+            try:
+                heartbeats: Dict[str, str] = {}
+                for key in self.redis.scan_iter("pilot:*"):
+                    pilot_key = key.split("pilot:", 1)[1]
+                    updated_at = self.redis.hget(key, "updated_at")
+                    if updated_at:
+                        heartbeats[pilot_key] = updated_at
+
+                result = self.api.reconcile_device_leases(heartbeats)
+                released = result.get("released") or []
+                if released:
+                    logger.info("Lease reconcile: released %s", released)
+                elif first_cycle:
+                    # One INFO-level line proves the loop is alive without spamming every
+                    # 15s cycle thereafter -- every later empty cycle logs at debug only.
+                    logger.info(
+                        "Lease reconcile: first cycle complete, nothing to release (%d heartbeats)",
+                        len(heartbeats),
+                    )
+                else:
+                    logger.debug("Lease reconcile: nothing to release (%d heartbeats)", len(heartbeats))
+                first_cycle = False
+            except Exception:
+                logger.exception("Lease reconcile loop error")
+
+            time.sleep(_LEASE_RECONCILE_INTERVAL_S)
 
     def _run_watchdog(self):
         logger.info("Run watchdog started")

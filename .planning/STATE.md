@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T08:35:11.534Z"
+last_updated: "2026-08-09T11:35:50.883Z"
 progress:
   total_phases: 24
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 85
-  completed_plans: 63
+  completed_plans: 64
   percent: 76
 ---
 
@@ -28,6 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
+**Phase 18 (MICS-Link — Pi Transport + ExternalHardware) is now COMPLETE (2026-08-09, 15/15 plans)** — see the Phase 18 status section below for the six-run rig checkpoint's final verdicts. Phase 26 (OpenEphys Device Control), which depends on Phase 18, can now be planned/executed; residual gaps to note going in: EXTLINK-14 (`sub_connect`) and EXTLINK-18 (`role: "none"` control-only, OpenEphys's own transport shape) are unit-tested but UNPROVEN end-to-end on real hardware.
 **Progress:** [████████░░] 76%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
@@ -272,7 +273,43 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/11/13/14/15 of 15 done
+### Phase 18 status (2026-08-09) — PHASE COMPLETE, 15/15 plans done
+
+**Plan 12 executed (2026-08-09, Task 4 — recording the result of the six-run rig checkpoint):**
+The consolidated rig checkpoint (Task 3) ran six times on pilot 1 (`pilot_raspberry_lior`),
+session 115, task_def 434, toolkit 100 (runs 552-556; no run 551 in scope): 552/554/556 PASS,
+553/555 FAIL with `EXTLINK_GATE_TIMEOUT`. Both failures were fully root-caused and are recorded
+as **NOT a Phase 18 code defect** — `recompute_alive` (`external_hardware_binding.py:131`)
+correctly flips `demo.alive` false after three consecutive egress-probe failures at 1/s
+(`egress_fail_threshold: 3`) because the coordinator's single-lib consolidation pointed the demo
+fixture's egress probe at `132.77.73.125:5597`, where nothing was listening; proven live in run
+556 with no restart — `alive` flipped false exactly 3.0s after true, and back to true the same
+second a TCP echo listener was started. EXTLINK-13's readiness-gate proceed exit is now **directly
+observed** (a three-line log trace in run 556: `alive=1` → `_wait_extlink_ready` → `wait`, held
+~2ms), upgrading it from an earlier revision's inference. EXTLINK-15 (egress under real
+conditions) is PROVEN more thoroughly than planned — failure detection, the exact threshold trip,
+and recovery all observed live, FDA timing unaffected throughout. EXTLINK-19 and EXTLINK-20 given
+split verdicts: runtime transition firing and hand-driving from a real Mac (runs 554/556) are
+PROVEN; browser-picker authoring (transitions on task def 434 were authored via the API, not the
+FDA editor) and the mandated ~60Hz soak are UNPROVEN. Two earlier claims in this document
+("float values are truncated"; "Phase 18 has a genuine liveness bug") are formally **retracted**
+as false. `role: "none"` (EXTLINK-18, both halves) and `sub_connect` (EXTLINK-14) remain
+permanently UNPROVEN on hardware this session — deliberate single-lib scope decision, mechanisms
+remain agent-unit-tested only. **TEARDOWN (checkpoint step 11) deliberately NOT run** — the user
+chose to keep the single curated `ExtlinkDemo` fixture (module 62 / lib 177 / pilot config 21 /
+task def 434) on pilot 1 rather than remove it; exact reversing commands are recorded in
+`18-HARDWARE-VALIDATION.md` §3, along with a new standing dependency (a TCP echo listener on the
+dev host at `132.77.73.125:5597` must keep running, or the same alive-flip pattern recurs). Full
+backend suite reconfirmed green: **435 passed, 1 skipped**. Two backend defects newly documented
+but not fixed (out of scope): `delete_hardware_lib` 500s instead of 409 on a dangling
+`hardware_modules` reference; the transition-condition save gate silently accepts both an unknown
+extlink key and the wrong `condition_tree`/`condition` shape. `gsd-tools requirements
+mark-complete` found no checkbox/traceability rows for the seventeen EXTLINK IDs (same known gap
+as every prior EXTLINK plan) — completion tracked here and via `roadmap update-plan-progress 18`
+instead (now 15/15, status Complete). See `18-12-SUMMARY.md` and
+`18-HARDWARE-VALIDATION.md` for the full per-requirement verdict table. **Phase 18 is now
+COMPLETE** — all 15 plans executed; residual gaps for Phase 26 (which depends on this phase) are
+EXTLINK-14/17/18 remaining unproven on real hardware, though fully unit-tested.
 
 **Plan 11 executed (2026-08-09):** EXTLINK-01/05/11/13/14/16/18 delivered — wires the substrate
 (18-05/06/10) into the running task. Task 1 added `mics_task.init_hardware()`: unchanged
@@ -1601,6 +1638,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: 18-14: buildViewOptions gains a 4th extlink param; operand shape is resolved key {view: source_id.signal}, not a ref, per plan design_decision
 - [Phase 18]: extlink_driver.py defers zmq/msgpack imports to mode handlers so --help works before either is installed; extlink_wire.py duplicates (not imports) the Pi's wire codec since the laptop has no pi-mirror checkout
 - [Phase 18]: 18-11: reused bind_lifecycle's already-constructed LifecycleRunner (hw._lifecycle.start_async) instead of building a second one; EXTLINK_SKIP_WAIT implemented as a plain flag settable via the existing type:flag trigger-assignment action, no new ZMQ plumbing
+- [Phase 18]: 18-12: TEARDOWN deliberately deferred; both rig failures root-caused to a fixture egress-probe config gap, not a Phase 18 defect
 
 ## Accumulated Context
 

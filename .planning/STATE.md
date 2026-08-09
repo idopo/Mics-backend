@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:19:16.008Z"
+last_updated: "2026-08-09T07:22:16.357Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 50
-  percent: 61
+  completed_plans: 51
+  percent: 62
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 61%
+**Progress:** [██████░░░░] 62%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,7 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plan 01/15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/03 of 15 done
 
 **Plan 01 executed (2026-08-09):** EXTLINK-03/06/07/08/12/14/18 test contracts delivered —
 Wave 0, part A. Three `autopilot`-free pytest files under `/home/ido/pi-mirror/tests/`
@@ -299,6 +299,25 @@ since the deliverable files live entirely outside it. `gsd-tools requirements ma
 found no checkbox/traceability rows for the seven EXTLINK IDs in `REQUIREMENTS.md` (same known
 gap previously hit for CMP-*/DVK-* — completion tracked here and via
 `roadmap update-plan-progress 18` instead). No deviations. See `18-01-SUMMARY.md`.
+
+**Plan 03 executed (2026-08-09):** EXTLINK-09/10/17/18 backend test contracts delivered — Wave 0,
+part C (plan 18-02 not yet re-executed this session; run out of strict wave order). 19
+`pytest.importorskip("device_lease")`-guarded tests appended to
+`api/tests/test_view_key_preflight.py` (lease arbitration blocking a second pilot on the same
+normalized host, `normalize_host` collapsing `host:port`/`http://host:port/` to one key,
+`validate_extlink_config` field checks, `force_release` + `reconcile_leases` on a fabricated
+stale heartbeat, and the `role: "none"` control-only path — neither port required, `host` still
+required, role absence ≠ `role: "none"`) plus a new `api/tests/test_hardware_libs_extlink.py` (8
+tests, `pytest.importorskip("extlink_ast")`-guarded, including the Pitfall-5 bare-type-payload
+case that would crash a naive `ast.literal_eval` on `{"object": str}`-shaped decorator kwargs).
+`PREFLIGHT_ISSUE_KINDS`' completeness guard extended to 11 kinds (`device_held`,
+`extlink_config_invalid` added). Only 2 of the 19 lease tests are route-level (hit
+`preflight_validate` via the TestClient) and need `xfail(strict=False)` pending 18-09's wiring;
+the other 17 call `device_lease` functions directly and will pass as soon as 18-08 lands
+`device_lease.py`, independent of route wiring. Resolved 18-VALIDATION.md's open question:
+`test_hardware_libs_extlink.py` is a NEW file — `grep -rl "extract_ast_metadata" api/tests/`
+found no prior owner. Full backend suite unchanged at **359 passed** (baseline), **28 skipped**
+(up from 1 — the 27 new guarded tests), 0 errors. See `18-03-SUMMARY.md`.
 
 **The stale-verdict warning is cleared.** The plan-checker was re-run on 2026-08-05 against the
 post-`64bbd2d` plans. Iteration 1 returned **ISSUES FOUND** (3 blockers, 3 warnings, 3 info);
@@ -1196,6 +1215,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 29]: 29-07: both remaining index-grid placement sites (addState, toolkit-sync effect) now route through placeNewState and immediately layout.record() the placement; restoreLayout uses layeredLayout (discard) + layout.replaceAll (persist), not resolvePositions — CANVAS-09 requires the restore to survive a refresh, not merely redraw
 - [Phase 29]: 29-07: deleteState deliberately does not prune the layout map — resolvePositions already drops entries for states absent from the FDA on next load, so the stale key self-heals
 - [Phase 18]: 18-01: msgpack pinned via pip --break-system-packages; three autopilot-free Wave-0 test contracts pinned for plan 18-05
+- [Phase 18]: Plan 18-03: device-lease + AST-extractor backend test contracts pinned as importorskip-guarded tests, 19 lease + 8 extlink-AST, full suite still 359 passed
 
 ## Accumulated Context
 

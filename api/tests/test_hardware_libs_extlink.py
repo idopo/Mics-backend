@@ -228,7 +228,21 @@ def auth_headers():
     return {"Authorization": "Bearer test-token"}
 
 
-def test_extlink_upload_round_trip():
+@pytest.fixture
+def uploaded_lib_ids():
+    """Hard-delete any lib these tests upload.
+
+    These route-level tests POST against the same database the dev stack uses, so without
+    cleanup every `pytest` run permanently adds a row. That leak reached 50 orphaned fixture
+    libs before it was caught.
+    """
+    ids = []
+    yield ids
+    for lib_id in ids:
+        _client().delete(f"/api/hardware-libs/{lib_id}", headers=auth_headers())
+
+
+def test_extlink_upload_round_trip(uploaded_lib_ids):
     pytest.importorskip("extlink_ast")
     resp = _client().post(
         "/api/hardware-libs",
@@ -238,6 +252,7 @@ def test_extlink_upload_round_trip():
     )
     assert resp.status_code in (200, 201)
     body = resp.json()
+    uploaded_lib_ids.append(body["id"])
     ast_metadata = body["ast_metadata"]
     assert "classes" in ast_metadata  # existing block unaffected
     assert ast_metadata["extlink"]["OpenEphysProbe"]["signals"]["firing_rate"]["dtype"] == "float"
@@ -257,7 +272,7 @@ class Weird(ExternalHardware):
 '''
 
 
-def test_extlink_signal_splat_kwargs_does_not_block_upload():
+def test_extlink_signal_splat_kwargs_does_not_block_upload(uploaded_lib_ids):
     """`@signal(**kwargs)` is a splat -- nothing sensible can extract from it. The upload must
     still succeed 200 with the `classes` block intact; extlink extraction failures are narrowly
     caught and logged, never allowed to 500 the whole upload."""
@@ -269,4 +284,5 @@ def test_extlink_signal_splat_kwargs_does_not_block_upload():
         headers=auth_headers(),
     )
     assert resp.status_code in (200, 201)
+    uploaded_lib_ids.append(resp.json()["id"])
     assert "classes" in resp.json()["ast_metadata"]

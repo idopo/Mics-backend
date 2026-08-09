@@ -365,6 +365,27 @@ export interface DetectorChannelGroup {
   by_pilot: DetectorChannelPilot[]
 }
 
+/** One pilot's resolved extlink keys — provenance behind `conflict` (18-13's aggregation). */
+export interface ExtlinkSignalPilot {
+  pilot_id: number
+  pilot_name: string
+  source_id: string
+  keys: string[]
+}
+
+/** Cross-pilot union of one ExternalHardware module's declared signals + `<source_id>.alive`. */
+export interface ExtlinkSignalGroup {
+  module_name: string
+  /** Per-pilot source_id(s) configured for this module — >1 means the pilots disagree. */
+  source_ids: string[]
+  /** Pilot-invariant — declared once on the lib version, not per pilot. */
+  signals: { name: string; dtype: string | null }[]
+  /** WHAT IS STORED (matches the detector-channel `keys` contract): `${source_id}.${name}` + `.alive`. */
+  keys: string[]
+  conflict: boolean
+  by_pilot: ExtlinkSignalPilot[]
+}
+
 export interface ToolkitRead {
   id: number
   name: string
@@ -387,6 +408,8 @@ export interface ToolkitRead {
   detector_refs?: string[]
   /** Older API responses predate this column — always optional. */
   detector_channels?: DetectorChannelGroup[]
+  /** Older API responses predate this column — always optional (18-13). */
+  extlink_signals?: ExtlinkSignalGroup[]
 }
 
 // Locked states (Phase 11)

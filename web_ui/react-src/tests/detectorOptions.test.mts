@@ -17,7 +17,7 @@ import {
   detectorOperandLabel,
   buildKeyTemplateSuggestions,
 } from '../src/components/detectorOptions.mts'
-import type { DetectorChannelGroup } from '../src/types/index.ts'
+import type { DetectorChannelGroup, ExtlinkSignalGroup } from '../src/types/index.ts'
 
 function licker(overrides: Partial<DetectorChannelGroup> = {}): DetectorChannelGroup {
   return {
@@ -29,6 +29,21 @@ function licker(overrides: Partial<DetectorChannelGroup> = {}): DetectorChannelG
     by_pilot: [{
       pilot_id: 1, pilot_name: 'pilot_raspberry_lior', device_name: 'LICKER',
       channels: [1, 2, 3, 4], keys: ['LICKER1', 'LICKER2', 'LICKER3', 'LICKER4'],
+    }],
+    ...overrides,
+  }
+}
+
+function extlink(overrides: Partial<ExtlinkSignalGroup> = {}): ExtlinkSignalGroup {
+  return {
+    module_name: 'dlc_cam_verify1813',
+    source_ids: ['dlc_cam1'],
+    signals: [{ name: 'left_paw_x', dtype: 'float' }],
+    keys: ['dlc_cam1.alive', 'dlc_cam1.left_paw_x'],
+    conflict: false,
+    by_pilot: [{
+      pilot_id: 1, pilot_name: 'pilot_raspberry_lior', source_id: 'dlc_cam1',
+      keys: ['dlc_cam1.alive', 'dlc_cam1.left_paw_x'],
     }],
     ...overrides,
   }
@@ -141,6 +156,99 @@ test('buildViewOptions: flags/variables never land in a channel group (DVK-07)',
   assert.deepStrictEqual(flagsGroup.items, [{ value: 'some_flag', label: 'some_flag' }])
   const channelGroup = groups.find(g => g.label === 'LICKER channels')!
   assert.ok(!channelGroup.items.some(i => i.value === 'some_flag'))
+})
+
+// ── buildViewOptions: extlink (4th param) ───────────────────────────────────
+
+test('buildViewOptions: omitted 4th parameter is a no-op (regression pin for the 3-arg baseline)', () => {
+  const withThree = buildViewOptions(['MPR121'], ['some_flag'], [licker()])
+  const withEmptyFourth = buildViewOptions(['MPR121'], ['some_flag'], [licker()], [])
+  assert.deepStrictEqual(withThree, withEmptyFourth)
+})
+
+test('buildViewOptions: one group per external module, appended after detector groups', () => {
+  const groups = buildViewOptions([], [], [licker()], [extlink()])
+  assert.strictEqual(groups.length, 2)
+  assert.strictEqual(groups[0].label, 'LICKER channels')
+  assert.strictEqual(groups[1].label, 'dlc_cam1 signals')
+})
+
+test('buildViewOptions: multiple source_ids fall back to "${module_name} signals"', () => {
+  const groups = buildViewOptions([], [], [], [extlink({ source_ids: ['dlc_cam1', 'dlc_cam2'] })])
+  assert.strictEqual(groups[0].label, 'dlc_cam_verify1813 signals')
+})
+
+test('buildViewOptions: extlink item value is the resolved key, label is signal-first with dtype, title notes pilot-specific', () => {
+  const groups = buildViewOptions([], [], [], [extlink()])
+  const item = groups[0].items.find(i => i.value === 'dlc_cam1.left_paw_x')!
+  assert.ok(item)
+  assert.strictEqual(item.value, 'dlc_cam1.left_paw_x')
+  assert.ok(item.label.startsWith('left_paw_x'))
+  assert.ok(item.label.includes('float'))
+  assert.ok(item.title)
+  assert.ok(item.title!.toLowerCase().includes('pilot-specific'))
+})
+
+test('buildViewOptions: <source_id>.alive is offered and labelled as device health', () => {
+  const groups = buildViewOptions([], [], [], [extlink()])
+  const alive = groups[0].items.find(i => i.value === 'dlc_cam1.alive')!
+  assert.ok(alive)
+  assert.ok(!alive.label.toLowerCase().includes('signal'))
+})
+
+test('buildViewOptions: control-only module (no signals) offers exactly one item, its .alive key', () => {
+  const group = extlink({ module_name: 'oe_ctl_module', source_ids: ['oe_ctl'], signals: [], keys: ['oe_ctl.alive'],
+    by_pilot: [{ pilot_id: 1, pilot_name: 'pilot_raspberry_lior', source_id: 'oe_ctl', keys: ['oe_ctl.alive'] }] })
+  const groups = buildViewOptions([], [], [], [group])
+  assert.strictEqual(groups.length, 1)
+  assert.strictEqual(groups[0].items.length, 1)
+  assert.strictEqual(groups[0].items[0].value, 'oe_ctl.alive')
+})
+
+test('buildViewOptions: conflict true sets a warning naming each pilot and its source_id', () => {
+  const group = extlink({
+    source_ids: ['dlc_cam1', 'dlc_cam2'],
+    conflict: true,
+    keys: ['dlc_cam1.alive', 'dlc_cam1.left_paw_x', 'dlc_cam2.alive', 'dlc_cam2.left_paw_x'],
+    by_pilot: [
+      { pilot_id: 1, pilot_name: 'pilot_raspberry_lior', source_id: 'dlc_cam1', keys: ['dlc_cam1.alive', 'dlc_cam1.left_paw_x'] },
+      { pilot_id: 2, pilot_name: 'youri_pilot', source_id: 'dlc_cam2', keys: ['dlc_cam2.alive', 'dlc_cam2.left_paw_x'] },
+    ],
+  })
+  const groups = buildViewOptions([], [], [], [group])
+  assert.ok(groups[0].warning)
+  assert.ok(groups[0].warning!.includes('pilot_raspberry_lior'))
+  assert.ok(groups[0].warning!.includes('dlc_cam1'))
+  assert.ok(groups[0].warning!.includes('youri_pilot'))
+  assert.ok(groups[0].warning!.includes('dlc_cam2'))
+})
+
+test('buildViewOptions: dedupe precedence unchanged — a hw/flag name identical to an extlink key wins', () => {
+  const groups = buildViewOptions(['dlc_cam1.left_paw_x'], [], [], [extlink()])
+  const hwGroup = groups.find(g => g.label === 'Hardware')!
+  assert.deepStrictEqual(hwGroup.items, [{ value: 'dlc_cam1.left_paw_x', label: 'dlc_cam1.left_paw_x' }])
+  const extlinkGroup = groups.find(g => g.label === 'dlc_cam1 signals')!
+  assert.ok(!extlinkGroup.items.some(i => i.value === 'dlc_cam1.left_paw_x'))
+})
+
+test('buildViewOptions: isKnownViewOption is true for an offered extlink key, false for a near-miss', () => {
+  const groups = buildViewOptions([], [], [], [extlink()])
+  assert.strictEqual(isKnownViewOption('dlc_cam1.left_paw_x', groups), true)
+  assert.strictEqual(isKnownViewOption('dlc_cam2.left_paw_x', groups), false)
+})
+
+test('buildViewOptions: optionValueToViewOperand/viewOperandToOptionValue round trip an extlink key unchanged', () => {
+  const detectors: DetectorChannelGroup[] = []
+  const op = optionValueToViewOperand('dlc_cam1.left_paw_x', detectors)
+  assert.deepStrictEqual(op, { view: 'dlc_cam1.left_paw_x' })
+  assert.strictEqual(viewOperandToOptionValue(op), 'dlc_cam1.left_paw_x')
+})
+
+test('buildViewOptions: an empty extlink array adds no group', () => {
+  const withDetectorsOnly = buildViewOptions(['MPR121'], [], [licker()])
+  const withEmptyExtlink = buildViewOptions(['MPR121'], [], [licker()], [])
+  assert.deepStrictEqual(withDetectorsOnly, withEmptyExtlink)
+  assert.strictEqual(withEmptyExtlink.length, 2)
 })
 
 // ── viewOperandToOptionValue / optionValueToViewOperand — the DVK-11 round trip ─────────────

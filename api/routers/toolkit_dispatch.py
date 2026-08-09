@@ -11,6 +11,7 @@ from auth import verify_token
 from compute_provisioning import compute_module_names, provision_compute_configs
 from db import engine
 from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
+from device_lease import preflight_lease_and_config_issues
 from lib_version_resolution import resolve_lib_version_id
 from variable_scan import variable_never_written_issues
 from wait_analysis import unsatisfiable_wait_issues
@@ -149,7 +150,7 @@ def get_dispatch_class(
 
 
 # Every preflight issue kind this module can emit. Mirrored (must stay in sync) by the
-# `PreflightIssue` union in `HardwareCheckModal.tsx` — plan 23-09's job to extend it.
+# `PreflightIssue` union in `HardwareCheckModal.tsx` — plan 18-09's job to add the two newest.
 PREFLIGHT_ISSUE_KINDS = frozenset({
     "missing",                    # no pilot_hardware_config row for a required module
     "incomplete_config",          # hardware module config has no non-class_name keys
@@ -160,6 +161,8 @@ PREFLIGHT_ISSUE_KINDS = frozenset({
     "lib_version_unresolved",     # CMP-17 rung 5: no beta/stable version deployable for a lib
     "compute_lib_import_failed",  # CMP-19c RESERVED: compute lib failed to import on the Pi
     "state_wait_unsatisfiable",   # CMP-15b: every exit from a state is blocked by a frozen variable
+    "device_held",                # EXTLINK-17: another pilot's run already holds this device's lease
+    "extlink_config_invalid",     # EXTLINK-10/18: an extlink module's config fails field validation
 })
 
 
@@ -304,6 +307,7 @@ def preflight_validate(
     module_channels: dict[str, list[int]] = {}
     module_keys: dict[str, list[str]] = {}
     device_names: dict[str, str] = {}
+    lease_candidates: list[tuple] = []  # (module, cfg) pairs — step 11 below reuses this
     for module_id in module_ids:
         module = db.execute(
             text("SELECT id, name, class_name, hardware_lib_id FROM hardware_modules WHERE id = :id"),
@@ -353,6 +357,7 @@ def preflight_validate(
             continue
 
         cfg = cfg_row.config or {}
+        lease_candidates.append((module, cfg))
         device_name = cfg.get("device_name")
         if isinstance(device_name, str) and device_name:
             device_names[module.name] = device_name
@@ -468,4 +473,8 @@ def preflight_validate(
                 session_id, pilot_id, exc_info=True,
             )
 
+    try:  # 11. EXTLINK-17/10: device lease + extlink config check (top-level, not FDA-gated)
+        issues.extend(preflight_lease_and_config_issues(db, pilot_id, lease_candidates))
+    except Exception:
+        logger.warning("preflight_validate: device-lease check failed for pilot %s", pilot_id, exc_info=True)
     return {"ok": len(issues) == 0, "issues": issues}

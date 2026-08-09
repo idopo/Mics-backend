@@ -690,11 +690,13 @@ def test_preflight_issue_kinds_frozenset_is_complete():
     """Pinned so a new kind cannot be added without also being surfaced in the UI — the
     `PreflightIssue` union and NON_CONFIG_ISSUES in HardwareCheckModal.tsx must match."""
     from routers.toolkit_dispatch import PREFLIGHT_ISSUE_KINDS
-    assert len(PREFLIGHT_ISSUE_KINDS) == 9
+    assert len(PREFLIGHT_ISSUE_KINDS) == 11
     assert "variable_never_written" in PREFLIGHT_ISSUE_KINDS
     assert "lib_version_unresolved" in PREFLIGHT_ISSUE_KINDS
     assert "compute_lib_import_failed" in PREFLIGHT_ISSUE_KINDS
     assert "state_wait_unsatisfiable" in PREFLIGHT_ISSUE_KINDS
+    assert "device_held" in PREFLIGHT_ISSUE_KINDS
+    assert "extlink_config_invalid" in PREFLIGHT_ISSUE_KINDS
 
 
 def test_compute_lib_import_failed_issue_constructor_shape():
@@ -961,15 +963,15 @@ def test_variable_usage_requires_auth():
 
 # ---------------------------------------------------------------------------
 # Plan 18-03 — device-lease + extlink-config preflight contract (EXTLINK-17,
-# EXTLINK-10, EXTLINK-18). `api/device_lease.py` does not exist yet (plan 18-08); every test
-# below guards with `pytest.importorskip("device_lease")` as its FIRST statement so this file
-# collects and SKIPS cleanly today. Route-level tests (the ones that hit the real
-# preflight-validate HTTP route rather than calling a device_lease function directly) are
-# additionally marked `xfail(strict=False)`, because `preflight_validate` itself is not wired to
-# consult the lease/config-validation layer until plan 18-09 -- once device_lease.py exists
-# (18-08) but before that wiring lands, these route-level assertions will genuinely fail and the
-# xfail marker keeps that expected, non-blocking. Plans 18-08 (module) and 18-09 (route wiring)
-# are the ones that remove these markers.
+# EXTLINK-10, EXTLINK-18). `api/device_lease.py` (plan 18-08) and `preflight_validate` step 11
+# (plan 18-08 task 2) now both exist, so every test below is live -- the `pytest.importorskip
+# ("device_lease")` guards are kept as a harmless first statement (module always resolves now)
+# rather than pulled, since they cost nothing and would only matter again if this file were ever
+# run against a checkout that predates 18-08. The two route-level tests' `xfail` markers (they
+# hit the real preflight-validate HTTP route rather than calling a device_lease function
+# directly) were removed here, in plan 18-08 task 2, once step 11 made them pass. Plan 18-09 adds
+# its OWN xfail-then-remove tests for the force-release/reconcile HTTP endpoints it builds
+# (`api/routers/device_leases.py`) -- those endpoints do not exist yet at this point in the phase.
 #
 # Residual-risk boundary (so no later plan over-promises): Phase 18's safety net releases the
 # lease row and marks the run errored. It does NOT reach out to the foreign device to stop it --
@@ -1073,10 +1075,6 @@ def _oe_control_scenario(fda_json=None, config=None, module_class_name="OE_Contr
 # --- Lease arbitration (EXTLINK-17) -----------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="EXTLINK-17: lease not wired into preflight_validate until plan 18-09",
-    strict=False,
-)
 def test_lease_blocks_second_run_same_host():
     pytest.importorskip("device_lease")
     from device_lease import normalize_host
@@ -1287,10 +1285,6 @@ def test_lease_extlink_config_role_absent_is_not_role_none():
     assert validate_extlink_config("OE", 1, cfg) == []
 
 
-@pytest.mark.xfail(
-    reason="EXTLINK-18: role='none' config-validation not wired into preflight_validate until plan 18-09",
-    strict=False,
-)
 def test_lease_preflight_role_none_module_is_clean():
     pytest.importorskip("device_lease")
     resp = _preflight(_oe_control_scenario())

@@ -442,7 +442,7 @@ Plans:
 ### Phase 18: MICS-Link — Pi Transport + ExternalHardware
 **Goal:** Pi gains a structured, crash-safe input channel that lets external software (DeepLabCut, OpenEphys, photometry, …) push data into the existing View / FDA framework. Author writes one `ExternalHardware` subclass with `@signal` / `@event` / `@command` decorators and uploads it as a regular hardware library (Phase 9). It is registered as a hardware module (Phase 10), its per-pilot network config (`{class_name, listen_port, source_id, stale_ms}`) lives in `pilot_hardware_config.config` (Phase 17 — free-form, no schema change), selected by a toolkit (Phase 11), dispatched on the existing `HARDWARE` + `PREFS_HARDWARE` channel (Phase 11), preflight-validated (Phase 13). On the Pi, each instance binds its own ROUTER on its `listen_port` and accepts only the configured `source_id` DEALER identity. FDA transitions read external data via the same `view.get_value(...)` API used for GPIO/I2C — zero new call sites, zero new dispatch shapes.
 
-**Requirements**: EXTLINK-01, EXTLINK-02, EXTLINK-03, EXTLINK-04, EXTLINK-05, EXTLINK-06, EXTLINK-07, EXTLINK-08, EXTLINK-09, EXTLINK-10, EXTLINK-11, EXTLINK-12, EXTLINK-13, EXTLINK-14, EXTLINK-15, EXTLINK-16, EXTLINK-17, EXTLINK-18 *(EXTLINK-07 and EXTLINK-13 amended 2026-08-03; EXTLINK-14–18 added the same day)*
+**Requirements**: EXTLINK-01, EXTLINK-02, EXTLINK-03, EXTLINK-04, EXTLINK-05, EXTLINK-06, EXTLINK-07, EXTLINK-08, EXTLINK-09, EXTLINK-10, EXTLINK-11, EXTLINK-12, EXTLINK-13, EXTLINK-14, EXTLINK-15, EXTLINK-16, EXTLINK-17, EXTLINK-18, EXTLINK-19, EXTLINK-20 *(EXTLINK-07 and EXTLINK-13 amended 2026-08-03; EXTLINK-14–18 added the same day; EXTLINK-19–20 added 2026-08-09 — see the authoring-gap note under Plans)*
 
 > **⚠ CONTEXT REVISED 2026-08-03 — this phase must be RE-PLANNED.** The original design assumed one
 > consumer shape: our own SDK, speaking our MessagePack envelope, **dialing into** the Pi's ROUTER.
@@ -452,8 +452,8 @@ Plans:
 > executed. Five additions to the substrate: transport roles + `@decoder`, liveness split from
 > signal staleness, egress queue, run lifecycle hooks, device lease.
 
-**Plans:** 12 plans in 5 waves (planned 2026-08-03, after the context revision) — **✅ RE-VERIFICATION
-PASSED 2026-08-05.** Ten of the twelve were revised on 2026-08-03 (commit `64bbd2d`) to add transport
+**Plans:** 15 plans in 5 waves (12 planned 2026-08-03 after the context revision; 18-13/14/15 added
+and 18-12 amended 2026-08-09) — **✅ RE-VERIFICATION PASSED 2026-08-05.** Ten of the twelve were revised on 2026-08-03 (commit `64bbd2d`) to add transport
 `role: "none"` for control-only devices, after Phase 26 planning exposed the gap. The plan-checker was
 re-run against the revised plans: iteration 1 found 3 blockers (the `role: "none"` liveness-override
 rule was implemented but tested nowhere; the `EgressWorker` seam would have forked Phase 26; the
@@ -473,10 +473,25 @@ Plans:
 - [ ] 18-09-PLAN.md — lease endpoints, reconciliation loop on the Redis heartbeat, orchestrator + HardwareCheckModal
 - [ ] 18-10-PLAN.md — `ExternalHardware` base class + the four decorators
 - [ ] 18-11-PLAN.md — `mics_task` bind post-pass, `_wait_extlink_ready` pre-state, `extlink_smoke.py`
-- [ ] 18-12-PLAN.md — the single consolidated rig checkpoint + `18-HARDWARE-VALIDATION.md`
+- [ ] 18-12-PLAN.md — the single consolidated rig checkpoint + `18-HARDWARE-VALIDATION.md` *(amended 2026-08-09: +3 checkpoint steps — author in the editor, hand-drive + soak, and a mandatory teardown)*
+- [ ] 18-13-PLAN.md — backend extlink signal aggregator + save-gate and preflight wiring
+- [ ] 18-14-PLAN.md — FDA editor: extlink signals in the view-operand picker
+- [ ] 18-15-PLAN.md — cross-platform hand driver (`tools/extlink_driver/`) + `extlink_demo` FDA
+
+> **Authoring gap found and closed 2026-08-09 (EXTLINK-19/20).** The original twelve plans built the
+> whole transport but left the feature unreachable from the product: `buildViewOptions`
+> (`detectorOptions.mts:90`) enumerates only `semantic_hardware` names and detector channels, and
+> `ConditionBuilder.tsx:95` offers a free-text view key ONLY when the picker is empty — so an
+> extlink key could survive a round trip (the escape at `ConditionBuilder.tsx:76` names
+> `ExternalHardware` signals explicitly) but could never be *created*. Worse, verified during
+> planning: `api/fda_validation.py:207-265` hard-**422s** any `{"view": …}` outside a known name
+> set, so criterion 1 was unreachable even by hand-PUTing `fda_json`. EXTLINK-09 had always
+> anticipated the picker ("so FDA-editor and state-builder UIs (Phase 19+) can render typed forms")
+> — that forward reference was stale, since Phase 19 is now the device-health surface. 18-13/14
+> close both halves; 18-15 supplies the external program that drives it.
 
 **Success criteria:**
-1. A standalone DEALER script (`~/pi-mirror/scripts/dev/extlink_smoke.py`) connects to the per-instance `listen_port` with the configured `source_id`, pushes `dlc_cam1.left_paw_x = 0.7`, and an FDA transition gated on `view.get_value("dlc_cam1.left_paw_x") > 0.5` fires within 50 ms.
+1. A standalone DEALER script (`~/pi-mirror/scripts/dev/extlink_smoke.py`) connects to the per-instance `listen_port` with the configured `source_id`, pushes `dlc_cam1.left_paw_x = 0.7`, and an FDA transition gated on `view.get_value("dlc_cam1.left_paw_x") > 0.5` fires — **observed as a state change, with no latency bound asserted.** *(The original "within 50 ms" was dropped 2026-08-09: nobody can eyeball 50 ms, and comparing a sender's timestamp against the Pi's `ts_pi_recv` measures clock skew — those machines are not NTP-synced to each other. Latency and jitter belong to **Phase 28** (TTL vs Network Sync Validation), which owns clock-domain comparison and measures both paths inside one recording. Phase 18 verifies transport behaviour under load as a **soak** instead — EXTLINK-20, plan 18-12 step 8b: at ~60 Hz for ~30 s the pilot stays up, the FDA keeps transitioning, bounded-queue drops are reported rather than silent, and ES ingestion keeps up.)*
 2. **Both transport roles work.** `router_bind` behaves as above. A `sub_connect` instance dials out to a foreign publisher, its lib's `@decoder` translates the foreign frame into declared signals, and the resulting view keys are indistinguishable from a `router_bind` source's at the `view.get_value(...)` call site.
 3. **Liveness is separate from signal staleness.** A source that is reachable but sending no signal updates stays `alive == true` while its signals go stale per their declared policy. A lib-supplied liveness hook overrides the data-arrival default. Every flip emits a CONTINUOUS event visible in ES.
 4. Per-signal stale policy probe: stop pushing a `return_default` signal; `view.get_value(...)` returns the declared default after `stale_after_ms`.
@@ -488,6 +503,8 @@ Plans:
 10. **Lifecycle hooks fire correctly.** `on_run_start(run_ctx)` runs async after `.bind()` and is retried inside the wait window; the readiness gate releases on *ready*, not merely *alive*. `on_run_stop()` runs on normal completion, STOP, and task exception — and the backend safety net fires when the Pi never reports back.
 11. **A control-only module with zero declared signals** instantiates, binds, participates in the readiness gate, and uses the egress path.
 12. **The device lease hard-blocks** a second run targeting a held device, surfaced as a preflight issue naming the holding pilot/subject/run; it is released by backend reconciliation when the run ends uncleanly, and by manual force-release.
+13. **An external signal is authorable in the FDA editor** (EXTLINK-19). A transition gated on `dlc_cam1.left_paw_x` is created entirely through the editor's view-operand picker — no hand-edited `fda_json` — saves without a 422, and round-trips without rendering as "(unknown)". The stored operand is the resolved key `{"view": "<source_id>.<signal>"}`.
+14. **A researcher drives the mechanism from a non-Pi machine** (EXTLINK-20). A cross-platform driver in `tools/extlink_driver/` (macOS now, Windows later, `pyzmq` + `msgpack` only) pushes signal values by hand from a laptop over `role: router_bind`, and the FDA's state changes respond — plus a `--sweep` and a `--rate` soak against the throwaway `extlink_demo` task definition.
 
 **Files to change:**
 - `mics-backend/api/routers/hardware_libs.py` (extend — AST extractor recognises `@signal` / `@event` / `@command` / `@decoder`; metadata flows through the existing `ast_metadata` field)
@@ -504,6 +521,11 @@ Plans:
 - `mics-backend/api/models.py` + `api/db.py` (extend — `device_leases` table + idempotent migration)
 - `mics-backend/web_ui/react-src/src/components/HardwareCheckModal.tsx` (extend — the `PreflightIssue` union MUST mirror `PREFLIGHT_ISSUE_KINDS`; omitted from the original file list)
 - `mics-backend/orchestrator/orchestrator/orchestrator_station.py` + `mics/mics_api_client.py` (extend — lease acquire/release + a NEW reconciliation loop keyed on `_redis_touch`'s `updated_at`; `_run_watchdog` stays dead code, it keys on `started_at` and would kill every session over 30s)
+- `mics-backend/api/extlink_keys.py` (new — extlink signal aggregation: `ast_metadata.extlink` → per-pilot view keys, cross-pilot union with a `conflict` flag, mirroring `detector_keys.module_detector_channels`)
+- `mics-backend/api/fda_validation.py` (extend — the save-time hard-error gate must admit extlink keys; today it 422s them)
+- `mics-backend/api/routers/toolkits.py` (extend — `extlink_signals` on the toolkit read, at the same three sites `module_detector_channels` is called from)
+- `mics-backend/web_ui/react-src/src/components/detectorOptions.mts` + `ConditionBuilder.tsx` + `ArgInput.tsx` (extend — one option group per external module; `TaskEditor.tsx` is NOT touched, `extlink_signals` rides `ToolkitRead` which both consumers already receive)
+- `mics-backend/tools/extlink_driver/` (new — the cross-platform hand driver. Deliberately NOT under `~/pi-mirror/`, which is rsynced to the Pi)
 
 **NOT in scope:**
 - `mics-link` Python SDK package; stub generation + bootstrap-zip endpoints + "Download SDK" GUI button

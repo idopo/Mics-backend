@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:22:16.357Z"
+last_updated: "2026-08-09T07:24:43.051Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 51
-  percent: 62
+  completed_plans: 52
+  percent: 63
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 62%
+**Progress:** [██████░░░░] 63%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,7 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/03 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03 of 15 done
 
 **Plan 01 executed (2026-08-09):** EXTLINK-03/06/07/08/12/14/18 test contracts delivered —
 Wave 0, part A. Three `autopilot`-free pytest files under `/home/ido/pi-mirror/tests/`
@@ -299,6 +299,39 @@ since the deliverable files live entirely outside it. `gsd-tools requirements ma
 found no checkbox/traceability rows for the seven EXTLINK IDs in `REQUIREMENTS.md` (same known
 gap previously hit for CMP-*/DVK-* — completion tracked here and via
 `roadmap update-plan-progress 18` instead). No deviations. See `18-01-SUMMARY.md`.
+
+**Plan 02 executed (2026-08-09):** EXTLINK-13/15/16/18 test contracts delivered — Wave 0, part B.
+Three more `autopilot`-free pytest files under `/home/ido/pi-mirror/tests/`
+(`test_extlink_egress.py` 7 tests, `test_extlink_lifecycle.py` 21 tests,
+`test_wait_extlink_ready_transitions.py` 7 tests; 35 total) load `external_hardware_runtime.py`
+(not yet built) by `importlib.util.spec_from_file_location`, same convention as plan 01, so every
+test SKIPS with reason `"external_hardware_runtime.py not built yet — plan 18-06"`. Task 1 pins
+`EgressWorker`'s FIFO/drop-newest/no-retry/edge-triggered-alive-flip contract against the
+zero-arg-callable item model (`send_fn=lambda fn: fn()`, matching `26-10-PLAN.md`'s production
+usage) — the queue-full case is made deterministic via a `started` Event pinning the worker
+inside item 1 before the queue is filled, avoiding the timing-dependent flakiness
+18-VALIDATION.md's iteration-2 advisories flagged. Task 2 pins `LifecycleRunner` (retry-until-
+ready and retry-through-hard-failure via an injected fake clock/sleep pair with a REAL
+`thread_factory` — concurrency is the thing under test, only the clock is faked), the EXTLINK-18
+control-only `bind_steps` ordering (exact-tuple assertions both directions: no-socket omits only
+`BIND_STEP_SOCKET`), and 7 `LivenessPoller` cases proving the liveness predicate runs off the
+Tornado IOLoop (own daemon thread, cached `alive` read, edge-triggered `on_change`, and —
+critical per the iteration-2 advisory — no late `on_change` fire after `stop()`, proven via a
+captured real thread's `.is_alive()` after `join()`, not a fixed sleep). Task 3 pins
+`ready_gate_decision`'s three-exit priority order as a PURE function with zero
+`FiniteDeterministicAutomaton`/`autopilot` import — resolving 18-VALIDATION.md's "stretch"
+classification for this row, leaving only the FDA wiring itself (plans 18-11/18-12) USER-RUN —
+plus one new passing regression test in `test_mics_task_attrs.py`
+(`test_mics_task_end_calls_super_end`, `ast.parse`-based, no `autopilot` import) pinning the
+`mics_task.end() -> super().end()` chokepoint `on_run_stop()` (plan 18-10) depends on. All public
+names in `18-02-PLAN.md`'s `<interfaces>` block were followed character-for-character. **No git
+commands were run against `/home/ido/pi-mirror`** (user-owned repo, plan-mandated), same as plan
+01. One pre-existing, out-of-scope issue discovered and logged (not fixed): `test_mics_task_attrs.py`'s
+original 6 tests fail when the file is run standalone on this dev host (dotted `autopilot.tasks.
+mics_task` imports hit the already-documented missing-`npyscreen` constraint) — reproduced
+identically against the unmodified original file, confirming this plan's edit didn't cause it;
+logged in `.planning/phases/18-extlink-pi-transport/deferred-items.md`. No other deviations. See
+`18-02-SUMMARY.md`.
 
 **Plan 03 executed (2026-08-09):** EXTLINK-09/10/17/18 backend test contracts delivered — Wave 0,
 part C (plan 18-02 not yet re-executed this session; run out of strict wave order). 19
@@ -1216,6 +1249,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 29]: 29-07: deleteState deliberately does not prune the layout map — resolvePositions already drops entries for states absent from the FDA on next load, so the stale key self-heals
 - [Phase 18]: 18-01: msgpack pinned via pip --break-system-packages; three autopilot-free Wave-0 test contracts pinned for plan 18-05
 - [Phase 18]: Plan 18-03: device-lease + AST-extractor backend test contracts pinned as importorskip-guarded tests, 19 lease + 8 extlink-AST, full suite still 359 passed
+- [Phase 18-extlink-pi-transport]: Plan 18-02: pinned EgressWorker/LifecycleRunner/LivenessPoller/readiness-gate contracts (35 tests) against external_hardware_runtime.py; resolves 18-VALIDATION.md's readiness-gate 'stretch' classification via a pure-function decision
 
 ## Accumulated Context
 

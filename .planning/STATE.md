@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T08:18:00.406Z"
+last_updated: "2026-08-09T08:24:25.475Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 60
-  percent: 72
+  completed_plans: 61
+  percent: 73
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 72%
+**Progress:** [███████░░░] 73%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,37 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/13 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/13/14 of 15 done
+
+**Plan 14 executed (2026-08-09):** EXTLINK-19 (UI half) delivered — an `ExternalHardware` signal
+is now pickable in the FDA editor's view-operand selectors, closing the gap 18-13's SUMMARY
+flagged: the backend accepted `{"view": "dlc_cam1.left_paw_x"}` but nothing in the UI could
+create that operand. `buildViewOptions` (`detectorOptions.mts`, 189 → 235 lines) gained an
+optional 4th `extlink: ExtlinkSignalGroup[] = []` parameter building one option group per
+external module, appended after detector groups, reusing the existing `dedupeItems`/
+`ViewOptionGroup.warning` machinery — item value is the resolved `<source_id>.<signal>` key
+itself (a plain string, not an opaque token), per the plan's own `design_decision` rejecting a
+ref shape (would need a new Pi-side resolver in `_build_transition_lambda`/`_resolve_arg` that
+EXTLINK-05 forbids). `<source_id>.alive` renders as a single item labelled "alive (device
+online)" for a control-only module (EXTLINK-18). `ExtlinkSignalGroup`/`ToolkitRead.extlink_signals?`
+added to `types/index.ts`, matching 18-13's pinned JSON shape field for field. 11 new
+`node --test` cases (TDD RED confirmed 8/11 failing before implementation, GREEN after);
+suite **193/193 passing** (up from the 182 baseline). Both consumers wired —
+`ConditionBuilder.tsx:50` and `ArgInput.tsx:36` — by reading `toolkit?.extlink_signals ?? []`
+off the `toolkit` prop both already receive, no new prop threaded, `TaskEditor.tsx` untouched
+(still 806 lines). The DVK-05 keep-current-value escape in `ConditionBuilder.tsx` preserved
+verbatim; comment extended to note ExternalHardware signals no longer need it but the other
+three round-trip cases (Python-only tracker, hand-authored key, unassigned lib version) still
+do. `npm run test:unit` 193/193, `tsc -b` clean, `npm run build` clean, `web_ui` container
+rebuilt and verified live (`main.js` fresh mtime, `/` and `/react/` return 200). One
+out-of-plan observation logged, not a defect: `docker compose up --build -d web_ui` also
+rebuilt/recreated the `api` and `orchestrator` containers (default compose behavior for this
+project's compose file, not scoped by this plan's task text) — verified `api`'s `/health`
+still returns 200 afterward, no functional impact, flagged in case a concurrently-executing
+plan (18-11/18-15) observed the restart. No deviations otherwise. `gsd-tools requirements
+mark-complete EXTLINK-19` found no checkbox/traceability row (same known gap as every prior
+EXTLINK plan) — completion tracked here and via `roadmap update-plan-progress 18` instead. See
+`18-14-SUMMARY.md`.
 
 **Plan 10 executed (2026-08-09, resumed after an ENOSPC interrupt):** EXTLINK-01/02/04/05/07/08/12/
 14/15/16/18 delivered — `external_hardware.py` (239 lines), the author-facing `ExternalHardware`
@@ -1491,6 +1521,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: Device lease acquire_lease uses INSERT ... ON CONFLICT (host) DO NOTHING + read-back for atomicity, never a Python single-holder check
 - [Phase 18]: Plan 18-10 (external_hardware.py) verified complete after ENOSPC interrupt recovery; no code changes needed
 - [Phase 18]: EXTLINK-19: extlink view keys aggregated in api/extlink_keys.py, wired into save gate + preflight; no new preflight issue kind
+- [Phase 18]: 18-14: buildViewOptions gains a 4th extlink param; operand shape is resolved key {view: source_id.signal}, not a ref, per plan design_decision
 
 ## Accumulated Context
 

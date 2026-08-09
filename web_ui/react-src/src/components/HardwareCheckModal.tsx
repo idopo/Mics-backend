@@ -5,6 +5,18 @@ import { listHardwareModules, getHardwareModuleMethods } from '../api/hardware_m
 import type { HardwareModule, AstMethodArg } from '../types'
 import ComputeIssueDetail from './ComputeIssueDetail'
 
+/** `device_held` only — the pilot currently holding the lease (api/device_lease.py's
+ * `device_held_issue` shape, pinned in 18-08-SUMMARY.md). */
+export interface DeviceLeaseHolder {
+  host: string
+  pilot_id: number
+  pilot_name: string | null
+  session_id: number | null
+  run_id: number | null
+  subject_key: string | null
+  acquired_at: string
+}
+
 // Issue kinds and their shape-specific fields are authored in
 // api/routers/toolkit_dispatch.py::PREFLIGHT_ISSUE_KINDS — mirror it, do not invent fields.
 export interface PreflightIssue {
@@ -12,7 +24,7 @@ export interface PreflightIssue {
   module_name: string
   issue: 'missing' | 'incomplete_config' | 'class_mismatch' | 'fda_ref_unresolved' | 'view_key_unresolved'
        | 'variable_never_written' | 'lib_version_unresolved' | 'compute_lib_import_failed'
-       | 'state_wait_unsatisfiable'
+       | 'state_wait_unsatisfiable' | 'device_held' | 'extlink_config_invalid'
   detail: string
   expected_class?: string
   stored_class?: string
@@ -36,14 +48,21 @@ export interface PreflightIssue {
   reason?: string
   /** compute_lib_import_failed only — the import error message. */
   error?: string
+  /** device_held only — the normalized host another pilot's lease is holding. */
+  host?: string
+  /** device_held only — who holds the lease. */
+  holder?: DeviceLeaseHolder
 }
 
 /**
- * None of these three names a `pilot_hardware_config` row — a variable-analysis result and a
- * lib-resolution failure both live elsewhere (the task definition, the Hardware Libraries page).
- * Shared by `handleStart` and the `pendingEdits` initialiser so a PUT is never issued for them —
- * doing so would overwrite a good config with `{}` or hit an empty path segment (the bug plan
- * 25-05 fixed for `view_key_unresolved`).
+ * None of these names a `pilot_hardware_config` row — a variable-analysis result, a
+ * lib-resolution failure, a held device lease, and an invalid extlink config field all live
+ * elsewhere (task definition, Hardware Libraries page, the lease table, the pilot hardware
+ * config page respectively). Shared by `handleStart` and the `pendingEdits` initialiser so a
+ * PUT is never issued for them — doing so would overwrite a good config with `{}` or hit an
+ * empty path segment (the bug plan 25-05 fixed for `view_key_unresolved`; `device_held` names a
+ * lease, not a config row, and `extlink_config_invalid` requires an edit on the hardware-config
+ * page, not this modal — same trap, same fix).
  */
 const NON_CONFIG_ISSUES = new Set<PreflightIssue['issue']>([
   'view_key_unresolved',
@@ -51,6 +70,8 @@ const NON_CONFIG_ISSUES = new Set<PreflightIssue['issue']>([
   'lib_version_unresolved',
   'compute_lib_import_failed',
   'state_wait_unsatisfiable',
+  'device_held',
+  'extlink_config_invalid',
 ])
 
 interface HardwareCheckModalProps {
@@ -308,6 +329,40 @@ function ViewKeyIssueDetail({ issue }: { issue: PreflightIssue }): JSX.Element {
   )
 }
 
+/** Renders `acquired_at` as "Xm"/"Xh Ym" elapsed, or the raw timestamp if unparsable. */
+function formatHeldSince(acquiredAt: string): string {
+  const acquiredMs = Date.parse(acquiredAt)
+  if (isNaN(acquiredMs)) return acquiredAt
+  const elapsedMin = Math.max(0, Math.round((Date.now() - acquiredMs) / 60000))
+  if (elapsedMin < 60) return `${elapsedMin}m`
+  return `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}m`
+}
+
+/**
+ * Read-only detail for a `device_held` issue (EXTLINK-16/17), modelled on `ViewKeyIssueDetail`.
+ * Nothing to edit here: the fix is either waiting for the holding run to finish or a manual
+ * force-release (`DELETE /api/device-leases/{host}`), neither of which is a config PUT. Leads
+ * with the host, then names the holding pilot/subject/run and how long it has been held — the
+ * whole justification for the issue naming the holder is "that run on pilot 2 is still going",
+ * actionable without a terminal.
+ */
+function DeviceHeldIssueDetail({ issue }: { issue: PreflightIssue }): JSX.Element {
+  const holder = issue.holder
+  const host = issue.host ?? holder?.host
+  return (
+    <div>
+      {host && (
+        <p style={{ margin: '0 0 4px', fontSize: '14px', fontFamily: 'monospace' }}>{host}</p>
+      )}
+      <p style={{ margin: '4px 0 8px', fontSize: '13px', color: 'var(--subtext0)' }}>
+        {holder
+          ? `Held by pilot '${holder.pilot_name ?? 'unknown'}' (subject ${holder.subject_key ?? '?'}, run ${holder.run_id ?? '?'}), for ${formatHeldSince(holder.acquired_at)}.`
+          : issue.detail}
+      </p>
+    </div>
+  )
+}
+
 function ModuleIssueEditor({
   issue,
   pendingEdits,
@@ -321,6 +376,16 @@ function ModuleIssueEditor({
 }): JSX.Element | null {
   if (issue.issue === 'view_key_unresolved') {
     return <ViewKeyIssueDetail issue={issue} />
+  }
+
+  if (issue.issue === 'device_held') {
+    return <DeviceHeldIssueDetail issue={issue} />
+  }
+
+  if (issue.issue === 'extlink_config_invalid') {
+    return (
+      <p style={{ margin: 0, fontSize: '13px', color: 'var(--subtext0)' }}>{issue.detail}</p>
+    )
   }
 
   if (

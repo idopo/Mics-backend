@@ -12,6 +12,7 @@ from compute_provisioning import compute_module_names, provision_compute_configs
 from db import engine
 from detector_keys import derive_channels, derive_view_keys, resolve_view_key_issues
 from device_lease import preflight_lease_and_config_issues
+from extlink_keys import pilot_extlink_keys
 from lib_version_resolution import resolve_lib_version_id
 from variable_scan import variable_never_written_issues
 from wait_analysis import unsatisfiable_wait_issues
@@ -306,6 +307,7 @@ def preflight_validate(
     # this loop already fetches per module.
     module_channels: dict[str, list[int]] = {}
     module_keys: dict[str, list[str]] = {}
+    module_extlink_keys: dict[str, list[str]] = {}  # EXTLINK-19: this pilot's derived extlink keys
     device_names: dict[str, str] = {}
     lease_candidates: list[tuple] = []  # (module, cfg) pairs — step 11 below reuses this
     for module_id in module_ids:
@@ -365,6 +367,19 @@ def preflight_validate(
         if channels:
             module_channels[module.name] = channels
             module_keys[module.name] = derive_view_keys(cfg)
+
+        # EXTLINK-19: THIS pilot's derived extlink keys, off the version already resolved above.
+        # Own narrow try/except — a new metadata read must never become the first thing that can
+        # break the module-health loop.
+        try:
+            ext_keys = pilot_extlink_keys(db, version_id, cfg)
+            if ext_keys:
+                module_extlink_keys[module.name] = ext_keys
+        except Exception:
+            logger.warning(
+                "preflight_validate: extlink key derivation failed for module %s pilot %s",
+                module.name, pilot_id, exc_info=True,
+            )
 
         non_class_keys = [k for k in cfg if k != "class_name"]
 
@@ -432,8 +447,13 @@ def preflight_validate(
         try:
             detector_keys = [k for keys in module_keys.values() for k in keys]
             variables = td_full.fda_json.get("variables")
+            # EXTLINK-19: THIS pilot's extlink keys join the same valid_keys set. An FDA authored
+            # against a DIFFERENT pilot's source_id surfaces as the existing view_key_unresolved
+            # issue below — no new issue kind.
+            extlink_keys = {k for keys in module_extlink_keys.values() for k in keys}
             valid_keys = (
                 set(detector_keys)
+                | extlink_keys
                 | set((toolkit_row.flags or {}).keys())
                 | set(variables.keys() if isinstance(variables, dict) else [])
                 | {"trial_counter"}

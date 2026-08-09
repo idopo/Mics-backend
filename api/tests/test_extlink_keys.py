@@ -18,6 +18,7 @@ from extlink_keys import (
     has_extlink_block,
     module_extlink_signals,
 )
+from fda_validation import collect_hard_errors
 
 # ---------------------------------------------------------------------------
 # extlink_signals_from_ast — the 18-07-pinned ast_metadata.extlink shape
@@ -283,3 +284,34 @@ def test_sort_order_module_name_and_deterministic_signal_union():
     )
     result = module_extlink_signals(db, ["DLC_CAM", "OE_CTL"])
     assert [r["module_name"] for r in result] == ["DLC_CAM", "OE_CTL"]
+
+
+# ---------------------------------------------------------------------------
+# collect_hard_errors — the save-time gate learns an extlink key is a real view key (Task 3)
+# ---------------------------------------------------------------------------
+
+def _toolkit_stub():
+    # collect_hard_errors short-circuits on `toolkit is None`; a duck-typed stub with the three
+    # attributes validate_trigger_assignments/validate_compute_variables read is sufficient.
+    return SimpleNamespace(flags={}, semantic_hardware={}, hardware_module_ids=[])
+
+
+def test_collect_hard_errors_no_error_when_extlink_key_is_known():
+    fda = {"transitions": [{"condition_tree": {"left": {"view": "dlc_cam1.left_paw_x"}, "op": "==", "right": 1}}]}
+    errors = collect_hard_errors(fda, _toolkit_stub(), extlink_keys={"dlc_cam1.left_paw_x"})
+    assert errors == []
+
+
+def test_collect_hard_errors_still_errors_when_extlink_key_unknown():
+    fda = {"transitions": [{"condition_tree": {"left": {"view": "dlc_cam1.left_paw_x"}, "op": "==", "right": 1}}]}
+    errors = collect_hard_errors(fda, _toolkit_stub(), extlink_keys=set())
+    assert any("dlc_cam1.left_paw_x" in e for e in errors)
+
+
+def test_collect_hard_errors_variable_collision_with_extlink_key_names_extlink_not_detector():
+    fda = {"variables": {"dlc_cam1.left_paw_x": {"type": "float", "default": 0.0}}}
+    errors = collect_hard_errors(fda, _toolkit_stub(), extlink_keys={"dlc_cam1.left_paw_x"})
+    assert len(errors) == 1
+    # Distinguishable from the detector-derived-key message — proof the two sets weren't merged.
+    assert "external-signal" in errors[0]
+    assert "detector" not in errors[0]

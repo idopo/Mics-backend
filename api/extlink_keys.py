@@ -62,6 +62,23 @@ def derive_extlink_keys(config: dict | None, signal_names: list[str]) -> list[st
     return sorted(f"{source_id}.{n}" for n in names)
 
 
+def pilot_extlink_keys(db, version_id: int | None, config: dict | None) -> list[str]:
+    """One pilot's derived extlink keys for a single already-resolved lib version — the
+    preflight step-6 call site (`routers/toolkit_dispatch.py`) already has `version_id`/`config`
+    from its own per-module loop and must not re-derive `module_extlink_signals`' cross-pilot
+    query shape just to resolve ONE pilot. `version_id=None` (CMP-17 rung "none") still runs
+    `derive_extlink_keys` against an empty signal list, so a control-only module keeps its
+    `.alive` key even with no deployable lib version."""
+    signal_names: list[str] = []
+    if version_id:
+        row = db.execute(
+            sa_text("SELECT ast_metadata FROM hardware_lib_versions WHERE id = :id"),
+            {"id": version_id},
+        ).fetchone()
+        signal_names = [s["name"] for s in extlink_signals_from_ast(row.ast_metadata if row else None)]
+    return derive_extlink_keys(config, signal_names)
+
+
 def module_extlink_signals(db, module_names: list[str]) -> list[dict]:
     """Per module, the union of derived extlink view keys across every pilot configuring it.
 

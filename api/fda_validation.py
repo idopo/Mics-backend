@@ -30,6 +30,7 @@ import re
 from fastapi import HTTPException
 
 from detector_keys import module_detector_channels
+from extlink_keys import module_extlink_signals
 from fda_utils import scan_fda_condition_operands
 from hw_introspect import toolkit_hw_capabilities
 from models import TaskToolkit
@@ -209,28 +210,32 @@ def validate_compute_variables(
     toolkit,
     module_names: set[str] | None = None,
     detector_keys: set[str] | None = None,
+    extlink_keys: set[str] | None = None,
 ) -> list[str]:
     """CMP-10: two independent hard checks over the `variables` registry and every condition
     operand — the compute-era additions to the save-time gate.
 
     Collision half: a declared variable name must not collide with the toolkit's semantic
-    hardware, a backend-authored module name, or a detector-derived view key. Each of those is
-    resolved through the exact same `{"view": name}` / `{"flag": name}` operand shape a variable
-    is, so an un-caught collision would make one silently shadow the other. The flag-collision
-    half already lives in `validate_variables` — not duplicated here.
+    hardware, a backend-authored module name, a detector-derived view key, or (plan 18-13) an
+    external-signal view key. Each of those is resolved through the exact same `{"view": name}`
+    / `{"flag": name}` operand shape a variable is, so an un-caught collision would make one
+    silently shadow the other. The flag-collision half already lives in `validate_variables` —
+    not duplicated here.
 
     Reference half: every `{"view": name}` / `{"flag": name}` condition operand (transitions,
     `wait_condition`, `if`-action conditions — all reached via `scan_fda_condition_operands`)
     must name something resolvable: a toolkit flag, a declared variable, `trial_counter`, a
-    module name, a detector view key, or (CMP-25) a toolkit's semantic hardware name — `view`
-    reads a strict superset of `flag`. `{"view_detector": ...}` operands are plan 25-01's own
-    shape and are skipped entirely (matched neither key below); literal operands are ignored.
+    module name, a detector view key, an external-signal (extlink) view key, or (CMP-25) a
+    toolkit's semantic hardware name — `view` reads a strict superset of `flag`.
+    `{"view_detector": ...}` operands are plan 25-01's own shape and are skipped entirely
+    (matched neither key below); literal operands are ignored.
     """
     if toolkit is None:
         return []
     errors: list[str] = []
     module_names = module_names or set()
     detector_keys = detector_keys or set()
+    extlink_keys = extlink_keys or set()
 
     semantic_hw = set((getattr(toolkit, "semantic_hardware", None) or {}).keys())
 
@@ -241,6 +246,8 @@ def validate_compute_variables(
                 errors.append(f"variable '{name}' collides with a toolkit hardware name")
             elif name in module_names:
                 errors.append(f"variable '{name}' collides with a hardware module name")
+            elif name in extlink_keys:
+                errors.append(f"variable '{name}' collides with an external-signal view key")
             elif name in detector_keys:
                 errors.append(f"variable '{name}' collides with a detector-derived view key")
 
@@ -249,7 +256,9 @@ def validate_compute_variables(
     # also gates flag-action refs, output slots and key_template tokens (via :96 ->
     # _validate_action), all of which resolve against self.flags on the Pi. A hardware name is
     # not in self.flags; widening the helper would let three invalid constructs save cleanly.
-    valid_names = _valid_flag_names(fda_json, toolkit) | module_names | detector_keys | semantic_hw
+    valid_names = (
+        _valid_flag_names(fda_json, toolkit) | module_names | detector_keys | extlink_keys | semantic_hw
+    )
     for entry in scan_fda_condition_operands(fda_json):
         operand = entry["operand"]
         if not isinstance(operand, dict):
@@ -274,6 +283,7 @@ def collect_hard_errors(
     trigger_sources: set[str] | None = None,
     detector_refs: set[str] | None = None,
     detector_keys: set[str] | None = None,
+    extlink_keys: set[str] | None = None,
 ) -> list[str]:
     """Every hard (422-worthy) error for this FDA."""
     if not fda_json or toolkit is None:
@@ -283,7 +293,7 @@ def collect_hard_errors(
         + validate_trigger_assignments(fda_json, toolkit, module_names, module_methods, trigger_sources)
         + validate_state_actions(fda_json, toolkit, module_methods)
         + validate_condition_operands(fda_json, detector_refs)
-        + validate_compute_variables(fda_json, toolkit, module_names, detector_keys)
+        + validate_compute_variables(fda_json, toolkit, module_names, detector_keys, extlink_keys)
     )
 
 
@@ -301,14 +311,21 @@ def reject_if_hard_errors(db, fda_json: dict, toolkit_id: int | None) -> None:
     trigger_sources = {t["hw_id"] for t in caps["trigger_sources"]} if caps else None
     detector_refs = set(caps["detector_refs"]) if caps else None
     module_names = set(caps["module_names"]) if caps else set()
-    # module_detector_channels is a single call keyed on module_names alone (no pilot_id needed)
-    # — per-pilot channel RANGE stays with preflight, same split as key_template resolution.
+    # module_detector_channels/module_extlink_signals are each a single call keyed on
+    # module_names alone (no pilot_id needed) — per-pilot resolution stays with preflight, same
+    # split as key_template resolution. This is the pilot-agnostic UNION across every pilot,
+    # deliberately permissive at save time.
     detector_keys = (
         {key for entry in module_detector_channels(db, sorted(module_names)) for key in entry["keys"]}
         if module_names else set()
     )
+    extlink_keys = (
+        {key for entry in module_extlink_signals(db, sorted(module_names)) for key in entry["keys"]}
+        if module_names else set()
+    )
     errors = collect_hard_errors(
-        fda_json, toolkit, module_names, module_methods, trigger_sources, detector_refs, detector_keys
+        fda_json, toolkit, module_names, module_methods, trigger_sources, detector_refs,
+        detector_keys, extlink_keys,
     )
     if errors:
         raise HTTPException(422, detail={"errors": errors})

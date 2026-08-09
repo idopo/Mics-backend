@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:24:43.051Z"
+last_updated: "2026-08-09T07:30:16.315Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 52
-  percent: 63
+  completed_plans: 53
+  percent: 64
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [██████░░░░] 63%
+**Progress:** [██████░░░░] 64%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,7 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04 of 15 done
 
 **Plan 01 executed (2026-08-09):** EXTLINK-03/06/07/08/12/14/18 test contracts delivered —
 Wave 0, part A. Three `autopilot`-free pytest files under `/home/ido/pi-mirror/tests/`
@@ -351,6 +351,24 @@ the other 17 call `device_lease` functions directly and will pass as soon as 18-
 `test_hardware_libs_extlink.py` is a NEW file — `grep -rl "extract_ast_metadata" api/tests/`
 found no prior owner. Full backend suite unchanged at **359 passed** (baseline), **28 skipped**
 (up from 1 — the 27 new guarded tests), 0 errors. See `18-03-SUMMARY.md`.
+
+**Plan 04 executed (2026-08-09):** EXTLINK-03 msgpack version pin delivered — Wave 0, part D, the
+phase's one USER-RUN dependency-resolution step. Task 1 (prior session) staged `msgpack==TBD` in
+both pi-mirror requirements files with an explanatory comment (msgpack>=1.1 requires Python>=3.9;
+the rig runs 3.7.3). Task 2's checkpoint asked the user to run a real `pip install` in the rig's
+`~/.venv/autopilot` rather than let the agent guess a pin; the unconstrained `pip install msgpack`
+failed the Python-version guard exactly as predicted, and the `pip install "msgpack<1.1"` fallback
+resolved to **`msgpack==1.0.5`** (piwheels armv7l/cp37 wheel). Task 3 replaced both `TBD`
+placeholders with `msgpack==1.0.5` and extended the comment with the resolution date and rig
+Python version; `grep -h msgpack ... | grep -v "^#"` on both files shows only the resolved pin, no
+`TBD` remaining. As with plans 01-03, **no git command was run against `/home/ido/pi-mirror`**
+(user-owned repo) and no commit lands in `mics-backend` from the task work itself — all three
+deliverable edits are to files entirely outside this repo's `files_modified` scope. Recorded for
+downstream plans: the dev host's msgpack (1.2.1, installed in plan 18-01) intentionally differs
+from the rig's 1.0.5 — expected skew, not an inconsistency to fix. `gsd-tools requirements
+mark-complete EXTLINK-03` found no checkbox/traceability row in `REQUIREMENTS.md` (same known gap
+as prior EXTLINK/CMP/DVK plans) — completion tracked here and via `roadmap update-plan-progress
+18` instead. No deviations. See `18-04-SUMMARY.md`.
 
 **The stale-verdict warning is cleared.** The plan-checker was re-run on 2026-08-05 against the
 post-`64bbd2d` plans. Iteration 1 returned **ISSUES FOUND** (3 blockers, 3 warnings, 3 info);
@@ -1250,6 +1268,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: 18-01: msgpack pinned via pip --break-system-packages; three autopilot-free Wave-0 test contracts pinned for plan 18-05
 - [Phase 18]: Plan 18-03: device-lease + AST-extractor backend test contracts pinned as importorskip-guarded tests, 19 lease + 8 extlink-AST, full suite still 359 passed
 - [Phase 18-extlink-pi-transport]: Plan 18-02: pinned EgressWorker/LifecycleRunner/LivenessPoller/readiness-gate contracts (35 tests) against external_hardware_runtime.py; resolves 18-VALIDATION.md's readiness-gate 'stretch' classification via a pure-function decision
+- [Phase 18]: msgpack pin resolved to 1.0.5 (piwheels armv7l cp37 wheel) via a real pip install on the rig's Python 3.7.3 venv, not guessed
 
 ## Accumulated Context
 

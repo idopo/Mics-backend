@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "description": "Throwaway demo for tools/extlink_driver -- NOT an existing lab task. Proves an external (extlink) signal can drive a live FDA transition with no animal and no hardware: state changes are dispatched to ES by the FDA itself, so the state name alone is the observable. wait->armed and armed->fired are deliberately NOT shipped in this file -- they must be authored by hand in the FDA editor (plan 18-12's checkpoint) against the extlink option group for the demo module, using a threshold crossed in both directions so `extlink_driver.py --sweep` visibly cycles the state. Shipping those two transitions here would let the checkpoint be satisfied by curl instead of proving the editor's picker actually works. See tools/extlink_driver/README.md for the exact option group and label to select, and for the two threshold expressions to enter. No entry actions anywhere in this file -- no valve, no reward, no INC_TRIAL_COUNTER -- which is what makes it safe to run on the rig pilot with no animal in the box.",
+  "initial_state": "wait",
+  "states": {
+    "wait": {},
+    "armed": {},
+    "fired": {}
+  },
+  "transitions": [
+    {
+      "from": "fired",
+      "to": "wait",
+      "description": "Unconditional -- closes the demo cycle on its own once fired is reached."
+    }
+  ],
+  "variables": {},
+  "trigger_assignments": []
+}

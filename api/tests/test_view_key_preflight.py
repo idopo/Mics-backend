@@ -1292,3 +1292,139 @@ def test_lease_preflight_role_none_module_is_clean():
     body = resp.json()
     assert body["ok"] is True
     assert not any(i["issue"] == "extlink_config_invalid" for i in body["issues"])
+
+
+# ---------------------------------------------------------------------------
+# Plan 18-09 — HTTP surface for `api/device_lease.py` (EXTLINK-16, EXTLINK-17):
+# list / acquire / force-release / release-for-run / reconcile, all served by the
+# not-yet-built `api/routers/device_leases.py`. `xfail(strict=False)` until that router
+# lands in this same plan's Task 1 -- mirrors the 18-03 -> 18-08 xfail-then-remove
+# convention this file already used once for the route-level lease tests above.
+# ---------------------------------------------------------------------------
+
+
+def _device_leases_client(fake_db):
+    from auth import verify_token
+    from main import app
+    from routers.device_leases import get_sa_session
+    app.dependency_overrides[verify_token] = lambda: {"sub": "test"}
+    app.dependency_overrides[get_sa_session] = lambda: fake_db
+    return TestClient(app)
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_list_route_returns_current_leases():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    host = "132.77.9.9"
+    fake_db = _LeaseFakeDb(leases={normalize_host(host): {
+        "pilot_id": 7, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    client = _device_leases_client(fake_db)
+    resp = client.get("/api/device-leases", headers=auth_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["host"] == normalize_host(host)
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_acquire_route_returns_200_on_conflict():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    host = "132.77.9.9"
+    fake_db = _LeaseFakeDb(leases={normalize_host(host): {
+        "pilot_id": 99, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    client = _device_leases_client(fake_db)
+    resp = client.post("/api/device-leases/acquire", json={
+        "host": host, "pilot_id": 2, "pilot_name": "pilot-B",
+        "session_id": 2, "run_id": 502, "subject_key": "bp_s2_r502",
+    }, headers=auth_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["acquired"] is False
+    assert body["holder"]["pilot_name"] == "pilot-A"
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_force_release_route_clears_the_preflight_issue():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    host = "132.77.9.9"
+    fake_db = _LeaseFakeDb(leases={normalize_host(host): {
+        "pilot_id": 7, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    client = _device_leases_client(fake_db)
+    resp = client.delete(f"/api/device-leases/{host}", headers=auth_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"released": True}
+    resp2 = client.delete(f"/api/device-leases/{host}", headers=auth_headers())
+    assert resp2.json() == {"released": False}
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_force_release_route_normalizes_host_port():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    fake_db = _LeaseFakeDb(leases={normalize_host("132.77.9.9"): {
+        "pilot_id": 7, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    client = _device_leases_client(fake_db)
+    resp = client.delete("/api/device-leases/132.77.9.9:5556", headers=auth_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"released": True}
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_release_for_run_route():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    fake_db = _LeaseFakeDb(leases={normalize_host("132.77.9.9"): {
+        "pilot_id": 7, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    client = _device_leases_client(fake_db)
+    resp = client.post("/api/device-leases/release-for-run/501", headers=auth_headers())
+    assert resp.status_code == 200
+    assert resp.json() == {"released": [normalize_host("132.77.9.9")]}
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_reconcile_route_releases_stale_lease():
+    pytest.importorskip("device_lease")
+    from datetime import datetime, timedelta, timezone
+
+    from device_lease import normalize_host
+
+    host = "132.77.9.9"
+    now = datetime.now(timezone.utc)
+    stale_ts = (now - timedelta(minutes=10)).isoformat()
+    fake_db = _LeaseFakeDb(leases={normalize_host(host): {
+        "pilot_id": 1, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": stale_ts,
+    }})
+    client = _device_leases_client(fake_db)
+    resp = client.post("/api/device-leases/reconcile", json={
+        "heartbeats": {}, "stale_after_s": 90,
+    }, headers=auth_headers())
+    assert resp.status_code == 200
+    released = resp.json()["released"]
+    assert any(r["host"] == normalize_host(host) for r in released)
+
+
+@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
+def test_device_leases_routes_require_auth():
+    from main import app
+    client = TestClient(app)
+    resp = client.get("/api/device-leases")
+    assert resp.status_code in (401, 403)

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T07:38:17.880Z"
+last_updated: "2026-08-09T07:41:42.388Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 54
-  percent: 66
+  completed_plans: 56
+  percent: 68
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 66%
+**Progress:** [███████░░░] 68%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,7 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/07 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07 of 15 done
 
 **Plan 07 executed (2026-08-09):** EXTLINK-09 delivered — Wave 2, closing the AST-extractor
 contract 18-03 pinned. New `api/extlink_ast.py` (116 lines): `extract_extlink_metadata` walks
@@ -399,6 +399,68 @@ from the rig's 1.0.5 — expected skew, not an inconsistency to fix. `gsd-tools 
 mark-complete EXTLINK-03` found no checkbox/traceability row in `REQUIREMENTS.md` (same known gap
 as prior EXTLINK/CMP/DVK plans) — completion tracked here and via `roadmap update-plan-progress
 18` instead. No deviations. See `18-04-SUMMARY.md`.
+
+**Plan 05 executed (2026-08-09):** EXTLINK-03/06/07/08/12/14/18 delivered — the first
+IMPLEMENTATION (not test-contract) plan in the phase, and the one plan 18-01's 57 skipped tests
+existed to gate. `external_hardware_wire.py` (290 lines, `autopilot`-free) implements the wire
+codec (`encode`/`decode_envelope`), the dtype contract (`resolve_dtype`/`coerce_value`, `bool`
+special-cased against the `int`-subclass trap), per-signal stale policy (`resolve_stale_value`),
+the liveness-vs-staleness split (`default_liveness`/`make_liveness`, sharing no state with the
+stale-policy calculation, proven bidirectionally by the plan's own test), the three transport
+roles (`ROLE_ROUTER_BIND`/`ROLE_SUB_CONNECT`/`ROLE_NONE` — `socket_plan`/`identity_ok`, with
+`role: "none"` returning all six plan fields explicitly `None`/`False`, no port invented, absent
+`role` key raising a `ValueError` naming `role`), the mandatory liveness-override rule
+(`requires_liveness_override`/`validate_role_liveness` — the ONE definition plan 18-10 must call,
+not re-implement), and foreign `@decoder` dispatch (`run_decoder`, routing every produced
+name/value pair through the SAME `_resolve_signal`/`_resolve_event` helpers `apply_envelope`
+uses, never propagating a raising decoder). All 57 tests across `test_extlink_wire.py` (25),
+`test_extlink_decoder.py` (26), `test_extlink_liveness.py` (6) flipped from SKIPPED to PASSED,
+zero renaming — `-k role_selection` 9 passed, `-k role_none` 10 passed. First draft was 358 lines
+against the plan's own <=300-line Task-2 budget (well under the project's 500-line hard limit);
+trimmed prose/docstrings only — no logic change, no split into a sibling module (a
+`spec_from_file_location`-loaded module has no package, so a split would silently break the
+path-loading agent tests) — landing at 290 lines, re-verified with a full pytest re-run after the
+trim. One wording fix: the plan's own overall `<verification>` block runs a literal
+`grep "autopilot"` expecting nothing, stricter than the AST-only hygiene test (which only
+inspects module-scope import statements) — the module's own docstring had used the prose word
+"autopilot" descriptively; reworded to "the Pi runtime package" throughout, a text-only change
+verified not to affect any of the 57 tests. **No git command was run against
+`/home/ido/pi-mirror`** (user-owned repo, plan-mandated), same as plans 01-04; no commit lands in
+`mics-backend` from the task work itself — the single deliverable file is entirely outside this
+repo's `files_modified` scope. No deviations otherwise. See `18-05-SUMMARY.md`.
+
+**Plan 06 executed (2026-08-09):** EXTLINK-13/15/16/18 delivered — the implementation plan 18-02's
+35 skipped tests existed to gate. New `external_hardware_runtime.py` (298 lines, `autopilot`-free,
+stdlib-only) implements `EgressWorker` (one daemon thread per external device, FIFO drop-newest
+via stdlib `put_nowait(maxsize=64)`, no retry ever — an exception from `send_fn(item)` on either
+side of the call, including the zero-arg-callable item itself, is caught and dropped, never
+re-queued — and edge-triggered `on_alive_change` firing exactly once at `consecutive_failures ==
+fail_threshold`, not once per failure past it), `LifecycleRunner` (`start_async()` spawns a daemon
+thread and returns immediately, retrying `on_run_start`+`is_ready()` every `retry_interval_s` on
+an injected clock/sleep pair until `timeout_s` elapses, storing a raising hook's exception in
+`last_error` without escaping the thread), `build_run_ctx`/`RUN_CTX_KEYS` (exactly six keys,
+asserted internally), `validate_wait_timeout` (rejects `None` and non-`int` including `bool`,
+enforces `[5, 600]`), the pure `ready_gate_decision` (locked priority proceed > skip > timeout >
+wait, inclusive timeout boundary) + `gate_timeout_s` (max across `required: True` sources only, 0
+when none), `bind_steps` (control-only `socket_type: None` omits only `BIND_STEP_SOCKET`, same
+relative order otherwise — a structural guarantee, not an `if` branch), and `LivenessPoller` (own
+daemon thread evaluating a zero-arg predicate off the shared Tornado IOLoop, cached `alive` read,
+edge-triggered `on_change`, and a stop flag checked strictly AFTER the predicate call returns so a
+blocking predicate that outlives `stop()`'s bounded join can never fire a late `on_change`). All
+35 tests across `test_extlink_egress.py` (7), `test_extlink_lifecycle.py` (21),
+`test_wait_extlink_ready_transitions.py` (7) flipped from SKIPPED to PASSED, zero renaming — full
+3-file run completes in 2.78s. First draft was 348 lines against the plan's own <=300-line budget;
+trimmed prose/docstrings only across four re-verified passes (no logic change, no split — a
+`spec_from_file_location`-loaded module has no package) — landing at 298 lines. `EgressWorker`
+and `LivenessPoller` both use a bounded `Event.wait`/`get(timeout=0.1)` poll for `stop()` rather
+than a `None` sentinel through the queue, since a sentinel `put()` could itself block forever
+against a full queue with a wedged consumer — the exact hang the plan's "bounded join" requirement
+exists to prevent. **No git command was run against `/home/ido/pi-mirror`** (user-owned repo,
+plan-mandated), same as plans 01-05; no commit lands in `mics-backend` from the task work itself —
+the single deliverable file is entirely outside this repo's `files_modified` scope. Ran alongside
+plan 18-05's `external_hardware_wire.py`, already on disk mid-build with some of its own tests
+failing — out of scope per this plan's explicit instruction, left untouched. No deviations. See
+`18-06-SUMMARY.md`.
 
 **The stale-verdict warning is cleared.** The plan-checker was re-run on 2026-08-05 against the
 post-`64bbd2d` plans. Iteration 1 returned **ISSUES FOUND** (3 blockers, 3 warnings, 3 info);
@@ -1299,6 +1361,10 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: Plan 18-03: device-lease + AST-extractor backend test contracts pinned as importorskip-guarded tests, 19 lease + 8 extlink-AST, full suite still 359 passed
 - [Phase 18-extlink-pi-transport]: Plan 18-02: pinned EgressWorker/LifecycleRunner/LivenessPoller/readiness-gate contracts (35 tests) against external_hardware_runtime.py; resolves 18-VALIDATION.md's readiness-gate 'stretch' classification via a pure-function decision
 - [Phase 18]: msgpack pin resolved to 1.0.5 (piwheels armv7l cp37 wheel) via a real pip install on the rig's Python 3.7.3 venv, not guessed
+- [Phase 18]: Plan 18-05: reworded external_hardware_wire.py's own docstring to drop the literal word "autopilot" (kept the AST hygiene guard intent) so the plan's own whole-file `grep "autopilot"` verification step returns nothing, not just the AST-only test
+- [Phase 18]: Plan 18-05: first draft landed at 358 lines against the plan's own <=300-line Task-2 budget; trimmed prose/docstrings only (no logic change, no split) to 290 lines, re-verified all 57 tests still pass after the trim
+- [Phase 18]: Plan 18-06: EgressWorker/LivenessPoller stop() uses a bounded Event.wait/get(timeout) poll loop instead of a None sentinel through the queue, since a sentinel put() could itself block against a full queue with a wedged consumer
+- [Phase 18]: Plan 18-06: external_hardware_runtime.py trimmed from 348 to 298 lines via docstring-only condensation (no split, no logic change) to satisfy the plan's own <=300-line soft cap
 
 ## Accumulated Context
 

@@ -957,3 +957,344 @@ def test_variable_usage_requires_auth():
     client = TestClient(app)
     resp = client.get("/api/task-definitions/187/variable-usage")
     assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Plan 18-03 — device-lease + extlink-config preflight contract (EXTLINK-17,
+# EXTLINK-10, EXTLINK-18). `api/device_lease.py` does not exist yet (plan 18-08); every test
+# below guards with `pytest.importorskip("device_lease")` as its FIRST statement so this file
+# collects and SKIPS cleanly today. Route-level tests (the ones that hit the real
+# preflight-validate HTTP route rather than calling a device_lease function directly) are
+# additionally marked `xfail(strict=False)`, because `preflight_validate` itself is not wired to
+# consult the lease/config-validation layer until plan 18-09 -- once device_lease.py exists
+# (18-08) but before that wiring lands, these route-level assertions will genuinely fail and the
+# xfail marker keeps that expected, non-blocking. Plans 18-08 (module) and 18-09 (route wiring)
+# are the ones that remove these markers.
+#
+# Residual-risk boundary (so no later plan over-promises): Phase 18's safety net releases the
+# lease row and marks the run errored. It does NOT reach out to the foreign device to stop it --
+# the backend has no channel to an arbitrary device's control API by design ("the Pi owns both
+# channels" is locked). Device-side cleanup after a pilot crash is Phase 26's decision.
+# ---------------------------------------------------------------------------
+
+
+class _LeaseResult:
+    """Like `_Result`, but also exposes `.rowcount` for a DELETE-style call, since we don't
+    know yet whether 18-08's `force_release` reads `.fetchone()` or `.rowcount`."""
+
+    def __init__(self, one=None, many=None, rowcount=0):
+        self._one = one
+        self._many = many or []
+        self.rowcount = rowcount
+
+    def fetchone(self):
+        return self._one
+
+    def fetchall(self):
+        return self._many
+
+
+class _LeaseFakeDb(FakeDb):
+    """Extends `FakeDb` (per the plan's instruction: subclass, don't edit the existing class)
+    with an in-memory `device_leases` table keyed by normalized host. Dispatches generically on
+    the substring "device_leases" so 18-08's exact column list / predicate order is free to
+    differ from this fixture -- only the CRUD shape (insert-or-replace one row per host,
+    select-by-host, select-all, delete-by-host) is pinned.
+    """
+
+    def __init__(self, *, leases=None, **kwargs):
+        super().__init__(**kwargs)
+        # normalized host -> dict(pilot_id, pilot_name, session_id, run_id, subject_key, acquired_at)
+        self._leases = dict(leases or {})
+
+    def execute(self, query, params=None):
+        sql = " ".join(str(query).split())
+        params = params or {}
+        if "device_leases" in sql:
+            upper = sql.upper()
+            if upper.startswith("SELECT") and "host" in params:
+                row = self._leases.get(params["host"])
+                return _LeaseResult(one=SimpleNamespace(host=params["host"], **row) if row else None)
+            if upper.startswith("SELECT"):
+                rows = [SimpleNamespace(host=h, **v) for h, v in self._leases.items()]
+                return _LeaseResult(many=rows)
+            if upper.startswith("INSERT"):
+                host = params.get("host")
+                self._leases[host] = {
+                    "pilot_id": params.get("pilot_id"),
+                    "pilot_name": params.get("pilot_name"),
+                    "session_id": params.get("session_id"),
+                    "run_id": params.get("run_id"),
+                    "subject_key": params.get("subject_key"),
+                    "acquired_at": params.get("acquired_at", "2026-08-09T00:00:00Z"),
+                }
+                return _LeaseResult(rowcount=1)
+            if upper.startswith("DELETE"):
+                host = params.get("host")
+                existed = host in self._leases
+                self._leases.pop(host, None)
+                return _LeaseResult(one=(1 if existed else None), rowcount=1 if existed else 0)
+            return _LeaseResult()
+        return super().execute(query, params)
+
+    def commit(self):
+        pass
+
+
+_VALID_EXTLINK_CONFIG = {
+    "class_name": "OE_Control", "role": "sub_connect", "host": "132.77.9.9",
+    "connect_port": 5556, "source_id": "oe", "stale_ms": 3000, "required": True,
+    "wait_timeout_s": 60, "egress_fail_threshold": 3,
+}
+
+_ROLE_NONE_CONFIG = {
+    "class_name": "OE_Control", "role": "none", "host": "132.77.9.9",
+    "source_id": "oe", "stale_ms": 3000, "required": True,
+    "wait_timeout_s": 60, "egress_fail_threshold": 3,
+}
+
+
+def _oe_control_scenario(fda_json=None, config=None, module_class_name="OE_Control"):
+    cfg = config if config is not None else _ROLE_NONE_CONFIG
+    return FakeDb(
+        run_row=None,
+        spr_row=SimpleNamespace(protocol_id=1),
+        step_row=SimpleNamespace(task_definition_id=42),
+        td_row=SimpleNamespace(toolkit_id=5),
+        toolkit_row=SimpleNamespace(is_backend_authored=True, hardware_module_ids=[8], flags={}),
+        existing_configs=[("OE", cfg)],
+        modules={8: _module(8, "OE", module_class_name, hardware_lib_id=11)},
+        configs={"OE": _config(cfg)},
+        td_full=SimpleNamespace(fda_json=fda_json or {}),
+        lib_row=SimpleNamespace(stable_version_id=600, active_version_id=None),
+    )
+
+
+# --- Lease arbitration (EXTLINK-17) -----------------------------------------
+
+
+@pytest.mark.xfail(
+    reason="EXTLINK-17: lease not wired into preflight_validate until plan 18-09",
+    strict=False,
+)
+def test_lease_blocks_second_run_same_host():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    host = "132.77.9.9"
+    config_a = {**_VALID_EXTLINK_CONFIG, "host": host}
+    fake_db = _LeaseFakeDb(
+        leases={normalize_host(host): {
+            "pilot_id": 99, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+            "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+        }},
+        run_row=None,
+        spr_row=SimpleNamespace(protocol_id=1),
+        step_row=SimpleNamespace(task_definition_id=42),
+        td_row=SimpleNamespace(toolkit_id=5),
+        toolkit_row=SimpleNamespace(is_backend_authored=True, hardware_module_ids=[8], flags={}),
+        existing_configs=[("OE", config_a)],
+        modules={8: _module(8, "OE", "OE_Control", hardware_lib_id=11)},
+        configs={"OE": _config(config_a)},
+        td_full=SimpleNamespace(fda_json={}),
+        lib_row=SimpleNamespace(stable_version_id=600, active_version_id=None),
+    )
+    resp = _preflight(fake_db, pilot_id=2)  # pilot B -- not the holder (pilot_id 99)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    held = [i for i in body["issues"] if i["issue"] == "device_held"]
+    assert len(held) == 1
+    detail = held[0]["detail"]
+    assert "pilot-A" in detail
+    assert "bp_s1_r501" in detail or "501" in detail
+    holder = held[0]["holder"]
+    assert holder["pilot_name"] == "pilot-A"
+    assert "acquired_at" in holder
+
+
+def test_lease_key_is_host_not_host_port():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host
+
+    assert normalize_host("132.77.9.9:37497") == normalize_host("http://132.77.9.9:5556/")
+
+
+def test_lease_not_reported_for_the_holding_pilot_itself():
+    pytest.importorskip("device_lease")
+    from device_lease import normalize_host, preflight_device_lease_issues
+
+    host = "132.77.9.9"
+    fake_db = _LeaseFakeDb(leases={normalize_host(host): {
+        "pilot_id": 7, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    modules = [_module(8, "OE", "OE_Control", hardware_lib_id=11)]
+    configs = {"OE": {**_VALID_EXTLINK_CONFIG, "host": host}}
+    issues = preflight_device_lease_issues(fake_db, pilot_id=7, modules=modules, configs=configs)
+    assert issues == []
+
+
+def test_force_release_lease_clears_the_issue():
+    pytest.importorskip("device_lease")
+    from device_lease import force_release, normalize_host, preflight_device_lease_issues
+
+    host = "132.77.9.9"
+    fake_db = _LeaseFakeDb(leases={normalize_host(host): {
+        "pilot_id": 7, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+        "subject_key": "bp_s1_r501", "acquired_at": "2026-08-09T10:00:00Z",
+    }})
+    modules = [_module(8, "OE", "OE_Control", hardware_lib_id=11)]
+    configs = {"OE": {**_VALID_EXTLINK_CONFIG, "host": host}}
+
+    before = preflight_device_lease_issues(fake_db, pilot_id=2, modules=modules, configs=configs)
+    assert len(before) == 1
+
+    assert force_release(fake_db, host) is True
+
+    after = preflight_device_lease_issues(fake_db, pilot_id=2, modules=modules, configs=configs)
+    assert after == []
+
+
+def test_lease_reconciliation_releases_on_stale_heartbeat():
+    pytest.importorskip("device_lease")
+    from datetime import datetime, timedelta, timezone
+
+    from device_lease import normalize_host, reconcile_leases
+
+    host = "132.77.9.9"
+    now = datetime.now(timezone.utc)
+    stale_ts = (now - timedelta(minutes=10)).isoformat()
+    fresh_ts = now.isoformat()
+
+    fake_db = _LeaseFakeDb(leases={
+        normalize_host(host): {
+            "pilot_id": 1, "pilot_name": "pilot-A", "session_id": 1, "run_id": 501,
+            "subject_key": "bp_s1_r501", "acquired_at": stale_ts,
+        },
+        normalize_host("132.77.9.10"): {
+            "pilot_id": 2, "pilot_name": "pilot-B", "session_id": 2, "run_id": 502,
+            "subject_key": "bp_s2_r502", "acquired_at": fresh_ts,
+        },
+        normalize_host("132.77.9.11"): {
+            "pilot_id": 3, "pilot_name": "pilot-absent", "session_id": 3, "run_id": 503,
+            "subject_key": "bp_s3_r503", "acquired_at": fresh_ts,
+        },
+    })
+    # pilot-A has a STALE heartbeat, pilot-B a FRESH one, pilot-absent has no entry at all.
+    heartbeats = {"pilot-A": stale_ts, "pilot-B": fresh_ts}
+
+    released = reconcile_leases(fake_db, heartbeats, now=now, stale_after_s=90)
+    released_hosts = {r["host"] for r in released}
+    assert normalize_host(host) in released_hosts          # stale heartbeat -> released
+    assert normalize_host("132.77.9.11") in released_hosts  # absent from map -> released
+    assert normalize_host("132.77.9.10") not in released_hosts  # fresh heartbeat -> held
+    assert all("pilot" in r for r in released)
+
+
+def test_lease_issue_kind_registered():
+    pytest.importorskip("device_lease")
+    from routers.toolkit_dispatch import PREFLIGHT_ISSUE_KINDS
+
+    assert "device_held" in PREFLIGHT_ISSUE_KINDS
+    assert "extlink_config_invalid" in PREFLIGHT_ISSUE_KINDS
+    # A future kind cannot be added without a conscious update here AND in HardwareCheckModal.tsx.
+    expected = {
+        "missing", "incomplete_config", "class_mismatch", "fda_ref_unresolved",
+        "view_key_unresolved", "variable_never_written", "lib_version_unresolved",
+        "compute_lib_import_failed", "state_wait_unsatisfiable",
+        "device_held", "extlink_config_invalid",
+    }
+    assert PREFLIGHT_ISSUE_KINDS == expected
+
+
+# --- extlink config validation (EXTLINK-10) ---------------------------------
+
+
+@pytest.mark.parametrize("overrides,offending_field", [
+    ({"wait_timeout_s": None}, "wait_timeout_s"),
+    ({"wait_timeout_s": 3}, "wait_timeout_s"),
+    ({"wait_timeout_s": 900}, "wait_timeout_s"),
+    ({"role": "banana"}, "role"),
+    ({"role": "sub_connect", "host": None}, "host"),
+    ({"role": "router_bind"}, "listen_port"),
+])
+def test_lease_extlink_config_invalid_field(overrides, offending_field):
+    pytest.importorskip("device_lease")
+    from device_lease import validate_extlink_config
+
+    cfg = {**_VALID_EXTLINK_CONFIG, **overrides}
+    issues = validate_extlink_config("OE", 1, cfg)
+    assert len(issues) == 1
+    assert issues[0]["issue"] == "extlink_config_invalid"
+    assert offending_field in issues[0]["detail"]
+
+
+def test_lease_extlink_config_valid_row_emits_nothing():
+    pytest.importorskip("device_lease")
+    from device_lease import validate_extlink_config
+
+    assert validate_extlink_config("OE", 1, _VALID_EXTLINK_CONFIG) == []
+
+
+def test_lease_non_extlink_module_config_emits_nothing():
+    pytest.importorskip("device_lease")
+    from device_lease import is_extlink_config, validate_extlink_config
+
+    cfg = {"class_name": "Touch_Detector", "device_name": "LICKER"}
+    assert is_extlink_config(cfg) is False
+    assert validate_extlink_config("LICKER", 1, cfg) == []
+
+
+# --- role "none" -- control-only, no inbound transport (EXTLINK-18) ---------
+
+
+def test_lease_extlink_config_role_none_accepts_neither_port():
+    pytest.importorskip("device_lease")
+    from device_lease import validate_extlink_config
+
+    issues = validate_extlink_config("OE", 1, _ROLE_NONE_CONFIG)
+    assert issues == []
+    assert not any(
+        "listen_port" in i.get("detail", "") or "connect_port" in i.get("detail", "")
+        for i in issues
+    )
+
+
+def test_lease_extlink_config_role_none_is_a_recognised_role():
+    pytest.importorskip("device_lease")
+    from device_lease import is_extlink_config
+
+    assert is_extlink_config(_ROLE_NONE_CONFIG) is True
+
+
+def test_lease_extlink_config_role_none_requires_host():
+    pytest.importorskip("device_lease")
+    from device_lease import validate_extlink_config
+
+    cfg = {**_ROLE_NONE_CONFIG, "host": None}
+    issues = validate_extlink_config("OE", 1, cfg)
+    assert len(issues) == 1
+    assert "host" in issues[0]["detail"]
+
+
+def test_lease_extlink_config_role_absent_is_not_role_none():
+    pytest.importorskip("device_lease")
+    from device_lease import is_extlink_config, validate_extlink_config
+
+    cfg = {"class_name": "OE_Control", "host": "132.77.9.9"}
+    assert is_extlink_config(cfg) is False
+    assert validate_extlink_config("OE", 1, cfg) == []
+
+
+@pytest.mark.xfail(
+    reason="EXTLINK-18: role='none' config-validation not wired into preflight_validate until plan 18-09",
+    strict=False,
+)
+def test_lease_preflight_role_none_module_is_clean():
+    pytest.importorskip("device_lease")
+    resp = _preflight(_oe_control_scenario())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert not any(i["issue"] == "extlink_config_invalid" for i in body["issues"])

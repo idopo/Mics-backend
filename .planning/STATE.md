@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T08:13:58.940Z"
+last_updated: "2026-08-09T08:17:22.171Z"
 progress:
   total_phases: 24
   completed_phases: 7
   total_plans: 85
-  completed_plans: 58
-  percent: 70
+  completed_plans: 60
+  percent: 72
 ---
 
 # STATE: MICS Backend
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Progress:** [███████░░░] 70%
+**Progress:** [███████░░░] 72%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -272,7 +272,37 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/13 of 15 done
+
+**Plan 13 executed (2026-08-09, resumed after an ENOSPC interrupt):** EXTLINK-19 delivered — an
+`ExternalHardware` signal is now a first-class, offerable view key on the backend. New
+`api/extlink_keys.py` (167 lines) aggregates `ast_metadata.extlink` (18-07) against per-pilot
+`pilot_hardware_config.config` into `<source_id>.<signal>` keys, mirroring
+`module_detector_channels`' cross-pilot conflict contract byte-for-byte (`conflict = len({frozenset
+(p["keys"]) for p in by_pilot}) > 1`), plus the EXTLINK-18 rule that a control-only module with zero
+`@signal` still contributes exactly one `<source_id>.alive` key. Surfaced on the toolkit read
+(`extlink_signals`, always a list) at the three caps-bearing routes. The two gates that previously
+rejected such a key both now accept it: `validate_compute_variables`/`collect_hard_errors` gain an
+optional `extlink_keys` param unioned into `valid_names` (a variable-name collision with an extlink
+key gets its own "external-signal view key" message, distinct from the detector message); preflight
+step 8 unions THIS pilot's extlink keys into `valid_keys` — a key naming a DIFFERENT pilot's
+`source_id` surfaces as the existing `view_key_unresolved` issue, no new `PREFLIGHT_ISSUE_KINDS`
+member (still 11). **Resume note:** a prior agent hit host disk-full (ENOSPC) mid-Task-3; on resume,
+`git diff`/`ast.parse` on all four uncommitted working-tree files showed Task 3's implementation was
+already complete and syntactically intact — the reported RED (`collect_hard_errors() got an
+unexpected keyword argument 'extlink_keys'`) was stale, caused only by the running `api` container
+predating the change (no bind mount). A `docker compose up --build -d api` rebuild turned the suite
+green immediately; no code was redone, only verified and committed (`3fca80b`). Full backend suite:
+**435 passed, 1 skipped**. Live-verified both directions of the save-gate round trip via `git
+stash`/rebuild: the exact `PUT /api/task-definitions/{id}` 422 (`references unknown variable/flag
+'dlc_cam1.left_paw_x'`) on the unfixed code, 200 after restoring the fix. Live-verified the
+`extlink_signals` shape against a real uploaded `ExternalHardware` lib + two pilots configured with
+different `source_id`s: `conflict: true`, correct union `keys`, correct `by_pilot` breakdown — the
+exact JSON pinned in `18-13-SUMMARY.md` for plan 18-14 to consume. All live-verification DB
+artifacts (test lib/module/toolkit/pilot-config/task-definition) deleted afterward. `gsd-tools
+requirements mark-complete EXTLINK-19` found no checkbox/traceability row (same known gap as every
+prior EXTLINK plan) — completion tracked here and via `roadmap update-plan-progress 18` instead. See
+`18-13-SUMMARY.md`.
 
 **Plan 09 executed (2026-08-09, resumed after an ENOSPC interrupt):** EXTLINK-16/17 delivered —
 closes the lease loop 18-08 only stored/gated. `api/routers/device_leases.py` (94 lines, thin
@@ -1433,6 +1463,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: Plan 18-06: EgressWorker/LivenessPoller stop() uses a bounded Event.wait/get(timeout) poll loop instead of a None sentinel through the queue, since a sentinel put() could itself block against a full queue with a wedged consumer
 - [Phase 18]: Plan 18-06: external_hardware_runtime.py trimmed from 348 to 298 lines via docstring-only condensation (no split, no logic change) to satisfy the plan's own <=300-line soft cap
 - [Phase 18]: Device lease acquire_lease uses INSERT ... ON CONFLICT (host) DO NOTHING + read-back for atomicity, never a Python single-holder check
+- [Phase 18]: Plan 18-10 (external_hardware.py) verified complete after ENOSPC interrupt recovery; no code changes needed
+- [Phase 18]: EXTLINK-19: extlink view keys aggregated in api/extlink_keys.py, wired into save gate + preflight; no new preflight issue kind
 
 ## Accumulated Context
 

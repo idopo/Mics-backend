@@ -159,6 +159,12 @@ def _row_to_lease(row) -> dict:
     }
 
 
+def list_leases(db) -> list[dict]:
+    """All current leases -- backs plan 18-09's `GET /api/device-leases`."""
+    rows = db.execute(text(f"SELECT {_LEASE_COLUMNS} FROM device_leases")).fetchall()
+    return [_row_to_lease(row) for row in rows]
+
+
 def get_lease(db, host: str) -> dict | None:
     row = db.execute(
         text(f"SELECT {_LEASE_COLUMNS} FROM device_leases WHERE host = :host"),

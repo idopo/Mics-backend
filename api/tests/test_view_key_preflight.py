@@ -1022,6 +1022,11 @@ class _LeaseFakeDb(FakeDb):
                 return _LeaseResult(many=rows)
             if upper.startswith("INSERT"):
                 host = params.get("host")
+                # Mirrors `ON CONFLICT (host) DO NOTHING` -- an existing row for this host
+                # is never overwritten, matching the real UNIQUE-constraint semantics
+                # `acquire_lease`'s docstring depends on.
+                if host in self._leases:
+                    return _LeaseResult(rowcount=0)
                 self._leases[host] = {
                     "pilot_id": params.get("pilot_id"),
                     "pilot_name": params.get("pilot_name"),
@@ -1312,7 +1317,6 @@ def _device_leases_client(fake_db):
     return TestClient(app)
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_list_route_returns_current_leases():
     pytest.importorskip("device_lease")
     from device_lease import normalize_host
@@ -1330,7 +1334,6 @@ def test_device_leases_list_route_returns_current_leases():
     assert body[0]["host"] == normalize_host(host)
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_acquire_route_returns_200_on_conflict():
     pytest.importorskip("device_lease")
     from device_lease import normalize_host
@@ -1351,7 +1354,6 @@ def test_device_leases_acquire_route_returns_200_on_conflict():
     assert body["holder"]["pilot_name"] == "pilot-A"
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_force_release_route_clears_the_preflight_issue():
     pytest.importorskip("device_lease")
     from device_lease import normalize_host
@@ -1369,7 +1371,6 @@ def test_device_leases_force_release_route_clears_the_preflight_issue():
     assert resp2.json() == {"released": False}
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_force_release_route_normalizes_host_port():
     pytest.importorskip("device_lease")
     from device_lease import normalize_host
@@ -1384,7 +1385,6 @@ def test_device_leases_force_release_route_normalizes_host_port():
     assert resp.json() == {"released": True}
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_release_for_run_route():
     pytest.importorskip("device_lease")
     from device_lease import normalize_host
@@ -1399,7 +1399,6 @@ def test_device_leases_release_for_run_route():
     assert resp.json() == {"released": [normalize_host("132.77.9.9")]}
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_reconcile_route_releases_stale_lease():
     pytest.importorskip("device_lease")
     from datetime import datetime, timedelta, timezone
@@ -1422,7 +1421,6 @@ def test_device_leases_reconcile_route_releases_stale_lease():
     assert any(r["host"] == normalize_host(host) for r in released)
 
 
-@pytest.mark.xfail(strict=False, reason="api/routers/device_leases.py not built yet — plan 18-09")
 def test_device_leases_routes_require_auth():
     from main import app
     client = TestClient(app)

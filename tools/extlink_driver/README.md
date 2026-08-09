@@ -28,13 +28,13 @@ be written into any config row, and a DHCP/Wi-Fi change on your end can't break 
 ## The three invocations
 
 Substitute your rig's real host/port/source-id; the values below are the ones plan 18-12's
-checkpoint uses for its `dlc_cam1` demo module.
+checkpoint uses for its `demo` demo module.
 
 **Interactive** (default mode — type a line, watch it send):
 
 ```bash
 python3 tools/extlink_driver/extlink_driver.py --pi-host 132.77.72.28 \
-    --listen-port 5599 --source-id dlc_cam1
+    --listen-port 5599 --source-id demo
 > left_paw_x 0.7        # sends a SIG
 > object_detected {"object": "paw", "confidence": 0.9}   # a {...} value sends an EVT instead
 ```
@@ -47,7 +47,7 @@ any threshold inside the range is crossed in both directions with nobody touchin
 
 ```bash
 python3 tools/extlink_driver/extlink_driver.py --pi-host 132.77.72.28 \
-    --listen-port 5599 --source-id dlc_cam1 \
+    --listen-port 5599 --source-id demo \
     --sweep left_paw_x --min 0.0 --max 1.0 --sweep-hz 5 --seconds 30
 ```
 
@@ -55,7 +55,7 @@ python3 tools/extlink_driver/extlink_driver.py --pi-host 132.77.72.28 \
 
 ```bash
 python3 tools/extlink_driver/extlink_driver.py --pi-host 132.77.72.28 \
-    --listen-port 5599 --source-id dlc_cam1 \
+    --listen-port 5599 --source-id demo \
     --rate 60 --signal left_paw_x --seconds 30
 ```
 
@@ -75,9 +75,9 @@ instead and prove nothing about the editor.
 
 To add them: open `/react/` -> the `extlink_demo` task definition in the FDA editor. On the
 `wait -> armed` edge, add a condition, set the left operand type to **view**, and open the picker
-— look for the option group labelled **`dlc_cam1 signals`** (the pattern is
+— look for the option group labelled **`demo signals`** (the pattern is
 `"<source_id> signals"`), containing an item labelled **`left_paw_x (float)`** whose value is the
-resolved key `dlc_cam1.left_paw_x`. Set the operator to `>` and the right operand to the literal
+resolved key `demo.left_paw_x`. Set the operator to `>` and the right operand to the literal
 `0.5`. Add the mirror transition `armed -> fired` on `< 0.2`. Save — it should save with no 422,
 and reopening the definition should still show the operand selected (not "(unknown)").
 

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as OrmSession, sessionmaker
 from auth import verify_token
 from db import engine
 from detector_keys import module_detector_channels
+from extlink_keys import module_extlink_signals
 from fda_utils import ref_label, scan_fda_for_refs
 from fda_validation import reject_if_hard_errors
 from hw_introspect import class_names, resolve_class_methods, toolkit_hw_capabilities
@@ -72,12 +73,14 @@ def _build_toolkit_row(
     fda_count: int,
     caps: Dict[str, Any] | None = None,
     detector_channels: List[Dict[str, Any]] | None = None,
+    extlink_signals: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """`detector_channels` is derived at the CALL SITE, not here — `db` is not a parameter of
     this function (see the three caps-bearing call sites below), so `module_detector_channels`
     can never be invoked from inside it. Always a list, even when the caller passes nothing
     (the three caps-less write-path sites: set-canonical/create/patch — see Plan 25-03 summary
-    for why those three are deliberately not fed)."""
+    for why those three are deliberately not fed). `extlink_signals` (plan 18-13) follows the
+    identical rule."""
     caps = caps or {"trigger_sources": [], "detector_refs": []}
     return {
         "id": t.id,
@@ -101,6 +104,7 @@ def _build_toolkit_row(
         "trigger_sources": caps["trigger_sources"],
         "detector_refs": caps["detector_refs"],
         "detector_channels": detector_channels or [],
+        "extlink_signals": extlink_signals or [],
     }
 
 
@@ -137,6 +141,10 @@ def list_toolkits(_: dict = Depends(verify_token)):
         detector_channels_by_module = {
             d["module_name"]: d for d in module_detector_channels(db, all_module_names)
         }
+        # Same one-batched-call precedent as detector_channels above — no N+1 across ~112 rows.
+        extlink_signals_by_module = {
+            e["module_name"]: e for e in module_extlink_signals(db, all_module_names)
+        }
 
         return [
             _build_toolkit_row(
@@ -146,6 +154,11 @@ def list_toolkits(_: dict = Depends(verify_token)):
                     detector_channels_by_module[name]
                     for name in (caps_by_toolkit[t.id].get("module_names") or [])
                     if name in detector_channels_by_module
+                ],
+                extlink_signals=[
+                    extlink_signals_by_module[name]
+                    for name in (caps_by_toolkit[t.id].get("module_names") or [])
+                    if name in extlink_signals_by_module
                 ],
             )
             for t in toolkits
@@ -194,7 +207,8 @@ def get_toolkits_by_name(name: str, _: dict = Depends(verify_token)):
         for t in toolkits:
             caps = toolkit_hw_capabilities(db, t.hardware_module_ids or [])
             detector_channels = module_detector_channels(db, caps.get("module_names") or [])
-            rows.append(_build_toolkit_row(t, origins_map, fda_count, caps, detector_channels=detector_channels))
+            extlink = module_extlink_signals(db, caps.get("module_names") or [])
+            rows.append(_build_toolkit_row(t, origins_map, fda_count, caps, detector_channels, extlink))
         return rows
     finally:
         db.close()
@@ -224,7 +238,8 @@ def get_toolkit(toolkit_id: int, _: dict = Depends(verify_token)):
         origins_map = {toolkit_id: pilot_names}
         caps = toolkit_hw_capabilities(db, toolkit.hardware_module_ids or [])
         detector_channels = module_detector_channels(db, caps.get("module_names") or [])
-        return _build_toolkit_row(toolkit, origins_map, fda_count, caps, detector_channels=detector_channels)
+        extlink = module_extlink_signals(db, caps.get("module_names") or [])
+        return _build_toolkit_row(toolkit, origins_map, fda_count, caps, detector_channels, extlink)
     finally:
         db.close()
 

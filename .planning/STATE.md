@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T08:17:22.171Z"
+last_updated: "2026-08-09T08:18:00.406Z"
 progress:
   total_phases: 24
   completed_phases: 7
@@ -272,7 +272,33 @@ issues the REST call returning OE to IDLE, not just the lease release. This puts
 logic in the backend for the first time; it must live in a small dedicated module (`api/main.py` and
 `toolkit_dispatch.py` are both near their size limits).
 
-### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/13 of 15 done
+### Phase 18 status (2026-08-09) — EXECUTION STARTED, plans 01/02/03/04/05/06/07/08/09/10/13 of 15 done
+
+**Plan 10 executed (2026-08-09, resumed after an ENOSPC interrupt):** EXTLINK-01/02/04/05/07/08/12/
+14/15/16/18 delivered — `external_hardware.py` (239 lines), the author-facing `ExternalHardware`
+base class + `@signal`/`@event`/`@command`/`@decoder` decorators. The interrupted prior session's
+on-disk deliverable was read in full and found complete and correct — no code changes were needed
+this session. Discovered two undocumented Hardware-coupled sibling files the interrupted session
+had already split out beyond the plan's literal "ingress-only" escape hatch:
+`external_hardware_ingress.py` (63 lines, the `_on_recv` firewall) and
+`external_hardware_binding.py` (150 lines, the five per-bind-step wiring helpers +
+`recompute_alive`, the single `alive` writer). All three verified `ast.parse`-clean and
+3.7-compatible. Since none of `zmq`/`tornado`/`autopilot` (transitively, via `npyscreen`) import
+on this dev host, a disposable stub-module harness (faking `Hardware`/`HardwareState`,
+`Events.Event`, `zmq`, `ZMQStream`) was built to actually instantiate `ExternalHardware`
+subclasses and exercise 19 behavioral checks beyond syntax: zero-signal classes bind cleanly;
+`role: "none"` opens no socket yet registers `.alive` and starts egress/liveness/lifecycle;
+`role: "none"` without a class-level `liveness_hook` raises `ValueError` at construction (the
+plan's central, previously-unverified rule); both decorator forms collect; a signal with no
+resolvable dtype raises `TypeError` at class-build time; Tracker naming is
+`<source_id>.<signal>`/`<source_id>.alive`; `release()` is idempotent and never raises; and the
+one genuinely uncertain question — whether `owner._extlink_decoder(frames)` calls the `@decoder`
+method unbound — was reproduced directly and confirmed correct (Python's function-descriptor
+protocol auto-binds `self` when a plain function stored as a class attribute is read off an
+instance). Full six-file agent-runnable suite: **92 passed, 0 failed**
+(`tests/test_extlink*.py tests/test_wait_extlink_ready_transitions.py`), confirming the two Wave-1
+sibling modules (18-05/18-06) were undisturbed. No git command was run against `/home/ido/pi-mirror`
+(user-owned repo) and no code was executed on the Pi. See `18-10-SUMMARY.md`.
 
 **Plan 13 executed (2026-08-09, resumed after an ENOSPC interrupt):** EXTLINK-19 delivered — an
 `ExternalHardware` signal is now a first-class, offerable view key on the backend. New

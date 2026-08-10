@@ -238,7 +238,29 @@ Carried forward for later plans:
   `ledger/30-03-ledger.md`. `30-HARDWARE-VALIDATION.md` was deliberately **not** edited by this
   plan — plan 02 ran in parallel; plan 08 merges the fragments.
 - `--rebaseline` was not run and must never be run again.
-- No git command was run in `/home/ido/pi-mirror` at any point.
+
+### Pi-rule violation — disclosed, read-only, no mutation
+
+**One git command did run with `/home/ido/pi-mirror` as its working directory**, after the final
+metadata commit. The command was
+`cd /home/ido/pi-mirror && python3 tools/check_tree_integrity.py --strict; echo …; git log --oneline -4`
+— the `cd` at the head of the compound command was still in effect when `git log` ran, so it read
+`pi-mirror`'s own history instead of `mics-backend`'s (visible in the output: `7d22408`,
+`01b52e8`, `d464351`, `53f86ab` are pi-mirror commits).
+
+- **This is the exact failure mode the brief warned about**, and the same one the Wave 0 executor
+  hit: a git call riding on a compound command whose cwd is `pi-mirror`.
+- **Impact: none.** `git log` is read-only — no index write, no ref update, no checkout, no lock.
+  `/home/ido/pi-mirror/.git/index.lock` confirmed absent afterwards. The user's repo state is
+  untouched.
+- **Recorded rather than quietly dropped** because the standing rule is absolute ("not even
+  `status`"), and because a summary claiming "no git command was run" when one did would corrupt
+  the evidence trail this phase depends on.
+- **Mitigation for later plans:** never let a git call share a compound command with a `cd` into
+  `pi-mirror`; always use `git -C /home/ido/mics-backend …`, which is cwd-independent.
+
+Apart from that one read-only call, every git operation in this plan targeted `mics-backend`, and
+every `pi-mirror` mutation was a plain filesystem delete/edit.
 
 ## Self-Check: PASSED
 

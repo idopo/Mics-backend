@@ -29,7 +29,7 @@ PROVEN; HYG-01 and HYG-02 remain UNPROVEN because both depend on user actions
 | HYG-05 `cameras.py` + both import copies removed | **PROVEN** | Removed on **both sides of the DB boundary**. Pi copy: `hardware/cameras.py` (69,302 B), `hardware/usb.py` (10,546 B), `setup/setup_mlx90640.sh` (792 B); `i2c.py` three-part edit 35,934 → 28,423 B with exactly **3 delete opcodes, 0 insert/replace**, `MLX90640` cut **by AST span** so MPR121's `board`/`busio`/`adafruit_mpr121` imports survive. DB copy: `hardware_libs` id 9 active version 26 → **144**, `octet_length` **and** `sha256` equal to the disk file, `impact.affected_definition_ids` empty, versions 15/26 preserved. Guard `--final` F5 = 0. Plan 05. |
 | HYG-06 sweep collateral removed, `tasks/` compiles | **PROVEN** | 7 modules / 60,505 B removed from `autopilot/tasks/`; `compileall` over the surviving directory exits 0 — the gate that matters, because `common.py:47-67`'s `list_classes` has no per-file guard. The one string-keyed dangler the AST guard structurally cannot see (`REGISTRIES.CHILDREN`, `utils/registry.py:42`) removed with a four-criteria verdict and a zero-hit `'child'`-key scan over `mics-backend`. Guard `--final` F4 = 0. Plan 05. |
 | HYG-07 Terminal tree removed | **PROVEN** | 124 files / 18,143,253 B: `terminal/` (106 files, 17.86 MB), `run_terminal.sh`, `.vscode/`, and 16 Pi-side files. Cluster proven **self-contained by AST import graph** — every importer of every removed module was itself removed in the same change. `setup_autopilot.py:198`'s `autopilot.core.terminal` launcher string (invisible to any import-graph tool: it is a `.write()` argument) removed and the branch replaced by an explicit `ValueError`. Guard `--final` F1 re-asserts `terminal/` absent. Plan 03. |
-| HYG-08 vendored/generated bulk removed | **PROVEN** | 27 paths / 97,691,320 B of installer, Sphinx output, upstream suites, submodule mounts, tilde-literal directories, build artifacts, CI dotfiles, zero-byte logger files and byte-identical wav duplicates (plan 02) — plus the tree-wide cache purge landed here. **Final budget: 1,097,505 B (1.05 MiB) excluding `.git` and `pilot/sounds/`, against an 8,388,608 B limit** (§1b). Guard `--final` F1 = 0. Plans 02 + 08. |
+| HYG-08 vendored/generated bulk removed | **PROVEN** | 27 paths / 97,691,320 B of installer, Sphinx output, upstream suites, submodule mounts, tilde-literal directories, build artifacts, CI dotfiles, zero-byte logger files and byte-identical wav duplicates (plan 02) — plus the tree-wide cache purge landed here. **Final budget: 1,102,638 B (1.05 MiB) excluding `.git` and `pilot/sounds/`, against an 8,388,608 B limit** (§1b). Guard `--final` F1 = 0. Plans 02 + 08. |
 | HYG-09 root pytest config replaces `autopilot/pytest.ini` | **PROVEN** | Root `pytest.ini` + `conftest.py` with `collect_ignore` for the 2 Pi-only modules; `autopilot/pytest.ini` and `autopilot/.coveragerc` removed. Collection produces **no error** (was exit 2). 382 tests collect on this host today. Plan 01; re-verified §7. |
 | HYG-10 no rig-specific config in `prefs.json` | **PROVEN** | `TERMINALIP` → `CHANGE_ME_terminal_ip`, `NAME` → `CHANGE_ME_pilot_name`; `SUBJECT`, `PORT_CALIBRATION` and the 17-entry `HARDWARE.UNREAL` group deleted; 16,966 → 12,668 B and the file now parses as **strict JSON** (the `NaN` literals went with `PORT_CALIBRATION`). All 28 pin values **kept on evidence**, not left undecided (§6.10). Guard `--final` F2 = 0. Plan 07. |
 | HYG-11 dead commented-out lines removed | **PROVEN** | **238** dead commented lines across 14 files against an audit target of 244; the 2.5% shortfall itemised as **175 deliberately-kept candidates**, each with the live symbol that kept it (ledger `30-06` §B.7). `difflib`: **33 delete opcode groups, 0 insert, 0 replace** across all 13 swept files. Plan 06. |
@@ -180,9 +180,9 @@ The two `collect_ignore`d modules fail on `npyscreen`, not on `sys.path`; the bo
 
 | Measurement | Pre-sweep | Post-sweep | Delta |
 |---|---:|---:|---:|
-| `du -sb --exclude=.git .` | 202,630,324 | **3,423,893** | −199,206,431 (−98.31%) |
+| `du -sb --exclude=.git .` | 202,630,324 | **3,429,026** | −199,201,298 (−98.31%) |
 | `du -sb pilot/sounds` | 2,326,388 | **2,326,388** | **0 — byte-for-byte unchanged** |
-| **HYG-08 budget** (tree − `.git` − `pilot/sounds`) | 200,303,936 | **1,097,505 B (1.05 MiB)** | limit 8,388,608 → **13.1% of budget** |
+| **HYG-08 budget** (tree − `.git` − `pilot/sounds`) | 200,303,936 | **1,102,638 B (1.05 MiB)** | limit 8,388,608 → **13.1% of budget** |
 | `du -sb .git` | 197,550,529 | 197,550,529 | 0 — never touched; **never published** (§`30-PUBLISH.md` step 2) |
 | `*.py` files excluding `.git` | 202 | **105** | −97 |
 | All files excluding `.git` | — | **146** | — |
@@ -190,6 +190,12 @@ The two `collect_ignore`d modules fail on `npyscreen`, not on `sys.path`; the bo
 **Cache state after the authoritative purge:** `__pycache__` directories **0**, `*.pyc` files
 **0**, `.pytest_cache` **absent** — all measured outside `.git` by an unfiltered `os.walk`, not
 by `find`/`grep`.
+
+> The Task 1 gate measured the budget at **1,097,505 B** immediately after the authoritative
+> purge. The figures above are the true final ones, taken after Task 2 rewrote
+> `pi-mirror/README.md` (116 B → 5,249 B) — a **+5,133 B** documentation-only difference, and the
+> only thing that touched the tree after the purge. No cache was regenerated: Task 2 ran no Python
+> and no `compileall` inside `pi-mirror`.
 
 ### Reconciliation of the size delta against the per-plan ledgers
 
@@ -202,7 +208,7 @@ by `find`/`grep`.
 | 30-06 | 0 (in-file only) | 322 lines across 14 files |
 | 30-07 | 6 (186 files) | 79,515,555 |
 | **Subtotal** | | **196,609,715** |
-| Residual to the measured 199,206,431 | | **2,596,716** |
+| Residual to the measured 199,201,298 | | **2,591,583** |
 
 The residual is the `__pycache__` / `*.pyc` / `.pytest_cache` purge (the Wave 0 baseline was
 measured *with* caches present and this plan removed them), plus plan 01's two deleted config
@@ -854,7 +860,7 @@ Every number below was produced at the exit gate, not carried forward.
 | **HYG-13 manifest diff, 30 protected paths** | **zero drift on md5 AND sha256**; the md5 table in §1 and `tree_protect_list.json`'s `baseline_sha256` are the same 30-path set; 0 missing |
 | Phase 26 `reserved_absent` names | all **3 still absent**, none reported as a stray |
 | `__pycache__` / `*.pyc` / `.pytest_cache` outside `.git`, after the authoritative purge | **0 / 0 / absent** (unfiltered `os.walk`, not `find`) |
-| `du -sb --exclude=.git .` − `du -sb pilot/sounds` | **1,097,505 B ≤ 8,388,608** |
+| `du -sb --exclude=.git .` − `du -sb pilot/sounds` | **1,097,505 B ≤ 8,388,608** at the Task 1 gate; **1,102,638 B** final, after the README rewrite (§1b) |
 | `/usr/bin/grep -n 'OG_TRIGGER\|IR1' pilot/prefs.json` | 4 lines — the **live** pin declarations, correct, not to be "fixed" |
 | Credential probe still present at `/home/ido/.hyg01-probe.txt` | **yes** |
 | Probe literals in the surviving tree excluding `.git` | **0 hits** |

@@ -265,7 +265,7 @@ file, because the literal strings are what proves the new repo's history is clea
 
 | Property | Value |
 |---|---|
-| Path | `/home/ido/.hyg01-probe.txt` — **outside every repository**, by design |
+| Path | ~~`/home/ido/.hyg01-probe.txt`~~ — **DESTROYED 2026-08-10** at the user's request (`shred -u`). Was outside every repository by design. Recreate from `pi-mirror.bak-2026-08-10/pilot/plugins/AssociationLearning.py:1323-1324` immediately before the history proof, then shred again — see `30-PUBLISH.md` Step 3 |
 | Mode | `600` |
 | Lines | 2 literals, one per line, no surrounding quotes (suitable for `grep -F -f`) |
 | Blank lines | **0**, including no trailing blank line — verified with `! grep -qc '^$'` and `wc -l == grep -c .` |
@@ -285,7 +285,7 @@ clean** — which is the entire reason publication is a fresh `git init`.
 | Field | Value |
 |---|---|
 | App password revoked at Google, date | _(pending — must be done **before** publication)_ |
-| `git log -p --all \| grep -c -F -f /home/ido/.hyg01-probe.txt` over the new repo | _(pending — expect **0**)_ |
+| `git log -p --all \| grep -c -F -f <recreated probe>` over the new repo | _(pending — expect **0**; probe destroyed 2026-08-10, recreate from the backup first and verify it holds exactly 2 non-blank lines — a blank line makes `grep -F -f` match everything and silently inverts the assertion)_ |
 | `git log --oneline \| wc -l` over the new repo | _(pending — expect **1**)_ |
 | HYG-01 verdict | flips to **PROVEN** when the two numbers above are 0 and 1 |
 
@@ -862,7 +862,7 @@ Every number below was produced at the exit gate, not carried forward.
 | `__pycache__` / `*.pyc` / `.pytest_cache` outside `.git`, after the authoritative purge | **0 / 0 / absent** (unfiltered `os.walk`, not `find`) |
 | `du -sb --exclude=.git .` − `du -sb pilot/sounds` | **1,097,505 B ≤ 8,388,608** at the Task 1 gate; **1,102,638 B** final, after the README rewrite (§1b) |
 | `/usr/bin/grep -n 'OG_TRIGGER\|IR1' pilot/prefs.json` | 4 lines — the **live** pin declarations, correct, not to be "fixed" |
-| Credential probe still present at `/home/ido/.hyg01-probe.txt` | **yes** |
+| Credential probe still present at `/home/ido/.hyg01-probe.txt` | **no — destroyed 2026-08-10 (`shred -u`) at the user's request.** The credential itself is NOT neutralised by this: it remains live until revoked in the Google account, and plaintext copies remain in `pi-mirror/.git` history and in `pi-mirror.bak-2026-08-10`. Deleting probes removes copies, not access |
 | Probe literals in the surviving tree excluding `.git` | **0 hits** |
 | All five `Scopes.DIRECTORY` runtime dirs carry `.gitkeep` | `pilot/{data,logs,viz,calibration,protocols}` — **yes** |
 | `--rebaseline` | **never run**, at any point in the phase |

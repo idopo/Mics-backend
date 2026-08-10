@@ -102,18 +102,35 @@ A fresh `git init` has exactly one commit and no ancestry. That is the property 
 
 ## Step 3 — Prove HYG-01
 
+> **The probe file was destroyed at the user's request on 2026-08-10** (`shred -u
+> /home/ido/.hyg01-probe.txt`). Recreate it from the backup immediately before running this
+> check, then destroy it again — it holds a live credential in plaintext for as long as it
+> exists.
+
 ```bash
-git -C "$NEW" log -p --all | grep -c -F -f /home/ido/.hyg01-probe.txt
+# Recreate the probe from the pre-sweep backup (the only remaining source outside .git):
+sed -n '1323,1324p' /home/ido/pi-mirror.bak-2026-08-10/pilot/plugins/AssociationLearning.py \
+  | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+|[a-z]{16}' > /tmp/hyg01-probe.txt
+chmod 600 /tmp/hyg01-probe.txt
+wc -l /tmp/hyg01-probe.txt          # expect 2 — one address, one 16-char app password
+
+git -C "$NEW" log -p --all | grep -c -F -f /tmp/hyg01-probe.txt
+
+shred -u /tmp/hyg01-probe.txt        # destroy it again the moment the check is done
 ```
 
 **Expect `0`.**
 
-`/home/ido/.hyg01-probe.txt` holds the two literal strings — the address and the password — one per
-line, no quotes, no blank lines. It was captured in Wave 0 **before** plan 04 deleted the file that
-carried them, and it lives **outside every repository** deliberately, mode `600`. Its sha256 is
-recorded in `30-HARDWARE-VALIDATION.md` §3; its contents are not recorded anywhere under
-`.planning/`. Do not move or edit it — a blank line in that file would make `grep -F -f` match
-every line and silently invert the assertion.
+The probe must hold the two literal strings — the address and the password — **one per line, no
+quotes, and no blank lines**. Verify the line count before trusting the result: a blank line makes
+`grep -F -f` match *every* line and silently inverts the assertion into a guaranteed pass. The
+original was captured in Wave 0 **before** plan 04 deleted the file that carried the credential;
+its sha256 is recorded in `30-HARDWARE-VALIDATION.md` §3, and its contents are recorded nowhere
+under `.planning/`.
+
+**If the backup is gone too, this check is no longer possible** — and its absence is not evidence
+of cleanliness. In that case rely on the commit-count check below, which is stronger anyway, and
+record HYG-01's history half as *unverifiable, mitigated by fresh `git init`*.
 
 **Second, cheaper check:**
 

@@ -37,7 +37,7 @@
 | 27 | OpenEphys Firing Rate over ZMQ | Pi SUBs to the OE ZMQ plugin, decodes spikes in a versioned lib's `@decoder`, maintains a windowed rate per declared unit as an ordinary view key, logs `(ts_pi_recv, oe_sample)` pairs for clock co-registration | EPHYS-06–10 | ○ Pending |
 | 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
-| 30 | 7/9 | In Progress|  | ○ Pending — audited 2026-08-10, not yet planned |
+| 30 | 8/9 | In Progress|  | ○ Exit gate green 2026-08-10 (`--final` 0, zero manifest drift); publication + rig proof are USER-RUN (plan 09) |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. See `.planning/STABILIZATION_PLAN.md`.
 
@@ -1123,17 +1123,17 @@ uncommitted working-tree edits and deployed debug prints in the mirror). **Not b
 Phase 26–28** — no OpenEphys file exists yet, but `openephys_client.py` and its two test
 modules are reserved names the sweep must not treat as strays if 26 lands first.
 
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 
 Plans:
-- [ ] 30-01-PLAN.md — W0 · the instrument: `tools/check_tree_integrity.py` + its tests, root pytest config (HYG-09), pre-sweep baseline manifest + credential probe
-- [ ] 30-02-PLAN.md — W1 · vendored/generated bulk: `code_2023.deb`, `docs/`, upstream `tests/`, submodules, tilde dirs, duplicate wavs, caches (HYG-08)
-- [ ] 30-03-PLAN.md — W1 · the Terminal-era tree: `terminal/`, `core/{gui,terminal,plots,subject,styles,utils,reward}.py`, `viz/`, `data_handlers/`, `utils/{invoker,Event}.py` (HYG-07)
-- [ ] 30-04-PLAN.md — W2 · prove the empty HANDSHAKE is a no-op, then delete `pilot/plugins/` + `learning_cage.py` + `mics_cage_task.py` + `unreal.py` as ONE change (HYG-03, HYG-04)
-- [ ] 30-05-PLAN.md — W3 · registry sweep collateral, `cameras.py`/`usb.py`, the `i2c.py` import **and the `MLX90640(Camera)` class**, in both the Pi copy and `hardware_libs` v26 (HYG-05, HYG-06)
-- [ ] 30-06-PLAN.md — W4 · remove the HDF5 set, collapse the orphaned `'child'` branch, sweep 244 dead commented lines, leave `Event_Dispatcher.py` alone, and **hold BOTH deferred blocks commented and sweep-exempt — the NTP clock block and the station.py watchdog, user-deferred 2026-08-10** (HYG-11, HYG-12, HYG-14)
-- [ ] 30-07-PLAN.md — W4 · `prefs.json` becomes a template; no lab IP, no SUBJECT, no PORT_CALIBRATION, no dead UNREAL group; runtime dirs empty behind `.gitkeep` (HYG-10)
-- [ ] 30-08-PLAN.md — W5 · `--final` gate, zero-drift survival manifest diff, merged evidence log, `30-PUBLISH.md` handover (HYG-01 repo half, HYG-13)
+- [x] 30-01-PLAN.md — W0 · the instrument: `tools/check_tree_integrity.py` + its tests, root pytest config (HYG-09), pre-sweep baseline manifest + credential probe
+- [x] 30-02-PLAN.md — W1 · vendored/generated bulk: `code_2023.deb`, `docs/`, upstream `tests/`, submodules, tilde dirs, duplicate wavs, caches (HYG-08)
+- [x] 30-03-PLAN.md — W1 · the Terminal-era tree: `terminal/`, `core/{gui,terminal,plots,subject,styles,utils,reward}.py`, `viz/`, `data_handlers/`, `utils/{invoker,Event}.py` (HYG-07)
+- [x] 30-04-PLAN.md — W2 · prove the empty HANDSHAKE is a no-op, then delete `pilot/plugins/` + `learning_cage.py` + `mics_cage_task.py` + `unreal.py` as ONE change (HYG-03, HYG-04)
+- [x] 30-05-PLAN.md — W3 · registry sweep collateral, `cameras.py`/`usb.py`, the `i2c.py` import **and the `MLX90640(Camera)` class**, in both the Pi copy and `hardware_libs` v26 (HYG-05, HYG-06)
+- [x] 30-06-PLAN.md — W4 · remove the HDF5 set, collapse the orphaned `'child'` branch, sweep 244 dead commented lines, leave `Event_Dispatcher.py` alone, and **hold BOTH deferred blocks commented and sweep-exempt — the NTP clock block and the station.py watchdog, user-deferred 2026-08-10** (HYG-11, HYG-12, HYG-14)
+- [x] 30-07-PLAN.md — W4 · `prefs.json` becomes a template; no lab IP, no SUBJECT, no PORT_CALIBRATION, no dead UNREAL group; runtime dirs empty behind `.gitkeep` (HYG-10)
+- [x] 30-08-PLAN.md — W5 · `--final` gate, zero-drift survival manifest diff, merged evidence log, `30-PUBLISH.md` handover (HYG-01 repo half, HYG-13)
 - [ ] 30-09-PLAN.md — W6 · clear `ExtlinkDemo` off pilot 1, then the USER-RUN rig checkpoint: revoke, publish, branch, live session (HYG-02, HYG-01)
 
 **Planned 2026-08-10.** Correction found during planning and carried into 30-05: HYG-05's claim

@@ -264,7 +264,7 @@
 | CANVAS-08 | Phase 29, Plan 03 (FDA Canvas Auto-Layout — `fdaLayout.mts`) | Complete |
 | CANVAS-14 | Phase 29, Plan 03 (FDA Canvas Auto-Layout — `fdaLayout.mts`) | Complete |
 | CANVAS-01 through CANVAS-06, CANVAS-09 through CANVAS-13 | Phase 29 (FDA Builder Canvas UX) | Pending |
-| HYG-01 through HYG-14 | Phase 30 (Pi Repo Cleanup) | Pending |
+| HYG-01 through HYG-14 | Phase 30 (Pi Repo Cleanup) | HYG-03–HYG-14 Complete (12 PROVEN at the plan-08 exit gate, 2026-08-10); HYG-01 + HYG-02 Pending — USER-RUN (publication + rig session, plan 09) |
 
 ### Compound Transition Conditions
 

@@ -37,7 +37,7 @@
 | 27 | OpenEphys Firing Rate over ZMQ | Pi SUBs to the OE ZMQ plugin, decodes spikes in a versioned lib's `@decoder`, maintains a windowed rate per declared unit as an ordinary view key, logs `(ts_pi_recv, oe_sample)` pairs for clock co-registration | EPHYS-06–10 | ○ Pending |
 | 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
-| 30 | 2/9 | In Progress|  | ○ Pending — audited 2026-08-10, not yet planned |
+| 30 | 3/9 | In Progress|  | ○ Pending — audited 2026-08-10, not yet planned |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. See `.planning/STABILIZATION_PLAN.md`.
 
@@ -1123,7 +1123,7 @@ uncommitted working-tree edits and deployed debug prints in the mirror). **Not b
 Phase 26–28** — no OpenEphys file exists yet, but `openephys_client.py` and its two test
 modules are reserved names the sweep must not treat as strays if 26 lands first.
 
-**Plans:** 2/9 plans executed
+**Plans:** 3/9 plans executed
 
 Plans:
 - [ ] 30-01-PLAN.md — W0 · the instrument: `tools/check_tree_integrity.py` + its tests, root pytest config (HYG-09), pre-sweep baseline manifest + credential probe

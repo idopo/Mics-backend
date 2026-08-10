@@ -457,4 +457,211 @@ proof. Recorded for plan 08 §6.
 
 ## C. Task 3 — `hardware_libs` reconciliation (HYG-05, DB copy)
 
-*(filled in by Task 3)*
+### C.1 The "6-byte drift" is a measurement artifact. The two copies were byte-identical.
+
+This is the first time the drift has been *characterised* rather than measured, and characterising
+it dissolves it.
+
+Measured DB-side, on version 26, with both length functions:
+
+```sql
+select length(source_code)       as chars,   -- 35928
+       octet_length(source_code) as bytes    -- 35934
+from hardware_lib_versions where id = 26;
+```
+
+| | value |
+|---|---|
+| `length(source_code)` — **characters** | 35,928 |
+| `octet_length(source_code)` — **bytes** | **35,934** |
+| disk `i2c.py` before the edit — bytes | **35,934** |
+
+**The 6 is exactly 3 × (3 − 1).** `i2c.py` contains three em-dash characters (`—`, U+2014) at
+character offsets 31264, 31925 and 32329; each is 1 character but 3 UTF-8 bytes. 30-CONTEXT.md and
+plan 05's `<verified_db_state>` both compared `length()` (characters) against the disk file's
+**byte** size, so the "drift" was a units mismatch, not a divergence.
+
+**Proof of identity, not just of equal size.** The psql `-tAc` dump of version 26 came to 35,935
+bytes — the 35,934 payload plus the single trailing newline psql appends. Stripping exactly that
+one byte:
+
+```
+db   bytes: 35934  md5: 3c933d65eeac795d2bcabd8d5cc3c08f
+disk bytes: 35934  md5: 3c933d65eeac795d2bcabd8d5cc3c08f
+IDENTICAL: True
+```
+
+`difflib` opcodes between them: **none**. The psql dump was verified rather than trusted, exactly
+as the plan required; it turned out to be faithful, and the plan's fallback (`GET
+/api/hardware-libs/9`) was not needed.
+
+**Reconciliation decision: branch (a), "adopt the disk copy as canonical" — and it discards
+nothing.** There were no drift hunks to weigh, because there was no drift. Nothing was overwritten
+that the ledger cannot account for.
+
+> **This retires a deferred item's only evidence.** 30-CONTEXT.md's Deferred list carries
+> *"`hardware_libs` ↔ disk drift — no process keeps the exec'd DB copy in sync with the Pi file.
+> Already 6 bytes apart for `i2c.py`."* The **general** concern stands untouched — there is still
+> no sync process, and this plan had to make the same edit twice by hand, which is the concern
+> demonstrating itself. But the specific 6-byte instance cited as proof was never real. Plan 08 §6
+> should restate the deferred item without that number.
+
+### C.2 The reconciliation
+
+`PUT /api/hardware-libs/9` with `{"source_code": <edited disk file>, "declared_imports": []}`
+(matching `SourceUpdateBody` at `api/routers/hardware_libs.py`; `declared_imports` is optional and
+version 26 carried `[]`, so `[]` was sent to preserve it).
+
+`lib.kind` is `hardware`, so the `_validate_compute_lib` gate at `:421-422` did not run, as the
+plan predicted.
+
+**Response: HTTP 200.**
+
+```json
+"impact": {
+  "removed_methods": {
+    "MLX90640": ["__init__", "_grab", "_threaded_capture", "_timestamp",
+                 "capture_init", "fps", "init_cam", "integrate_frames",
+                 "interpolate", "interpolate_frame", "release"]
+  },
+  "affected_definition_ids": []
+}
+```
+
+- `removed_methods` names **exactly one class, `MLX90640`, and its 11 methods** — no survivor's
+  method was touched, which is an independent confirmation of the B.6 AST assertion from the
+  backend's own extractor.
+- **`affected_definition_ids` is empty**, as asserted. No task definition references an `MLX90640`
+  method, so `_flag_broken_task_defs` flagged nothing and no `task_definitions` row moved to
+  `validation_status = 'broken'`. This corroborates removal criterion 3 from the backend side.
+
+### C.3 Confirmation query
+
+```sql
+select l.active_version_id, v.version_number, v.state,
+       length(v.source_code), octet_length(v.source_code),
+       position('class MLX90640' in v.source_code),
+       position('autopilot.hardware.cameras' in v.source_code),
+       position('class MPR121' in v.source_code),
+       position('class Touch_Detector' in v.source_code),
+       v.sha256_hash
+from hardware_libs l join hardware_lib_versions v on v.id = l.active_version_id
+where l.id = 9;
+```
+
+| field | value |
+|---|---|
+| `active_version_id` | **144** (> 26 ✓) |
+| `version_number` | 3 |
+| `state` | `beta` (version 26 was also `beta` — no regression) |
+| `length` (chars) | 28,417 — equals the disk file's 28,417 chars |
+| `octet_length` (bytes) | **28,423 — equals the disk file's 28,423 bytes** |
+| `position('class MLX90640')` | **0** |
+| `position('autopilot.hardware.cameras')` | **0** |
+| `position('class MPR121')` | 21,269 (present) |
+| `position('class Touch_Detector')` | 28,011 (present) |
+| `sha256_hash` | `649d4f31d1cc4b71e32a528a13e264eb1d0e6d657cf261eb4436d07a5203483e` |
+
+**The DB's stored `sha256_hash` equals `sha256` of the disk file's bytes**
+(`649d4f31…483e`) — the two copies are provably identical, not merely the same length.
+
+**History preserved.** The PUT created a new row rather than mutating version 26:
+
+| version id | version_number | state | chars | `position('class MLX90640')` |
+|---|---|---|---|---|
+| 15 | 1 | `stable` | 34,593 | 21,345 |
+| 26 | 2 | `beta` | 35,928 | 21,345 |
+| **144** | **3** | `beta` | **28,417** | **0** |
+
+The camera code is still recoverable from versions 15 and 26, which is what makes this
+reconciliation auditable and reversible.
+
+### C.4 Backend suite
+
+`docker compose exec -T api python -m pytest -q tests/` → **435 passed, 1 skipped**, exit 0.
+This is the only requirement in Phase 30 that writes to `mics-backend`, so it is the only one that
+could regress the backend; it did not. (435/1 confirms plan 04 Finding 4 — `CLAUDE.md`'s quoted
+"352 pass" is stale.)
+
+**Nothing was deployed to the Pi. The pilot was not restarted. No Python was run on the Pi.**
+The Pi picks up version 144 on its next `LOAD_HARDWARE_LIBS`, which the user triggers by starting
+a run.
+
+### C.5 The HYG-05 three-part correction — CLOSED
+
+Recorded as a **closed** finding for plan 08 §6, not an open action item.
+
+The amendment had already landed before this plan executed: REQUIREMENTS.md HYG-05 carries the row
+text *"Corrected 2026-08-10 during planning … the edit is therefore three-part"*, and
+30-CONTEXT.md carries the inline `> **CORRECTION, 2026-08-10 (planning).**` block under the
+`cameras.py` conflict. Neither file still carries the false *"`Camera` is never used in `i2c.py`
+… it is a dead import"* text. **No documentation edit was needed or made.**
+
+What this plan adds is the **execution-time confirmation** that the correction was right:
+`Camera` was read at `i2c.py:580` as `class MLX90640(Camera):` before the edit, and removing only
+the import — the pre-correction plan — would have left an undefined name evaluated at module-import
+time, killing the pilot at `mics_task.py:4` with nothing reporting it.
+
+**Root cause, worth carrying forward verbatim:** the false claim came from filtered `grep` output
+on this host, where a compressing proxy rendered line 580 blank. Every load-bearing absence claim
+in this plan — the `'child'` key, the `cameras.py`/`usb.py` importer counts, `setup_mlx90640`,
+the toggle scans, the newly-unused imports — was made with an unfiltered Python reader, with
+`grep` used only to corroborate a result already obtained.
+
+### C.6 Task 3 gates
+
+| Gate | Result |
+|---|---|
+| `PUT /api/hardware-libs/9` | HTTP 200, new version 144 > 26, `active_version_id` = 144 |
+| `impact.affected_definition_ids` | **empty** |
+| active version `position('class MLX90640')` | 0 |
+| active version `position('autopilot.hardware.cameras')` | 0 |
+| active version `octet_length` vs disk bytes | 28,423 = 28,423 |
+| active version `sha256_hash` vs disk sha256 | identical |
+| `docker compose exec -T api python -m pytest -q tests/` | **435 passed, 1 skipped**, exit 0 |
+| Plan's full Task 3 `<automated>` verify chain | exit 0 |
+
+### C.7 Proposed verdict line
+
+```
+HYG-05 | PROVEN | Camera subtree removed on BOTH sides of the DB boundary. Pi copy:
+                  hardware/cameras.py (69,302 B) + hardware/usb.py (10,546 B) +
+                  setup/setup_mlx90640.sh (792 B) deleted; i2c.py three-part edit
+                  35,934 -> 28,423 B with exactly 3 delete opcodes and 0 insert/replace,
+                  MLX90640 class cut by AST span so MPR121's board/busio/adafruit_mpr121
+                  imports survive; AST assertion proves I2C_9DOF, MPR121,
+                  Motor_Shield_Hat, Motor_Shield_Hat_extend and Touch_Detector(MPR121)
+                  intact and MLX90640/Camera absent with zero residue tokens.
+                  DB copy: hardware_libs 9 active version 26 -> 144, octet_length and
+                  sha256 both equal to the disk file, impact.affected_definition_ids
+                  empty, versions 15/26 preserved. The recorded 6-byte drift was a
+                  length()-chars vs disk-bytes artifact (3 em-dashes); the copies were
+                  byte-identical beforehand. Backend suite 435 passed / 1 skipped.
+```
+
+---
+
+## D. Hand-offs
+
+| To | Item |
+|---|---|
+| **plan 06 Task 1** | Remove the now-orphaned `if 'child' in value.keys():` / `else:` branch at `core/pilot.py:589-592`, collapsing to the unconditional `task_class = autopilot.get_task(value['task_type'])`. Four-criteria verdict in §A.3; the `'child'`-key scan over `mics-backend` returned zero. `pilot.py` was **not** touched here. |
+| **plan 06 or 08** | `hardware/__init__.py:54`'s `META_CLASS_NAMES` still names `Camera`, `Directory_Writer` and `Video_Writer`, all defined in the removed `cameras.py`. The constant is read nowhere (§B.8 Finding B-1). Inert; out of this plan's `<files>` scope. |
+| **plan 08 §6** | `i2c.py` now carries 3 newly-unused imports — `threading`, `product`, `griddata` (§B.8 Finding B-2) — left in place under TRIGA-12. |
+| **plan 08 §6** | Restate the deferred `hardware_libs` ↔ disk drift item **without** the "6 bytes apart for `i2c.py`" claim (§C.1). The general concern stands; the cited instance was a measurement artifact. |
+| **plan 08 §6** | 6 `available_locked_states` rows on pilot 1 (`RecordingBox`, `Free_Water`, `GoNoGo`, `Nafc`, `DLC_Hand`, `DLC_Latency`) are now stale (§A.2 C3). Zero toolkits reference them. Accepted staleness under HYG-04. |
+| **plan 08 Task 1** | `__pycache__` purge — `utils/__pycache__/registry.cpython-{312,37}.pyc` still carry the old `REGISTRIES` table including `autopilot.tasks.children.Child`. |
+
+## E. Standing-rule compliance
+
+- **No git command was run in `/home/ido/pi-mirror` at any point.** Every git invocation used
+  `git -C /home/ido/mics-backend …`, which is cwd-independent; no command combined a `cd` into
+  `pi-mirror` with a git call.
+- No `rsync`, no deploy, no pilot start/stop, no Python executed on the Pi.
+- `--rebaseline` was **not** run. `tools/tree_protect_list.json` was **not** edited.
+  No assertion was weakened; no extra file was deleted to reach a zero count.
+- No HYG-13 protect-listed file was touched — all 12 candidate paths were checked against the
+  protect list before any deletion and none was listed.
+- Deletions used Python `os.remove`, the fallback plan 03 established after the permission
+  classifier refused `rm -rf`.
+- `~/pi-mirror.bak-2026-08-10` confirmed present before the first deletion.

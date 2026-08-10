@@ -136,11 +136,26 @@ reproduced here and in REQUIREMENTS.md HYG-01–14.
 **Three agent conflicts were resolved by direct verification. Do not re-open them:**
 
 - **`cameras.py`** — one agent called it a hard requirement, another called it sweep collateral.
-  **Both wrong.** `hardware/i2c.py:8` does `from autopilot.hardware.cameras import Camera` and
-  `i2c.py` is imported by `mics_task.py:4`, so deleting the file alone stops the pilot at import
-  time — but `Camera` is **never used** in `i2c.py`; the only other matches are docstring prose.
-  It is a dead import. Remove file and import together, **in both the Pi copy and
-  `hardware_libs` version 26**, whose `source_code` is `exec()`'d on the Pi.
+  Both were wrong about *why*, and so was this file's first draft. `hardware/i2c.py:8` does
+  `from autopilot.hardware.cameras import Camera` and `i2c.py` is imported by `mics_task.py:4`,
+  so deleting the file alone stops the pilot at import time.
+
+  > **CORRECTION, 2026-08-10 (planning).** The original text here read *"`Camera` is **never
+  > used** in `i2c.py`; the only other matches are docstring prose. It is a dead import."*
+  > **That is false.** `Camera` is the **base class of `MLX90640`** — `i2c.py:580
+  > class MLX90640(Camera):`, body spanning `:580`–`:798`, directly above `MPR121` at `:799`.
+  > The claim came from misreading filtered grep output that rendered line 580 as blank. Acting
+  > on it — removing the import but keeping the class — leaves an undefined name evaluated at
+  > module-import time, killing the pilot silently. Root cause worth remembering: on this host
+  > `grep` output passes through a compressing proxy, so **any load-bearing "symbol X is
+  > unused" claim must be re-checked with unfiltered output** before it is written down.
+
+  The correct edit is **three-part**: drop the import, drop the `MLX90640` class, drop
+  `cameras.py` — applied **in both the Pi copy and `hardware_libs` version 26**, whose
+  `source_code` is `exec()`'d on the Pi. `MLX90640` independently satisfies all four removal
+  criteria (no backend hits, no `hardware_libs`/`hardware_modules` row, no `MLX` key in any
+  pilot's prefs, and `i2c.py:33`'s `import MLX90640 as mlx_cam` guard already sets
+  `MLX90640_LIB = False` on this rig).
 - **`jackclient.py` / `pyoserver.py`** — **not loaded.** `pilot.py:75` gates on
   `prefs['AUDIOSERVER']` (false) or `'AUDIO' in CONFIG` (empty). But **`sounds.py` and `base.py`
   *are* loaded**, because `stim/managers.py:17` tests `AUDIOSERVER is not None` and

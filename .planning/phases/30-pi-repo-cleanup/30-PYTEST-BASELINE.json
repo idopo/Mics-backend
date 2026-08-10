@@ -2,8 +2,8 @@
   "captured": "2026-08-10",
   "host": "python 3.12.3 / pytest 9.1.1",
   "command": "cd /home/ido/pi-mirror && python3 -m pytest -q tests/",
-  "collected": 380,
-  "passed": 201,
+  "collected": 381,
+  "passed": 202,
   "failed": 179,
   "errors": 0,
   "collect_ignored": [
@@ -214,7 +214,7 @@
     "tests/test_view_detector_operand.py::test_regression_plain_view_operand_unchanged",
     "tests/test_view_detector_operand.py::test_unknown_ref_raises_naming_ref_and_available_refs"
   ],
-  "note": "Pre-existing debt predating Phase 30; the suite has never been run to green anywhere. Later gates assert a DELTA against these numbers, never a bare exit code. Measured after plan 01 added tests/test_tree_integrity.py (20 tests, all passing): 179 failed / 201 passed over 380 collected == the pre-plan-01 179/181 over 360 plus the 20 new guard tests, i.e. the pre-existing failure set is bit-for-bit unchanged.",
+  "note": "Pre-existing debt predating Phase 30; the suite has never been run to green anywhere. Later gates assert a DELTA against these numbers, never a bare exit code. Measured after plan 01 added tests/test_tree_integrity.py (21 tests, all passing): 179 failed / 202 passed over 381 collected == the pre-plan-01 179/181 over 360 plus the 21 new guard tests, i.e. the pre-existing failure set is bit-for-bit unchanged.",
   "module_count_reconciliation": "23 (HYG-13) = 21 pre-existing present + 2 Phase 26 reserved-absent. 22 present after plan 01 = 21 pre-existing + tests/test_tree_integrity.py (the Wave 0 guard's own tests). 20 collectable here = 22 present - 2 Pi-only modules (npyscreen) that are collect_ignored. The plan text's '19 collectable' predates its own Task 1 artifact; see 30-01-SUMMARY.md Finding 1.",
   "note_on_verbosity": "pytest.ini carries addopts=-q, so `pytest -q tests/` runs at -qq: the final 'N failed, M passed' line is suppressed but the FAILED node-id lines are not. Use `pytest tests/ --tb=no` when you want the counts line.",
   "delta_command": "cd /home/ido/pi-mirror && python3 - <<'PY'\nimport json,subprocess,sys\nb=json.load(open('/home/ido/mics-backend/.planning/phases/30-pi-repo-cleanup/30-PYTEST-BASELINE.json'))\nr=subprocess.run([sys.executable,'-m','pytest','-q','tests/'],capture_output=True,text=True)\nif r.returncode == 2 or ('error' in r.stdout.lower() and 'during collection' in r.stdout):\n    print('COLLECTION ERROR - not a delta, a break'); print(r.stdout[-2000:]); sys.exit(1)\nnow={l.split()[1] for l in r.stdout.splitlines() if l.startswith('FAILED')}\nnew=sorted(now-set(b['failing_node_ids']))\nprint('new failures:',len(new));  [print(' ',n) for n in new]\nsys.exit(1 if new else 0)\nPY"

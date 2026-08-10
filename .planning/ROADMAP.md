@@ -36,6 +36,8 @@
 | 26 | OpenEphys Device Control | MICS starts/stops the OE recording itself, names the save folder per subject/session, writes labelled markers into the recording, and records the path back into MICS. Control only — no neural data into the task | EPHYS-01–05 | ○ Pending |
 | 27 | OpenEphys Firing Rate over ZMQ | Pi SUBs to the OE ZMQ plugin, decodes spikes in a versioned lib's `@decoder`, maintains a windowed rate per declared unit as an ordinary view key, logs `(ts_pi_recv, oe_sample)` pairs for clock co-registration | EPHYS-06–10 | ○ Pending |
 | 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
+| 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
+| 30 | Pi Repo Cleanup | Remove what the current architecture superseded — the replaced Terminal tree, 27 legacy task plugins and their orphaned base classes, unreachable hardware drivers, ~190 MB of vendored installers and build output, and 244 lines of dead commented code — then publish a clean, still-deployable repo from a fresh `git init`. Judged by **runtime reachability, never git history**. Blocker: a leaked Gmail app password lives in the tree *and* in history | HYG-01–14 | ○ Pending — audited 2026-08-10, not yet planned |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. See `.planning/STABILIZATION_PLAN.md`.
 
@@ -1102,6 +1104,170 @@ Plans:
 - [x] 29-06-PLAN.md — W3 · useLayoutPersistence hook: hydrate positions, debounced layout PUT off the FDA autosave path — done 2026-08-05, see `29-06-SUMMARY.md`
 - [x] 29-07-PLAN.md — W4 · placement for new states + pane context menu with a persisting "Restore default layout" — done 2026-08-05, see `29-07-SUMMARY.md`
 - [ ] 29-08-PLAN.md — W5 · consolidated gate sweep + CANVAS-12 human proof on definitions 186 + 172 (11 checks)
+
+### Phase 30: Pi Repo Cleanup
+
+**Goal:** The Pi tree becomes a repository someone can read. Everything the current
+architecture superseded — the replaced Terminal GUI, the 27 legacy task plugins, the hardware
+drivers no code path reaches, 190 MB of vendored installers, build output and rotated logs — is
+gone, along with 244 lines of dead commented-out code. A leaked Gmail app password is revoked
+and absent from history. What remains is published as a new repo that still starts the pilot
+unchanged. **Removal is judged by what the current architecture needs, never by git history.**
+
+**Requirements**: HYG-01 through HYG-14
+
+**Depends on:** Phase 18 (supplies the five `external_hardware*` files that must survive the
+sweep — two of them appear in no plan manifest), Phase 23 (`log_value.py`, compute libs),
+Phase 24 (already deleted the touch-detector callbacks — do not re-delete), Phase 25 (left
+uncommitted working-tree edits and deployed debug prints in the mirror). **Not blocked by
+Phase 26–28** — no OpenEphys file exists yet, but `openephys_client.py` and its two test
+modules are reserved names the sweep must not treat as strays if 26 lands first.
+
+**Plans:** not yet broken down (run `/gsd:plan-phase 30`)
+
+**Why this is its own phase.** Every prior phase moved responsibility *off* the Pi — hardware
+source into `hardware_libs` (9, 10, 17), toolkits and FDA into `task_definitions` (11, 12, 15,
+16, 23, 24, 25). None of them ever removed what they superseded, because each was scoped to
+ship a capability, not to reclaim ground. The residue is now the majority of the tree. Folding
+this into a feature phase would put a destructive sweep inside a phase verified on behaviour;
+it needs its own rollback story and its own hardware checkpoint.
+
+**Audit of record:** completed 2026-08-10 by five independent agents (runtime reachability,
+legacy assets, backend contract, GSD phase history, commented-out code), cross-checked against
+the live Postgres DB and against which `.cpython-37` bytecode the Pi itself wrote. Conflicting
+agent findings on `cameras.py`, `jackclient.py` and `unreal.py` were resolved by direct
+verification — see `30-CONTEXT.md`.
+
+> **Decision 2026-08-10 — this phase deliberately departs from the plan of record.** No phase
+> document in phases 1–29 authorizes deleting a single Pi *file*; every authorized deletion is
+> of a method, constant or import inside a surviving file, and the corpus explicitly retains
+> `pilot/plugins/*.py` (they feed `available_locked_states`) and `learning_cage.detectedLick`
+> ("the reference implementation and a one-line rollback"). That posture was correct while
+> source-authored toolkits were still dispatched. It no longer holds: **all live work is
+> backend-authored and sourceless**, confirmed by the user 2026-08-10 and corroborated by the
+> DB — protocols 56/57/58 all run `source_less_toolkit`, whose `locked_state_source` is NULL
+> and which therefore dispatches to `mics_task`, not to any plugin file. The 43 protocol steps
+> naming `elastic_test` and 15 naming `AppetitveTaskReal` are legacy rows that are not run.
+> This departure is recorded here so a future reader does not mistake it for an oversight.
+
+**Success criteria:**
+1. The pilot still starts: `python3 -m autopilot.core.pilot -f pilot/prefs.json` reaches
+   HANDSHAKE on the rig from the cleaned tree, and a real session runs to completion with
+   CONTINUOUS events landing in ES exactly as before.
+2. The leaked credential is revoked at Google **and** absent from the new repo's history —
+   proven by `git log -p | grep` over the full history of the new repo returning nothing.
+   The new repo is a fresh `git init`, never a clone or a filtered history.
+3. `pilot/plugins/` and its orphans (`learning_cage.py`, `mics_cage_task.py`, `unreal.py`) are
+   removed **in a single change**, never base-class-first — `api/main.py:1059-1070` raises 400
+   on an unresolvable base class and, because the commit is at `:1117` inside one `try`,
+   discards the tasks upsert, the toolkit upsert, the hardware-config seed and the
+   locked-states upsert together.
+4. A HANDSHAKE from the cleaned Pi reports `tasks: []` and the backend treats it as a no-op —
+   `tasks_received: 0`, no row deleted, no 500. Verified against the live API, not assumed.
+5. `cameras.py` is removed only together with the dead `from autopilot.hardware.cameras import
+   Camera` at `i2c.py:8` — **and the matching edit to `hardware_libs` version 26**, whose
+   `source_code` is `exec()`'d on the Pi. The two copies have already drifted 6 bytes; this
+   phase reconciles them or records why not.
+6. The five `external_hardware*` files, all 23 root test modules, and `fda_vocabulary.py`
+   survive the sweep intact, proven by a post-sweep manifest diff.
+7. Every removed file is justified in the phase's audit table by *reachability*, not by age or
+   git history — the sweep is reproducible from the criteria, not from a hand-list.
+8. `pilot/prefs.json` ships as a template with no lab IPs, no `SUBJECT`, no `PORT_CALIBRATION`
+   and no rig-specific pin values; the device's real prefs are untouched.
+9. Rig proof recorded in `30-HARDWARE-VALIDATION.md` with run numbers and md5 manifests, in
+   the house format phases 18/23/24/25 established.
+
+**NOT in scope:** any change on the Pi itself beyond a deliberate, separately-gated deploy
+step; deleting anything from the *existing* `pi-mirror` git history; the OpenEphys arc;
+resolving the four held behavioural toggles (see below); the backend-side dead code the audit
+found (`orchestrator_station._run_watchdog`, the `task_files` branch, `on_task_error`).
+
+**Constraints — each of these has already bitten once, or would:**
+- **Never delete a base class before its subclasses.** See success criterion 3.
+- **Never key deletion on "named in a PLAN".** `external_hardware_ingress.py` and
+  `external_hardware_binding.py` emerged during Phase 18 execution and appear in no plan's
+  `files_modified`; `external_hardware.py` imports both, and `_binding.py` is the single writer
+  of the `alive` tracker that Phase 19 depends on entirely.
+- **Never blanket-strip debug prints from `Event_Dispatcher.py`.** Phase 25 left real fixes
+  interleaved with the prints there — a guarded tick read and the `_dropped_no_clock` /
+  `_dropped_on_send` counters. Those must survive.
+- **A syntactically broken file left in `autopilot/tasks/` is worse than a deleted one.**
+  `list_classes` AST-parses that directory with no per-file guard, so one bad file ships
+  `tasks: []` in every handshake. (`pilot/plugins/` *is* guarded per file — the asymmetry is
+  real and load-bearing.)
+- **The Pi rules stand** (`STATE.md:1723-1744`): no git in `/home/ido/pi-mirror`, not even
+  `status`; never `rsync --delete`; never start/stop the pilot; never run Python on the Pi;
+  Pi tests are USER-RUN.
+
+**Files to change** (verified against live source, 2026-08-10):
+- `pilot/plugins/` — all 27 task files removed. Keep the directory with a `.gitkeep`:
+  `plugins.py:46-48` logs an exception and returns `{}` on a missing dir, which is survivable
+  but noisy.
+- `autopilot/autopilot/tasks/` — remove `learning_cage.py`, `mics_cage_task.py`, `children.py`,
+  `nafc.py`, `gonogo.py`, `free_water.py`, `test.py`, `RecordingBox.py`, `protocol_scripts.py`.
+  Removing the sweep collateral here is ~200 KB of import work saved at every boot.
+- `autopilot/autopilot/hardware/` — remove `cameras.py`, `usb.py`, `unreal.py`; edit `i2c.py:8`.
+  **`gpio.py`, `i2c.py`, `mixer.py`, `timer.py`, `__init__.py` and all five `external_hardware*`
+  files stay** — required by `pilot.py:83`, `mics_task.py:3-6`, and by every DB-stored lib
+  source, which imports back into `autopilot.hardware.*`.
+- `autopilot/autopilot/core/` — remove `gui.py`, `terminal.py`, `plots.py`, `subject.py`,
+  `styles.py`, `utils.py` (0 bytes), `reward.py`. **`pilot.py`, `loggers.py`, `View.py` stay.**
+  Separately, `pilot.py` loses `open_file()` and the `self.h5f` cleanup at `:640-641` (ES is
+  the sole data path, confirmed 2026-08-10) and the hardcoded `/home/liors/…` at `:49`.
+- `autopilot/autopilot/{viz,data_handlers}/`, `utils/invoker.py`, `utils/Event.py` (singular —
+  superseded by `Events.py`), `setup/request_helpers.py` — removed. **`setup/` otherwise stays:
+  `autopilot/__init__.py:4` imports `setup_autopilot` unconditionally, so deleting it breaks
+  `import autopilot` outright.**
+- `terminal/`, `run_terminal.sh`, `.vscode/` — removed entirely.
+- `autopilot/code_2023.deb` (87 MB), `autopilot/docs/`, `examples/`, `tests/`, `src/`,
+  `home/`, `~/`, `auto_pi_lot.egg-info/`, upstream CI dotfiles, `Cow.wav`, the SoundBible wav —
+  removed. **`LICENSE` (MPL-2.0) is mandatory and stays.**
+- `autopilot/pytest.ini` — removed, **and a root pytest config added in the same change**, or
+  the root suite (which currently relies on per-file `sys.path` hacks) has no config at all.
+- `pilot/prefs.json` — templated. `pilot/data/`, `pilot/logs/` — contents dropped, paths kept
+  (prefs auto-creates them at boot; `.gitkeep` + `.gitignore`).
+- **`pilot/sounds/` stays untouched** — `mixer.py:18` resolves by bare filename through
+  `SOUNDDIR`, so an unreferenced-looking wav can still be a live cue.
+- Commented-out rows: ~244 lines across `station.py` (52), `message.py` (50), `gpio.py` (28),
+  `task.py` (28) and 11 smaller files. `mics_task.py` yields only 11 — it is the cleanest large
+  file in the tree, contrary to expectation.
+
+**Held pending user decision — do not delete in this phase:** the touch-sensor calibration
+constant `0x3f` (vs the live `0x08`, an ~8× lick-sensitivity difference), the IR1–IR7 trigger
+registrations, the `OG_TRIGGER` optogenetics pulse, and the silenced handshake-watchdog
+warnings. Each encodes hardware knowledge recorded nowhere else.
+
+**Separate defects surfaced by the audit, to be fixed but not silently folded in here:**
+- `mics_task.py:1589` imports `autopilot.autopilot.core.pilot`, a path that does not resolve —
+  so **`LOAD_HARDWARE_LIBS` silently fails whenever a task is running**, the exception dying
+  unhandled in the `Net_Node` listen thread. This undercuts the mechanism the whole
+  hardware-centralization arc depends on.
+- `pilot.py:1137-1148` — NTP enable and clock-freeze call sites are both commented out while
+  the methods stay live. **Confirmed 2026-08-10 as a regression, not a decision: restore, do
+  not delete.** Timing integrity on a rig that timestamps behavioural events.
+- `i2c.py:819` — `except(e):` references an undefined name, so MPR121 init failures raise
+  `NameError`. `i2c.py` is off-limits under TRIGA-12, so this needs its own decision.
+- `pilot.py:887` calls `get_hardware_class(...)`, defined nowhere; `STREAM_VIDEO` raises.
+- The Pi has **no `TASK_ERROR` emitter at all**, so a failed START is invisible: the run stays
+  `running` in the DB forever. This is the phase's dominant risk multiplier and the reason
+  criterion 1 is a live-session proof rather than an import check.
+
+**Verification posture:** the agent edits only `/home/ido/pi-mirror`, runs `python3 -m
+py_compile` (the `autopilot` package cannot be imported on this host — `npyscreen` is absent),
+and runs **no git command inside the mirror**. Deployment to the Pi and the Pi test suite are
+**USER-RUN**. The agent does not start or stop the pilot. The rig checkpoint is non-autonomous.
+
+> **Rollout note.** `tools/sync_pi.sh` syncs only `autopilot/` and passes no `--delete`, and
+> never touches `pilot/`. Two consequences: nothing removed here can break the live Pi, and —
+> more importantly — **the cleaned repo cannot remove stale files from the Pi either.** Deleted
+> plugins will linger on the device and keep being swept into every HANDSHAKE until removed by
+> hand. Device reconciliation is an explicit, user-run step, not a side effect of deploying.
+
+> **Read before any rig work on pilot 1.** The Phase 18 demo fixture `ExtlinkDemo` (module 62,
+> `role: router_bind`, `required: true`) is still assigned to toolkit 100 and configured on
+> pilot 1, so every real session there preflight-fails or hangs the full 30 s timeout; a TCP
+> echo listener on the dev host at `132.77.73.125:5597` is a second standing dependency.
+> Teardown is recorded in `18-HARDWARE-VALIDATION.md` §3. Clear this before criterion 1.
 
 ---
 *Created: 2026-03-15*

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-09T11:35:50.883Z"
+last_updated: "2026-08-10T13:04:19.684Z"
 progress:
-  total_phases: 24
+  total_phases: 25
   completed_phases: 8
-  total_plans: 85
-  completed_plans: 64
-  percent: 76
+  total_plans: 94
+  completed_plans: 65
+  percent: 71
 ---
 
 # STATE: MICS Backend
@@ -28,8 +28,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
+**Phase 30 (Pi Repo Cleanup) is IN PROGRESS — 1/9 plans done (2026-08-10).** Plan 01 (Wave 0) built the instrument the whole phase is verified with: `/home/ido/pi-mirror/tools/check_tree_integrity.py` (+ `tools/tree_integrity/`, 21 unit tests) exits **0** on the untouched tree, holding `mics_task.py:1589` as **1 known violation, exempted** under an inverted assertion. Root `pytest.ini` + `conftest.py` landed (HYG-09); `autopilot/pytest.ini` + `.coveragerc` removed. Pre-sweep baselines recorded: `30-PYTEST-BASELINE.json` (179 failed / 202 passed, full failing-node-id list + reusable `delta_command`) and `30-HARDWARE-VALIDATION.md` (30-path md5 manifest, 40-member closure, removal ledger). HYG-01 credential probe captured at `/home/ido/.hyg01-probe.txt`, outside every repo. **Wave 1 (plans 02 + 03, parallel) is unblocked.** No deletion has happened yet.
 **Phase 18 (MICS-Link — Pi Transport + ExternalHardware) is now COMPLETE (2026-08-09, 15/15 plans)** — see the Phase 18 status section below for the six-run rig checkpoint's final verdicts. Phase 26 (OpenEphys Device Control), which depends on Phase 18, can now be planned/executed; residual gaps to note going in: EXTLINK-14 (`sub_connect`) and EXTLINK-18 (`role: "none"` control-only, OpenEphys's own transport shape) are unit-tested but UNPROVEN end-to-end on real hardware.
-**Progress:** [████████░░] 76%
+**Progress:** [███████░░░] 71%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -1522,6 +1523,12 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 | CALLABLE_METHODS is developer-defined, not UI-created | 2026-03-15 | Developer marks Python methods as callable from JSON by listing in CALLABLE_METHODS; GUI consumes from task_toolkits.callable_methods; researchers cannot create callable methods from UI |
 | Monaco + asyncssh for Pi editor | 2026-03-15 | Jupyter/code-server too heavy for Pi |
 | Phase 5 independent of Phases 1-4 | 2026-03-15 | Pi editor viewer has no dependency on toolkit/FDA work |
+| Phase 30's Wave 0 baseline is "1 known violation, exempted", not zero | 2026-08-10 | `mics_task.py:1589` imports the non-resolving `autopilot.autopilot.core.pilot`. The guard flags it on the untouched tree, so a zero-violation acceptance bar could only be met by repairing it — an untested behavioural change to the rig shipped under cover of a cleanup. The assertion is inverted instead: the reference must stay present AND stay broken |
+| The tree-integrity guard matches invocation context, never bare dotted tokens | 2026-08-10 | Measured: a bare-token rule yields 89 false positives (attribute chains like `autopilot.tasks.mics_task.prefs.get` are prose); a prefix-lenient rule yields 0 and is blind to `setup_autopilot.py:198`. `(?:-m|import|from)\s+(autopilot\.[\w.]+)` yields 0 on the untouched tree and fires the instant a survivor names a removed module |
+| `from <pkg> import <name>` aliases are resolved only when `__init__.py` does not bind the name | 2026-08-10 | Resolving `node.module` alone is blind to the 19 `from autopilot.hardware import unreal` importers; the naive `module + '.' + alias` fix flags 43 re-exported classes. Gating on `init_bindings` gives 13/5/4 violations on the three simulated removals and 0 false positives |
+| The guard excludes its own source from every tree-wide scan, including clause 2(d) | 2026-08-10 | It necessarily contains the literals it searches for. 2(d) is included deliberately, not by analogy: `tree_protect_list.json`'s `scan_skip` values are repo-relative glob-free paths, so deleting those trees would turn the guard's own protect-list into four self-inflicted violations |
+| No Phase 30 gate chains a bare `pytest -q` with `&&` | 2026-08-10 | The Pi suite has 179 pre-existing failures and has never been run to green anywhere. Gates assert a delta against `30-PYTEST-BASELINE.json`'s `failing_node_ids` via the recorded `delta_command`, which also treats exit 2 as a collection break rather than a delta |
+| NTP restoration deferred; F3 asserts the clock block stays commented | 2026-08-10 | User decision mid-execution of plan 30-01. Asserting the calls are live would fail `--final` at the phase exit gate over a change the phase no longer makes; asserting they stay commented also catches plan 06's comment sweep eating the deferred block |
 
 ---
 - [Phase 01-pi-foundation]: nohup launch uses < /dev/null to prevent SSH stdin hang (required for pilot restart)
@@ -1660,7 +1667,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - Phases 12–17 were validated manually on the live system; the "Human Verification Required" lists in their VERIFICATION.md files are stale bookkeeping, not open work.
 - Phase 25 added (2026-07-27): Detector-Derived View Keys (DVK-01–08) — backend derives `LICKER0…LICKER3` from `device_name` × `num_detectors` and the FDA editor offers them as view operands / `key_template` values; per-pilot resolution lands in Phase 13's `preflight_validate`. Runs **after** Phase 24, which it depends on.
 - Phase 30 added (2026-08-10): Pi Repo Cleanup (HYG-01–14) — remove what phases 9–25 superseded on the Pi but never reclaimed (the Terminal tree, 27 legacy plugins + orphaned base classes, unreachable hardware drivers, ~190 MB of vendored/generated bulk, 244 lines of dead commented code), then publish a clean deployable repo from a fresh `git init`. Preceded by a five-agent audit (runtime reachability, legacy assets, backend contract, GSD phase history, commented-out code) cross-checked against the live DB and the Pi's own `.cpython-37` bytecode; conflicting agent findings on `cameras.py`, `jackclient.py` and `unreal.py` were settled by direct verification. **Deliberately departs from the plan of record** — no phase doc in 1–29 authorizes deleting a Pi file, and the corpus explicitly retains `pilot/plugins/*.py` and `learning_cage.detectedLick`. That posture was correct while source-authored toolkits were dispatched; it no longer holds now that all live work is sourceless (user-confirmed 2026-08-10; protocols 56/57/58 all run `source_less_toolkit`, whose NULL `locked_state_source` dispatches to `mics_task`). Blocker surfaced: a live Gmail app password at `pilot/plugins/AssociationLearning.py:1323`, present in `.git` history too — hence fresh-init publication, not a clone.
-- Decisions taken 2026-08-10 (user, during the Phase 30 audit): NTP clock-freeze at `pilot.py:1137-1148` is a **regression to restore**, not code to delete; **ES is the sole data path**, so `open_file()` + the `h5f` cleanup + the commented write block go as one set; **all rig-specific config is stripped** into templates (free, since `sync_pi.sh` never pushes `pilot/`); `pilot/plugins/` is deleted **entirely**. Four behavioural toggles remain **held** pending decision — touch constant `0x3f` vs the live `0x08`, IR1–IR7 registrations, the `OG_TRIGGER` opto pulse, and the silenced handshake-watchdog warnings.
+- **SUPERSEDED 2026-08-10 (user, during plan 30-01 execution): the NTP restoration is DEFERRED.** The clock block at `pilot.py:1137-1148` stays **commented out**; plan 06 no longer uncomments it and the user will handle it separately. The guard's `--final` F3 assertion was inverted accordingly — `self.enable_ntp_and_wait()` and `self.disable_ntp()` must appear **only** in commented form, and the two anchor comments (`# ---- CLOCK SETUP ----`, `# Freeze wall clock so it never jumps during the task`) are asserted to survive, because plan 06's 244-line dead-comment sweep targets exactly that shape and would otherwise eat the deferred block invisibly. See `30-HARDWARE-VALIDATION.md` §6.7.
+- Decisions taken 2026-08-10 (user, during the Phase 30 audit): NTP clock-freeze at `pilot.py:1137-1148` is a **regression to restore**, not code to delete *(superseded — see the entry immediately above)*; **ES is the sole data path**, so `open_file()` + the `h5f` cleanup + the commented write block go as one set; **all rig-specific config is stripped** into templates (free, since `sync_pi.sh` never pushes `pilot/`); `pilot/plugins/` is deleted **entirely**. Four behavioural toggles remain **held** pending decision — touch constant `0x3f` vs the live `0x08`, IR1–IR7 registrations, the `OG_TRIGGER` opto pulse, and the silenced handshake-watchdog warnings.
 - Defects surfaced by the Phase 30 audit, tracked but not folded into it: `mics_task.py:1589` imports the non-resolving `autopilot.autopilot.core.pilot`, so **`LOAD_HARDWARE_LIBS` silently fails whenever a task is running** (exception dies unhandled in the `Net_Node` listen thread) — this undercuts the mechanism the whole hardware-centralization arc rests on; the Pi has **no `TASK_ERROR` emitter at all**, so a failed START leaves the run `running` in the DB indefinitely; `i2c.py:819`'s `except(e):` on an undefined name; `pilot.py:887`'s call to the undefined `get_hardware_class`. Also: `hardware_libs` version 26 and the Pi's `i2c.py` have **already drifted 6 bytes**, with no process keeping the exec'd DB copy in sync with disk.
 - Bookkeeping errors found 2026-08-10 while auditing: `ROADMAP.md`'s phase-summary table had **no row for Phase 29** (added) and its Phase 18 row still reads `○ Pending — must be re-planned` although `STATE.md:276` records **Phase 18 COMPLETE, 15/15 plans, 2026-08-09**. The column-shift corruption noted in `STABILIZATION_PLAN.md:191-193` still affects rows 11–14, 16 and 18.
 - TRIGA-12 added to Phase 24 (2026-07-27) and folded into plan 24-06: `check_for_detectors` matches detectors by capability instead of `isinstance(v, Touch_Detector)`. Identity matching silently yields zero `LICKER` trackers for a detector declared through the hardware-module registry, because `_resolve_hardware_classes` `exec`s the class from `source_code` into a fresh class object. `hardware/i2c.py` stays off-limits, so the fix lives in `check_for_detectors`. Plan 06's "do not touch `mics_task.py`" constraint is now scoped to that one method — safe because 06 is the only wave-3 plan and runs after 01 and 04.
@@ -1773,6 +1781,18 @@ conflicting instruction inside a PLAN file.
 4. After 25 and the "review" step: **Phase 18** (re-planned, verification passed, blocked on
    nothing — approved for `/gsd:execute-phase 18`), then **26 → 27 → 28** (the OpenEphys arc,
    depends on 18). See execution order in "Roadmap Evolution" below.
+5. **Phase 30 Wave 1 — plans 02 and 03, in parallel** (no shared files). Wave 0 is complete and
+   its instrument is live. Every deletion task must run
+   `python3 /home/ido/pi-mirror/tools/check_tree_integrity.py --strict` (expect
+   `OK: 40 closure members, 30 protected files, 1 known-dangling exemptions held, 0 violations`),
+   and must assert pytest **deltas** using the `delta_command` in `30-PYTEST-BASELINE.json` —
+   never a bare `pytest -q` chained with `&&`. **Never run `--rebaseline` again**: it would erase
+   the evidence the manifest exists to provide. `--final` is expected to FAIL until Wave 5 (45
+   violations today, all owned by later plans) — do not try to make it pass early.
+   **Two open human actions:** revoke the Gmail app password at Google *before* publication (the
+   proof literals are at `/home/ido/.hyg01-probe.txt`, mode 600 — do not move or edit it), and
+   clear `ExtlinkDemo` off pilot 1 (module 62, lib 177, pilot config 21, task def 434) before the
+   HYG-02 rig session in plan 09.
 
 Note: `gsd-tools requirements mark-complete` found no checkbox/traceability rows for
 CMP-03/04/05/06/10/11/12/15/17/19 in `REQUIREMENTS.md` (same gap previously found for
@@ -1799,3 +1819,21 @@ toolkit has `semantic_hardware=null`. Stale unhashed React bundle found during s
 a second pending GSD todo, not a phase defect. See `23-12-SUMMARY.md` and
 `23-HARDWARE-VALIDATION.md`'s sign-off section. Next: Phase 25 plan 06 (last plan in that phase),
 then review → Phase 18 → 26 → 27 → 28, per Next Actions above.*
+
+*Last updated: 2026-08-10 — **phase 30 plan 01 executed (Wave 0 of 9)**. Built
+`/home/ido/pi-mirror/tools/check_tree_integrity.py` + `tools/tree_integrity/` + 21 unit tests:
+`--strict` exits **0** on the untouched tree, holding `mics_task.py:1589` as **1 known violation,
+exempted** under an inverted assertion (it must stay present AND stay broken). Calibration
+reproduced the plan's independent measurements exactly — simulated removals of `hardware/unreal.py`
+/ `hardware/cameras.py` / `core/subject.py` give 13 / 5 / 4 violations, and nothing was deleted to
+prove it. HYG-09 landed (root `pytest.ini` + `conftest.py`; `autopilot/pytest.ini` + `.coveragerc`
+removed; collection no longer errors). Baselines recorded: `30-PYTEST-BASELINE.json` (179 failed /
+202 passed, full failing-node-id list, reusable `delta_command`) and `30-HARDWARE-VALIDATION.md`
+(30-path md5 manifest, 40-member closure, empty removal ledger, 7 documented instrument
+exemptions). HYG-01 credential probe at `/home/ido/.hyg01-probe.txt`, outside every repo.
+**Two findings, neither silently patched:** the plan's "19 collectable modules" is unreachable
+because plan 01 itself adds a 22nd test module — corrected to 20 and reconciled in §2; and the
+user **deferred the NTP restoration** mid-execution, so F3's assertion was inverted before it ever
+ran. `requirements mark-complete` found no checkbox rows for HYG-01/09/12/13 (same structural gap
+as CMP/DVK) — and substantively they remain UNPROVEN anyway, since Wave 0 deletes nothing. Next:
+Phase 30 Wave 1 (plans 02 + 03, in parallel).*

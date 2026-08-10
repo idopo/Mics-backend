@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-10T13:04:19.684Z"
+last_updated: "2026-08-10T13:22:48.072Z"
 progress:
   total_phases: 25
   completed_phases: 8
   total_plans: 94
-  completed_plans: 65
-  percent: 71
+  completed_plans: 66
+  percent: 72
 ---
 
 # STATE: MICS Backend
@@ -28,9 +28,9 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
-**Phase 30 (Pi Repo Cleanup) is IN PROGRESS — 1/9 plans done (2026-08-10).** Plan 01 (Wave 0) built the instrument the whole phase is verified with: `/home/ido/pi-mirror/tools/check_tree_integrity.py` (+ `tools/tree_integrity/`, 21 unit tests) exits **0** on the untouched tree, holding `mics_task.py:1589` as **1 known violation, exempted** under an inverted assertion. Root `pytest.ini` + `conftest.py` landed (HYG-09); `autopilot/pytest.ini` + `.coveragerc` removed. Pre-sweep baselines recorded: `30-PYTEST-BASELINE.json` (179 failed / 202 passed, full failing-node-id list + reusable `delta_command`) and `30-HARDWARE-VALIDATION.md` (30-path md5 manifest, 40-member closure, removal ledger). HYG-01 credential probe captured at `/home/ido/.hyg01-probe.txt`, outside every repo. **Wave 1 (plans 02 + 03, parallel) is unblocked.** No deletion has happened yet.
+**Phase 30 (Pi Repo Cleanup) is IN PROGRESS — 2/9 plans done (2026-08-10).** Plan 01 (Wave 0) built the instrument the whole phase is verified with: `/home/ido/pi-mirror/tools/check_tree_integrity.py` (+ `tools/tree_integrity/`, 21 unit tests) exits **0** on the untouched tree, holding `mics_task.py:1589` as **1 known violation, exempted** under an inverted assertion. Root `pytest.ini` + `conftest.py` landed (HYG-09); `autopilot/pytest.ini` + `.coveragerc` removed. Pre-sweep baselines recorded: `30-PYTEST-BASELINE.json` (179 failed / 202 passed, full failing-node-id list + reusable `delta_command`) and `30-HARDWARE-VALIDATION.md` (30-path md5 manifest, 40-member closure, removal ledger). HYG-01 credential probe captured at `/home/ido/.hyg01-probe.txt`, outside every repo. **Plan 02 (Wave 1, HYG-08) is DONE:** 28 paths / **97,691,320 B** of vendored and generated bulk removed from `pi-mirror` — `code_2023.deb` (83 MB), the 9.1 MB `docs/` tree, the upstream `tests/` and `examples/` suites, two uninitialised submodule mounts + `.gitmodules`, the tilde-literal `home/` and `~/`, `auto_pi_lot.egg-info/`, `Testing_stepper_motor_Hat/`, four CI dotfiles, seven zero-byte logger files, `output.txt`, `environment.yml.save`, and the two byte-identical root wav duplicates. Every removal carries a four-criteria verdict in `ledger/30-02-ledger.md` (C1 vs the 40-member static closure, C3 vs unfiltered scans of both trees + 4 live DB tables). `.gitignore` hardened (`__pycache__/`, `.pytest_cache/`, `*.egg-info/`, `*.deb`). Guard `--strict` exit 0, `compileall` exit 0, pytest delta 0 new failures. **All three Wave-1 `scan_skip` directories are gone, retiring the guard's blind spot inside its own wave.** `LICENSE`, `pilot/sounds/` (2,326,388 B unchanged) and the 22-module root `tests/` suite intact; no git command run in `pi-mirror`. **Two items for the phase gate:** the `__pycache__`/`.pyc`/`.pytest_cache` purge is deferred to plan 08 Task 1 (plan 03's `compileall` runs in the same wave), and `adafruit-circuitpython-motorkit` — imported by surviving `i2c.py:890` — is **absent from `requirements.txt`**; its only install note lived in the removed `Testing_stepper_motor_Hat/README.md` and is transcribed into ledger §D. **Plan 03 was still executing at plan 02's close**, so tree-level `du` deltas are not attributable this wave — use per-path totals.
 **Phase 18 (MICS-Link — Pi Transport + ExternalHardware) is now COMPLETE (2026-08-09, 15/15 plans)** — see the Phase 18 status section below for the six-run rig checkpoint's final verdicts. Phase 26 (OpenEphys Device Control), which depends on Phase 18, can now be planned/executed; residual gaps to note going in: EXTLINK-14 (`sub_connect`) and EXTLINK-18 (`role: "none"` control-only, OpenEphys's own transport shape) are unit-tested but UNPROVEN end-to-end on real hardware.
-**Progress:** [███████░░░] 71%
+**Progress:** [███████░░░] 72%
 
 ### Phase 29 status (2026-08-05) — plans 01, 03, 04, 05, 06, 07/8 executed
 
@@ -1646,6 +1646,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 18]: extlink_driver.py defers zmq/msgpack imports to mode handlers so --help works before either is installed; extlink_wire.py duplicates (not imports) the Pi's wire codec since the laptop has no pi-mirror checkout
 - [Phase 18]: 18-11: reused bind_lifecycle's already-constructed LifecycleRunner (hw._lifecycle.start_async) instead of building a second one; EXTLINK_SKIP_WAIT implemented as a plain flag settable via the existing type:flag trigger-assignment action, no new ZMQ plumbing
 - [Phase 18]: 18-12: TEARDOWN deliberately deferred; both rig failures root-caused to a fixture egress-probe config gap, not a Phase 18 defect
+- [Phase 30]: Plan 02 (HYG-08): removed 28 paths / 97,691,320 B of vendored+generated bulk from pi-mirror; all three Wave-1 scan_skip dirs gone, retiring the guard's blind spot in its own wave
+- [Phase 30]: Plan 02: __pycache__/.pyc/.pytest_cache purge deferred to plan 08 Task 1 — plan 03's compileall runs in the same wave, so purge-then-assert here would race a sibling
 
 ## Accumulated Context
 

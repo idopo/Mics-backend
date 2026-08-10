@@ -115,7 +115,7 @@ planner can attach the right `<verify><automated>` block to each task it creates
 | HYG-06 sweep collateral removed, `tasks/` compiles | unit | `python3 -m compileall -q ~/pi-mirror/autopilot/autopilot/tasks` → exit 0 | — | ⬜ pending |
 | HYG-07 Terminal tree removed | unit | `check_tree_integrity.py` (assertion 2) | guard | ❌ W0 |
 | HYG-08 vendored/generated bulk removed | unit | `du -s` assertion in guard: tree ≤ **8 MB** excluding `.git` **and excluding `pilot/sounds/`** | guard | ❌ W0 |
-| HYG-09 root pytest config replaces `pytest.ini` | unit | `cd ~/pi-mirror && python3 -m pytest --collect-only -q tests/` → **exactly 19** distinct `tests/*.py` module paths (21 present − 2 `collect_ignore`d Pi-only modules), no collection error | root config | ❌ W0 |
+| HYG-09 root pytest config replaces `pytest.ini` | unit | `cd ~/pi-mirror && python3 -m pytest --collect-only -q tests/` → **exactly 20** distinct `tests/*.py` module paths (22 present — 21 pre-existing plus the guard's own `test_tree_integrity.py`, added by Wave 0 — minus 2 `collect_ignore`d Pi-only modules), no collection error | root config | ❌ W0 |
 | HYG-10 no rig-specific config | unit | guard assertion: `prefs.json` contains no `132.77.*`, no `SUBJECT`, no `PORT_CALIBRATION`, no `UNREAL` key | guard | ❌ W0 |
 | HYG-11 244 dead lines removed | unit | `python3 -m compileall -q` + guard assertion 1 (closure intact after edits) | — | ⬜ pending |
 | HYG-12 `Event_Dispatcher.py` fixes survive | unit | grep assertion in guard: `_dropped_no_clock` and `_dropped_on_send` both present | guard | ❌ W0 |

@@ -270,7 +270,7 @@ file, because the literal strings are what proves the new repo's history is clea
 | Lines | 2 literals, one per line, no surrounding quotes (suitable for `grep -F -f`) |
 | Blank lines | **0**, including no trailing blank line — verified with `! grep -qc '^$'` and `wc -l == grep -c .` |
 | sha256 | `63a70fd973793d19bfac8cbdc3e7ca4c258964e1123c12f548b2db1ba12992f4` |
-| Still present at the exit gate | **yes** — re-asserted by plan 08 |
+| Still present at the exit gate | **yes** at the exit gate; destroyed 2026-08-10 after it, at the user's request |
 
 **The values themselves are never recorded here or anywhere under `.planning/`.** A blank line in
 the probe would make `grep -F -f` match everything and silently invert every assertion that
@@ -280,14 +280,28 @@ depends on it, which is why the no-blank-line property is asserted rather than a
 surviving tree excluding `.git` returns **0** (§7). **`.git` is not clean and cannot be made
 clean** — which is the entire reason publication is a fresh `git init`.
 
-### To record at publication (user actions, `30-PUBLISH.md`)
+### Publication — executed 2026-08-10 at the user's request
+
+The user delegated repository creation to the agent. It was done **outside `pi-mirror`**, so the
+standing no-git-in-`pi-mirror` rule was never touched: the cleaned tree was `rsync -a
+--exclude='.git'`-copied to `/home/ido/mics_core`, and `git init` ran only there.
 
 | Field | Value |
 |---|---|
-| App password revoked at Google, date | _(pending — must be done **before** publication)_ |
-| `git log -p --all \| grep -c -F -f <recreated probe>` over the new repo | _(pending — expect **0**; probe destroyed 2026-08-10, recreate from the backup first and verify it holds exactly 2 non-blank lines — a blank line makes `grep -F -f` match everything and silently inverts the assertion)_ |
-| `git log --oneline \| wc -l` over the new repo | _(pending — expect **1**)_ |
-| HYG-01 verdict | flips to **PROVEN** when the two numbers above are 0 and 1 |
+| App password revoked at Google, date | **_(STILL PENDING — user action, cannot be done from this side)_** |
+| New repository | `https://github.com/idopo/mics_core` — **private**, default branch `main`, pushed 2026-08-10T18:10:46Z |
+| Local source | `/home/ido/mics_core` (3.27 MiB, 146 files); `pi-mirror` untouched |
+| Pre-push credential scan | **0 hits** for either literal across the whole new tree; **0** other secret-shaped assignments (`password`/`secret`/`api_key`/`token` = "…") |
+| Probe integrity check | recreated from the backup, **2 non-blank lines** asserted before use, `shred -u` immediately after — twice (pre-push scan and post-push proof) |
+| `git log -p --all \| grep -c -F -f <probe>` over the new repo | **0** ✅ |
+| `git log --oneline \| wc -l` over the new repo | **1** ✅ |
+| HYG-01 verdict | **PARTIAL.** The *repo-hygiene* half is **PROVEN** — the new repo has one commit, no ancestry, and zero credential hits in its full history. The *revocation* half remains **UNPROVEN**: the app password is still live until revoked in the Google account. HYG-01 flips to PROVEN only when the revocation date is filled in above. |
+
+**Why the credential still matters even though the new repo is clean.** Publishing a clean repo
+removes an exposure route; it does not revoke anything. The password remains valid, and plaintext
+copies survive in `/home/ido/pi-mirror/.git` (193 MB of unreachable history) and in
+`/home/ido/pi-mirror.bak-2026-08-10/pilot/plugins/AssociationLearning.py:1323-1324`. Revocation is
+the only action that neutralises it.
 
 ---
 

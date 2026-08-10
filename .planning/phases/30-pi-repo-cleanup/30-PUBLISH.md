@@ -64,6 +64,19 @@ App password revoked at Google: ____________ (date)
 
 ## Step 2 — Create the new repository as a fresh `git init`
 
+> ## ✅ DONE 2026-08-10 — the agent performed steps 2 and 3 at the user's request.
+> **Repository: `https://github.com/idopo/mics_core` (private, branch `main`).**
+> Local source `/home/ido/mics_core`, copied with `rsync -a --exclude='.git'` so `pi-mirror`
+> and its `.git` were never touched. One commit, no ancestry.
+> Both step-3 proofs passed: history grep **0**, commit count **1**.
+> A pre-push scan also found **0** other secret-shaped assignments.
+>
+> **Step 1 (revoking the app password) is still outstanding and is still yours.** Publishing a
+> clean repo removed an exposure route; it revoked nothing. The password remains live, and
+> plaintext copies remain in `pi-mirror/.git` and in `pi-mirror.bak-2026-08-10`.
+> The steps below are retained as the record of what was run.
+
+
 **Copy the cleaned tree to a new directory, excluding `.git`:**
 
 ```bash

@@ -271,6 +271,12 @@ Measured with `du -sb` from `/home/ido/pi-mirror`.
 | `du -sb .git` | ~197,550,529 | 197,550,529 | 197,550,529 (untouched) |
 | `du -sb pilot/sounds` | 2,326,388 | 2,326,388 | **2,326,388 (unchanged)** |
 
+> **The "after" figure is a moving target, by design.** It was 87,598,564 B immediately after
+> this plan's last removal and 87,291,648 B a few minutes later, because **plan 03 was still
+> executing in the same wave**. Only the `pilot/sounds` row (2,326,388 B) and this plan's own
+> per-path total (97,691,320 B) are stable numbers plan 08 can rely on; the excl-`.git` row
+> should be **re-measured** at the phase gate, not carried forward from here.
+
 **Attribution — read this before computing the budget.** The tree-level drop of **115,046,164 B**
 is **larger** than this plan's own removals because **plan 03 executed concurrently in the same
 wave** and removed `terminal/`, `.vscode/` and `run_terminal.sh` during the same window.

@@ -88,15 +88,17 @@ implementation, so none could be deleted on reachability grounds alone.
 > toggle's call form** — `set_cdc_manual(0x3f)`, `self.triggers['IR1']`,
 > `pulse_and_notify(...OG_TRIGGER...)` — never the token. Plan 07 now asserts these
 > declarations *survive*, rather than merely leaving them alone.
-- **Handshake watchdog — RESTORE, do not delete.** `station.py:1333-1346`: the ">21s no PING
-  from orchestrator" and "handshake retry failed" warnings are commented out and replaced by a
-  live bare `print("")`. Uncomment the logger calls and drop the bare print. Unlike the other
-  three, **`station.py` survives the cleanup**, so this is a live improvement to a surviving
-  file. Rationale: a silent handshake failure on a running rig is invisible — the same class of
-  defect as the missing `TASK_ERROR` emitter.
-
-### Restorations and set-removals (carried in from the audit, already decided)
-
+- ~~**Handshake watchdog — RESTORE, do not delete.**~~ **CORRECTION 2026-08-10 (user):
+  DEFERRED — leave `station.py` alone entirely.** The original framing was wrong: the retry
+  `self._handshake_callback()` is **already live and uncommented**, and the watchdog re-arms
+  every 10 s, so restoring the logger calls recovers no behaviour. The only real defect is
+  `except Exception: print("")`, an exception handler that swallows the error — and on this rig
+  `logger.*` is the wrong remedy anyway, since Pi log files are 0 bytes by design and terminal
+  output is the channel that works. The user chose to leave it untouched rather than make a
+  behavioural change inside a removal phase. **The risk inverts:** the five commented `logger`
+  lines now sit in the file that contributes the most (52 lines) to HYG-11's comment sweep, so
+  they are a carve-out inside a file that is otherwise swept normally (52 lines go, these five
+  stay), and plan 01's F3 assertion is inverted to require them present and commented.
 - ~~**Restore** the NTP enable / clock-freeze call sites at `pilot.py:1137-1148`.~~
   **CORRECTION 2026-08-10 (user): DEFERRED — leave them commented out. Do not restore.**
   The technical finding is unchanged and still stands: this is a **regression, not a decision**

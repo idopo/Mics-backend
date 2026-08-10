@@ -70,9 +70,24 @@ implementation, so none could be deleted on reachability grounds alone.
   `@log_action` (`utils/logging_utils.py`) as a `Hardware_Event`, and that is sufficient. The
   dedicated `detectedIR` callback is redundant, not merely unused.
 - **`OG_TRIGGER` opto pulse — DELETE.** `mics_cage_task.py:437-438`. Optogenetic stimulation is
-  driven through the BlueBerry/BLE path now, not this GPIO pulse. Note `OG_TRIGGER` remains
-  declared in the live `HARDWARE` dict at `mics_cage_task.py:97` and `learning_cage.py:82` —
-  both files are deleted by HYG-03, so no orphan declaration survives.
+  driven through the BlueBerry/BLE path now, not this GPIO pulse.
+
+> **CORRECTION, 2026-08-10 (plan verification).** The original text here read *"both files are
+> deleted by HYG-03, so no orphan declaration survives."* **Wrong, and the error is unsafe in a
+> specific way.** `pilot/prefs.json` declares `HARDWARE.GPIO.OG_TRIGGER` (`:241`, `:243`) and
+> `HARDWARE.GPIO.IR1` (`:278`, `:282`) as **live pin declarations**, and HYG-10 deliberately
+> leaves the `GPIO`, `I2C`, `Mixer`, `Timers` and `Modules` groups intact. `RecordingBox.py`
+> carries a third set (`:53`, `:62`, `:104`) that HYG-06 retires one wave later than the
+> plugin sweep.
+>
+> **What HYG-14 retires is the commented-out toggle, never the pin declaration.** Any
+> verification that asserts a bare token (`! grep -q 'OG_TRIGGER'`) is therefore guaranteed to
+> fail at the phase exit gate, *after* every destructive plan has landed — and since the plans
+> forbid weakening an assertion to make it pass, the only compliant response would be stripping
+> live GPIO entries out of `prefs.json` with no rig proof before publication. **Assert the
+> toggle's call form** — `set_cdc_manual(0x3f)`, `self.triggers['IR1']`,
+> `pulse_and_notify(...OG_TRIGGER...)` — never the token. Plan 07 now asserts these
+> declarations *survive*, rather than merely leaving them alone.
 - **Handshake watchdog — RESTORE, do not delete.** `station.py:1333-1346`: the ">21s no PING
   from orchestrator" and "handshake retry failed" warnings are commented out and replaced by a
   live bare `print("")`. Uncomment the logger calls and drop the bare print. Unlike the other

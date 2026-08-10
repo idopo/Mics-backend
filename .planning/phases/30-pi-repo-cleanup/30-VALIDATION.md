@@ -1,10 +1,11 @@
 ---
 phase: 30
 slug: pi-repo-cleanup
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-10
+verified: 2026-08-10
 ---
 
 # Phase 30 — Validation Strategy
@@ -168,12 +169,29 @@ because the guard is the only thing that detects an orphaned import. The planner
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or a Wave 0 dependency
-- [ ] Sampling continuity: every deletion task carries `check_tree_integrity.py --strict`
-- [ ] Wave 0 covers all ❌ W0 references above (guard, guard tests, root pytest config)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 12 s for agent-run checks
-- [ ] `ExtlinkDemo` cleared off pilot 1 before the rig checkpoint
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or a Wave 0 dependency
+- [x] Sampling continuity: every deletion task carries `check_tree_integrity.py --strict`
+- [x] Wave 0 covers all ❌ W0 references above (guard, guard tests, root pytest config)
+- [x] No watch-mode flags
+- [x] Feedback latency < 12 s for agent-run checks — every agent-run gate is an AST/text scan
+      plus `compileall`; the equivalent scans measured 1–2 s over the whole tree
+- [ ] `ExtlinkDemo` cleared off pilot 1 before the rig checkpoint — **USER ACTION, still open.**
+      Blocks plan 09's live-session proof only; Waves 0–5 are unaffected
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-08-10, after plan check 3 and a targeted re-verification of the
+remediation commit `655a457`.
+
+Verification trail — three independent checker passes, each re-measuring the previous round's
+self-reported claims against the real tree rather than trusting them:
+
+| Pass | Outcome |
+|---|---|
+| Check 1 | 8 blockers, 6 warnings → revision 1 addressed all 14 |
+| Check 2 | all 8 prior blockers confirmed genuinely fixed; 4 new blockers → revision 2 (`4db4c37`) |
+| Check 3 | 4 blockers — 3 confirmed against the tree, 1 a false positive (the checker ran `pytest -qq`; the plan runs `-q`) → remediation `655a457` |
+| Targeted re-verify | **PASS.** Alias rule reproduced independently (43 alias targets, 103 re-export occurrences suppressed, 0 false positives); guard run cumulatively after every deletion task → 0 violations at each checkpoint bar one that its own task removes; plans 02/03 tried in both Wave-1 orders → 0 either way. 3 documentation nits, all fixed |
+
+The one substantive blocker check 3 found — the guard resolving only `ImportFrom.node.module`,
+leaving it blind to `from autopilot.hardware import unreal` and so to the phase's own acceptance
+case 2 — is closed by `<from_package_import_submodule_must_resolve>` in plan 01.

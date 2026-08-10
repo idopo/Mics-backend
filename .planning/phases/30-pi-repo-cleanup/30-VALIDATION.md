@@ -120,7 +120,7 @@ planner can attach the right `<verify><automated>` block to each task it creates
 | HYG-11 244 dead lines removed | unit | `python3 -m compileall -q` + guard assertion 1 (closure intact after edits) | — | ⬜ pending |
 | HYG-12 `Event_Dispatcher.py` fixes survive | unit | grep assertion in guard: `_dropped_no_clock` and `_dropped_on_send` both present | guard | ❌ W0 |
 | HYG-13 survival manifest intact | unit | `check_tree_integrity.py` (assertion 3) | guard | ❌ W0 |
-| HYG-14 restorations applied, holds resolved | unit | grep assertions: `enable_ntp_and_wait()` call site uncommented at `pilot.py:~1137`; `logger.warning` restored at `station.py:~1333`; `open_file` absent. **Toggle removal asserts the commented *toggle forms*, never bare tokens** — absence of `set_cdc_manual(0x3f)`, of `self.triggers['IR1']`, and of `pulse_and_notify(...OG_TRIGGER...)` | guard | ❌ W0 |
+| HYG-14 restorations applied, holds resolved | unit | grep assertions: `enable_ntp_and_wait()` / `disable_ntp()` still present **and still commented** at `pilot.py:~1137` (restoration **deferred by the user 2026-08-10**; the gate guards against the sweep deleting them, not against them being commented); `logger.warning` restored at `station.py:~1333`; `open_file` absent. **Toggle removal asserts the commented *toggle forms*, never bare tokens** — absence of `set_cdc_manual(0x3f)`, of `self.triggers['IR1']`, and of `pulse_and_notify(...OG_TRIGGER...)` | guard | ❌ W0 |
 
 *Status: ⬜ pending · ✅ green · ❌ W0 (blocked on Wave 0 artifact) · ⚠️ flaky*
 

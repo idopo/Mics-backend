@@ -97,10 +97,17 @@ implementation, so none could be deleted on reachability grounds alone.
 
 ### Restorations and set-removals (carried in from the audit, already decided)
 
-- **Restore** the NTP enable / clock-freeze call sites at `pilot.py:1137-1148`. Confirmed a
-  **regression, not a decision** — the methods stay live at `:498`/`:514` and the comment reads
-  "Freeze wall clock so it never jumps during the task." Material on a rig that timestamps
-  behavioural events to the millisecond. **Do not delete these commented lines.**
+- ~~**Restore** the NTP enable / clock-freeze call sites at `pilot.py:1137-1148`.~~
+  **CORRECTION 2026-08-10 (user): DEFERRED — leave them commented out. Do not restore.**
+  The technical finding is unchanged and still stands: this is a **regression, not a decision**
+  — the methods stay live at `:498`/`:514`, the comment reads "Freeze wall clock so it never
+  jumps during the task", and NTP stepping the clock mid-task is material on a rig that
+  timestamps behavioural events to the millisecond. The user has taken it on and will deal with
+  it separately, so the phase no longer touches it.
+  **The risk inverts:** these are now commented-out lines inside the file plan 06 sweeps for
+  dead commented-out code. They are on the sweep exemption list, plan 06 HOLD 0 asserts they
+  survive verbatim, and plan 01's F3 assertion is **inverted** to require them present *and*
+  commented. **Do not delete these commented lines, and do not uncomment them.**
 - **Remove as one set:** `open_file()` (55 lines), the `self.h5f` cleanup at `pilot.py:640-641`,
   and the ~23 commented lines at `:1174-1261`. ES is the sole data path, so the half-disabled
   subsystem goes whole rather than leaving a live method nobody calls.

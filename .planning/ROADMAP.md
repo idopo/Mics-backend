@@ -1131,7 +1131,7 @@ Plans:
 - [ ] 30-03-PLAN.md — W1 · the Terminal-era tree: `terminal/`, `core/{gui,terminal,plots,subject,styles,utils,reward}.py`, `viz/`, `data_handlers/`, `utils/{invoker,Event}.py` (HYG-07)
 - [ ] 30-04-PLAN.md — W2 · prove the empty HANDSHAKE is a no-op, then delete `pilot/plugins/` + `learning_cage.py` + `mics_cage_task.py` + `unreal.py` as ONE change (HYG-03, HYG-04)
 - [ ] 30-05-PLAN.md — W3 · registry sweep collateral, `cameras.py`/`usb.py`, the `i2c.py` import **and the `MLX90640(Camera)` class**, in both the Pi copy and `hardware_libs` v26 (HYG-05, HYG-06)
-- [ ] 30-06-PLAN.md — W4 · restore the NTP clock block + the handshake watchdog, remove the HDF5 set, sweep 244 dead commented lines, leave `Event_Dispatcher.py` alone (HYG-11, HYG-12, HYG-14)
+- [ ] 30-06-PLAN.md — W4 · restore the handshake watchdog, remove the HDF5 set, sweep 244 dead commented lines, leave `Event_Dispatcher.py` alone, and **hold the NTP clock block commented — user-deferred 2026-08-10** (HYG-11, HYG-12, HYG-14)
 - [ ] 30-07-PLAN.md — W4 · `prefs.json` becomes a template; no lab IP, no SUBJECT, no PORT_CALIBRATION, no dead UNREAL group; runtime dirs empty behind `.gitkeep` (HYG-10)
 - [ ] 30-08-PLAN.md — W5 · `--final` gate, zero-drift survival manifest diff, merged evidence log, `30-PUBLISH.md` handover (HYG-01 repo half, HYG-13)
 - [ ] 30-09-PLAN.md — W6 · clear `ExtlinkDemo` off pilot 1, then the USER-RUN rig checkpoint: revoke, publish, branch, live session (HYG-02, HYG-01)

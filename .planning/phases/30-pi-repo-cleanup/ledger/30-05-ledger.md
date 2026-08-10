@@ -257,7 +257,201 @@ HYG-06 | PROVEN | 7 registry-sweep collateral modules (60,505 B) removed from au
 
 ## B. Task 2 — Camera subtree, Pi copy (HYG-05)
 
-*(filled in by Task 2)*
+### B.1 The three-part edit, and why it is three parts
+
+The correction recorded in REQUIREMENTS.md HYG-05 and 30-CONTEXT.md is **confirmed by direct
+inspection of the tree before the edit**, not taken on trust:
+
+```
+autopilot/autopilot/hardware/i2c.py:8    from autopilot.hardware.cameras import Camera
+autopilot/autopilot/hardware/i2c.py:580  class MLX90640(Camera):
+autopilot/autopilot/hardware/i2c.py:632      super(MLX90640, self).__init__(fps, **kwargs)
+autopilot/autopilot/hardware/i2c.py:789      super(MLX90640, self).release()   <- AST end_lineno
+autopilot/autopilot/hardware/i2c.py:799  class MPR121(Hardware):
+```
+
+`Camera` is `MLX90640`'s **base class**, not a dead import. Removing only the import would leave
+`class MLX90640(Camera):` evaluating an undefined name at module-import time → `NameError` at
+`mics_task.py:4` → the pilot dies at import, reported by nothing (`pilot.py:609`).
+
+### B.2 Removed paths
+
+| Path | Bytes | md5 (pre-removal) |
+|---|---|---|
+| `autopilot/autopilot/hardware/cameras.py` | 69,302 | `9b46485058c5b4c9758660e126c4fcf6` |
+| `autopilot/autopilot/hardware/usb.py` | 10,546 | `99c65394baff2b285e0fe369a099f5d7` |
+| `autopilot/autopilot/setup/setup_mlx90640.sh` | 792 | `0065a57b9a9164392fffb50fdc562ce9` |
+
+**Importer counts, measured by unfiltered Python scan immediately before the removal:**
+- `cameras.py`: exactly **one** live importer left — `i2c.py:8`. (The other two hits,
+  `tests/test_tree_integrity.py:89` and `:94`, are string literals inside the guard's own
+  synthetic-tree fixture — a `SELF_PATHS` entry, correctly not a reference. Plans 02/03 had
+  already retired `core/gui.py`, `core/terminal.py` and `autopilot/tests/`; Task 1 of this plan
+  retired `tasks/children.py` and `tasks/test.py`, which is why Task 1 had to land first.)
+- `usb.py`: **zero** importers tree-wide. Its last one, `tasks/children.py`, went in Task 1.
+
+### B.3 `i2c.py` — before / after
+
+| | md5 | bytes | lines |
+|---|---|---|---|
+| before | `3c933d65eeac795d2bcabd8d5cc3c08f` | 35,934 | 993 |
+| after | `58c6a426021ce8aab3a7ad3502cf6c9a` | 28,423 | 774 |
+
+Delta: **−7,511 bytes, −219 lines.** The pre-edit copy is preserved at `/tmp/i2c.before.py` for
+the Task 3 reconciliation.
+
+### B.4 The surgery, and the one place the plan's literal instruction was unsafe
+
+The class was located **by AST span**, never by hardcoded line number, and the cut was asserted at
+both ends before it was applied (`lines[start] == "class MLX90640(Camera):"`,
+`"super(MLX90640, self).release()" in lines[end-1]`).
+
+> **Deviation, Rule 1 — the plan's stated cut boundary would have broken the licker.**
+> The plan says to cut *"through the last line before `class MPR121(Hardware):`"*. Applied
+> literally that eats lines 792–796:
+>
+> ```
+> 792| import board
+> 793| import busio
+> 795| # Import MPR121 module.
+> 796| import adafruit_mpr121
+> ```
+>
+> These are **module-level imports MPR121 depends on** — `busio.I2C(board.SCL, board.SDA)` at the
+> old `:809` and `adafruit_mpr121.MPR121(self.i2c)` at the old `:816`. Cutting them would leave
+> `MPR121.__init__` raising `NameError` on every instantiation, i.e. **the lick sensor dead on the
+> live rig**, and — with no `TASK_ERROR` emitter on the Pi — presenting as a run stuck `running`
+> for ever rather than as an error. `py_compile` would **not** have caught it.
+>
+> The cut was therefore made to the class's AST `end_lineno` plus its trailing blank lines only,
+> with an explicit assertion that the first surviving line with content is `import board`. The
+> three imports are asserted present in the written file.
+
+Three edits applied, verified by `difflib.SequenceMatcher` against `/tmp/i2c.before.py` — the diff
+contains **exactly three `delete` opcodes and zero `insert`/`replace` opcodes**, i.e. nothing was
+reformatted, reordered or rewritten:
+
+| # | Span (before-file lines) | Lines | What |
+|---|---|---|---|
+| a | 8 | 1 | `from autopilot.hardware.cameras import Camera` |
+| b | 30–36 | 7 | the `try: import MLX90640 as mlx_cam / MLX90640_LIB = True / except ImportError: MLX90640_LIB = False` guard and its two leading blanks |
+| c | 580–790 | 211 | `class MLX90640(Camera):` (580–789) plus one trailing blank |
+
+The guard block was safe to remove: `mlx_cam` was referenced **only** at the old `:703` and
+`MLX90640_LIB` **only** at the old `:629`, both inside the removed class.
+
+### B.5 Residue check — zero code hits, zero prose hits
+
+Over the written file:
+
+| Token | Occurrences |
+|---|---|
+| `Camera` | 0 |
+| `MLX90640` | 0 |
+| `mlx_cam` | 0 |
+| `MLX90640_LIB` | 0 |
+| `autopilot.hardware.cameras` | 0 |
+
+Not merely "no *code* hits" — the docstring prose went with the class too, so the count is zero
+outright.
+
+### B.6 AST assertion on the survivors (the check `py_compile` cannot make)
+
+```
+top-level defs: ['I2C_9DOF', 'MPR121', 'Motor_Shield_Hat',
+                 'Motor_Shield_Hat_extend', 'Touch_Detector']
+  class I2C_9DOF                 bases=['Hardware']
+  class MPR121                   bases=['Hardware']
+  class Motor_Shield_Hat         bases=['Hardware', 'Effector']
+  class Motor_Shield_Hat_extend  bases=['Motor_Shield_Hat']
+  class Touch_Detector           bases=['MPR121']
+```
+
+**Five survivors intact with their inheritance chains, `MLX90640` and `Camera` gone.**
+`Touch_Detector(MPR121)` — the lick path — is untouched.
+MPR121's module-level dependencies asserted present: `import board`, `import busio`,
+`import adafruit_mpr121`.
+
+**The deferred defect stays broken, as required:** `except(e):` survives at the new `i2c.py:600`
+(was `:819`). It was not "fixed" — 30-CONTEXT.md defers it by name and plan 01's manifest holds an
+inverted assertion over it.
+
+### B.7 `setup/setup_mlx90640.sh` — four criteria, all satisfied, removed
+
+It provisions the third-party MLX90640 library for the class removed above.
+
+1. **C1 — static closure.** PASS. A shell script; never imported, cannot be a closure member.
+2. **C2 — dynamic reachability.** PASS. After edit (c), a content scan of the **entire** surviving
+   tree (all file types, `__pycache__` excluded) for `setup_mlx90640` returns **0 hits**. Its only
+   two in-tree mentions were `i2c.py:606` (docstring) and `i2c.py:630` (the `ImportError` message),
+   both inside the removed class. A case-insensitive scan for `mlx90640` excluding the script
+   itself returns exactly **2** hits, neither a reference:
+   - `tools/tree_integrity/final_checks.py:35` — `re.compile(r"class MLX90640")`, the guard's own
+     F-check literal asserting the class is *gone* (a `SELF_PATHS` entry).
+   - `autopilot/README.md:129` — upstream changelog prose.
+3. **C3 — named by the backend.** PASS. `setup_mlx90640` and `MLX` → **0 hits** across
+   `mics-backend/api` and `mics-backend/orchestrator`.
+   `select count(*) from hardware_libs where filename ilike '%mlx%' or name ilike '%mlx%'` → **0**.
+   `select count(*) from hardware_modules where name ilike '%mlx%' or class_name ilike '%mlx%'`
+   → **0**. No `pilot/prefs.json` `MLX` key.
+4. **C4 — reserved by a pending phase.** PASS. The reserved names are the three Phase 26 OpenEphys
+   files; this is not one.
+
+**Corroborating evidence:** the script builds `autopilot/external/mlx90640-library`, and
+`autopilot/autopilot/external/` contains only `__init__.py` — the submodule it depends on is not
+present in the tree, so the script could not run even if something called it.
+
+**Verdict: residue, not a dangling reference. Removed.** (Same standard plan 02 applied to
+`Testing_stepper_motor_Hat/`; plan 03 removed the sibling `install_pyspin.sh` because that one
+genuinely dangled.)
+
+### B.8 Findings recorded, not acted on
+
+**Finding B-1. `hardware/__init__.py:54` names three classes that `cameras.py` defined, in a
+constant nothing reads.**
+
+```
+autopilot/autopilot/hardware/__init__.py:52 # FIXME: Hardcoding names of metaclasses, should have some better system ...
+autopilot/autopilot/hardware/__init__.py:54 META_CLASS_NAMES = ['Hardware', 'Camera', 'GPIO', 'Directory_Writer', 'Video_Writer']
+```
+
+`Camera`, `Directory_Writer` and `Video_Writer` all lived in the removed `cameras.py`.
+**`META_CLASS_NAMES` is read nowhere** — a tree-wide scan returns exactly **1** hit, its own
+definition; `Directory_Writer` and `Video_Writer` likewise return exactly that one line each. So it
+is an inert constant, **not** a second string-keyed dispatch table, and the guard correctly leaves
+it alone (bare tokens in a list literal carry no invocation form).
+
+**Not touched.** `hardware/__init__.py` is not in this plan's `<files>` block, and editing outside
+the block is exactly the improvisation the plan forbids. Handed to plan 06 (dead-code sweep) or
+plan 08 for a decision. It cannot break anything in the meantime — nothing reads it.
+
+**Finding B-2. Three imports in `i2c.py` become unused, and were deliberately left in place.**
+
+Computed by AST binding-vs-`Name`-use diff over the before/after pair:
+
+- Already unused before this edit (8): `os`, `sys`, `prefs`, `Net_Node`, `log_action`, `struct`,
+  `Queue`, `Empty`.
+- **Newly unused as a result of removing `MLX90640` (3):** `threading` (`:12`),
+  `product` (`:17`, `from itertools import product`), `griddata` (`:18`,
+  `from scipy.interpolate import griddata`).
+
+Left in place on purpose. The plan scopes this edit to *"exactly the import line, the `MLX90640`
+class and its `mlx_cam` guard"* and says *"leave everything else byte-identical"*; `i2c.py` is
+otherwise off-limits under TRIGA-12. Removing `griddata` would additionally change what the module
+requires of the rig's environment at import time, which is not a change worth making without a rig
+proof. Recorded for plan 08 §6.
+
+### B.9 Task 2 gates
+
+| Gate | Result |
+|---|---|
+| `cameras.py`, `usb.py`, `setup_mlx90640.sh` absent | confirmed |
+| `python3 -m py_compile autopilot/autopilot/hardware/i2c.py` | exit 0 |
+| `python3 -m compileall -q autopilot/autopilot` | exit 0 |
+| AST survivor assertion (5 present, 2 gone, MPR121 deps intact) | PASSED |
+| `python3 tools/check_tree_integrity.py --strict` | exit 0 — `40 closure members, 30 protected files, 1 known-dangling exemptions held, 0 violations` |
+| Pi pytest delta vs baseline | 179 → 179, **0 new failures**; `test_mpr121_irq_hygiene` **0 failing**, `test_check_for_detectors` **17** (unchanged baseline contribution) |
+| Plan's full Task 2 `<automated>` verify chain | exit 0 |
 
 ---
 

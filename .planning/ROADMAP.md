@@ -1294,9 +1294,9 @@ and connects to the backend — no `./run_pilot.sh`, no SSH step, no lab-built S
 layer moves off the unmaintained pigpio daemon onto lgpio, which makes the rig Pi 5-capable and
 makes event timestamps safe for 24/7 continuous operation.
 
-**Requirements**: TBD (to be mapped during /gsd:plan-phase)
+**Requirements**: PLAT-01 through PLAT-26
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
-**Plans:** 0 plans
+**Plans:** 16 plans
 
 **Repo boundary:** all code changes land in `~/mics_core` on a dedicated feature branch, not in
 `mics-backend`. Planning docs stay here.
@@ -1329,7 +1329,22 @@ after an offline reboot) and NVMe boot (SD wear is the top failure mode in 24/7 
 The live rig is not touched; all work happens on spare hardware.
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 31 to break down)
+- [ ] 31-01-PLAN.md — Wave 0: feature branch, dev-host test harness, fake lgpio, pytest baseline
+- [ ] 31-02-PLAN.md — Stage 1: shed HDF5/TrialData, port calibration, setup wizard, dead audio
+- [ ] 31-03-PLAN.md — Stage 1: Python 3.11 source compat + audited dependency floor
+- [ ] 31-04-PLAN.md — Stage 2: prefs.template.json + /boot/firmware/mics.conf rendering
+- [ ] 31-05-PLAN.md — Stage 2: systemd units, chrony drop-in, volatile journald
+- [ ] 31-06-PLAN.md — Stage 3 instrument: pulse-timing capture/analyse harness + gate
+- [ ] 31-07-PLAN.md — Stage 2: install.sh / uninstall.sh (owns the box)
+- [ ] 31-08-PLAN.md — USER-RUN: pigpio baseline capture + 71.58 min wrap demo + LA calibration
+- [ ] 31-09-PLAN.md — USER-RUN: unattended-boot proof on a stock Bookworm 64-bit card
+- [ ] 31-10-PLAN.md — USER-RUN: lgpio hardware spike (jitter, SCHED_FIFO reach, FIFO headroom, chip label)
+- [ ] 31-11-PLAN.md — Stage 3: lgchip resolver by label + I2C port
+- [ ] 31-12-PLAN.md — Stage 3: gpio.py inputs — claim/alert/callback/debounce, kernel edge timestamps
+- [ ] 31-13-PLAN.md — Stage 3: gpio.py outputs — tx_wave/tx_pulse, 62.5 Hz locked bit-exactly
+- [ ] 31-14-PLAN.md — Stage 3: dual-timebase Event_Dispatcher + one-key manifest update
+- [ ] 31-15-PLAN.md — Stage 3: delete the pigpio lifecycle + retire the --final F3 NTP guard
+- [ ] 31-16-PLAN.md — Acceptance: paired G1 gate, clock step, soak, restart/reboot (USER-RUN)
 
 ---
 *Created: 2026-03-15*

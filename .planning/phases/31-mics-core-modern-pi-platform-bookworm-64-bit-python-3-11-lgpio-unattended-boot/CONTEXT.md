@@ -367,3 +367,77 @@ left alone (hard rule, §10).
   its whole process at `SCHED_FIFO` max. Mitigation is `CPUSchedulingPolicy=fifo` on the systemd
   unit (both lgpio threads spawn inside `gpiochip_open()`, so they inherit it) — but this **must be
   measured, not assumed**, and confirmed with `chrt -p`.
+
+---
+
+## 13. THE SINGLE-CLOCK INVARIANT (user-raised 2026-08-16 — treat as a phase requirement)
+
+**User requirement, stated directly:** the capability that *one clock — the GPIO clock — aligns
+every event in the system* must be preserved. That covers **both** event paths: events sent via
+`Event_Dispatcher`, and the `pi_timestamp` carried out of the `assign_cb` callback. The `assign_cb`
+registration mechanism for hardware GPIO events must also survive the port.
+
+### How it works today (verified on the rig, 2026-08-16)
+
+The patched pigpio converts tick → timestamp **inside its notification thread**, before any
+callback fires — rig `site-packages/pigpio.py:1239-1240`:
+
+```python
+seq, flags, tick, level = struct.unpack('HHII', msgbuf)
+if self.synchronize:
+    tick = self.ticks_to_timestamp(tick)      # isoformat=True → ISO STRING
+```
+
+So **every `assign_cb` callback receives an ISO-formatted timestamp string, not a raw tick.**
+Path: `Digital_In.assign_cb` (`gpio.py:879`) → `self.pig.callback(pin, edge, callback_fn)` →
+`Task.handle_trigger` (registered at `task.py:199`) → `execute_trigger` (`task.py:275`)
+→ `localize_tz(tick)` → `event_data = {"id": …, "pi_timestamp": tick}` (`task.py:276`).
+
+The offset is genuinely shared between the two paths: `pi.__init__` computes `_sync_offset` once
+and passes it **by value** into the callback thread —
+`self._notify = _callback_thread(self.sl, host, port, self._sync_offset)` → `self.synchronize =
+sync_offset` (`pigpio.py:1157`). `Event_Dispatcher.py:44` uses the same offset via
+`ticks_to_timestamp(..., isoformat=False)`.
+
+⇒ **One clock, two representations:** ISO string on the callback path, float on the dispatcher path.
+
+### The invariant already degrades — this strengthens the case for the port
+
+The callback thread's offset is a **scalar snapshot**. When `pi.ticks_to_timestamp` detects a wrap
+and re-runs `synchronize()` (`pigpio.py:5322`), it updates `pi._sync_offset` and **never propagates
+it to the running callback thread**. After the first 71.6-minute wrap the two paths drift apart.
+On `OverflowError` the callback thread sets `self.synchronize = None` (`pigpio.py:1214`) and
+silently reverts to emitting **raw ticks** — at which point `localize_tz`'s `strptime` receives an
+int and raises.
+
+Under the intended 24/7 operation that wrap occurs ~20×/day. So the alignment is **true at startup
+and decays over runtime**. lgpio makes it *structurally* true (both paths reading the same kernel
+`CLOCK_MONOTONIC` ns) rather than true-by-luck.
+
+### ⚠ GAP IN THE CURRENT PLAN SET — this is NOT yet owned by any plan
+
+Grepped all 16 plans as of commit `a052651`: **zero mentions** of `assign_cb`, `pi_timestamp`,
+`localize_tz`, `execute_trigger`, or `handle_trigger`. This is a **second** unowned path, distinct
+from the plan-checker's blocker B2 (which concerns the `@log_action` bridge in
+`utils/logging_utils.py`). Three things break silently if it stays unowned:
+
+1. **Callback arity.** pigpio's callback is `(gpio, level, tick)` — 3 args. lgpio's is
+   `(chip, gpio, level, timestamp)` — **4**. Every registered function changes signature:
+   `Digital_In.record_event` (`gpio.py:940`), `Task.handle_trigger` (`task.py:199`).
+2. **`localize_tz` crashes.** `utils/common.py:329-334` does
+   `datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%S.%f")` — it will receive an integer ns value.
+3. **The conversion site moves.** Today it lives inside pigpio's notification thread; lgpio has no
+   such thread, so `assign_cb` itself must own the adapter.
+
+### Requirements this imposes on the port (add as a PLAT- id; suggest **PLAT-27**)
+
+- **`assign_cb` keeps its signature and semantics.** It is the seam `task.py:199` uses to wire every
+  trigger; changing it ripples through the whole task layer. An adapter *inside* `assign_cb`
+  absorbs lgpio's 4-arg callback down to the existing 3-arg contract.
+- **Both paths take their timestamp from the same kernel value**, via **one** epoch offset computed
+  once and read by both `execute_trigger`'s `pi_timestamp` and `Event_Dispatcher`'s `t_mono_ns`.
+  No second offset. No scalar snapshot copies — that is precisely the defect above.
+- **Regression test (mandatory):** a single injected edge must produce a `pi_timestamp` and a
+  dispatcher timestamp that refer to **the same instant**.
+- **`localize_tz`'s input contract** is updated deliberately (and tested), not incidentally.
+- Consider a test that the invariant **survives a simulated long run** — the current design does not.

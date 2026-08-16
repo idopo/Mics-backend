@@ -1286,6 +1286,51 @@ and runs **no git command inside the mirror**. Deployment to the Pi and the Pi t
 > echo listener on the dev host at `132.77.73.125:5597` is a second standing dependency.
 > Teardown is recorded in `18-HARDWARE-VALIDATION.md` §3. Clear this before criterion 1.
 
+### Phase 31: mics_core Modern Pi Platform - Bookworm 64-bit, Python 3.11, lgpio, unattended boot
+
+**Goal:** A researcher takes a Pi 4B with a stock Raspberry Pi OS Lite 64-bit (Bookworm) card,
+runs one installer script from a `mics_core` clone, reboots, and the pilot comes up on its own
+and connects to the backend — no `./run_pilot.sh`, no SSH step, no lab-built SD image. The GPIO
+layer moves off the unmaintained pigpio daemon onto lgpio, which makes the rig Pi 5-capable and
+makes event timestamps safe for 24/7 continuous operation.
+
+**Requirements**: TBD (to be mapped during /gsd:plan-phase)
+**Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
+**Plans:** 0 plans
+
+**Repo boundary:** all code changes land in `~/mics_core` on a dedicated feature branch, not in
+`mics-backend`. Planning docs stay here.
+
+**Scope — three separable stages, risky one last:**
+
+1. *Shed what is already dead.* Remove the on-device HDF5/`TrialData` path, the unused port
+   calibration routine, and the setup-wizard GUI dependencies. Drops 37 pinned packages to 7
+   direct dependencies. Runs on the current system; makes stages 2 and 3 materially smaller.
+2. *OS + Python bump.* Raspberry Pi OS Lite 64-bit (Bookworm), Python 3.11. Source impact is
+   ~10 lines (numpy alias renames, `setDaemon` → `.daemon`). Deliver `install.sh` (apt packages,
+   dtparams, groups, venv, deps), a systemd unit for unattended start, and `/boot`-partition
+   config so a rig is provisioned without SSH.
+3. *pigpio → lgpio.* Rewrite the hardware libraries and `pilot.py` init. C-timed pulse behaviour
+   for solenoid / TTL / 20 Hz LED must move to `tx_pulse`/`tx_wave` — never Python sleeps, which
+   would make valve-open duration jittery and reward volume variable.
+
+**24/7 timing safety (a first-class goal, not a side effect):** the current patched pigpio
+`ticks_to_timestamp` estimator rides a 32-bit microsecond counter that wraps every ~71.6 min —
+roughly 20 times a day under continuous operation — and its clock offset goes stale after any
+system-clock step. lgpio replaces this with kernel gpiochip timestamps taken at interrupt
+(64-bit ns). Phase also configures chrony to slew rather than step, and logs monotonic alongside
+realtime so post-hoc correction stays possible.
+
+**Pi 5 forward-compatibility:** resolve the gpiochip by label rather than hardcoding index 0 —
+the header moves chips on the RP1. Pi 5 additionally offers a battery-backed RTC (sane clock
+after an offline reboot) and NVMe boot (SD wear is the top failure mode in 24/7 rigs).
+
+**Acceptance gate:** a before/after pulse-timing measurement on a spare card — not "it runs".
+The live rig is not touched; all work happens on spare hardware.
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 31 to break down)
+
 ---
 *Created: 2026-03-15*
 *Last updated: 2026-05-28 — Phase 17 added: free-form pilot hardware config CRUD (HW-08, HW-11)*

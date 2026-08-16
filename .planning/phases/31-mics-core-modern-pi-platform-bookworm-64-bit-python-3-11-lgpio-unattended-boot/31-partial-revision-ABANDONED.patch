@@ -1,0 +1,148 @@
+.../31-06-PLAN.md                                  | 22 +++++++++---
+ .../31-08-PLAN.md                                  |  4 +++
+ .../31-10-PLAN.md                                  |  4 ++-
+ .../31-15-PLAN.md                                  | 41 +++++++++++++++++++---
+ .../31-16-PLAN.md                                  | 14 +++++---
+ 5 files changed, 69 insertions(+), 16 deletions(-)
+
+--- Changes ---
+
+.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-06-PLAN.md
+  @@ -13,6 +13,7 @@ files_modified:
+  +  - /home/ido/mics_core/tests/test_py37_capture_closure.py
+     - /home/ido/mics_core/tools/pulse_timing/README.md
+   autonomous: true
+   requirements: [PLAT-23]
+  @@ -224,10 +225,21 @@ corruption — saying so is what keeps the claim honest); and the field width is
+  -       - **Python 3.7 compatible.** Verify mechanically, do not eyeball:
+  -         `/home/ido/.venvs/mics_core_dev/bin/python -c "import ast,sys;
+  -         ast.parse(open('tools/pulse_timing/capture.py').read(), feature_version=(3,7))"`.
+  -         Add that as a unit test so it cannot regress.
+  +       - **Python 3.7 compatible — and so is everything it imports.** This is the trap: `capture.py`
+  +         drives the production classes, so on the Buster/3.7 baseline run it imports
+  +         `hardware/gpio.py`, `hardware/__init__.py` and their closure — files that plans 02 and 03
+  +         edited *before* plan 08 captures. One 3.8+ construct anywhere in that closure surfaces at
+  +         the one-way door, when the card is the last copy of the pre-migration image.
+  +
+  +         So the AST gate covers the **transitive closure**, not just this file. Write
+  +         `tests/test_py37_capture_closure.py`: start from `tools/pulse_timing/capture.py` and
+  +         `profiles.py`, walk their `autopilot.*` imports using the resolver already in
+  +         `tools/tree_integrity/resolver.py` (do not re-implement module resolution), and
+  +         `ast.parse(..., feature_version=(3,7))` every file in the closure. Report FILE:LINE on
+  +         failure.
+  +
+  +         Because it lives in `tests/`, this runs inside every later plan's `pytest_delta.py` chain,
+  +         so a 3.8-only construct fails at the plan that introduced it rather than on the Pi.
+          - Claim the input with BOTH edges and **no debounce**. Assert that no debounce was set and
+            record it in the header.
+          - pigpio arm: detect and flag tick wraparound; never emit a negative interval.
+  @@ -248,7 +260,7 @@ corruption — saying so is what keeps the claim honest); and the field width is
+  -    <automated>cd /home/ido/mics_core && /home/ido/.venvs/mics_core_dev/bin/python -c "import ast; ast.parse(open('tools/pulse_timing/capture.py').read(), feature_version=(3,7)); ast.parse(open('tools/pulse_timing/profiles.py').read(), feature_version=(3,7)); print('py37 parse ok')" && /home/ido/.venvs/mics_core_dev/bin/python tools/pulse_timing/capture.py --help && python3 tools/check_tree_integrity.py --strict && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py</automated>
+  +    <automated>cd /home/ido/mics_core && /home/ido/.venvs/mics_core_dev/bin/python -m pytest -q tests/test_py37_capture_closure.py --tb=short && /home/ido/.venvs/mics_core_dev/bin/python tools/pulse_timing/capture.py --help && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
+     </verify>
+     <done>`capture.py` and `profiles.py` parse under Python 3.7 grammar; `--help` lists all five profiles and both backends; the README carries the JSONL contract and a copy-paste block per capture; `--strict` exit 0.</done>
+   </task>
+  +17 -5
+
+.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-08-PLAN.md
+  @@ -101,6 +101,10 @@ do not start a partial capture campaign.
+  +- [ ] **`pytest -q tests/test_py37_capture_closure.py` is green** on the dev host. `capture.py`
+  +      imports the production hardware classes, which plans 02/03 edited; a 3.8+ construct anywhere
+  +      in that closure only surfaces here, on Python 3.7.3, once this card is the last copy of the
+  +      pre-migration image. Check it before touching hardware, not after.
+   - [ ] For the calibration step: a **USB logic analyser** (any 24 MHz 8-channel clone, ~£10,
+         41.7 ns resolution) with `sigrok-cli`/PulseView, **or** an oscilloscope. Borrowed once is
+         enough. A scope is fine for this single calibration and is *worse* for routine capture
+  +4 -0
+
+.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-10-PLAN.md
+  @@ -213,10 +213,12 @@ State this in `31-SPIKE.md` so the outcome is interpretable rather than alarming
+  -    rsync -avz -e "ssh -i ~/.ssh/pi_mics" \
+  +    rsync -avz --exclude captures/ -e "ssh -i ~/.ssh/pi_mics" \
+         /home/ido/mics_core/tools/pulse_timing/ \
+         pi@<SPARE_IP>:~/pulse_timing/
+       ```
+  +    (`--exclude captures/` keeps the already-committed baseline JSONL off the Pi — megabytes, and
+  +    not an input to anything here. No `--delete`. No git on the Pi.)
+   
+       **Step 1 — chip enumeration:**
+       ```bash
+  +3 -1
+
+.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-15-PLAN.md
+  @@ -190,9 +190,9 @@ the line — and only the first is something you can state in a methods section.
+  -    3. Decide `external/`'s fate on evidence: `grep -rn "autopilot\.external"` plus the closure
+  -       tool. Delete it if it exists only for pigpiod; keep and clean it otherwise. State which and
+  -       why.
+  +    3. Leave `autopilot/autopilot/external/` alone in this task beyond removing the pigpio import
+  +       it can no longer satisfy. Its fate is Task 2's decision, on evidence — mixing an open
+  +       scoping question into a seven-file deletion is how the wrong module gets removed quietly.
+       4. Remove `PIGPIOARGS`/`PIGPIOMASK` from `prefs.py` and from `pilot/prefs.template.json`, then
+          re-run the `f2_prefs` gate.
+       5. Remove `pigpio` from `requirements.txt` if plan 03 left it there.
+  @@ -206,8 +206,39 @@ the line — and only the first is something you can state in a methods section.
+  +<task type="auto">
+  +  <name>Task 2: Decide external/'s fate on closure evidence, not on its name</name>
+  +  <files>
+  +    /home/ido/mics_core/autopilot/autopilot/external/__init__.py
+  +    /home/ido/mics_core/tests/test_no_pigpio.py
+  +  </files>
+  +  <action>
+  +    `autopilot/autopilot/external/` carried 9 pigpio references and existed largely to launch
+  +    `pigpiod`. "Largely" is not "only", and a module deleted on the strength of its name is exactly
+  +    the Phase 30 near-miss that almost took out the `Camera` base class. Decide this on evidence, as
+  +    its own change, so it can be reverted independently of Task 1's deletions.
+  +
+  +    1. Enumerate with a **direct** `grep -n` (never through the RTK proxy, which can render a
+  +       matching line blank):
+  +       `grep -rn "autopilot\.external\|from autopilot import external\|external\." --include=*.py autopilot pilot tests`
+  +    2. Cross-check against the tree-integrity closure. `tools/tree_integrity/resolver.py` computes
+  +       it; if `external` is a closure member, something imports it and it stays.
+  +    3. **If every surviving reference is pigpiod lifecycle:** delete the module and its importers'
+  +       references, and add `autopilot.external` to `tests/test_no_pigpio.py`'s forbidden set so it
+  +       cannot return.
+  +    4. **If anything else lives there:** keep the module, strip only the pigpio parts, and say in
+  +       the summary what remains and who calls it.
+  +    5. Either way, record the enumeration in the summary. "It looked like it was only for pigpiod"
+  +       is not evidence.
+  +  </action>
+  +  <verify>
+  +    <automated>cd /home/ido/mics_core && /home/ido/.venvs/mics_core_dev/bin/python -m pytest -q tests/test_no_pigpio.py --tb=short && ! grep -rn "pigpio" --include=*.py autopilot pilot && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
+  +  </verify>
+  +  <done>`external/`'s fate is decided by an enumerated, recorded reference scan rather than by its name; the delta gate shows no new failures; `--strict` exits 0.</done>
+  +</task>
+  +
+   <task type="auto" tdd="true">
+  -  <name>Task 2: Delete the clock-freeze block and retire its inverted --final guard</name>
+  +  <name>Task 3: Delete the clock-freeze block and retire its inverted --final guard</name>
+     <files>
+       /home/ido/mics_core/autopilot/autopilot/core/pilot.py
+       /home/ido/mics_core/tools/tree_integrity/final_checks.py
+  @@ -266,7 +297,7 @@ the line — and only the first is something you can state in a methods section.
+  -decision on `external/`, the before/after line counts for `pilot.py`, and the paragraph explaining
+  +enumerated reference scan behind the `external/` decision, the before/after line counts for `pilot.py`, and the paragraph explaining
+   that the NTP deferral was resolved rather than dropped — that paragraph belongs in the record, since
+   Phase 30 deliberately guarded against exactly this deletion.
+   </output>
+  +36 -5
+
+.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-16-PLAN.md
+  @@ -373,11 +373,15 @@ watching — which is the point.
+  -    7. **Update the records:**
+  -       - `ROADMAP.md` Phase 31: replace the `TBD` requirements line with the PLAT id list, set the
+  -         plan count and the plan checklist, and mark the phase status from the verdicts.
+  -       - `REQUIREMENTS.md`: add the `PLAT-` block following the `HYG-` precedent (one row per
+  -         requirement with a Phase column), and add a row to the phase-mapping table.
+  +    7. **Update the records.** ROADMAP and REQUIREMENTS were already written during planning —
+  +       `ROADMAP.md` Phase 31 reads `**Requirements**: PLAT-01 through PLAT-26` with the 16-plan
+  +       checklist, and `REQUIREMENTS.md` already carries the `PLAT-01–26` block and its phase-mapping
+  +       row. **Verify and amend; do not append a second copy.**
+  +       - `ROADMAP.md`: tick the plan checklist and set the phase status from the verdicts.
+  +       - `REQUIREMENTS.md`: update the mapping row's status column from `Planned` to the real
+  +         outcome. Amend an individual `PLAT-` row **only** where the audit changed its content —
+  +         most likely PLAT-03 (the true direct-dependency count from plan 03) and PLAT-12 (the
+  +         board's real gpiochip label from plans 09/10).
+          - `STATE.md`: append a dated entry in this file's established prose style, stating the G1
+            verdict, the V1 result, what is deployed where, and the honest boundary — that per-rig
+            timing is now robust to clock steps, and cross-device synchronisation is still Phase 28's
+  +9 -5

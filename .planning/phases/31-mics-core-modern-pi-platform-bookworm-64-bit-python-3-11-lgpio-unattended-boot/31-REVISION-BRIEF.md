@@ -1,5 +1,19 @@
 # Phase 31 — Revision Brief (feed this to the planner)
 
+> ## ⚠ READ THIS FIRST — state of the revision at handoff (2026-08-16)
+>
+> A `gsd-planner` revision pass was dispatched against these blockers and **was killed mid-run**.
+> It had partially edited **5 of 16 plans** (`31-06`, `31-08`, `31-10`, `31-15`, `31-16`) without
+> committing, and its last action was "rewriting the validation contract to match the new waves".
+>
+> **The working tree was deliberately reset to the clean `a052651` plan set.** The abandoned diff is
+> preserved at `31-partial-revision-ABANDONED.patch` (148 lines) purely as a reference — **do not
+> `git apply` it.** A half-applied revision is more dangerous than none: e.g. `31-16` may carry B7's
+> `PYTHONPATH` fix without B8's `RuntimeDirectory` fix, which *looks* done but still deletes the
+> running pilot's FIFO. Skim it for ideas if useful, then redo the revision properly from this brief.
+>
+> **So: every blocker below is OUTSTANDING. The plans on disk are the unrevised originals.**
+
 **Status as of 2026-08-16:** 16 plans exist at commit `a052651`. The plan-checker ran and found
 **8 blockers, 10 warnings, 3 info**. A revision pass was dispatched but **had not committed** when
 the session ended — assume the plans on disk are still the *unrevised* originals and verify with

@@ -306,3 +306,64 @@ because a live Gmail app password existed in the old history. Do not re-import o
 - RTK-proxied grep can render a matching line blank or compress output — never claim a symbol is
   unused from it alone. It misbehaved during this audit; every claim above was re-verified with a
   direct `grep -n`.
+
+---
+
+## 11. Decisions taken 2026-08-16 after research (LOCKED — do not re-open)
+
+These three were surfaced as open questions by `31-RESEARCH.md` and answered by the user.
+
+### 11.1 `Pulse20Hz` frequency — preserve 62.5 Hz exactly
+
+**Verified defect:** `gpio.py:1655` sets `frequency = 60.0` → 8.333 ms half-periods; `_series_script`
+at `gpio.py:572` emits `str(round(dur))` against the `mils` (integer-millisecond) pigpio wait
+function → **8 ms** each → period 16 ms → **62.5 Hz actual**. The class name says 20 Hz, the code
+says 60 Hz, the hardware emits 62.5 Hz. This drives `LED1` (`type: gpio.Pulse20Hz`) in prefs.
+
+**Decision:** the lgpio port must reproduce **62.5 Hz bit-exactly**. lgpio's microsecond resolution
+would otherwise "fix" the rounding and silently shift a stimulation parameter relative to every
+dataset collected so far. Alongside: **rename the class to reflect reality** and **expose the
+frequency in prefs** so the value is explicit rather than buried in a constant. Any future
+correction then becomes a deliberate, dated change that can be cited in a methods section.
+
+**Plan implication:** a regression test asserting the emitted waveform is 8000 µs on / 8000 µs off
+is mandatory, not optional. Do not "clean up" the rounding.
+
+### 11.2 Installer scope — own the box
+
+`install.sh` may assume a **dedicated rig Pi**: write `/boot/firmware/config.txt`, apt-install,
+enable services, disable Bluetooth. No coexistence mode, no interactive prompting, no `--dry-run`
+requirement. This matches how these Pis are actually deployed (one per cage, doing nothing else)
+and keeps the script small enough to be reviewable.
+
+### 11.3 journald — volatile RAM journal, capped
+
+Elasticsearch is the system of record, so the journal only needs to cover the current boot for
+debugging. Set `Storage=volatile` with a size cap so 24/7 operation writes nothing to the SD card
+(SD wear being the top failure mode in continuous operation).
+
+**Do not confuse this with the pilot's own log files**, which are 0 bytes by design and must be
+left alone (hard rule, §10).
+
+---
+
+## 12. Corrections to this document from research (apply these)
+
+- **§5 gpiochip label allowlist:** this document named `pinctrl-bcm2835` as the Pi 4 label.
+  Evidence says Pi 4 is **`pinctrl-bcm2711`**; `bcm2835` is Pi 2/3/Zero. The resolver should accept
+  `pinctrl-rp1`, `pinctrl-bcm2711`, `pinctrl-bcm2835` plus a `pinctrl-*` fallback. The design is
+  unaffected — only the allowlist ordering.
+- **§7 boot-partition path:** `/boot/mics.conf` must become **`/boot/firmware/mics.conf`**. On
+  current Bookworm the FAT partition mounts at `/boot/firmware/`, and `/boot/config.txt` is a
+  placeholder file, not a symlink.
+- **New landmine (not in this document):** `import lgpio` opens its notification FIFO at
+  `<cwd>/.lgd-nfy<N>`. Under systemd the working directory is `/`, so **all callbacks die silently**
+  unless `LG_WD` + `RuntimeDirectory=` are set on the unit. See `31-RESEARCH.md`.
+- **New landmine:** systemd's default start-rate limit latches a crash-looping unit into `failed`
+  permanently — fatal for a 24/7 rig. `StartLimitIntervalSec`/`StartLimitBurst` must be set
+  explicitly.
+- **Transmit-path risk inverts the earlier assumption:** lgpio's `tx_pulse`/`tx_wave` are
+  software-timed in an ordinary `pthread` with **no** `SCHED_FIFO`/`mlockall`, whereas pigpio runs
+  its whole process at `SCHED_FIFO` max. Mitigation is `CPUSchedulingPolicy=fifo` on the systemd
+  unit (both lgpio threads spawn inside `gpiochip_open()`, so they inherit it) — but this **must be
+  measured, not assumed**, and confirmed with `chrt -p`.

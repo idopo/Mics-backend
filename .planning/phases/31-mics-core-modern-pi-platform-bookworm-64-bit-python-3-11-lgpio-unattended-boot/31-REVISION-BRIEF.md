@@ -1,205 +1,165 @@
 # Phase 31 — Revision Brief (feed this to the planner)
 
-> ## ⚠ READ THIS FIRST — state of the revision at handoff (2026-08-16)
+> ## ⚠ STATUS CORRECTED 2026-08-17 — re-audited against the files on disk
 >
-> A `gsd-planner` revision pass was dispatched against these blockers and **was killed mid-run**.
-> It had partially edited **5 of 16 plans** (`31-06`, `31-08`, `31-10`, `31-15`, `31-16`) without
-> committing, and its last action was "rewriting the validation contract to match the new waves".
+> The previous version of this brief said a revision pass had been "abandoned uncommitted" and that
+> **all 9 blockers were outstanding**. **That was wrong.** A direct audit of the plan files at
+> `HEAD` (`bf57140`) shows commit **`4f3c38f`** — whose message reads "record the single-clock
+> invariant as a phase requirement" — actually carried **474 insertions across 15 of the 16 plan
+> files**. It committed the revision under a misleading message. `bf57140` reverted nothing; it only
+> added this brief and the `.patch` file.
 >
-> **The working tree was deliberately reset to the clean `a052651` plan set.** The abandoned diff is
-> preserved at `31-partial-revision-ABANDONED.patch` (148 lines) purely as a reference — **do not
-> `git apply` it.** A half-applied revision is more dangerous than none: e.g. `31-16` may carry B7's
-> `PYTHONPATH` fix without B8's `RuntimeDirectory` fix, which *looks* done but still deletes the
-> running pilot's FIFO. Skim it for ideas if useful, then redo the revision properly from this brief.
+> **Eight of the nine blockers are already fixed in the plans.** The audit below is evidence-based
+> (literal string counts, not RTK-proxied grep, which can blank a matching line). Do **not**
+> re-litigate the FIXED items — re-doing them risks churning correct work.
 >
-> **So: every blocker below is OUTSTANDING. The plans on disk are the unrevised originals.**
+> **`31-partial-revision-ABANDONED.patch` is stale and misleading. Ignore it; do not `git apply` it.**
 
-**Status as of 2026-08-16:** 16 plans exist at commit `a052651`. The plan-checker ran and found
-**8 blockers, 10 warnings, 3 info**. A revision pass was dispatched but **had not committed** when
-the session ended — assume the plans on disk are still the *unrevised* originals and verify with
-`git log --oneline .planning/phases/31-*/` before doing anything.
-
-**One extra blocker (B9) was found after the checker ran** — see below and CONTEXT.md §13.
-
-**How to resume:** hand this file, `CONTEXT.md` (especially §11 locked decisions, §12 corrections,
-§13 the single-clock invariant), `31-RESEARCH.md` and `31-VALIDATION.md` to `gsd-planner` in
-revision mode. Do **not** replan from scratch — the checker confirmed the structure is sound.
+**What is actually left:** one substantive blocker (**B9**, the single-clock invariant — genuinely
+unowned by every plan), plus **one B1 residual** and **six mechanical warning/info items**.
 
 ---
 
-## What the checker verified as CORRECT (do not re-litigate)
+## VERIFIED FIXED — do not re-open
 
-- **Requirement coverage complete** — PLAT-01..26 all appear in some plan's `requirements`.
-  PLAT-26 (planner-added, dev-host pytest harness) is properly recorded in REQUIREMENTS.md at
-  line 523 and the phase-mapping row at line 268.
-- **`--rebaseline` appears 17 times, every one a prohibition.** Zero instructions to run it.
-- **All three expected hand-edits have a real, named task** — `PORT_CALIBRATION` (02-T1 step 3;
-  the approach is correct — `f2_prefs` at `final_checks.py:107-109` is an *absence* assertion),
-  prefs rename (04-T1 steps 3-4), `Event_Dispatcher.py` sha256 (14-T2).
-- **Locked decisions §11 honored literally** — plan 13 T2 asserts the literal
-  `tx_pulse(h, pin, 8000, 8000, 0, 0)` and explicitly forbids recomputing from a frequency.
-- **§12 corrections all propagated** — `/boot/firmware/`, `pinctrl-bcm2711`, `LG_WD`/
-  `RuntimeDirectory`, `StartLimitIntervalSec=0`, SCHED_FIFO-as-hypothesis.
-- **Hard rules honored** — deploy uses `git archive | ssh … tar -x` (git stays on the dev host);
-  no `rsync --delete`; no agent-executed Python on the Pi; journald-vs-pilot-logs distinction
-  guarded in plan 05; `Message`/`hardware_state` carved out in 02, 03, 11, 12, 13, 15.
-- **No scope creep** — every CONTEXT §7 out-of-scope item is absent from all 16 plans.
-- **Dependency graph acyclic**, wave = max(dep)+1 holds everywhere except B1.
-- **Plan 09's provisioning-only pass condition** is stated as an expected outcome, not
-  green-washing. **Plan 03 does require an evidence-based dependency audit** and refuses to
-  hardcode 7.
+| ID | Fix | Evidence on disk |
+|---|---|---|
+| **B1** *(plans only)* | plan 05 depends on 04 | `31-05` `depends_on: ["31-03","31-04"]`, wave 5; waves now `1,2,3,4,5,4,6,5,7,8,9,10,11,11,12,13` (13 waves) |
+| **B2** | `logging_utils.py` bridge owned | `31-14-PLAN.md:9` lists it in `files_modified`; Task 2 owns it; `external_hardware_*` scope stated (15 mentions) |
+| **B3** | plan 15 T2 verify can fail | zero occurrences of `echo "final exit=$?"` or `; echo` in `31-15-PLAN.md` |
+| **B4** | plan 16 T3 verify can fail | `FAIL=1` accumulator + `test "$FAIL" -eq 0 && …` `&&`-chain; bare `grep -c "PLAT-"` gone; replaced by a Python assertion that **all 26 PLAT ids** carry a verdict |
+| **B5** | delta gate swept | of all `<automated>` blocks, **only `31-01`** omits `pytest_delta.py` (it is the task that *creates* the baseline — correct); **zero** omit `--strict`; plan 02 T3 carries the `subset` assertion + allow-list |
+| **B6** | spike verdict machine-gated | `31-11`, `31-12`, `31-13` — **both** real verify blocks in each carry the `SPIKE VERDICT IS ESCALATE` exit-non-zero check |
+| **B7** | `systemd-run` PYTHONPATH | `31-16`: 2 `systemd-run` blocks, 4 × `PYTHONPATH=/opt/mics` |
+| **B8** | transient-unit RuntimeDirectory | `31-16`: 5 × `RuntimeDirectory=micscap`, **0** bare `RuntimeDirectory=mics` |
+| **W1** | plan 08 cwd | `pulse_timing_root` occurrences = 0 |
+| **W3** | manifest section named right | `31-04:166-177` states `runtime_generated`, **not** `known_dangling`, and names the correct dangling-scan code rather than `check_known_dangling` |
+| **W4** | plan 09 pigpio friction | `31-09:49-53,140-141,153` reworded — the intermediate pigpio state is now explained as deliberate |
+| **W10** | plan 09 `must_haves` | "no human action" gone; phrased around `mics-pilot.service` + restart-without-latching |
+| **I1** | `--baseline` documented | 2 mentions in `31-01-PLAN.md` |
 
----
-
-## BLOCKERS
-
-### B1 — Plan 05 missing a dependency on plan 04; the wave-4 parallel pair cannot both run
-`31-05-PLAN.md` declares `depends_on: ["31-03"]`, wave 4 — same wave as plan 04. But 05-T1 requires
-every `ExecStart` path in `deploy/*.service` to exist, and `mics-prefs.service`'s `ExecStart` is
-`/opt/mics/deploy/render-prefs.sh`, which **plan 04 T2 creates**. 05-T2/T3 verify with `shellcheck`,
-which plan 04 T2 installs — and `shellcheck` is **not currently installed on this dev host**
-(verified live). 05's verification globs `shellcheck deploy/*.sh`, including plan 04's file.
-
-**Fix:** `depends_on: ["31-03", "31-04"]`, wave 5. Plan 06 stays wave 4; plan 07 → wave 6;
-shift everything downstream by one. Update `31-VALIDATION.md`'s wave column to match.
-
-### B2 — PLAT-18/19's wiring is owned by no plan; the phase's headline claim has no deliverer
-Plan 14's `key_links` claim `edge callback ts_ns → ZMQ payload t_mono_ns`, and T1 step 6 says
-"update the callers" — but plan 14's `files_modified` is only `Event_Dispatcher.py`,
-`tree_protect_list.json`, and its test. The real bridge is the `@log_action` wrapper at
-`autopilot/autopilot/utils/logging_utils.py:55` and `:97`, **in no plan's `files_modified`**.
-Other `dispatch_event` call sites: `Tracker.py:91`, `FiniteDeterministicAutomaton.py:18`,
-`mics_task.py:386,392,408,455`, `task.py:283,325`, `pilot.py:1100`, plus the two **protected**
-files `external_hardware_binding.py:118` / `external_hardware_ingress.py:45`.
-
-Consequences: (a) `ts_mono_ns` never reaches the wire — plan 12 threads it to the class boundary,
-plan 14 stops at the dispatcher signature, nothing joins them; (b) wiring the two
-`external_hardware_*` files means **two more protected digests**, contradicting plan 14 T2's
-"exactly one entry changed" assertion and its "if more than one file is flagged, stop".
-
-**Fix:** add `logging_utils.py` (and any other genuine bridging caller) to plan 14's
-`files_modified`; add a test asserting an injected `ts_ns` survives `@log_action` →
-`dispatch_event` → payload `t_mono_ns` **unchanged**; state explicitly whether the two protected
-`external_hardware_*` files are in or out of scope, and if in, budget the extra manifest edits and
-relax the one-line-diff assertion.
-
-### B3 — Plan 15 Task 2's `<automated>` verify can never fail
-`… && --strict && --final; echo "final exit=$?"` — the list's exit status is `echo`'s, always 0.
-`test_clock_block_removed.py`, the `_handshake_watchdog`/`OG_TRIGGER` collateral greps, and
-`--strict` are all discarded. This is the task retiring the deliberately-inverted F3 guard.
-
-**Fix:** `&&`-chain everything that must pass; capture `--final` separately
-(`… && --strict && { --final || true; }`) with the per-F-check verdict in the summary.
-
-### B4 — Plan 16 Task 3's `<automated>` verify can never fail — and it is the phase acceptance task
-`;`-separated throughout; exit status is a trailing `grep -c "PLAT-"`, which returns 0 whenever one
-`PLAT-` string exists. Ten `analyse.py --gate` exit codes, `--check-step +3600`, the full pytest run
-and `--strict` are all thrown away. Contradicts PLAT-24 ("pass/fail is a process exit code").
-
-**Fix:** accumulate failures (`for …; do … --gate || FAIL=1; done`), exit non-zero on `FAIL`;
-`&&`-chain `--check-step`, pytest and `--strict`; replace the bare `grep -c` with an assertion that
-**all 26 distinct PLAT ids** carry a verdict.
-
-### B5 — The delta gate can absorb a real regression at plan 02 (the exact masking it exists to prevent)
-Plan 02 T2 deletes `autopilot/setup/` **and** un-`collect_ignore`s `tests/test_compute_ops.py` and
-`tests/test_log_action_values.py` — two protected modules never executed anywhere — yet its verify
-omits `tools/pytest_delta.py`. Plan 02 T3 then rewrites `31-PYTEST-BASELINE.json` wholesale and
-verifies with `pytest_delta.py` **against the freshly written baseline** (trivially green). The only
-guard is prose. Not a one-off: **15 of 33 autonomous tasks omit the delta gate; 2 omit `--strict`**
-(worst: 02-T2, 14-T1 which has neither, 14-T2, 15-T2, 16-T3).
-
-**Fix:** (a) add `pytest_delta.py` to plan 02 T2's verify; (b) make 02 T3 **machine-assert** the new
-`failing_node_ids` is a **subset** of the previous set, any addition requiring an explicit
-allow-list entry naming node id + reason, refusing to write otherwise; (c) add the delta gate to
-both plan 14 tasks; (d) sweep remaining omissions.
-
-### B6 — Plan 13 does not refuse to run on an "escalate" verdict; it only says so in prose
-`<spike_inputs>` says "if the verdict was 'escalate', do not execute this plan" with **no machine
-check**. Plans 11 and 12 (also downstream of plan 10) have none at all, while plan 16's
-`<preconditions>` treats it as a hard gate. The two ends disagree.
-
-**Fix:** give plans 11, 12, 13 a verify prefix that greps `31-SPIKE.md` for the verdict and exits
-non-zero on `escalate`. The "Go / no-go" heading is fixed and already grepped by plan 10 T3.
-
-### B7 — Plan 16's lgpio capture campaign does not run as written
-Task 1 Steps 3-4 and Task 2's V3 soak invoke `python -m tools.pulse_timing.capture` under
-`systemd-run … -p WorkingDirectory=/run/mics`. The preceding `cd /opt/mics` is overridden, and
-`LG_WD` additionally `chdir()`s the process. `-m tools.pulse_timing.capture` fails with
-`No module named tools`.
-
-**Fix:** add `-p Environment=PYTHONPATH=/opt/mics` to every `systemd-run` block in plan 16, and
-mirror into the `tools/pulse_timing/README.md` blocks plan 08 T3 corrects.
-
-### B8 — Plan 16's V3 soak reintroduces the PLAT-10 landmine it exists to validate
-V3 starts `mics-pilot`, then launches a transient unit with `-p RuntimeDirectory=mics` — the same
-directory `mics-pilot.service` owns. systemd removes a `RuntimeDirectory` when the owning unit
-stops, so when `mics-soak` exits it deletes `/run/mics` from under the running pilot, destroying its
-`.lgd-nfy` FIFO and silently killing every edge callback. Same pattern in Task 1 Step 3.
-
-**Fix:** distinct directory for transient units (`-p RuntimeDirectory=micscap -p
-WorkingDirectory=/run/micscap -p Environment=LG_WD=/run/micscap`), as plan 10 already does with
-`micsspike`.
-
-### B9 — NEW (found after the checker ran): the single-clock invariant is unowned
-**See CONTEXT.md §13 for the full verified analysis.** All 16 plans mention `assign_cb`,
-`pi_timestamp`, `localize_tz`, `execute_trigger`, `handle_trigger` **zero times**. This is a second
-unowned path, distinct from B2. Breaks three ways: callback arity (pigpio 3-arg vs lgpio 4-arg),
-`localize_tz` receiving an int and raising in `strptime`, and the tick→timestamp conversion site
-moving out of pigpio's notification thread into `assign_cb`.
-
-**Fix:** add **PLAT-27** — `assign_cb` keeps its signature (it is the seam `task.py:199` uses for
-every trigger); an adapter inside it absorbs lgpio's 4-arg callback; **both** event paths read one
-epoch offset computed once (no snapshot copies — that is the existing defect); mandatory regression
-test that one injected edge yields a `pi_timestamp` and a dispatcher timestamp referring to the
-same instant; `localize_tz`'s input contract updated deliberately and tested.
+Also still true from the original checker pass (unchanged): requirement coverage complete,
+`--rebaseline` appears only as a prohibition, all three hand-edits have named tasks, §11 locked
+decisions honored literally (`tx_pulse(h, pin, 8000, 8000, 0, 0)`), §12 corrections propagated,
+hard rules honored, no scope creep, dependency graph acyclic.
 
 ---
 
-## WARNINGS
+## OUTSTANDING — this is the whole remaining job
 
-- **W1** Plan 08's USER-RUN checklist has a broken literal command: Step 0 rsyncs to
-  `~/pulse_timing/` but Steps 2-3 `cd ~/pulse_timing_root`, never created. For
-  `python3 -m pulse_timing.capture` to resolve, cwd must be `~`. Fix both. The user copy-pastes these.
-- **W2** The Python-3.7 AST gate covers only `capture.py`/`profiles.py`, but `capture.py` imports
-  `Digital_Out`/`Solenoid`/`TTL`/`Pulse20Hz` from `hardware/gpio.py`, which plans 02/03 edit before
-  plan 08 captures on Buster. A 3.8+ construct in that closure is discovered at the one-way door.
-  Extend the gate to `gpio.py` + transitive imports, or assert closure verification in plan 08.
-- **W3** Plan 04 T1 steps 4-5 name the wrong manifest section: the `pilot/prefs.json (PLUGIN_DB)`
-  exemption is under **`runtime_generated`**, not `known_dangling` (which holds exactly one entry,
-  the `autopilot.autopilot.core.pilot` deferral). `check_known_dangling` is the wrong function too.
-- **W4** Plan 09's `<expected_friction>` expects `pigpiod` running, but plan 07's installer purges
-  `pigpio pigpiod python3-pigpio` and plan 03's requirements contain no pigpio. The pilot dies on
-  `import pigpio` immediately. Reword — the note will send the executor chasing a non-bug.
-- **W6** Systematic off-by-one in cross-plan references — fix all: 02 `<integrity_gate>`
-  "plan 14 retires F3"→15; 02 `<verified_deletion_map>` "`external/` deleted in plan 14"→15;
-  05 `<verified_directives>` "handler is plan 14's work"→15; 12 `<scope_fence>` "`test_no_pigpio`
-  arrives in plan 14"→15; 12 `<objective>`/`<verified_port_facts>` "plan 15 connects it to the
-  dispatcher"→14 (swapped); 13 `<verified_port_facts>`/`<output>` "plan 14's SIGINT handler"→15.
-- **W7** `31-VALIDATION.md`'s sign-off overstates two claims: (a) "five USER-RUN capture tasks" —
-  there are **six** (08-T1, 08-T2, 09-T1, 10-T2, 16-T1, 16-T2), as its own table lists correctly;
-  (b) "every autonomous task ends in `pytest_delta.py` + `--strict`" — 15 of 33 omit the delta gate.
-  The sampling-continuity conclusion is independently correct, but `nyquist_compliant: true`
-  currently rests partly on false supporting claims.
-- **W8** The "<10 s latency for every autonomous task" claim excludes plan 03 T2
-  (`test_requirements_wheels.py` makes a PyPI round trip per pin; skips cleanly offline).
-- **W9** Plan 16 T3 step 7's record-update instructions are stale — ROADMAP already reads
-  `**Requirements**: PLAT-01 through PLAT-26` and REQUIREMENTS.md already has the block
-  (lines 489-523) plus the mapping row (line 268). As written it invites a duplicate.
-- **W10** Plan 09's first `must_haves.truth` ("yields a Pi that boots into the pilot with no human
-  action") is stronger than its own stated gate ("gate is PROVISIONING, not a working pilot").
-  A verifier grading on `must_haves` alone marks plan 09 failed for behaving as designed. Reword to
-  "…boots into `mics-pilot.service` unattended and systemd restarts it indefinitely without latching".
+### B9 — the single-clock invariant is unowned *(the only substantive item)*
 
-## INFO
+**Verified 2026-08-17, unchanged:** across all 16 plans, `assign_cb` = **0**, `pi_timestamp` = **0**,
+`localize_tz` = **0**, `handle_trigger` = **0**, `PLAT-27` = **0**. (`execute_trigger` appears twice
+in `31-14` only.) `REQUIREMENTS.md` has **no** PLAT-27. Distinct from B2, which is fixed.
 
-1. `tools/pytest_delta.py` defaults to a cross-repo baseline path, so the gate is unusable from a
-   clean `mics_core` clone (deliberate, mirrors Phase 30). Mention `--baseline` in plan 01 T1's README.
-2. Plan 10 Step 0 rsyncs `tools/pulse_timing/` including committed `captures/` JSONL files — add
-   `--exclude captures/`.
-3. Plan 15 T1 touches 7 files and folds in the open `external/` scoping decision — consider
-   splitting that decision into its own task.
+**The full verified analysis is `CONTEXT.md` §13 — read it; do not re-derive it.** Summary of what
+breaks if this stays unowned: (1) callback arity — pigpio `(gpio, level, tick)` 3-arg vs lgpio
+`(chip, gpio, level, timestamp)` 4-arg, hitting `Digital_In.record_event` (`gpio.py:940`) and
+`Task.handle_trigger` (`task.py:199`); (2) `localize_tz` (`utils/common.py:329-334`) receives an int
+and raises in `strptime`; (3) the tick→timestamp conversion site moves out of pigpio's notification
+thread — `assign_cb` itself must own the adapter.
+
+**Fix — add PLAT-27, and give it an owning task:**
+- `assign_cb` **keeps its signature** (it is the seam `task.py:199` uses for every trigger); an
+  adapter *inside* it absorbs lgpio's 4-arg callback down to the existing 3-arg contract.
+- **Both** paths (`execute_trigger`'s `pi_timestamp` and `Event_Dispatcher`'s `t_mono_ns`) read
+  **one** epoch offset computed once. No second offset, and **no scalar snapshot copies** — the
+  snapshot is precisely the existing defect that makes today's alignment decay after each 71.6-min
+  wrap (~20×/day under 24/7).
+- **Mandatory regression test:** one injected edge yields a `pi_timestamp` and a dispatcher
+  timestamp referring to the **same instant**.
+- `localize_tz`'s input contract updated **deliberately and tested**, not incidentally.
+- Consider a test that the invariant survives a simulated long run (today's design does not).
+
+**Ownership guidance (planner's call, but state the reasoning):** the natural homes are plan **12**
+(`Digital_In` / callback port) and plan **14** (dispatcher timebase). The offset must be *one*
+value read by both, so whichever plan creates it must precede the other, or a new plan owns the
+shared clock source and both depend on it. Do not split the offset across two plans.
+
+**Knock-on edits PLAT-27 forces — all mandatory, easy to miss:**
+1. `REQUIREMENTS.md` — add the PLAT-27 row and update the phase-mapping row (currently PLAT-01..26).
+2. `ROADMAP.md` Phase 31 — `**Requirements**: PLAT-01 through PLAT-26` → **27**.
+3. `31-16-PLAN.md` acceptance verify — the Python assertion builds `want={'PLAT-%02d'%i for i in
+   range(1,27)}`; must become `range(1,28)`. Also `31-16:402` ("all 26 PLAT ids") and `31-16:413`
+   ("PLAT-01 through PLAT-26").
+4. `31-VALIDATION.md` — add the PLAT-27 task row(s) and its wave.
+
+### B1 residual — `31-VALIDATION.md`'s wave column is stale
+
+The plans were re-waved; **the validation contract was not**. Its table still carries the old
+12-wave layout — e.g. `31-05` wave 4 (plans say 5), `31-07` wave 5 (says 6), `31-09` wave 6 (says
+7), `31-16` wave 12 (says 13). Every row from `31-05` down is wrong.
+
+**Fix:** rewrite the `Wave` column from the plan frontmatter — the plan files are the source of
+truth — and re-check every `depends_on` against it.
+
+### W2 — the Python-3.7 AST gate is too narrow
+
+`31-06-PLAN.md:229,251,310` gates `ast.parse(..., feature_version=(3,7))` on **`capture.py` and
+`profiles.py` only**. But `capture.py` imports `Digital_Out`/`Solenoid`/`TTL`/`Pulse20Hz` from
+`hardware/gpio.py`, which plans **02/03 edit before plan 08 captures on Buster**. A 3.8+ construct
+in that import closure is discovered at the one-way door (plan 08 must precede plan 09's reflash,
+and the patched `pigpio.py` is unobtainable afterwards).
+
+**Fix:** extend the gate to `gpio.py` and its transitive import closure, or make plan 08 assert
+closure verification before the capture run.
+
+### W6 residual — one wrong cross-plan reference left
+
+`31-09-PLAN.md:277` — "Do not fix pigpio; **plan 14** deletes it." Plan 14 is dual-timebase
+dispatch; pigpio removal completes in plan **15** (`test_no_pigpio`, `external/` deletion).
+Fix to 15 (or "plans 11–15").
+
+*(The other "plan 14" references are correct as written: `31-12:55` and `31-12:167` genuinely point
+at plan 14's dispatcher work; `31-14:358` is a self-reference; `31-15:235` correctly credits plan 14
+with replacing the estimated tick→timestamp mapping. The 02 and 05 off-by-ones are already fixed.)*
+
+### W7 — `31-VALIDATION.md`'s sign-off still overstates
+
+`31-VALIDATION.md:183` still reads "**The five USER-RUN capture tasks**". There are **six**:
+`08-T1`, `08-T2`, `09-T1`, `10-T2`, `16-T1`, `16-T2` — as its own Manual-Only table lists correctly.
+The delta-gate claim can now be stated truthfully (it *is* on every autonomous task except plan 01,
+which creates the baseline) — state it with that carve-out rather than absolutely.
+The sampling-continuity conclusion is independently correct; only the supporting counts are wrong.
+
+### W8 — latency claim needs one carve-out
+
+`31-VALIDATION.md:179` claims "< 10 s for all autonomous tasks". Plan 03 T2
+(`test_requirements_wheels.py`) makes a PyPI round trip per pin. It skips cleanly offline — say so
+rather than leaving the blanket claim.
+
+### W9 — plan 16 step 7's record-update instructions are stale
+
+`31-16-PLAN.md:377-379` instructs replacing ROADMAP's `TBD` requirements line and adding the `PLAT-`
+block to `REQUIREMENTS.md` — **both already exist** (REQUIREMENTS.md lines 489-523 plus the mapping
+row at 268). As written it invites a duplicate block. Reword to *verify/update* rather than *add*,
+and fold in the PLAT-27 renumbering from B9.
+
+### I2 — plan 10 rsync ships committed captures
+
+`31-10-PLAN.md:216` and `:283` rsync `tools/pulse_timing/` to the Pi including the committed
+`captures/` JSONL files. Add `--exclude captures/` to both.
+
+### I3 — advisory only
+
+Plan 15 T1 touches 7 files and folds in the open `external/` scoping decision. Splitting that
+decision into its own task is optional; skip it unless the re-waving makes it convenient.
 
 ---
+
+## Instructions to the planner
+
+1. **Do not replan from scratch and do not touch the FIXED table's items.** The structure is sound
+   and the previous revision was largely correct — it was only mislabeled.
+2. **B9 first** — it is the only item requiring design judgment, and it changes requirement counts
+   that four other files assert against. Do its four knock-on edits in the same pass or the plan 16
+   acceptance gate will fail on a count mismatch.
+3. Then B1-residual (`31-VALIDATION.md` waves), then W2, then the mechanical W6/W7/W8/W9/I2 edits.
+4. When re-waving, re-check **every** `depends_on` against the plan frontmatter **and** the
+   validation contract's wave column — they are currently out of sync, which is how B1 survived
+   looking fixed.
+5. Re-run `gsd-plan-checker` afterwards, re-verifying rather than trusting this brief.
 
 ## Planner's own findings worth preserving
 
@@ -208,9 +168,9 @@ same instant; `localize_tz`'s input contract updated deliberately and tested.
    collected in 4.96 s**; all 179 are one third-party import chain
    (`autopilot/__init__.py:4` → `setup_autopilot.py:6` → `npyscreen`, then `utils/common.py:18`
    → `tzlocal`).
-2. **A third mandatory manifest edit the brief did not name** — `Event_Dispatcher.py` carries a
-   `baseline_sha256` in `tools/tree_protect_list.json`. `manifest.py check_event_dispatcher()`
-   independently requires `_dropped_no_clock` / `_dropped_on_send` to survive **by name**.
+2. **A third mandatory manifest edit** — `Event_Dispatcher.py` carries a `baseline_sha256` in
+   `tools/tree_protect_list.json`. `manifest.py check_event_dispatcher()` independently requires
+   `_dropped_no_clock` / `_dropped_on_send` to survive **by name**.
 3. **The pigpio baseline is a one-way door.** The patched `pigpio.py` exists **only** in the live
    rig's site-packages, not in the repo, and becomes unobtainable once the spare card is reflashed.
    Hence plan 08 before plan 09, and `capture.py` constrained to Python 3.7 grammar.

@@ -73,7 +73,7 @@ method at `:947-953`, and `:949 external.start_pigpiod()`, on the grounds that p
 `pigpiod` unit replaced them. **The user reviewed that and reversed it.** `start_pigpiod()` registers
 a `kill_proc` hook on `atexit` and `SIGTERM` (`external/__init__.py:54-59`) that **kills the daemon
 when the session ends** — and because `pigpiod` is what actually drives the pins, killing it is what
-**drops every output**. A systemd-supervised daemon would **outlive** a crashed pilot, leaving
+**drops every output** — a belief **verified FALSE on 2026-08-17**; the daemon already outlives the pilot today. The withdrawal stands by user instruction. The original argument ran: a systemd-supervised daemon would **outlive** a crashed pilot, leaving
 `VALVE1-4` / `AIR_PUF` / `ODOR1-5` energised with nothing left to close them. The current design
 fails safe; the supervised one would not, absent extra fail-safe work outside this phase.
 
@@ -233,9 +233,10 @@ is).
 **`external/__init__.py` — nothing is removed from it.** *(Rewritten 2026-08-17 with PLAT-33's
 withdrawal; the earlier text asked you to decide whether `start_pigpiod` could be deleted.)* It stays
 whole: `start_pigpiod` (`:31`), its `shutil.which('pigpiod')` gate (`:15`), and above all the
-`kill_proc` hook on `atexit` and `SIGTERM` (`:54-59`) that kills the daemon at session end and
-thereby **drops every output**. That hook is the rig's fail-safe and the reason the requirement was
-withdrawn. Task 1 asserts all of it is present rather than deciding anything, and the expected diff
+`kill_proc` hook on `atexit` and `SIGTERM` (`:55-60`), which was believed to kill the daemon at
+session end. **Verified FALSE 2026-08-17** — `proc` is the shell, `pigpiod` daemonises without `-g`,
+and the hook never reaches it. Preserve the code unchanged anyway (the withdrawal stands by user
+instruction and this plan changes nothing here), but do **not** describe it as a fail-safe. Task 1 asserts all of it is present rather than deciding anything, and the expected diff
 for this file is **zero lines**.
 
 **`requirements.txt` is NOT edited here.** Plan 03 pinned the stock pigpio **client** (a pure-Python
@@ -429,7 +430,7 @@ if bad:
 keep = {k: p.count(k) for k in ('self.init_pigpio()', 'def init_pigpio(', 'external.start_pigpiod()')}
 print('pilot.py pigpiod-spawn preservation counts:', keep)
 if keep != {'self.init_pigpio()': 1, 'def init_pigpio(': 1, 'external.start_pigpiod()': 1}:
-    sys.exit('the pigpiod spawn was altered; PLAT-33 was WITHDRAWN and start_pigpiod()\'s kill_proc hook is what closes the solenoids at session end: %r' % keep)
+    sys.exit('the pigpiod spawn was altered; PLAT-33 was WITHDRAWN and start_pigpiod()\'s kill_proc hook is preserved by user instruction (its fail-safe premise was verified false; do not remove it anyway) at session end: %r' % keep)
 ext = pathlib.Path('autopilot/autopilot/external/__init__.py').read_text()
 hook = {k: ext.count(k) for k in ('def start_pigpiod', 'atexit.register', 'signal.signal(signal.SIGTERM', 'proc.kill()')}
 print('external/__init__.py fail-safe hook counts:', hook)
@@ -600,7 +601,7 @@ print('--final captured to /tmp/final31_c3.txt; no F3 NTP/clock-block violation 
 - The pilot **still** spawns `pigpiod`, and that is asserted rather than assumed: `init_pigpio()`,
   its call site and `external.start_pigpiod()` each survive exactly once, and the `kill_proc`
   fail-safe hook in `external/__init__.py` is intact. PLAT-33 was withdrawn 2026-08-17 because that
-  hook is what closes the solenoids at session end; a supervised daemon would outlive a crashed
+  hook was believed to close the solenoids at session end (**verified FALSE 2026-08-17**); the original argument was that a supervised daemon would outlive a crashed
   pilot. The gate also asserts **no** `pigpiod` unit or drop-in exists, so the decision cannot be
   quietly undone from `deploy/`.
 - The Phase 30 clock-freeze deferral is **resolved by being made unnecessary**, with the reasoning in

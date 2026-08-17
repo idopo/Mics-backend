@@ -227,10 +227,21 @@ property. The user was asked and chose to leave the spawn where it is.
 
 **The reasoning, which is decisive and belongs in the record:**
 
-`external.start_pigpiod()` (`external/__init__.py:31`) registers a `kill_proc` hook on `atexit` and
-`SIGTERM` (`:54-59`) that **kills the daemon when the session ends**. Because `pigpiod` drives the
-pins and the pilot merely talks to it over a socket, killing the daemon is what **drops every
-output**. Making `pigpiod` an independently supervised unit inverts that: the daemon would
+The decision was taken on the belief that `external.start_pigpiod()`'s `kill_proc` hook
+(`external/__init__.py:55-60`) kills the daemon at session end and thereby drops every output.
+
+**⚠ VERIFIED FALSE 2026-08-17 — the fail-safe does not work as described.** Read
+`external/__init__.py:52`: `proc = subprocess.Popen('sudo ' + launch_pigpiod, shell=True)`. With
+`shell=True`, `proc` is the `/bin/sh -c` process, **not** `pigpiod`. `PIGPIOARGS` is `"-t 0 -l"` with
+**no `-g`**, so `pigpiod` daemonises — it forks, the parent exits, `sudo` exits, the shell exits — and
+by the time `kill_proc` runs at `:56-57` `proc` is already gone, so `proc.kill()` kills nothing.
+`sudo` also means the daemon runs as root, so a `User=pi` pilot could not signal it even with the
+right pid. **The daemon already outlives the pilot today, and outputs are NOT dropped at session
+end.** PLAT-33 was withdrawn on the belief that this hook was a fail-safe; the withdrawal **stands by
+user instruction**, but its premise is void. **Neither the current design nor a supervised unit is
+fail-safe** — a real one (something that de-energises solenoids when the pilot is absent, regardless
+of how `pigpiod` is managed) is separate, unscheduled work. Plan 09 Step 12 and C4 Step 4 **measure**
+this; nothing may assert it. Canonical wording: `31-C4-PLAN.md`'s NOT PROVEN entry. Making `pigpiod` an independently supervised unit inverts that: the daemon would
 **outlive** the pilot, so a pilot crash mid-trial with a solenoid energised would leave
 **`VALVE1-4` / `AIR_PUF` / `ODOR1-5` open**, with no process left to close them. That is an
 animal-welfare hazard, and §3's own fail-safe note already flagged that the pigpio design has no

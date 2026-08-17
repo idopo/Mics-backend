@@ -296,10 +296,12 @@ What IS observable, and what the accounting therefore is:
 | Signal | Source | What it catches |
 |---|---|---|
 | `n_missing` = commanded - observed edges | the soak's own trailer | a dropped edge, directly. **The primary number.** |
-| `ambiguous_gap`, `out_of_order`, `monotonic_violation`, `convert_failed` | C1's `counters()` | a gap the extender could not disambiguate, or a conversion that failed |
-| `heartbeat_missed`, `bracket_rejected`, `fit_rejected` | C1's `counters()` | the calibration path being starved |
+| `ambiguous_gap`, `monotonic_violation`, `convert_failed` | C1's `counters()` | **FAULTS — asserted zero.** A gap the extender could not disambiguate (Case D), a value that went backwards without the out-of-order flag, or a conversion that failed |
+| `wraps`, `out_of_order`, `duplicates`, `refits` | C1's `counters()` | **ACTIVITY — printed, never asserted.** `out_of_order` is Case C firing, which is normal under a heartbeat thread; `duplicates` is Case A; together with `wraps` these reconstruct C1's A/B/C/D accounting |
+| `heartbeat_missed` | C1's `counters()` | **FAULT — asserted zero.** The calibration path being starved |
+| `bracket_rejected`, `fit_rejected` | C1's `counters()` | **REPORTED, not asserted** (C1 `:699`). A re-fit declining a bad sample is correct behaviour |
 | `_dropped_no_clock`, `_dropped_on_send` | C2's dispatcher | an event that reached dispatch and was dropped there |
-| daemon warnings | `journalctl -u mics-pilot -b` over the soak window | anything `pigpiod` itself chose to say. **It has no journal of its own:** PLAT-33 was withdrawn, so the daemon is a `subprocess.Popen` child of the pilot (`external/__init__.py:51`) and inherits the pilot unit's stdout/stderr. `journalctl -u pigpiod` returns nothing and its emptiness proves nothing |
+| daemon warnings | `journalctl -u mics-pilot -b` over the soak window | anything `pigpiod` itself chose to say. **It has no journal of its own:** PLAT-33 was withdrawn, so the daemon is a `subprocess.Popen` child of the pilot (`external/__init__.py:52`) and inherits the pilot unit's stdout/stderr. `journalctl -u pigpiod` returns nothing and its emptiness proves nothing |
 
 **Criterion: `n_missing == 0` and every counter above zero, with the `journalctl` window inspected and
 quoted.** If any is non-zero, that is a **finding reported with its count**, not a number to average
@@ -683,7 +685,10 @@ print('pre-flight OK: C1-C3 green, --final free of F3 clock violations, py37 clo
 
     **Step 4 — the physical fail-safe check.** Put the meter across each output device in turn, then:
     ```bash
-    sudo systemctl kill -s SIGKILL mics-pilot
+    sudo systemctl stop mics-pilot        # ARM 1 -- clean stop: SIGTERM, so kill_proc's handler CAN run
+    ps -o pid=,ppid=,args= -C pigpiod || echo "pigpiod: not running"
+    # ... then restart the pilot and repeat with:
+    sudo systemctl kill -s SIGKILL mics-pilot   # ARM 2 -- no handler runs at all
     ```
     Report **open / closed / chatter, per device**. Expect the pigpio behaviour: the **daemon outlives
     the client and keeps driving the pin**, so a solenoid energised at the moment of the kill may stay
@@ -816,10 +821,19 @@ print('trailer:', {k: tr[k] for k in sorted(tr) if k != 'counters'})
 print('counters:', tr['counters'])
 if tr['n_missing'] != 0:
     sys.exit('PLAT-32 acceptance FAILED: n_missing=%d of %d commanded edges. The loss WAS detected and counted (PLAT-32 satisfied); the acceptance gate still fails.' % (tr['n_missing'], tr['n_commanded']))
-watch = ('ambiguous_gap','out_of_order','monotonic_violation','convert_failed','heartbeat_missed','fit_rejected','bracket_rejected')
-bad = {k: v for k, v in tr['counters'].items() if k in watch and v}
+# CORRECTED 2026-08-17. An earlier draft watched 'out_of_order', 'fit_rejected' and
+# 'bracket_rejected' too. C1 SS7 classifies those as activity / reported-not-asserted, not faults --
+# and 'out_of_order' is the counter Case C exists to move. This soak runs a heartbeat thread against
+# a notify thread under deliberate CPU load, i.e. the exact condition that produces it, so the old
+# list failed a CORRECT implementation after 4.33 h of hardware time.
+fault = ('ambiguous_gap','monotonic_violation','convert_failed','heartbeat_missed')
+activity = ('wraps','out_of_order','duplicates','refits')
+reported = ('bracket_rejected','fit_rejected')
+print('activity counters (expected non-zero):', {k: tr['counters'].get(k) for k in activity})
+print('reported, not asserted:', {k: tr['counters'].get(k) for k in reported})
+bad = {k: v for k, v in tr['counters'].items() if k in fault and v}
 if bad:
-    sys.exit('clock counters non-zero over the soak: %r' % bad)
+    sys.exit('clock FAULT counters non-zero over the soak: %r' % bad)
 wit = [r for r in recs if r.get('kind') == 'witness']
 ticks = [r['tick'] for r in wit]
 wraps = sum(1 for a, b in zip(ticks, ticks[1:]) if b < a)
@@ -889,7 +903,7 @@ if missing:
 print('evidence log complete')
 " && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
   </verify>
-  <done>`--check-wrap` exits 0 in its DEFAULT direction over a soak containing >= 3 real wraps with zero backward jumps, and the result is recorded beside plan 08's measured ~4294.97 s jump from the same tool; all four `--check-step` runs pass with the UTC moving by exactly the applied amount and no interval moving; every sampled edge's two dispatch routes agree on `t_mono_ns` and both are hardware-stamped; every record carries a valid provenance flag; `n_missing == 0` and every clock/dispatcher counter is zero, with the `pigpiod` journal window inspected and the instrument's limit stated; all twenty paired captures pass G1 and the absolute thresholds, with the platform confound recorded beneath the table; the `chrt` table and a PLAT-17 keep-or-drop verdict are recorded; `31-HARDWARE-VALIDATION.md` carries the full "after arm" section, per-capture md5s and a substantive NOT PROVEN section; delta gate `new failures: 0`; `--strict` exit 0.</done>
+  <done>`--check-wrap` exits 0 in its DEFAULT direction over a soak containing >= 3 real wraps with zero backward jumps, and the result is recorded beside plan 08's measured ~4294.97 s jump from the same tool; all four `--check-step` runs pass with the UTC moving by exactly the applied amount and no interval moving; every sampled edge's two dispatch routes agree on `t_mono_ns` and both are hardware-stamped; every record carries a valid provenance flag; `n_missing == 0` and every clock/dispatcher FAULT counter is zero (activity counters are printed, not asserted -- see C1 SS7's three classes), with the `pigpiod` journal window inspected and the instrument's limit stated; all twenty paired captures pass G1 and the absolute thresholds, with the platform confound recorded beneath the table; the `chrt` table and a PLAT-17 keep-or-drop verdict are recorded; `31-HARDWARE-VALIDATION.md` carries the full "after arm" section, per-capture md5s and a substantive NOT PROVEN section; delta gate `new failures: 0`; `--strict` exit 0.</done>
 </task>
 
 </tasks>

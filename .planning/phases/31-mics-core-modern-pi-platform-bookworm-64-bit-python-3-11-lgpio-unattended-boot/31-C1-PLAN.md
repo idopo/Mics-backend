@@ -266,8 +266,17 @@ sample. The first would be misread as the second. What it *can* now do is get ev
 right, and flag it. The structural limit is the information content of a 32-bit field, not a defect
 of the rule, and the heartbeat is what guarantees the gap is never large enough to reach it.
 
-**The return shape is fixed: `extend(tick32) -> (value_us: int, ambiguous: bool)`.** Not a per-call
-flag on the object, not an out-parameter. `ambiguous` is `True` only in Case D. A tuple is chosen
+**The FIRST call seeds; it does not classify.** `extend()` on a fresh extender has no `last_tick`
+to compare against, so it **records** `tick32`, returns `(tick32, False)` with `wraps = 0`, and
+increments **no** counter. This must be stated because `31-C3-PLAN.md` attaches the clock in
+`run_task`, hours after boot, so the first observed tick is effectively uniform in `[0, 2**32)`:
+without seeding, any first tick in `(2**31, 2**32 - MAX_OUT_OF_ORDER_US]` would take Case D and set
+`ambiguous_gap == 1` before a single edge (which C4's soak gate asserts is zero), and a first tick in
+the top 2 s would take Case C with `epoch = wraps - 1 = -1` and return a **negative** value. Assert
+the seeding in Task 1.
+
+**The return shape is fixed: `extend(tick32) -> (value_us: int, ambiguous: bool, out_of_order: bool)`.** Not a per-call
+flag on the object, not an out-parameter. `ambiguous` is `True` only in Case D; `out_of_order` is `True` only in Case C. A tuple carries both because each belongs to the *observation*. A tuple is chosen
 because the ambiguity belongs to the *observation*, and a flag read separately from the value can be
 read for the wrong one under two threads.
 
@@ -336,7 +345,12 @@ difference is the whole point, and a test asserts the clock never does the secon
 `extend()` legitimately returns a value below its previous return for a plausible out-of-order
 sample. `observe()` must therefore distinguish two things that look alike:
 
-- **Out-of-order** — the extender's `out_of_order` counter moved on this call. `observe()` returns a
+- **Out-of-order** — the third element of `extend()`'s return is `True` on this call.
+  *(Corrected 2026-08-17: this previously said "the extender's `out_of_order` counter moved on this
+  call", which is not observable through the fixed return — the only implementation left was a
+  `counters()` before/after diff around `extend()`, exactly the separately-read pattern this section
+  rejects, and it races the concurrency test into a spurious `ClockFault`. Hence the third tuple
+  element.)* `observe()` returns a
   value **clamped to its own previous return** (so the delivered series is non-decreasing, which is
   what C4's `--check-wrap` asserts over 3.6 hours) and does **not** raise. Nothing is wrong; a sample
   arrived late by microseconds.
@@ -642,11 +656,22 @@ print('tick_extender ok: identity, single wrap +1500us, Case C not a wrap, Case 
       `observe()`: the returned `t_mono_ns` series is **strictly increasing across the wrap**, and
       `counters()['wraps'] == 1`.
     - **Quiet period longer than a wrap — the case PLAT-29's heartbeat exists for.** Positive
-      control: `set_tick(2**32 - 1000)`, `_heartbeat_once()`, `advance_tick(2_100_000_000)` (past a
-      wrap, comfortably beyond `2**31` µs) with **no edges at all**, then `_heartbeat_once()` twice
-      more at intervals inside the bound, then `fire_edge`. The final `t_mono_ns` is greater than
-      the pre-quiet one and `ambiguous_gap == 0`. Negative control: the identical sequence with the
-      heartbeat **not** called during the quiet stretch yields `ambiguous_gap >= 1`. Without the
+      control: `set_tick(2**32 - 1000)`, `_heartbeat_once()`, then advance in **three** steps of
+      `advance_tick(1_000_000_000)` with `_heartbeat_once()` **between each** and no edges at all,
+      then `fire_edge`. Each individual step is well inside `TICK_HALF`, so every observation takes
+      Case B: the final `t_mono_ns` is greater than the pre-quiet one and `ambiguous_gap == 0`.
+      Negative control: the identical total advance made in **one** `advance_tick(3_000_000_000)`
+      with the heartbeat **not** called during the stretch yields `ambiguous_gap >= 1`.
+
+      *(Both numbers corrected 2026-08-17. The earlier draft used a single `advance_tick(2_100_000_000)`
+      described as "comfortably beyond `2**31` µs" — but `2_100_000_000 <= TICK_HALF (2_147_483_648)`,
+      so it took Case B and `ambiguous_gap` never moved: the negative control could not fire, and this
+      is one of the three tests `<behavior>` requires to fail first. The Case D window is
+      `(2_147_483_648, 4_292_967_296]` µs, hence `3_000_000_000`. The positive arm also had to change:
+      `advance_tick` moves only the fake's tick, so the extender sees the whole jump on the first
+      `extend()` after it — heartbeats called AFTER a single advance present the identical
+      `delta_forward` as the negative arm, making the two arms indistinguishable whatever number is
+      chosen. The heartbeats must be interleaved INSIDE the stretch.)* Without the
       negative control the heartbeat could be deleted and this test would still pass, which would
       make PLAT-29 decorative.
 

@@ -93,8 +93,8 @@ promoted from an inline heredoc to a committed, tested script.
 ## Per-Task Verification Map
 
 Waves below are copied from the plan frontmatter and re-derived 2026-08-17 (third pass).
-**`wave == max(wave of every depends_on) + 1` holds for all nine plans**, and no two plans sharing
-a wave name the same code file in `files_modified`:
+**`wave == max(wave of every depends_on) + 1` holds for all thirteen plans**, and no two plans
+sharing a wave name the same code file in `files_modified`:
 
 - wave 4 = plans 04 (`pilot/prefs*`, `deploy/render-prefs.sh`, `tools/tree_*`), 06
   (`tools/pulse_timing/*`) and **C1** (`autopilot/utils/{tick_extender,clock}.py`,
@@ -105,6 +105,13 @@ a wave name the same code file in `files_modified`:
   `Event_Dispatcher.py`, `tools/tree_protect_list.json`, three test modules) — disjoint. Note plan 06
   (wave 4) also writes `tools/pulse_timing/README.md`, and plan 04 (wave 4) also writes
   `tools/tree_protect_list.json`; different waves, so the edit order is strictly sequential.
+  **C2's `depends_on` gained `31-06` on 2026-08-17** so it can run `tools/pulse_timing/py37_gate.py`:
+  C2's `from autopilot.utils.clock import ...` in `gpio.py` is what pulls C1's two modules into that
+  gate's closure, and plan 08 takes the Buster baseline on Python 3.7.3. **The wave is unchanged** —
+  `max(C1=4, 03=3, 06=4) + 1 = 5` — and 06 is read-only from C2's point of view (C2 runs the script,
+  it does not write to `tools/pulse_timing/`), so no file-ownership conflict is introduced. C1 could
+  not take this dependency: plan 06 is in C1's own wave, and at that point nothing imports the clock,
+  so the closure would not reach it — C1 gates the 3.7 constraint inline instead.
 - wave 6 = plans 07 (`deploy/install.sh`, `deploy/uninstall.sh`, `tests/test_installer_paths.py`,
   `README.md`) and **C3** (`core/pilot.py`, `external/__init__.py`,
   `tools/tree_integrity/final_checks.py`, two test modules) — disjoint. Plan 02 (wave 2) and plan 04
@@ -128,42 +135,46 @@ a wave name the same code file in `files_modified`:
 | 31-04-02 | 04 | 4 | PLAT-08 | unit | `shellcheck deploy/render-prefs.sh` + `pytest -q tests/test_prefs_render.py` | ❌ W0 | ⬜ pending |
 | 31-06-01 | 06 | 4 | PLAT-23 | static+unit | `pytest -q tests/test_py37_gate.py` (7 cases incl. positive control) + `py37_gate.py` (closure incl. `gpio.py` **and** `wrap_witness.py`) + both `--help`s | ❌ W0 | ⬜ pending |
 | 31-06-02 | 06 | 4 | PLAT-23, PLAT-25 | unit | `pytest -q tests/test_pulse_timing_analyse.py` + `--check-wrap` in BOTH directions (`--expect-defect` passes on the defective fixture, default mode fails on it) | ❌ W0 | ⬜ pending |
-| 31-C1-01 | C1 | 4 | PLAT-29 | unit | `pytest -q tests/test_tick_extender.py` + the inline identity / single-wrap-`+1500 µs` / out-of-order-is-not-a-wrap / range-`ValueError` / two-thread-`wraps==1` assertions | ❌ W0 | ⬜ pending |
-| 31-C1-02 | C1 | 4 | PLAT-30 | unit | `pytest -q tests/test_mics_clock.py` + the single-`CLOCK_REALTIME`-site scan, the PLAT-29 heartbeat-bound `ValueError`, the `PatchedClientError` guard, `ClockNotReady` before calibration and the complete `counters()` key set | ❌ W0 | ⬜ pending |
-| 31-05-01 | 05 | 5 | PLAT-06,09,10,11,21,33 | unit | `pytest -q tests/test_unit_files.py` + counted `LG_WD`/`lgpio` absence in `deploy/` + `pigpiod` After=/Requires= count | ❌ W0 | ⬜ pending |
+| 31-C1-01 | C1 | 4 | PLAT-29 | unit | `pytest -q tests/test_tick_extender.py` + the inline identity / single-wrap-`+1500 µs` / Case-C-out-of-order-is-not-a-wrap / **Case-D forward-gap asserted four ways (step size, `ambiguous=True`, non-latching, `out_of_order` untouched)** / **discriminator both sides of `MAX_OUT_OF_ORDER_US`** / `duplicates` increments / `(int, bool)` return shape / range-`ValueError` / two-thread-`wraps==1` assertions | ❌ W0 | ⬜ pending |
+| 31-C1-02 | C1 | 4 | PLAT-30 | unit | `pytest -q tests/test_mics_clock.py` + the single-`CLOCK_REALTIME`-site scan, the PLAT-29 heartbeat-bound `ValueError`, the `PatchedClientError` guard, `ClockNotReady` before calibration, the complete `counters()` key set with only the **fault** class asserted zero, and the **inline `ast.parse(feature_version=(3,7))` + PEP-585/604/dataclass-slots/f-string-`=` check on both modules** (they enter plan 06's 3.7 closure at C2) | ❌ W0 | ⬜ pending |
+| 31-05-01 | 05 | 5 | PLAT-06,09,10,11,21 | unit | `pytest -q tests/test_unit_files.py` + counted `LG_WD`/`lgpio` absence in `deploy/` + **counted `pigpiod`-absence in `mics-pilot.service` and absence of `deploy/pigpiod-mics.conf`** (PLAT-33 withdrawn 2026-08-17) | ❌ W0 | ⬜ pending |
 | 31-05-02 | 05 | 5 | PLAT-07 | unit | `shellcheck deploy/firstboot-once.sh` + `pytest -q tests/ -k firstboot` | ❌ W0 | ⬜ pending |
-| 31-05-03 | 05 | 5 | PLAT-20, PLAT-33 | unit | `pytest -q tests/ -k unit_files` + the drop-in assertions (empty-`ExecStart=` reset adjacency, `-t 0 -l -x -b`, no `-s`, no `makestep`, `Storage=volatile`) | ❌ W0 | ⬜ pending |
+| 31-05-03 | 05 | 5 | PLAT-20 | unit | `pytest -q tests/ -k unit_files` + the chrony/journald drop-in assertions (no `makestep`, no `driftfile`, `Storage=volatile`) + the counted absence of any `pigpiod` unit or drop-in | ❌ W0 | ⬜ pending |
 | 31-08-00 | 08 | 5 | PLAT-24 | static | `py37_gate.py` + `--list` reaches `gpio.py` and `wrap_witness.py` + closure not shrunk vs `31-06-SUMMARY.md` — **the machine-checked pre-capture gate, runs before any user command** | ✅ (after 06) | ⬜ pending |
 | 31-08-01 | 08 | 5 | PLAT-24 | **manual-only (capture)** | USER-RUN "before" campaign + LA calibration; gated by task `31-08-00` — see Manual-Only table | n/a | ⬜ pending |
 | 31-08-02 | 08 | 5 | PLAT-25 | **manual-only (capture)** | USER-RUN 90-minute wrap-witness run with the DEPLOYED patched client | n/a | ⬜ pending |
 | 31-08-03 | 08 | 5 | PLAT-24, PLAT-25 | integration | `analyse.py` over every `before_*.jsonl` + `analyse.py --check-wrap --expect-defect` + evidence-log section assertions | ✅ (after 06) | ⬜ pending |
-| 31-C2-01 | C2 | 5 | PLAT-27, PLAT-31 | unit | `pytest -q tests/test_single_clock_invariant.py` + 3 protected tests + the counted `task.py:199`-seam / `hardware_state` / single-`CLOCK_REALTIME` / `assign_cb`-signature / `localize_tz(str)`-`TypeError` assertions | ❌ W0 | ⬜ pending |
+| 31-C2-01 | C2 | 5 | PLAT-27, PLAT-31 | unit | `pytest -q tests/test_single_clock_invariant.py` + 3 protected tests + the counted `task.py:199`-seam / `hardware_state` / single-`CLOCK_REALTIME` / `assign_cb`-signature / `localize_tz(str)`-`TypeError` / **zero-`isoformat`-in-`gpio.py`** assertions + **`py37_gate.py` passing with both clock modules provably inside its closure** | ❌ W0 | ⬜ pending |
 | 31-C2-02 | C2 | 5 | PLAT-18, PLAT-19, PLAT-31 | unit | `pytest -q tests/test_event_dispatcher_clock.py` + the counted `import pigpio`/`get_current_tick`/`ticks_to_timestamp` absence, drop-counter survival, `logging_utils.py:95` immutability, and the one-manifest-entry diff check | ❌ W0 | ⬜ pending |
-| 31-C2-03 | C2 | 5 | PLAT-27, PLAT-31 | integration | `pytest -q tests/test_edge_timestamp_end_to_end.py` — **the mandatory two-route assertion**: one edge, `fire_edge` returns 2, both payloads carry the same `t_mono_ns` and both are hardware-stamped — plus the `@auto_log`-count guard and all five protected tests unmodified | ❌ W0 | ⬜ pending |
-| 31-07-01 | 07 | 6 | PLAT-04, PLAT-05, PLAT-33 | static | `bash -n` + `shellcheck` + `pytest -q tests/test_installer_paths.py` + counted "no pigpio purge / no python3-pigpio / enables pigpiod" | ❌ W0 | ⬜ pending |
+| 31-C2-03 | C2 | 5 | PLAT-27, PLAT-31 | integration | `pytest -q tests/test_edge_timestamp_end_to_end.py` — **the mandatory two-route assertion**: one edge, `fire_edge` returns 2, both payloads carry the same `t_mono_ns` and both are hardware-stamped — plus the **two-thread slot-concurrency invariant**, the corrected `@auto_log`-count guard (`@auto_log == 1`, `auto_log == 2`) and all five protected tests unmodified | ❌ W0 | ⬜ pending |
+| 31-07-01 | 07 | 6 | PLAT-04, PLAT-05 | static | `bash -n` + `shellcheck` + `pytest -q tests/test_installer_paths.py` + counted "no pigpio purge / no `python3-pigpio` / **no `enable pigpiod`** / **no `pigpiod.service.d`** / `pigpio` package IS installed" (PLAT-33 withdrawn) | ❌ W0 | ⬜ pending |
 | 31-07-02 | 07 | 6 | PLAT-04 | static | `shellcheck deploy/uninstall.sh` + unit-set equality test | ❌ W0 | ⬜ pending |
-| 31-C3-01 | C3 | 6 | PLAT-20, PLAT-28, PLAT-33 | static | `pytest -q tests/test_stock_pigpio_only.py` + the counted `pilot.py` forbidden-token scan, the exactly-one-argument-free `pigpio.pi()` check, `get_clock().attach(` presence, both `clear_scripts` survivors, no vendored `pigpio.py`, the single `requirements.txt` pin, and the `pigpiod`/chrony drop-in preconditions | ❌ W0 | ⬜ pending |
-| 31-C3-02 | C3 | 6 | PLAT-22 | static | `pytest -q tests/test_clock_block_removed.py` + the counted retirement of `NTP_CALLS`/`CLOCK_COMMENTS`/`_ntp_violations`, the five surviving `f3_toggles` assertions, the `PLAT-22`/`resolved` comment, the `git show HEAD` non-vacuity check, and **`--final` reporting no F3 NTP/clock-block violation** | ❌ W0 | ⬜ pending |
-| 31-09-01 | 09 | 7 | PLAT-04..11,20,21,33 | **manual-only (capture)** | USER-RUN flash/install/reboot/kill-storm | n/a | ⬜ pending |
-| 31-09-02 | 09 | 7 | PLAT-04..11,20,21,33 | static | `shellcheck deploy/*.sh` + the three deploy test modules + the requirements pigpio-pin survival check | ✅ (after 05,07) | ⬜ pending |
-| 31-09-03 | 09 | 7 | PLAT-04..11,20,21,33 | integration | evidence-log assertion for all eleven PLAT ids + `NRestarts` + "not proven here" | ✅ | ⬜ pending |
-| 31-C4-00 | C4 | 8 | PLAT-24, PLAT-25, PLAT-32 | unit+static | `pytest -q tests/test_clock_soak.py` (incl. `--check-wrap` in BOTH directions on the soak's own output) + the pre-flight gate: C1-C3 suites green, `--final` free of F3 clock violations, `clock_soak.py` NOT in the py37 closure, plan 08 baseline present, evidence log ready | ❌ W0 | ⬜ pending |
+| 31-C3-01 | C3 | 6 | PLAT-20, PLAT-28 | static | `pytest -q tests/test_stock_pigpio_only.py` + the counted `pilot.py` forbidden-token scan, the exactly-one-argument-free `pigpio.pi()` check, `get_clock().attach(` presence, both `clear_scripts` survivors, no vendored `pigpio.py`, the single `requirements.txt` pin, the chrony drop-in precondition, **the `init_pigpio`/`start_pigpiod`/`kill_proc` PRESERVATION counts** and **the counted absence of any `pigpiod` unit or drop-in** (PLAT-33 withdrawn 2026-08-17) | ❌ W0 | ⬜ pending |
+| 31-C3-02 | C3 | 6 | PLAT-22 | static | `pytest -q tests/test_clock_block_removed.py` + the counted retirement of `NTP_CALLS`/`CLOCK_COMMENTS`/**`def _ntp_violations`**/**`+= _ntp_violations(`** (the definition and call forms, **never** the bare string, which survives as prose at `final_checks.py:150` inside the still-live HOLD 1 block), the five surviving `f3_toggles` assertions, the `PLAT-22`/`resolved` comment, the `git show HEAD` non-vacuity check, and **`--final` reporting no F3 NTP/clock-block violation** | ❌ W0 | ⬜ pending |
+| 31-09-01 | 09 | 7 | PLAT-04..11,20,21 | **manual-only (capture)** | USER-RUN flash/install/reboot/**kill-storm (mandatory, the only PLAT-09 evidence before C4)** + the daemon-dies-with-the-pilot observation | n/a | ⬜ pending |
+| 31-09-02 | 09 | 7 | PLAT-04..11,20,21 | static | `shellcheck deploy/*.sh` + the three deploy test modules + the requirements pigpio-pin survival check | ✅ (after 05,07) | ⬜ pending |
+| 31-09-03 | 09 | 7 | PLAT-04..11,20,21 | integration | evidence-log assertion for all ten PLAT ids + `NRestarts` + "not proven here" | ✅ | ⬜ pending |
+| 31-C4-00 | C4 | 8 | PLAT-24, PLAT-25, PLAT-32 | unit+static | `pytest -q tests/test_clock_soak.py` (incl. `--check-wrap` in BOTH directions on the soak's own output **and the `route` nine-key set asserted by set-equality, the same check Task 3 runs**) + the pre-flight gate: C1-C3 suites green, `--final` free of F3 clock violations, `clock_soak.py` NOT in the py37 closure, plan 08 baseline present, evidence log ready | ❌ W0 | ⬜ pending |
 | 31-C4-01 | C4 | 8 | PLAT-25, PLAT-32 | **manual-only (capture)** | USER-RUN >= 3-wrap soak (4.33 h) under `stress-ng`, with a forced ±1 h wall-clock step mid-run; gated by `31-C4-00` — see Manual-Only table | n/a | ⬜ pending |
 | 31-C4-02 | C4 | 8 | PLAT-17, PLAT-24, PLAT-25 | **manual-only (capture)** | USER-RUN 20 paired "after" captures across two scheduling arms, four clock-step captures, the `chrt -p` per-thread read-out and the per-device fail-safe check | n/a | ⬜ pending |
 | 31-C4-03 | C4 | 8 | PLAT-17, PLAT-24, PLAT-25, PLAT-32 | integration | `analyse.py --check-wrap` (**default direction, exit 0**) + four `--check-step ±3600` + `--gate` over all 20 pairs + the trailer/counter/route/provenance assertions + evidence-log content assertions | ✅ (after 06, 08) | ⬜ pending |
 
 ### Requirement coverage — complete
 
-Every active PLAT id (PLAT-01–11, 17–33) appears in at least one plan's `requirements` frontmatter;
-PLAT-12–16 appear in none, which is correct — they are ⛔ DEFERRED. Verified 2026-08-17 by parsing
-all thirteen plan frontmatters. The pass-1 gap (PLAT-17, 18, 19, 22, 27, 28, 29, 30, 31, 32 unowned)
-is **closed**.
+Every active PLAT id (**PLAT-01–11, 17–32**) appears in at least one plan's `requirements`
+frontmatter. PLAT-12–16 appear in none, which is correct — they are ⛔ DEFERRED. **PLAT-33 appears in
+none, which is also correct — it was ⛔ WITHDRAWN 2026-08-17** by user decision: the `pigpiod` spawn
+stays in the pilot, because `external.start_pigpiod()`'s `kill_proc` hook is what closes the
+solenoids at session end, and a supervised daemon would outlive a crashed pilot with `VALVE1-4` /
+`AIR_PUF` / `ODOR1-5` energised. It was removed from plans 05, 07, 09 and C3 in the same pass.
+Verified 2026-08-17 by parsing all thirteen plan frontmatters. The pass-1 gap (PLAT-17, 18, 19, 22,
+27, 28, 29, 30, 31, 32 unowned) is **closed**.
 
 | Plan | Requirements claimed |
 |------|----------------------|
 | C1 | PLAT-29, PLAT-30 |
 | C2 | PLAT-18, PLAT-19, PLAT-27, PLAT-31 |
-| C3 | PLAT-20, PLAT-22, PLAT-28, PLAT-33 |
+| C3 | PLAT-20, PLAT-22, PLAT-28 |
 | C4 | PLAT-17, PLAT-24, PLAT-25, PLAT-32 |
 
 **One honest note on PLAT-32.** The requirement text ("loss is detected and reported ... surface a
@@ -246,7 +257,8 @@ production is not. This is the Phase 30 HYG-01/HYG-02 precedent.
 | Unattended boot: flash → install → reboot → pilot up | PLAT-04,05,07,08,10,11,33 | 09 | Needs a real reboot of physical hardware; the clone and the reboot are the user's actions | `sudo bash deploy/install.sh` twice, `systemctl cat pigpiod.service`, edit `/boot/firmware/mics.conf`, `sudo reboot`, then the evidence command block in 31-09-PLAN Task 1 Step 8 |
 | **Restart limit provoked (kill storm)** | PLAT-09 | 09 | Requires killing real hardware repeatedly | 10x `sudo systemctl kill -s SIGKILL mics-pilot` inside 30 s, then `systemctl is-failed mics-pilot` (must not be `failed`) and `systemctl show mics-pilot -p NRestarts`. **Mandatory in plan 09** — the pilot no longer crash-loops by itself now that pigpio is installed rather than purged, so the property must be provoked or it goes untested until C4 |
 | chrony replaced timesyncd and disciplines the clock | PLAT-20, PLAT-21 | 09 | Needs the provisioned card | `chronyc tracking; grep -R makestep /etc/chrony/; systemctl is-enabled systemd-timesyncd \|\| echo absent` |
-| Units load on the target | PLAT-07..11, PLAT-33 | 09 | `systemd-analyze verify` is only authoritative on the target; the packaged `pigpiod.service` can only be read there | `systemd-analyze verify /etc/systemd/system/mics-*.service` and `systemctl cat pigpiod.service` |
+| Units load on the target | PLAT-07..11 | 09 | `systemd-analyze verify` is only authoritative on the target | `systemd-analyze verify /etc/systemd/system/mics-*.service` |
+| The pilot's own `pigpiod` spawn works under systemd | PLAT-04 | 09 | first time `sudo pigpiod ...` runs from a service cgroup rather than a login shell; passwordless sudo, `KillMode` reaping and whether the daemon dies on a clean stop are all unobservable off-target | `ps -o pid=,ppid=,args= -C pigpiod` before and after `systemctl stop mics-pilot` |
 | Real gpiochip label and line count | *(deferred Pi-5/RP1 phase)* | 09 | Board-specific; only the hardware knows | `gpiodetect; gpioinfo \| head -5`. Captured opportunistically while the card is in hand; **no plan in this phase consumes it** |
 | ≥3 wraps under load with zero backward jumps | PLAT-25, PLAT-29, PLAT-30 | C4 | Needs > 3.6 h of real time on real hardware | `analyse.py --check-wrap` (default mode — must exit 0) over the soak artifact. **Known not to be vacuous:** plan 08 ran the same tool in `--expect-defect` mode against the deployed patched client and it fired |
 | **Both event paths agree on the same edge AFTER HOURS** | PLAT-27 | C4 | The dev-host test proves the mechanism; only real time proves it does not decay — which is exactly how the design being replaced fails | The soak's `route` records: every sampled edge yields two payloads with equal `t_mono_ns`, both hardware-stamped. Zero disagreements |
@@ -321,14 +333,20 @@ other.
       dev host. No other task leaves the machine
 - [x] `nyquist_compliant: true` **re-asserted 2026-08-17 for the full thirteen-plan set**, C1-C4
       included
-- [x] **Requirement coverage is COMPLETE.** All 28 active ids (PLAT-01–11, 17–33) are claimed by at
-      least one plan; PLAT-12–16 are claimed by none, which is correct — they are ⛔ DEFERRED.
-      Machine-verified by parsing all thirteen `requirements:` frontmatter fields. **The pass-1
-      sign-off item recording PLAT-17/18/19/22/27/28/29/30/31/32 as unowned is hereby cleared.**
-- [x] **Wave derivation re-checked mechanically, 2026-08-17.** `wave == max(wave of every
-      depends_on) + 1` holds for all thirteen plans, and no two plans sharing a wave name the same
-      file in `files_modified`. Waves 1-3 and 7 carry one plan each; wave 4 = {04, 06, C1}, wave 5 =
-      {05, 08, C2}, wave 6 = {07, C3}, wave 8 = {C4}
+- [x] **Requirement coverage is COMPLETE.** All **27** active ids (PLAT-01–11, 17–32) are claimed by
+      at least one plan; PLAT-12–16 are claimed by none (⛔ DEFERRED) and **PLAT-33 by none
+      (⛔ WITHDRAWN 2026-08-17, user decision — the `pigpiod` spawn stays in the pilot as the output
+      fail-safe)**, both correct. Machine-verified by parsing all thirteen `requirements:` frontmatter
+      fields. **The pass-1 sign-off item recording PLAT-17/18/19/22/27/28/29/30/31/32 as unowned is
+      hereby cleared.**
+- [x] **Wave derivation re-checked mechanically, 2026-08-17 (and again after the revision pass).**
+      `wave == max(wave of every depends_on) + 1` holds for all thirteen plans, and no two plans
+      sharing a wave name the same file in `files_modified`. Waves 1-3 and 7 carry one plan each;
+      wave 4 = {04, 06, C1}, wave 5 = {05, 08, C2}, wave 6 = {07, C3}, wave 8 = {C4}. **The one
+      `depends_on` change in the revision pass — C2 gaining `31-06` so it can run `py37_gate.py`
+      against the closure its own `gpio.py` import creates — leaves every wave unchanged**
+      (`max(C1=4, 03=3, 06=4) + 1 = 5`) and introduces no shared-file conflict, since C2 only
+      executes plan 06's script and writes nothing under `tools/pulse_timing/`.
 
 **Basis for `nyquist_compliant: true`:** every one of the **35** tasks in the thirteen plans carries
 an automated verify or is a `checkpoint:human-action` whose artifact is gated by an automated task in

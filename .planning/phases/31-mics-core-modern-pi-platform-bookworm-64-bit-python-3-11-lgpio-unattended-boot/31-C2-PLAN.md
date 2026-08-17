@@ -3,7 +3,7 @@ phase: 31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unatten
 plan: C2
 type: execute
 wave: 5
-depends_on: ["31-C1", "31-03"]
+depends_on: ["31-C1", "31-03", "31-06"]
 files_modified:
   - /home/ido/mics_core/autopilot/autopilot/hardware/gpio.py
   - /home/ido/mics_core/autopilot/autopilot/hardware/__init__.py
@@ -23,7 +23,7 @@ must_haves:
     - "The raw 32-bit tick is converted to t_mono_ns inside assign_cb — the conversion site the deleted pigpio patch used to own"
     - "ONE injected edge on a Digital_Out fires BOTH dispatch routes and both payloads carry the SAME t_mono_ns"
     - "Both of those payloads are marked hardware-stamped, and a software-originated event is marked software-stamped"
-    - "The edge-timestamp slot is keyed per edge with a generation counter and is not consumed by the first reader"
+    - "The edge-timestamp slot is keyed per edge with a generation counter, is not consumed by the first reader, and is published as ONE atomic tuple assignment with its attached-generation bookkeeping under a single lock"
     - "A stale edge timestamp is never attached to a later, unrelated method call"
     - "localize_tz takes monotonic nanoseconds and rejects the old ISO-string form loudly"
     - "Every dispatched event carries a raw monotonic nanosecond field and a derived UTC field, and an interval survives a wall-clock step"
@@ -99,6 +99,7 @@ regression test.
 @.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-VALIDATION.md
 @.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-01-SUMMARY.md
 @.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-C1-SUMMARY.md
+@.planning/phases/31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot/31-06-SUMMARY.md
 
 **Read `CONTEXT.md` §13 and `31-REVISED-SCOPE.md` §2 first — do not re-derive either.** §13 is the
 user requirement; §2 is the verified audit of the deployed client. Then read `31-C1-SUMMARY.md` for
@@ -193,9 +194,25 @@ find them after they shift.
 | `:879` | `Digital_In.assign_cb` — same signature |
 | `:928` / `:939` | `Digital_In.clear_cb` / `record_event` |
 
-**`hardware/__init__.py:166`** — the abstract `Hardware.assign_cb(self, trigger_fn)`, whose docstring
-currently promises "an isoformatted timestamp". **Update all three docstrings.** A contract
-documented in one of two places is how the next person gets it wrong.
+**The timestamp-contract docstrings — inventory corrected 2026-08-17 by counted read, because the
+earlier version of this section was wrong in both directions.** It claimed three docstrings "promise
+an isoformatted timestamp" and named `gpio.py:892`, `Digital_Out.assign_cb` and
+`hardware/__init__.py:166`. Measured:
+
+| Site | Measured | Disposition |
+|---|---|---|
+| `gpio.py:7` | **module docstring**, says the tree "returns isoformatted timestamps rather than tick numbers in callbacks" and points at the `setup_pilot.sh` install of the **patched pigpio fork PLAT-28 deletes** | **MUST be rewritten.** The earlier inventory missed it. Leaving it is a standing invitation to reinstall the patch — it is the tree's own written instruction to do so |
+| `gpio.py:892` | `Digital_Out.assign_cb`: *"timestamp (str): If using the Autopilot version of pigpio, an isoformatted timestamp"* | rewrite |
+| `gpio.py:946` | `Digital_In.record_event`: *"timestamp (str): isoformatted timestamp"* | **MUST be rewritten.** Also missed by the earlier inventory |
+| `hardware/__init__.py:166` `Hardware.assign_cb` | **zero** occurrences of `isoformat` or `timestamp` — it promises nothing about the timestamp at all | **add** the contract; there is nothing to correct |
+| `Digital_In.assign_cb` | makes no timestamp claim | **add** the contract |
+
+**So the scope is: every `isoformat` occurrence in `gpio.py` — all three, `:7`, `:892`, `:946` — plus
+adding the new contract to `Digital_Out.assign_cb`, `Digital_In.assign_cb` and the abstract
+`Hardware.assign_cb`.** A counted gate after the task asserts
+`gpio.py.read_text().count('isoformat') == 0`; that number is the whole point, because the failure
+mode here is fixing the two docstrings someone happened to list and leaving the module docstring
+telling the next reader to install the patched fork.
 
 **`task.py`:**
 
@@ -275,6 +292,37 @@ modes are silent:
    generation and by age, never by consumption.
 4. `Task.execute_trigger` does **not** read the slot. It already has the value as its third
    positional argument and passes it explicitly. The slot exists solely for the `@log_action` bridge.
+
+### The slot is CONCURRENT, and it needs a stated publication rule
+
+The slot is written from **pigpio's notify thread** (the adapter, `assign_cb`) and read from the
+**task thread** on every `Digital_Out.set()` / `toggle()` — which this plan itself calls "routine,
+not rare". C1's `TickExtender` was given an explicit lock and a two-thread `Barrier` test for exactly
+this reason; the slot was given neither, and it carries the same hazard in a nastier form. A torn
+read — a fresh `generation` beside a stale `t_mono_ns`, or vice versa — attaches a **wrong
+hardware-stamped timestamp indistinguishable from a correct one in Elasticsearch**, which is this
+section's own stated worst case. The "generation already attached" bookkeeping on the reader side is
+equally unguarded: two readers can both conclude they are first.
+
+**The rule, and it is not optional:**
+
+1. **The slot is published as ONE atomic assignment of an immutable tuple.**
+   `self._edge_slot = (t_mono_ns, mono_at_write_ns, generation)` — a single name rebind of a single
+   object. Never three separate attribute writes, never a mutable list or dict mutated in place.
+   A reader takes one local reference (`slot = self._edge_slot`) and uses only that local, so it
+   cannot see a half-updated state. The generation counter is incremented **into** the tuple, not
+   stored beside it.
+2. **The reader's "already attached" bookkeeping is guarded by ONE lock**, and it is the same lock
+   for the whole check-and-record — `if slot.generation != self._last_attached_generation:` and the
+   subsequent record must not be separable, or two readers both attach. A single
+   `threading.Lock` on the hardware object is sufficient and cheap; the critical section is three
+   integer comparisons.
+3. If you prefer, take that same lock around the write too. That is also correct and simpler to
+   reason about. What is **not** acceptable is an unguarded read-modify-write of the attached
+   generation, and what is **not** acceptable is publishing the slot field-by-field.
+
+State the choice in the module comment next to `EDGE_SLOT_MAX_AGE_NS` and in the summary, so the next
+reader knows which discipline is in force rather than inferring it.
 
 **Staleness bound: `EDGE_SLOT_MAX_AGE_NS = 2_000_000` (2 ms).** Derivation, and it belongs in a
 comment next to the constant: the reader runs inside the same callback invocation chain as the write
@@ -391,6 +439,11 @@ which is why PLAT-31 makes the distinction a field rather than a footnote.
       `registration_count(pin)` becomes 2.
     - `clear_cb()` still cancels what it registered: `registration_count(pin)` drops accordingly.
     - `record_event(pin, level, timestamp)` keeps its three-parameter signature on both classes.
+    - **The docstring contract is stated everywhere, proven by a count.** `gpio.py` contains
+      **zero** occurrences of `isoformat` (it has 3 today: `:7`, `:892`, `:946`), and
+      `hardware/__init__.py`'s `Hardware.assign_cb` docstring now names `CLOCK_MONOTONIC`. The `:7`
+      module docstring is the load-bearing one: it currently tells the reader the tree depends on
+      the patched pigpio fork that PLAT-28 deletes.
 
     **Two registrations, one edge.**
     - Construct a `Digital_Out` with `record=True` (the default) and additionally register
@@ -446,10 +499,27 @@ which is why PLAT-31 makes the distinction a field rather than a footnote.
        `EDGE_SLOT_MAX_AGE_NS = 2_000_000` as a module constant in `gpio.py` with the derivation from
        `<the_two_routes>` as its comment.
 
-    3. Update **three** docstrings so the contract is stated everywhere it is promised:
-       `Digital_Out.assign_cb`, `Digital_In.assign_cb`, and the abstract `Hardware.assign_cb` at
-       `hardware/__init__.py:166`. All three currently promise "an isoformatted timestamp"; all three
-       must now promise `CLOCK_MONOTONIC` nanoseconds from `autopilot.utils.clock`.
+       **That one import line grows plan 06's Python-3.7 closure, and this task is where the growth
+       has to be checked.** `py37_gate.py` walks `capture.py`'s transitive in-repo import closure,
+       which reaches `gpio.py`; adding this import pulls `autopilot/utils/clock.py` and
+       `autopilot/utils/tick_extender.py` into that closure for the first time. Plan 08 takes the
+       Buster baseline on Python **3.7.3**, so the constraint is real. C1 wrote both modules to 3.7
+       grammar and gated them inline (it could not call `py37_gate.py`: plan 06 is in the same wave
+       as C1, and at that point nothing imported the clock, so the closure would not have reached
+       them). **This plan runs the real gate** — `python3 tools/pulse_timing/py37_gate.py` is in this
+       task's verify, and `31-06` is in `depends_on` so the script exists. If it fails on
+       `clock.py` or `tick_extender.py`, fix the module, not the gate.
+
+    3. Fix the timestamp contract **everywhere it is stated or should be**, per the corrected
+       inventory in `<verified_call_sites>`:
+       - **rewrite** all three `isoformat` sites in `gpio.py` — the **module docstring at `:7`**
+         (which currently tells the reader the tree depends on the patched pigpio fork installed by
+         `setup_pilot.sh`; PLAT-28 deletes that fork, so this line must go or it will be acted on),
+         `Digital_Out.assign_cb` at `:892`, and `Digital_In.record_event` at `:946`;
+       - **add** the contract to `Digital_In.assign_cb` and to the abstract `Hardware.assign_cb`
+         (`hardware/__init__.py:166`), both of which currently document no timestamp at all.
+       All of them must now say: `CLOCK_MONOTONIC` nanoseconds (int) from `autopilot.utils.clock`.
+       A counted gate asserts `gpio.py` ends with **zero** `isoformat` occurrences.
 
     4. Rewrite `localize_tz` (`utils/common.py:329-334`) per `<the_contracts>`. Two lines of
        delegation plus the `TypeError` guard. Do not add a second epoch offset.
@@ -468,7 +538,11 @@ which is why PLAT-31 makes the distinction a field rather than a footnote.
   <verify>
     <automated>cd /home/ido/mics_core && /home/ido/.venvs/mics_core_dev/bin/python -m pytest -q tests/test_single_clock_invariant.py tests/test_execute_trigger_guard.py tests/test_trigger_assignments.py tests/test_log_action_values.py tests/test_load_fda_from_json.py --tb=short && /home/ido/.venvs/mics_core_dev/bin/python -c "
 import inspect, pathlib, sys
-sys.path.insert(0, '.')
+# conftest.py:9 puts <repo>/autopilot on sys.path, so the package is autopilot.hardware.* and
+# autopilot.utils.*, NEVER autopilot.autopilot.*. (There is no autopilot/__init__.py and no
+# autopilot/utils/ at the repo root; 'autopilot.setup' at the root resolves to autopilot/setup.py,
+# the distutils script.) Path STRINGS below keep the autopilot/autopilot/... filesystem form.
+sys.path.insert(0, 'autopilot')
 task_src = pathlib.Path('autopilot/autopilot/tasks/task.py').read_text()
 seam = 'hw.assign_cb(partial(self.handle_trigger, hardware=hw))'
 print('task.py:199 seam occurrences:', task_src.count(seam))
@@ -486,7 +560,7 @@ hits = sorted(str(p) for p in root.rglob('*.py') if 'CLOCK_REALTIME' in p.read_t
 print('CLOCK_REALTIME files under autopilot/:', hits)
 if hits != ['autopilot/autopilot/utils/clock.py']:
     sys.exit('a second epoch offset appeared; PLAT-27 requires exactly one: %r' % (hits,))
-from autopilot.autopilot.hardware.gpio import Digital_In, Digital_Out
+from autopilot.hardware.gpio import Digital_In, Digital_Out
 want = '(self, callback_fn, add=True, evented=False, manual_trigger=None)'
 for cls in (Digital_In, Digital_Out):
     got = '(self, ' + str(inspect.signature(cls.assign_cb)).lstrip('(')
@@ -498,8 +572,18 @@ gsrc = pathlib.Path('autopilot/autopilot/hardware/gpio.py').read_text()
 print('EDGE_SLOT_MAX_AGE_NS occurrences in gpio.py:', gsrc.count('EDGE_SLOT_MAX_AGE_NS'))
 if gsrc.count('EDGE_SLOT_MAX_AGE_NS') < 2:
     sys.exit('the staleness bound must be a named module constant used by the adapter')
+# W2: gpio.py has THREE isoformat sites today - :7 (module docstring, which points at the patched
+# pigpio fork PLAT-28 deletes), :892 (Digital_Out.assign_cb) and :946 (Digital_In.record_event).
+# All three must go, or the tree keeps documenting a contract it no longer honours.
+print('isoformat occurrences in gpio.py:', gsrc.count('isoformat'))
+if gsrc.count('isoformat'):
+    sys.exit('gpio.py still promises an isoformatted timestamp; the :7 module docstring is the one that matters, since it instructs the reader to install the patched pigpio fork PLAT-28 deletes')
+hw = pathlib.Path('autopilot/autopilot/hardware/__init__.py').read_text()
+print('CLOCK_MONOTONIC occurrences in hardware/__init__.py:', hw.count('CLOCK_MONOTONIC'))
+if hw.count('CLOCK_MONOTONIC') < 1:
+    sys.exit('the abstract Hardware.assign_cb docstring documents no timestamp contract at all; it must now name CLOCK_MONOTONIC nanoseconds')
 print('assign_cb adapter sites ok')
-from autopilot.autopilot.utils.common import localize_tz
+from autopilot.utils.common import localize_tz
 try:
     localize_tz('2026-08-17T10:00:00.000000')
 except TypeError as exc:
@@ -508,9 +592,19 @@ except TypeError as exc:
     print('localize_tz rejects the old ISO form:', str(exc)[:90])
 else:
     raise AssertionError('localize_tz still accepts an ISO string - it would produce a plausible wrong timestamp')
+" && /home/ido/.venvs/mics_core_dev/bin/python tools/pulse_timing/py37_gate.py && /home/ido/.venvs/mics_core_dev/bin/python -c "
+import subprocess, sys
+r = subprocess.run([sys.executable, 'tools/pulse_timing/py37_gate.py', '--list'], capture_output=True, text=True)
+if r.returncode != 0:
+    sys.exit('py37_gate --list failed: %s' % (r.stdout + r.stderr)[:400])
+members = r.stdout.split()
+grew = [m for m in members if m.endswith('utils/clock.py') or m.endswith('utils/tick_extender.py')]
+print('clock modules now inside the py37 closure:', grew)
+if len(grew) != 2:
+    sys.exit('the gpio.py import did not pull BOTH clock modules into the Python 3.7 closure; the 3.7 constraint on them is therefore unenforced: %r' % (grew,))
 " && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
   </verify>
-  <done>Both `assign_cb` signatures render unchanged; `task.py:199` is provably untouched; the adapter converts the raw tick through the one clock and delivers exactly 3 positional args; one edge on a `record=True` `Digital_Out` with a `handle_trigger` registration makes `fire_edge` return 2 and hands both registrations the SAME converted integer; the slot is generation-keyed, written once per edge, per-object isolated and not cleared by a reader; `localize_tz` takes monotonic ns and rejects a string with a message naming the change; `CLOCK_REALTIME` is still exactly one file; all five protected tests pass unmodified; delta gate `new failures: 0`; `--strict` exit 0.</done>
+  <done>Both `assign_cb` signatures render unchanged; `task.py:199` is provably untouched; `gpio.py` carries zero `isoformat` occurrences (all three of `:7`, `:892`, `:946` rewritten) and `hardware/__init__.py` now names `CLOCK_MONOTONIC`; plan 06's `py37_gate.py` passes and its closure provably grew to include both C1 clock modules; the adapter converts the raw tick through the one clock and delivers exactly 3 positional args; one edge on a `record=True` `Digital_Out` with a `handle_trigger` registration makes `fire_edge` return 2 and hands both registrations the SAME converted integer; the slot is generation-keyed, written once per edge, per-object isolated and not cleared by a reader; `localize_tz` takes monotonic ns and rejects a string with a message naming the change; `CLOCK_REALTIME` is still exactly one file; all five protected tests pass unmodified; delta gate `new failures: 0`; `--strict` exit 0.</done>
 </task>
 
 <task type="auto" tdd="true">
@@ -703,6 +797,20 @@ if r.stdout.strip():
     **Failure containment, end to end.** With the clock forced to raise, one edge still produces two
     payloads, both marked `"software"`, both with a sane monotonic value, the fallback counters
     incremented, and nothing raised out of `fire_edge`.
+
+    **Slot concurrency — the test C1's `TickExtender` got and the slot did not.** Run two threads
+    against one `Digital_Out` for a few thousand iterations, released together by a
+    `threading.Barrier`: one thread fires edges through `fake_pigpio.fire_edge` (standing in for
+    pigpio's notify thread), the other calls `Digital_Out.set()` in a loop (the task thread). Collect
+    every payload and assert **the invariant, not a timing**: every payload is either
+    - `ts_source == "hardware"` **and** its `t_mono_ns` equals the `t_mono_ns` of some edge actually
+      injected, with that edge's generation attached **at most once**; or
+    - `ts_source == "software"`.
+
+    **No payload may carry a hardware stamp whose `t_mono_ns` was never injected, and no generation
+    may be attached twice.** A field-by-field slot write or an unguarded attached-generation
+    read-modify-write fails this; nothing else in the suite would catch either. Assert on the
+    invariant rather than on counts, so the test is deterministic under a loaded runner.
   </behavior>
   <action>
     1. Write `tests/test_edge_timestamp_end_to_end.py`. Watch the two-route assertion fail first if
@@ -736,12 +844,16 @@ for needed in ('fire_edge', 'logging_utils', 'task.py:283', 'ts_source', 'pi_tim
 if t.count('== 2') + t.count('== 2,') == 0:
     sys.exit('the test never asserts fire_edge returned 2; one edge must reach BOTH registrations')
 src = pathlib.Path('autopilot/autopilot/hardware/gpio.py').read_text()
-print('@auto_log occurrences in gpio.py:', src.count('@auto_log'))
-if src.count('@auto_log') != 2:
-    sys.exit('@auto_log count changed from 2 (the import at :32 and the Digital_Out decorator at :324); Digital_In must NOT be decorated')
+# Measured on the live tree 2026-08-17: '@auto_log' == 1 (the Digital_Out decorator at :324) and
+# 'auto_log' == 2 (that decorator plus the bare import at :32, which has no '@'). An earlier draft
+# asserted '@auto_log' == 2, which fails on a CORRECT implementation and can only be satisfied by
+# decorating Digital_In - which <the_two_routes> forbids.
+print('@auto_log occurrences in gpio.py:', src.count('@auto_log'), '| bare auto_log:', src.count('auto_log'))
+if src.count('@auto_log') != 1 or src.count('auto_log') != 2:
+    sys.exit('gpio.py auto_log usage changed: expected exactly ONE @auto_log (the Digital_Out decorator at :324) and TWO bare auto_log (that plus the import at :32). Digital_In must NOT be decorated')
 " && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
   </verify>
-  <done>One injected edge on a `record=True` + `is_trigger` `Digital_Out` makes `fire_edge` return 2 and produces TWO payloads — the `logging_utils.py:97` route and the `task.py:283` route — both carrying the same converted integer as `t_mono_ns` and both marked `"hardware"`; the ISO `pi_timestamp` and the payload `t_utc_ns` decode to the same instant across two independent `utils.clock` call sites; every payload in the run carries a valid `ts_source`; staleness, generation-reuse and per-object isolation all fall back to `"software"`; the clock-raises case produces two software-stamped payloads and raises nothing out of `fire_edge`; `@auto_log` still appears exactly twice in `gpio.py`; all five protected tests pass unmodified; delta gate `new failures: 0`; `--strict` exit 0.</done>
+  <done>One injected edge on a `record=True` + `is_trigger` `Digital_Out` makes `fire_edge` return 2 and produces TWO payloads — the `logging_utils.py:97` route and the `task.py:283` route — both carrying the same converted integer as `t_mono_ns` and both marked `"hardware"`; the ISO `pi_timestamp` and the payload `t_utc_ns` decode to the same instant across two independent `utils.clock` call sites; every payload in the run carries a valid `ts_source`; staleness, generation-reuse and per-object isolation all fall back to `"software"`; the clock-raises case produces two software-stamped payloads and raises nothing out of `fire_edge`; the two-thread slot concurrency case shows no hardware stamp with an un-injected `t_mono_ns` and no generation attached twice; `@auto_log` still appears exactly once in `gpio.py` (with `auto_log` twice, counting the import at `:32`); all five protected tests pass unmodified; delta gate `new failures: 0`; `--strict` exit 0.</done>
 </task>
 
 </tasks>
@@ -753,7 +865,11 @@ if src.count('@auto_log') != 2:
    -> exit 0
 4. `python3 -c "import pathlib,sys; root=pathlib.Path('/home/ido/mics_core/autopilot/autopilot'); hits=sorted(str(p) for p in root.rglob('*.py') if 'CLOCK_REALTIME' in p.read_text(errors='ignore')); print(hits); sys.exit(0 if len(hits)==1 else 'more than one epoch offset')"`
    -> exit 0
-5. `git -C /home/ido/mics_core diff --stat tools/tree_protect_list.json` -> 1 file, ~1 line
+5. `/home/ido/.venvs/mics_core_dev/bin/python tools/pulse_timing/py37_gate.py` -> exit 0, and
+   `--list` contains both `utils/clock.py` and `utils/tick_extender.py`
+5b. `python3 -c "import pathlib,sys; g=pathlib.Path('/home/ido/mics_core/autopilot/autopilot/hardware/gpio.py').read_text(); print('isoformat:', g.count('isoformat')); sys.exit(0 if g.count('isoformat')==0 else 'gpio.py still promises an isoformatted timestamp')"`
+   -> exit 0
+5c. `git -C /home/ido/mics_core diff --stat tools/tree_protect_list.json` -> 1 file, ~1 line
 6. `git -C /home/ido/mics_core diff --name-only autopilot/autopilot/hardware/external_hardware_binding.py autopilot/autopilot/hardware/external_hardware_ingress.py` -> **empty**
 7. `python3 tools/check_tree_integrity.py --strict` -> exit 0, `30 protected files`, `1 known-dangling exemptions held`, `0 violations`
 </verification>
@@ -781,8 +897,16 @@ After completion, create
 
 Include:
 - the `assign_cb` signature **before and after** (they must match), and the adapter's shape;
-- the edge-slot design as implemented — generation-keyed, not consumed — and the **staleness bound
-  with its two-sided justification**;
+- the edge-slot design as implemented — generation-keyed, not consumed — the **staleness bound with
+  its two-sided justification**, and the **concurrency discipline actually chosen** (single-tuple
+  publication vs a lock around both sides), since the slot is written from pigpio's notify thread and
+  read from the task thread on every `set()`/`toggle()`;
+- the corrected `isoformat` inventory: that `gpio.py` had **three** sites (`:7`, `:892`, `:946`), not
+  the two an earlier draft listed, that `:7` was the module docstring pointing at the patched pigpio
+  fork, and that `Hardware.assign_cb`/`Digital_In.assign_cb` documented no timestamp at all and had
+  the contract **added** rather than corrected;
+- confirmation that `py37_gate.py` passed **after** the `gpio.py` import pulled `utils/clock.py` and
+  `utils/tick_extender.py` into its closure, with the closure size before and after;
 - the `@auto_log` coverage list enumerated from `Digital_Out.__dict__` at run time, plus the explicit
   decision NOT to decorate `Digital_In` and why;
 - the dual-timebase contract table and the decision on the `timestamp` key's backward compatibility,

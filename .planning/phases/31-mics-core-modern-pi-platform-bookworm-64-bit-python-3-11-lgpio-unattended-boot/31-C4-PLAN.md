@@ -178,7 +178,10 @@ do not start a partial acceptance campaign.
 - [ ] **Task 0 passed.** This one is the agent's, it is an exit code rather than judgement, and it
       comes first.
 - [ ] The **spare Pi 4B provisioned by plan 09**: Bookworm 64-bit, Python 3.11, `install.sh` run,
-      `mics-pilot.service` and `pigpiod.service` both enabled, chrony active. **Not** the live rig.
+      `mics-pilot.service` enabled and chrony active. **Not** the live rig. There is **no**
+      `pigpiod.service` to check — PLAT-33 was withdrawn 2026-08-17 and the pilot spawns the
+      daemon itself; confirm instead that `command -v pigpiod` resolves and that
+      `ps -o ppid= -C pigpiod` shows it parented to the pilot once a run starts.
 - [ ] **A stock pigpio client in `/home/pi/.venv/mics`.** Confirm read-only with C3's command; both
       patch attributes must report `False`. A patched client measures the wrong thing, and
       `get_clock().attach()` would refuse to run against it anyway — better to find out before a
@@ -187,7 +190,8 @@ do not start a partial acceptance campaign.
       is what makes G1 meaningful without arbitrary absolute numbers; a changed pin weakens it and
       must be recorded rather than glossed.
 - [ ] `stress-ng` installed on the card (`sudo apt install stress-ng`).
-- [ ] A **multimeter** for the per-device fail-safe check.
+- [ ] A **multimeter** for the per-device fail-safe check (two arms per device — a clean stop and a
+      `SIGKILL` — see Task 2 Step 4).
 - [ ] The user has **~4.5 hours mostly unattended** (the soak, with two moments they must be present
       for, at roughly T+60 and T+120 minutes) and **~2.5 hours attended** (twenty paired captures,
       four clock-step captures, the `chrt` read-out and the fail-safe check).
@@ -232,6 +236,36 @@ falsifiable too.
    This is C2's dev-host two-route assertion, re-taken **on hardware, over hours**, which is precisely
    what a unit test with an injected tick cannot tell you — the current design fails by *decaying over
    runtime*, not by being wrong at startup.
+
+   **The literal key set, because a prose description here and a strict gate in Task 3 is how you
+   discover a shape mismatch after 4.5 hours of the user's hardware time.** Task 3's analysis pins
+   these names exactly; Task 0's pre-flight asserts them by name on synthetic output:
+
+   ```
+   {"kind":"route","i":<int>,"tick":<raw 32-bit int>,
+    "a_route":"logging_utils:97","a_t_mono_ns":<int>,"a_ts_source":"hardware"|"software",
+    "b_route":"task:283",        "b_t_mono_ns":<int>,"b_ts_source":"hardware"|"software"}
+   ```
+
+   Flat `a_*` / `b_*`, not nested — `a` is the `@log_action` route, `b` is the `execute_trigger`
+   route, and the `*_route` strings are what let the analysis identify a payload **by route rather
+   than by arrival order**, which `<soak_design>`'s own assertion 2 requires. Eight keys, all
+   present on every record. If you change any name, change it in `<soak_design>`, in Task 0's test
+   and in Task 3's gate **in the same edit**.
+
+   **How the runner actually obtains route b, since this is the part that is easy to fake and
+   worthless if faked.** Route a arrives for free: `Digital_Out(record=True)` self-registers
+   `record_event` at `gpio.py:359` and `@auto_log` dispatches at `logging_utils.py:97`. Route b needs
+   a real `Task`: construct the smallest concrete `Task` subclass the tree allows and register
+   `partial(task.handle_trigger, hardware=hw)` on the same `Digital_Out`, **exactly the form
+   `task.py:199` uses**. `Task.__init__` (`task.py:127-139`) requires `node`, `pilot`, `session`,
+   `task_type` and a non-`None` `pi` (it raises `RuntimeError` without one), and it builds its own
+   `Event_Dispatcher` and `View` from them — so pass the **same** `pigpio.pi()` client the soak
+   attached the clock to, and let the `Event_Dispatcher` be the real one. Capture payloads by wrapping
+   the dispatcher's send, not by replacing `dispatch_event`. **Do not call `dispatch_event` directly
+   and do not stub `execute_trigger`** — either turns route b into a simulation of itself, and the
+   two-route agreement then proves nothing. Record in the summary exactly which objects were
+   constructed and which (if any) were stubbed.
 2. `{"kind":"counters", ...}` — the clock's `counters()` dict plus the dispatcher's
    `_dropped_no_clock` / `_dropped_on_send`, snapshotted on the heartbeat cadence, so a counter that
    moves can be located in time rather than only totalled.
@@ -265,7 +299,7 @@ What IS observable, and what the accounting therefore is:
 | `ambiguous_gap`, `out_of_order`, `monotonic_violation`, `convert_failed` | C1's `counters()` | a gap the extender could not disambiguate, or a conversion that failed |
 | `heartbeat_missed`, `bracket_rejected`, `fit_rejected` | C1's `counters()` | the calibration path being starved |
 | `_dropped_no_clock`, `_dropped_on_send` | C2's dispatcher | an event that reached dispatch and was dropped there |
-| daemon warnings | `journalctl -u pigpiod -b` over the soak window | anything `pigpiod` itself chose to say |
+| daemon warnings | `journalctl -u mics-pilot -b` over the soak window | anything `pigpiod` itself chose to say. **It has no journal of its own:** PLAT-33 was withdrawn, so the daemon is a `subprocess.Popen` child of the pilot (`external/__init__.py:51`) and inherits the pilot unit's stdout/stderr. `journalctl -u pigpiod` returns nothing and its emptiness proves nothing |
 
 **Criterion: `n_missing == 0` and every counter above zero, with the `journalctl` window inspected and
 quoted.** If any is non-zero, that is a **finding reported with its count**, not a number to average
@@ -326,8 +360,17 @@ Put that in the evidence log directly beneath the G1 table, in those words.
       output, proven on the dev host **before** 4.5 hours of hardware time are spent relying on it.
     - The `trailer` carries `n_commanded`, `n_observed`, `n_missing` and the full `counters()` key set
       recorded in `31-C1-SUMMARY.md`. A deliberately suppressed edge yields `n_missing == 1`.
-    - `route` records carry two entries per sampled edge with **equal** `t_mono_ns` and
-      `ts_source == "hardware"` on both.
+    - **`route` records carry the exact key set from `<soak_design>`, asserted BY NAME.** Every
+      `route` record's keys are exactly
+      `{"kind","i","tick","a_route","a_t_mono_ns","a_ts_source","b_route","b_t_mono_ns","b_ts_source"}`
+      — assert **set equality**, not a subset, so a renamed or missing key fails here on the dev host
+      in seconds rather than after Task 1's 4.5-hour soak and Task 2's 2.5-hour campaign. That is the
+      cost this pre-flight exists to prevent. Then assert the substance: `a_t_mono_ns ==
+      b_t_mono_ns`, both `ts_source` values `"hardware"`, and `a_route`/`b_route` equal to
+      `"logging_utils:97"` and `"task:283"`.
+    - **Run Task 3's own route check here, verbatim, against the synthetic file.** A pre-flight that
+      checks a *different* shape from the analysis does not prevent the mismatch it exists to
+      prevent.
     - An exception raised inside a registered callback is **caught, counted and recorded**, and does
       not propagate — `fake_pigpio.fire_edge` propagates exceptions by design (plan 01), so this test
       fails if the runner leaks one.
@@ -340,7 +383,10 @@ Put that in the evidence log directly beneath the G1 table, in those words.
   <action>
     1. Write `tests/test_clock_soak.py` first.
 
-    2. Write `tools/pulse_timing/clock_soak.py` per `<soak_design>`. Flags: `--out-pin`, `--in-pin`,
+    2. Write `tools/pulse_timing/clock_soak.py` per `<soak_design>`, including its literal `route`
+       key set and its instruction on how route b is obtained (a real `Task` with a real
+       `Event_Dispatcher`, registered the way `task.py:199` registers it — not a direct
+       `dispatch_event` call). Flags: `--out-pin`, `--in-pin`,
        `--interval-s`, `--duration-s`, `--out PATH`, `--route-sample-every N`, `--arm` (a **label**
        recorded in the header, never a code path). It imports the production classes and
        `autopilot.utils.clock.get_clock()` — no reimplementation of the adapter, no private clock.
@@ -409,7 +455,7 @@ if ntp:
 print('pre-flight OK: C1-C3 green, --final free of F3 clock violations, py37 closure clean, plan 08 baseline present, evidence log ready')
 " && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
   </verify>
-  <done>`clock_soak.py` drives the production `assign_cb`/`MicsClock` path and emits plan 06's `witness` shape plus `route`, `counters` and `trailer` records; `analyse.py --check-wrap` exits 0 on its output and `--expect-defect` exits non-zero, both proven on the dev host before any hardware time; the README carries both invocation forms with the `RuntimeDirectory=micscap` warning and the PLAT-32 accounting table; the pre-flight gate confirms C1-C3 green, `--final` free of F3 clock violations, `clock_soak.py` outside the py37 closure, plan 08's baseline present and the evidence log ready; delta gate `new failures: 0`; `--strict` exit 0. **Only now may Task 1's checklist be issued.**</done>
+  <done>`clock_soak.py` drives the production `assign_cb`/`MicsClock` path and emits plan 06's `witness` shape plus `route`, `counters` and `trailer` records; every `route` record carries exactly the nine-key set fixed in `<soak_design>` with `a_route`/`b_route` naming the two real dispatch routes, asserted by set equality with the same check Task 3 will run; `analyse.py --check-wrap` exits 0 on its output and `--expect-defect` exits non-zero, both proven on the dev host before any hardware time; the README carries both invocation forms with the `RuntimeDirectory=micscap` warning and the PLAT-32 accounting table; the pre-flight gate confirms C1-C3 green, `--final` free of F3 clock violations, `clock_soak.py` outside the py37 closure, plan 08's baseline present and the evidence log ready; delta gate `new failures: 0`; `--strict` exit 0. **Only now may Task 1's checklist be issued.**</done>
 </task>
 
 <task type="checkpoint:human-action" gate="blocking">
@@ -446,7 +492,8 @@ print('pre-flight OK: C1-C3 green, --final free of F3 clock violations, py37 clo
     **Step 1 — confirm you are about to measure a STOCK client (on the spare Pi):**
     ```bash
     /home/pi/.venv/mics/bin/python -c "import pigpio,hashlib;print(pigpio.__file__);print(hashlib.sha256(open(pigpio.__file__,'rb').read()).hexdigest());print('synchronize',hasattr(pigpio.pi,'synchronize'));print('ticks_to_timestamp',hasattr(pigpio.pi,'ticks_to_timestamp'))"
-    systemctl is-active pigpiod; systemctl is-active chronyd
+    systemctl is-active chronyd; command -v pigpiod; pigpiod -v
+    systemctl is-active mics-pilot; ps -o pid=,ppid=,args= -C pigpiod
     chronyc tracking | head -5
     ```
     Both `hasattr` lines must print `False`. Paste all of it — the sha256 goes into the evidence log
@@ -501,7 +548,9 @@ print('pre-flight OK: C1-C3 green, --final free of F3 clock violations, py37 clo
     wc -l /tmp/soak_after.jsonl
     tail -3 /tmp/soak_after.jsonl
     journalctl -u mics-soak -b --no-pager | tail -20
-    journalctl -u pigpiod -b --no-pager > /tmp/pigpiod_soak.log; wc -l /tmp/pigpiod_soak.log
+    # pigpiod is a CHILD of mics-pilot (PLAT-33 withdrawn), so its output lands in the pilot's journal.
+    journalctl -u mics-pilot -b --no-pager > /tmp/pigpiod_soak.log; wc -l /tmp/pigpiod_soak.log
+    ps -o pid=,ppid=,args= -C pigpiod
     sudo systemctl stop mics-stress
     ```
 
@@ -651,7 +700,7 @@ print('pre-flight OK: C1-C3 green, --final free of F3 clock violations, py37 clo
       /home/ido/mics_core/tools/pulse_timing/captures/
     ```
   </how-to-verify>
-  <resume-signal>Reply "after arm done" with the full `chrt` table, the `date` output either side of all four steps, the per-device fail-safe result, and confirmation that all 24 files copied — or paste any error.</resume-signal>
+  <resume-signal>Reply "after arm done" with the full `chrt` table, the `date` output either side of all four steps, the per-device fail-safe result for BOTH arms (clean stop and `SIGKILL`) plus whether `pigpiod` survived each, and confirmation that all 24 files copied — or paste any error.</resume-signal>
 </task>
 
 <task type="auto">
@@ -688,8 +737,11 @@ print('pre-flight OK: C1-C3 green, --final free of F3 clock violations, py37 clo
        fail.
 
     4. **PLAT-32 drop accounting.** From the trailer: `n_commanded`, `n_observed`, `n_missing`, and
-       every counter in `<soak_design>`'s table. Then inspect `captures/pigpiod_soak.log` for the
-       daemon's own warnings and quote the window. **Criterion: `n_missing == 0` and every counter
+       every counter in `<soak_design>`'s table. Then inspect `captures/pigpiod_soak.log` — which is
+       the **pilot unit's** journal, because PLAT-33 was withdrawn and `pigpiod` is a child process
+       with no journal of its own — for the daemon's own warnings, and quote the window. State that
+       provenance in the log: "no warnings in `journalctl -u pigpiod`" would be a meaningless claim
+       here, since that unit does not exist. **Criterion: `n_missing == 0` and every counter
        zero.** If any is non-zero, report it **with its count and its position in time**, and say
        plainly whether **PLAT-32 passed** (the loss was detected and counted) while the **acceptance
        gate failed** (the loss occurred). Those are two different verdicts and conflating them is how
@@ -788,6 +840,15 @@ if nosrc:
     sys.exit('PLAT-31: %d records carry no valid provenance flag' % len(nosrc))
 routes = [r for r in recs if r.get('kind') == 'route']
 print('route sample pairs:', len(routes))
+WANT = {'kind', 'i', 'tick', 'a_route', 'a_t_mono_ns', 'a_ts_source', 'b_route', 'b_t_mono_ns', 'b_ts_source'}
+badkeys = [r.get('i') for r in routes if set(r) != WANT]
+print('route records with the wrong key set:', len(badkeys))
+if badkeys:
+    sys.exit('route records do not carry the key set fixed in <soak_design>; Task 0 was supposed to catch this BEFORE the hardware time: first offenders %r' % badkeys[:5])
+badroute = [r.get('i') for r in routes if (r.get('a_route'), r.get('b_route')) != ('logging_utils:97', 'task:283')]
+print('route records with unexpected route labels:', len(badroute))
+if badroute:
+    sys.exit('route records are not labelled by the two real dispatch routes, so agreement cannot be attributed to them: %r' % badroute[:5])
 dis = [r for r in routes if r.get('a_t_mono_ns') != r.get('b_t_mono_ns') or r.get('a_ts_source') != 'hardware' or r.get('b_ts_source') != 'hardware']
 print('two-route disagreements:', len(dis))
 if not routes:

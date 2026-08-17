@@ -11,40 +11,36 @@ files_modified:
   - /home/ido/mics_core/tests/test_stock_pigpio_only.py
   - /home/ido/mics_core/tests/test_clock_block_removed.py
 autonomous: true
-requirements: [PLAT-20, PLAT-22, PLAT-28, PLAT-33]
+requirements: [PLAT-20, PLAT-22, PLAT-28]
 must_haves:
   truths:
     - "The pilot connects to a STOCK pigpio client and would refuse to run against a patched one"
     - "The two patch-only call sites that RAISE on stock pigpio are gone, so the run path works again"
     - "Nothing in the tree monkey-patches pigpio, and no patched pigpio.py is vendored anywhere"
-    - "The pilot no longer spawns pigpiod; the daemon's lifetime is systemd's (PLAT-33)"
+    - "The pilot STILL spawns pigpiod, deliberately — PLAT-33 was withdrawn, and start_pigpiod()'s kill_proc hook is the rig's output fail-safe"
     - "The deferred clock-freeze block is gone AND the inverted --final F3 guard that required it is retired in the same change"
     - "NTP is allowed to run normally, because timestamps no longer come from an estimated tick-to-wall-clock mapping"
     - "The MICS clock is attached to the live client at run start, so both event paths have a clock to read"
   artifacts:
     - path: "/home/ido/mics_core/tests/test_stock_pigpio_only.py"
-      provides: "Static gate: no Autopilot pigpio patch, no vendored client, no monkey-patching, no pigpiod spawn"
+      provides: "Static gate: no Autopilot pigpio patch, no vendored client, no monkey-patching — and the pigpiod spawn provably PRESERVED"
       min_lines: 40
       contains: "sync_ticks"
     - path: "/home/ido/mics_core/tests/test_clock_block_removed.py"
       provides: "Static gate: the clock-freeze block, its orphaned methods and its inverted guard are all gone, and the REST of f3_toggles survives"
       min_lines: 30
     - path: "/home/ido/mics_core/autopilot/autopilot/core/pilot.py"
-      provides: "Stock pigpio.pi() plus MicsClock.attach(); no sync_ticks, no synchronize(), no start_pigpiod, no clock-freeze block"
+      provides: "Stock pigpio.pi() plus MicsClock.attach(); no sync_ticks, no synchronize(), no clock-freeze block — start_pigpiod and init_pigpio survive intact"
       contains: "attach"
   key_links:
     - from: "pilot.py's run-start client init"
       to: "autopilot.utils.clock.get_clock().attach(self.pi)"
       via: "the one place the clock meets the live client, which is also the PLAT-28 runtime guard"
       pattern: "attach"
-    - from: "mics-pilot.service"
-      to: "pigpiod.service"
-      via: "systemd After= + Requires= (plan 05), replacing pilot.py:949 external.start_pigpiod()"
-      pattern: "pigpiod"
     - from: "the deleted clock-freeze block"
       to: "final_checks.py f3_toggles"
       via: "the _ntp_violations machinery retired in the same commit, or --final fails loudly"
-      pattern: "_ntp_violations"
+      pattern: "def _ntp_violations"
 ---
 
 <objective>
@@ -58,7 +54,7 @@ genuinely hard part — is stock and is not implicated. C1 and C2 replaced what 
 plan removes the patch's remaining footprint from the tree and makes the run path work against a
 stock client again.
 
-**Three of the four things here are deletions, and one of them is currently a landmine.** Verified
+**Two of the three things here are deletions, and one of them is currently a landmine.** Verified
 2026-08-17 by direct read of the 1198-line `pilot.py`:
 
 - `:1073 self.pi = pigpio.pi(sync_ticks=True)` and `:1079 self.pi.synchronize()` are **patch-only**.
@@ -66,12 +62,30 @@ stock client again.
   the run path from the moment plan 03's stock pin is installed — bounded (it fires only when a task
   starts, which plan 09 never exercises) but real, and `31-REVISED-SCOPE.md` names it. **This plan is
   what closes it.**
-- `:949 external.start_pigpiod()` is PLAT-33's other half. Plan 05 wrote the supervised `pigpiod`
-  unit; this plan stops the pilot spawning its own.
 - `:1069-1084` interleaves the live client init with the **commented** clock-freeze block
   (`# ---- CLOCK SETUP ----` at `:1071`, `# self.enable_ntp_and_wait()` at `:1072`,
   `# Freeze wall clock so it never jumps during the task` at `:1081`, `# self.disable_ntp()` at
   `:1082`). PLAT-22's deletion.
+
+**PLAT-33 WAS WITHDRAWN 2026-08-17 — `external.start_pigpiod()` STAYS. Read this before you touch
+`pilot.py`.** An earlier draft of this plan deleted `:206 self.init_pigpio()`, the `init_pigpio`
+method at `:947-953`, and `:949 external.start_pigpiod()`, on the grounds that plan 05's supervised
+`pigpiod` unit replaced them. **The user reviewed that and reversed it.** `start_pigpiod()` registers
+a `kill_proc` hook on `atexit` and `SIGTERM` (`external/__init__.py:54-59`) that **kills the daemon
+when the session ends** — and because `pigpiod` is what actually drives the pins, killing it is what
+**drops every output**. A systemd-supervised daemon would **outlive** a crashed pilot, leaving
+`VALVE1-4` / `AIR_PUF` / `ODOR1-5` energised with nothing left to close them. The current design
+fails safe; the supervised one would not, absent extra fail-safe work outside this phase.
+
+So: **`:206` stays, `init_pigpio()` stays, `:949` stays, `init_pigpio()` is NOT emptied, and
+`:947-953` survives intact.** Plan 05 ships no `pigpiod` drop-in and plan 07 enables no unit, so
+there is nothing for this plan to assert about `deploy/` on that front either. A static gate in
+Task 1 asserts the spawn is **present**, because the failure mode now is an executor deleting it
+from a stale reading of PLAT-33.
+
+**One thing this withdrawal deletes for free:** the `PIGPIOARGS`/`PIGPIOMASK` two-sources-of-truth
+item plan 05 used to hand here. With no drop-in, `prefs.json` is the only copy. There is nothing to
+decide and nothing to reconcile — the handoff is struck.
 
 **PLAT-22 has a correction you must not skip.** An earlier framing said the clock-freeze deletion
 happens "as a side effect of removing the pigpio lifecycle" under PLAT-16. **PLAT-16 is DEFERRED**
@@ -89,8 +103,9 @@ in the code comment and in the summary. Phase 30 deliberately inverted the guard
 block from a comment sweep; retiring that guard is a deliberate act with a named reason, not a
 cleanup.
 
-Output: a stock-only tree, a working run path, a supervised daemon, the clock attached at run start,
-and two static gates that stop all of it coming back.
+Output: a stock-only tree, a working run path, the clock attached at run start, and two static
+gates — one that stops the patch surface coming back, one that stops the `pigpiod` spawn being
+removed.
 </objective>
 
 <execution_context>
@@ -168,10 +183,10 @@ corrected ones.
 | Anchor | Line (2026-08-17) | Disposition |
 |---|---|---|
 | `import pigpio` (module level) | `:16` | **KEEP.** PLAT-16 is deferred; pigpio stays. |
-| `self.init_pigpio()` | `:206` | **DELETE** (the method becomes empty — see below) |
+| `self.init_pigpio()` | `:206` | **KEEP.** PLAT-33 withdrawn 2026-08-17; the pilot still spawns its own daemon |
 | `def enable_ntp_and_wait(self, timeout=30)` | `:497` | **DELETE the definition** if nothing calls it |
 | `def disable_ntp(self)` | `:513` | **DELETE the definition** if nothing calls it |
-| `def init_pigpio(self)` | `:947-953` | Its body is **only** `self.pigpiod = external.start_pigpiod()` (`:949`), a debug log and an `except ImportError`. It does **not** create the client. With PLAT-33 removing the spawn, the method is empty -> **DELETE the method and its call** |
+| `def init_pigpio(self)` | `:947-953` | **KEEP, byte-identical.** Its body is `self.pigpiod = external.start_pigpiod()` (`:949`), a debug log and an `except ImportError`. It does **not** create the client, so nothing here conflicts with the stock-client cutover. PLAT-33 is withdrawn: the method is **not** emptied and the spawn is the rig's output fail-safe. A Task 1 gate asserts it is still present |
 | `import pigpio` (inline, inside `run_task` at `:1056`) | `:1069` | KEEP or fold into the module-level import — say which |
 | `# ---- CLOCK SETUP ----` | `:1071` | **DELETE** (PLAT-22 anchor) |
 | `# self.enable_ntp_and_wait()` | `:1072` | **DELETE** (PLAT-22) |
@@ -187,7 +202,8 @@ corrected ones.
 **Note the structural consequence, and be honest about it in the summary.** The clock-freeze comments
 are *interleaved* with the live client init: `:1071` comment, `:1072` comment, `:1073` live,
 `:1075-1076` live, `:1079` live, `:1081` comment, `:1082` comment. Task 1 edits that region as a unit
-and therefore **takes the clock-freeze block with it**. So by the time Task 2 runs, its `pilot.py`
+and therefore **takes the clock-freeze block with it**. Note that this region is ~120 lines below
+`init_pigpio()` at `:947-953`, so nothing about it touches the spawn. So by the time Task 2 runs, its `pilot.py`
 absence assertions are trivially green — they assert something Task 1 already did. That is fine and
 it is not a reason to reorder: the assertions are still worth having as a regression guard, and
 splitting a 16-line region across two tasks would be worse. **Task 2's remaining real work is not a
@@ -214,29 +230,33 @@ property the running system enforces rather than a claim in a requirements file.
 `get_clock().stop()` wherever the run tears down, and make it idempotent-safe (C1's `stop()` already
 is).
 
-**`external/__init__.py` — decide on evidence, not on the module's name.** It carries ~10 pigpio
-references including `:33`'s `raise ImportError('the pigpiod daemon was not found! ...')`. Remove
-`start_pigpiod` **only if** a counted scan proves nothing else calls it, and record the evidence. If
-other things in `external/` are live, leave them: this plan removes a spawn, not a module. Either
-way, state the verdict in the summary.
+**`external/__init__.py` — nothing is removed from it.** *(Rewritten 2026-08-17 with PLAT-33's
+withdrawal; the earlier text asked you to decide whether `start_pigpiod` could be deleted.)* It stays
+whole: `start_pigpiod` (`:31`), its `shutil.which('pigpiod')` gate (`:15`), and above all the
+`kill_proc` hook on `atexit` and `SIGTERM` (`:54-59`) that kills the daemon at session end and
+thereby **drops every output**. That hook is the rig's fail-safe and the reason the requirement was
+withdrawn. Task 1 asserts all of it is present rather than deciding anything, and the expected diff
+for this file is **zero lines**.
 
 **`requirements.txt` is NOT edited here.** Plan 03 pinned the stock pigpio **client** (a pure-Python
 `py3-none-any` wheel, on the wheel-check allow-list alongside `Adafruit-PureIO`). This plan
 **asserts** that pin survives; it does not touch the file, which is also what keeps it out of plan
 09's way.
 
-**`deploy/` is NOT edited here.** Plan 05 wrote `pigpiod-mics.conf` and `chrony-mics.conf`; plan 07
-installs them; plan 09 proves them on hardware. This plan **asserts** they exist and say what PLAT-20
-and PLAT-33 need them to say.
+**`deploy/` is NOT edited here.** Plan 05 wrote `chrony-mics.conf` and `journald-mics.conf`; plan 07
+installs them; plan 09 proves them on hardware. This plan **asserts** the chrony drop-in exists and
+says what PLAT-20 needs it to say. There is **no** `deploy/pigpiod-mics.conf` to assert — PLAT-33
+was withdrawn, and a gate here asserts it is **absent**, because an executor re-adding it is the
+concrete way this decision gets quietly undone.
 
-**The two-sources-of-truth item plan 05 flagged and handed here.** Once the pilot stops spawning the
-daemon, `PIGPIOARGS` / `PIGPIOMASK` in `prefs.json` are **inert** while `deploy/pigpiod-mics.conf` is
-authoritative. Two live copies of an argument set that nobody reconciles is how they diverge. Decide
-it here — the options are (a) delete the two prefs keys, (b) have `render-prefs.sh`/`install.sh`
-derive the unit's arguments from the prefs, or (c) keep both and add a comment plus a test asserting
-they match. **(c) is the cheapest correct answer and the one this plan recommends**, because (a)
-touches `prefs.template.json` (plan 04's file) and (b) is real coupling for no operational gain. But
-whichever you take, take it explicitly and record it — the failure mode is silence, not the choice.
+**No `PIGPIOARGS`/`PIGPIOMASK` decision is owed here.** An earlier draft of plan 05 handed C3 a
+two-sources-of-truth problem: with the pilot no longer spawning the daemon, `PIGPIOARGS` /
+`PIGPIOMASK` in `prefs.json` would be inert while `deploy/pigpiod-mics.conf` was authoritative.
+**PLAT-33's withdrawal deletes that problem.** There is no drop-in, the pilot still assembles the
+daemon's arguments from `prefs.json` at `autopilot/external/__init__.py:39-50`, and `prefs.json` is
+the only copy. Nothing to decide, nothing to reconcile, no comment to write. Say so in one line of
+the summary so a reader of plan 05's older text does not go looking for the decision.
+
 </verified_deletion_map>
 
 <the_f3_guard>
@@ -246,11 +266,30 @@ In `tools/tree_integrity/final_checks.py`:
 
 - `NTP_CALLS = ("self.enable_ntp_and_wait()", "self.disable_ntp()")` (~line 42)
 - `CLOCK_COMMENTS = ("# ---- CLOCK SETUP ----", "# Freeze wall clock ...")` (~line 44)
-- `_ntp_violations(text)` (~lines 48-67) and its call site inside `f3_toggles`
+- `def _ntp_violations(text)` at **`:49`**, and its call site `violations += _ntp_violations(text)`
+  at **`:141`** inside `f3_toggles`
 
 Delete the `_ntp_violations` machinery and its call. It is a whole-file substring search with no line
 number, which is why it kept working after Phase 30 shifted the block from `:1137-1148` to
 `:1071-1082`.
+
+**There is a THIRD occurrence of the string `_ntp_violations`, and it is not part of the machinery.**
+Verified 2026-08-17 by a counted read: `final_checks.py` contains **3** occurrences —
+`:49` (the def), `:141` (the call) and **`:150`**, which is prose inside the comment on the
+still-live **HOLD 1** `_handshake_watchdog` block: *"...so the assertion is INVERTED, exactly like
+`_ntp_violations` above."* `<the_f3_guard>` says to leave that block alone, and it stays live.
+
+So **the gate counts the two specific forms, never the bare string.** Assert
+`fc.count('def _ntp_violations') == 0` and `fc.count('+= _ntp_violations(') == 0`. A bare
+`fc.count('_ntp_violations') == 0` would be wrong twice over: it fails on `:150`'s cross-reference,
+and it would also forbid the deletion-site comment this plan **requires** (which may well name the
+retired function while explaining what was removed).
+
+**One bounded comment edit is required at `:150`**, and it is the only line of the HOLD 1 block you
+may touch: reword the cross-reference so it no longer points at a function that no longer exists —
+e.g. *"the assertion is INVERTED, as the retired PLAT-22 NTP check once was."* The HOLD 1 assertion
+itself, its `_uncommented(body)` logic and everything else in that block stay byte-identical, and
+Task 2's collateral-damage assertions prove it.
 
 **Leave the rest of `f3_toggles` alone.** It also asserts the `open_file` absence, the
 `_handshake_watchdog` logging state, its bare `print("")`, and three toggle forms
@@ -272,7 +311,7 @@ Cross-reference `30-HARDWARE-VALIDATION.md` §6.7, which documents the inversion
 <tasks>
 
 <task type="auto" tdd="true">
-  <name>Task 1: Stock client, MICS clock attached, pigpiod spawn removed, clock-freeze block deleted</name>
+  <name>Task 1: Stock client, MICS clock attached, clock-freeze block deleted — pigpiod spawn PRESERVED</name>
   <files>
     /home/ido/mics_core/autopilot/autopilot/core/pilot.py
     /home/ido/mics_core/autopilot/autopilot/external/__init__.py
@@ -288,11 +327,27 @@ Cross-reference `30-HARDWARE-VALIDATION.md` §6.7, which documents the inversion
     - `sync_ticks` — the patch-only constructor keyword that raises `TypeError` on stock pigpio
     - `synchronize(` and `.synchronize` — the patch-only method
     - `ticks_to_timestamp` — both patch implementations
-    - `start_pigpiod` and `pigpiod` **as a spawn** (an `import`/`subprocess` reference; a comment or
-      a docstring naming the systemd unit is fine and must not trip the gate — scope the check so it
-      does, and prove the scoping with a fixture)
     - `get_current_tick` **outside** `autopilot/utils/clock.py` — the heartbeat is the only legitimate
       caller, and C1 owns it
+
+    **`start_pigpiod` is NOT on that list, and its absence is deliberate.** PLAT-33 was withdrawn
+    2026-08-17; the spawn is the rig's output fail-safe. The gate asserts the **opposite**: see the
+    preservation cases below.
+
+    **The preservation cases — these exist because the risk now runs the other way.** An earlier
+    draft of this plan deleted the spawn under PLAT-33, so an executor working from a stale reading
+    is the concrete failure mode. Assert, as separate cases:
+    - `pilot.py` contains **exactly one** `self.init_pigpio()` call and **exactly one**
+      `def init_pigpio(` definition.
+    - `pilot.py` contains **exactly one** `external.start_pigpiod()` call, inside `init_pigpio`.
+    - `autopilot/autopilot/external/__init__.py` still defines `start_pigpiod` and still registers
+      the `kill_proc` hook: `atexit.register`, `signal.signal(signal.SIGTERM` and `proc.kill()` each
+      appear at least once. **That hook is why PLAT-33 was withdrawn** — it is what closes the
+      solenoids at session end — so a test that only checked the call site would miss the thing
+      actually being protected.
+    - There is **no** `deploy/pigpiod-mics.conf`, and no file under `deploy/` with suffix
+      `.service` or `.conf` mentions `pigpiod`. (Scope it to unit and drop-in files:
+      `deploy/install.sh` legitimately apt-installs the `pigpio` package.)
 
     It also asserts, as separate cases:
     - **No vendored client.** There is **no file named `pigpio.py`** anywhere in the repo. Count it.
@@ -303,18 +358,14 @@ Cross-reference `30-HARDWARE-VALIDATION.md` §6.7, which documents the inversion
       exempt — plan 01's fixture does exactly that, on purpose, in the test environment only.
     - **The pin survives.** `requirements.txt` contains exactly one `pigpio` requirement line and it
       is not commented out. This plan does not edit the file; it proves plan 03's work was not lost.
-    - **The unit exists.** `deploy/pigpiod-mics.conf` exists and `deploy/mics-pilot.service` names
-      `pigpiod` at least twice (the `After=` and the `Requires=`), i.e. PLAT-33's systemd half is in
-      place before the spawn is removed. Removing the spawn without the unit would leave no daemon at
-      all.
     - **chrony, not timesyncd (PLAT-20).** `deploy/chrony-mics.conf` exists and contains no
       `makestep` (Debian ships it; restating it is how it silently diverges), and no MICS file
       re-enables `systemd-timesyncd`.
 
     And on `pilot.py` specifically:
-    - zero occurrences of `sync_ticks`, `synchronize`, `init_pigpio`, `start_pigpiod`,
-      `enable_ntp_and_wait`, `disable_ntp`, `# ---- CLOCK SETUP ----`,
-      `Freeze wall clock so it never jumps during the task`
+    - zero occurrences of `sync_ticks`, `synchronize`, `enable_ntp_and_wait`, `disable_ntp`,
+      `# ---- CLOCK SETUP ----`, `Freeze wall clock so it never jumps during the task`.
+      **`init_pigpio` and `start_pigpiod` are NOT in this list** — they stay
     - **exactly one** `pigpio.pi(` call, with **no arguments**
     - **at least one** `get_clock().attach(` call
     - `gpio.clear_scripts(self.pi)` still appears **twice** — the pulse path is not being removed and
@@ -327,7 +378,9 @@ Cross-reference `30-HARDWARE-VALIDATION.md` §6.7, which documents the inversion
 
     2. Apply `<verified_deletion_map>` to `pilot.py`, re-grepping every anchor rather than trusting a
        line number. In order:
-       - delete `self.init_pigpio()` and the now-empty `init_pigpio` method;
+       - **leave `self.init_pigpio()` (`:206`) and the `init_pigpio` method (`:947-953`)
+         byte-identical.** PLAT-33 is withdrawn; the spawn stays. Do not empty the method, do not
+         "tidy" its `except ImportError`, do not move it;
        - change `pigpio.pi(sync_ticks=True)` to `pigpio.pi()`, keep the connect check, delete
          `self.pi.synchronize()`;
        - delete the four clock-freeze lines;
@@ -341,18 +394,20 @@ Cross-reference `30-HARDWARE-VALIDATION.md` §6.7, which documents the inversion
        - **Do not touch** `gpio.clear_scripts(self.pi)` at `:1089`/`:1171`, the commented
          `# gpio.clear_scripts()` at `:1189`, or anything `hardware_state`-related.
 
-    3. Decide `external/`'s fate on evidence: `grep -rn "autopilot\.external"` plus the tree-integrity
-       closure, both re-verified with counted Python rather than a proxied grep. Remove
-       `start_pigpiod` if and only if nothing else calls it; keep the module if anything else in it is
-       live. State the verdict and the counts in the summary.
+    3. **`autopilot/external/__init__.py` is listed in this plan's files, but only so the gate can
+       read it — expect a zero-line diff.** PLAT-33's withdrawal means `start_pigpiod` and its
+       `kill_proc` hook stay exactly as they are. If you find yourself editing this file, stop and
+       re-read the objective. (It remains in `files_modified` because C3 owns the assertion that it
+       is intact; if you end the task with no change to it, say so in the summary — that is the
+       expected outcome, not an omission.)
 
-    4. Resolve the `PIGPIOARGS`/`PIGPIOMASK` two-sources-of-truth item per `<verified_deletion_map>`.
-       If you take the recommended option (c), the comment goes in `pilot.py` next to the removed
-       spawn **and** the assertion goes in this task's test: the `-x` mask in
-       `deploy/pigpiod-mics.conf` must equal `PIGPIOMASK` in `pilot/prefs.template.json`, and the
-       flags must match `PIGPIOARGS`. That turns two live copies into one checked pair.
+    4. There is **no** `PIGPIOARGS`/`PIGPIOMASK` decision to make. Plan 05's older text handed one
+       here; the withdrawal deleted it. `prefs.json` is the only copy. Record that in one line of
+       the summary so a reader of the old text does not go hunting.
 
-    5. Report the before/after line count of `pilot.py`. It should shrink.
+    5. Report the before/after line count of `pilot.py`. It should shrink — by the four clock-freeze
+       lines, `synchronize()`, and the two orphaned NTP method definitions, offset slightly by the
+       `get_clock()` import, `attach()`, `stop()` and the replaced log line.
 
     6. Do **not** edit `requirements.txt`, `deploy/*`, `tools/tree_integrity/final_checks.py`,
        `Event_Dispatcher.py`, `gpio.py`, `task.py` or `logging_utils.py`. The first two belong to
@@ -362,7 +417,7 @@ Cross-reference `30-HARDWARE-VALIDATION.md` §6.7, which documents the inversion
     <automated>cd /home/ido/mics_core && /home/ido/.venvs/mics_core_dev/bin/python -m pytest -q tests/test_stock_pigpio_only.py --tb=short && /home/ido/.venvs/mics_core_dev/bin/python -c "
 import pathlib, re, sys
 p = pathlib.Path('autopilot/autopilot/core/pilot.py').read_text()
-counts = {k: p.count(k) for k in ('sync_ticks', 'synchronize', 'init_pigpio', 'start_pigpiod',
+counts = {k: p.count(k) for k in ('sync_ticks', 'synchronize',
                                   'enable_ntp_and_wait', 'disable_ntp',
                                   '# ---- CLOCK SETUP ----',
                                   'Freeze wall clock so it never jumps during the task')}
@@ -370,6 +425,16 @@ print('pilot.py forbidden-token counts:', counts)
 bad = {k: v for k, v in counts.items() if v}
 if bad:
     sys.exit('pilot.py still carries the patched-client / clock-freeze surface: %r' % bad)
+# PLAT-33 WITHDRAWN 2026-08-17: the pigpiod spawn is the rig's output fail-safe and must SURVIVE.
+keep = {k: p.count(k) for k in ('self.init_pigpio()', 'def init_pigpio(', 'external.start_pigpiod()')}
+print('pilot.py pigpiod-spawn preservation counts:', keep)
+if keep != {'self.init_pigpio()': 1, 'def init_pigpio(': 1, 'external.start_pigpiod()': 1}:
+    sys.exit('the pigpiod spawn was altered; PLAT-33 was WITHDRAWN and start_pigpiod()\'s kill_proc hook is what closes the solenoids at session end: %r' % keep)
+ext = pathlib.Path('autopilot/autopilot/external/__init__.py').read_text()
+hook = {k: ext.count(k) for k in ('def start_pigpiod', 'atexit.register', 'signal.signal(signal.SIGTERM', 'proc.kill()')}
+print('external/__init__.py fail-safe hook counts:', hook)
+if not all(hook.values()):
+    sys.exit('external/__init__.py lost part of the kill_proc fail-safe hook: %r' % hook)
 pi_calls = re.findall(r'pigpio\.pi\(([^)]*)\)', p)
 print('pigpio.pi() call sites and their args:', pi_calls)
 if len(pi_calls) != 1 or pi_calls[0].strip():
@@ -389,17 +454,19 @@ pins = [l for l in req.splitlines() if l.strip() and not l.strip().startswith('#
 print('pigpio pins in requirements.txt:', pins)
 if len(pins) != 1:
     sys.exit('expected exactly one uncommented pigpio pin (plan 03 put it there); found %r' % (pins,))
-unit = pathlib.Path('deploy/mics-pilot.service').read_text()
-print('pigpiod occurrences in mics-pilot.service:', unit.count('pigpiod'))
-if unit.count('pigpiod') < 2 or not pathlib.Path('deploy/pigpiod-mics.conf').exists():
-    sys.exit('PLAT-33 systemd half is missing; removing the spawn would leave no daemon at all')
+dep = {f.name: f.read_text().count('pigpiod')
+       for f in sorted(pathlib.Path('deploy').iterdir())
+       if f.is_file() and f.suffix in ('.service', '.conf')}
+print('pigpiod occurrences per deploy/ unit or drop-in:', dep)
+if any(dep.values()) or pathlib.Path('deploy/pigpiod-mics.conf').exists():
+    sys.exit('a pigpiod systemd unit or drop-in exists; PLAT-33 was WITHDRAWN and a supervised daemon would outlive a crashed pilot with solenoids energised: %r' % dep)
 ch = pathlib.Path('deploy/chrony-mics.conf')
 print('chrony drop-in exists:', ch.exists(), '| makestep occurrences:', ch.read_text().count('makestep') if ch.exists() else 'n/a')
 if not ch.exists() or ch.read_text().count('makestep'):
     sys.exit('PLAT-20 chrony drop-in missing, or it restates Debian default makestep')
 " && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
   </verify>
-  <done>`tests/test_stock_pigpio_only.py` passes; `pilot.py` carries zero occurrences of `sync_ticks`, `synchronize`, `init_pigpio`, `start_pigpiod`, `enable_ntp_and_wait`, `disable_ntp` and both clock-freeze anchors, by counted assertion; there is exactly one argument-free `pigpio.pi()` call and at least one `get_clock().attach(`; both `gpio.clear_scripts(self.pi)` calls survive; no `pigpio.py` is vendored anywhere and nothing monkey-patches the module; the single `requirements.txt` pin, the `pigpiod` unit ordering and the chrony drop-in are all asserted present; `external/`'s fate is decided on counted evidence; `pilot.py` is shorter; delta gate `new failures: 0`; `--strict` exit 0.</done>
+  <done>`tests/test_stock_pigpio_only.py` passes; `pilot.py` carries zero occurrences of `sync_ticks`, `synchronize`, `enable_ntp_and_wait`, `disable_ntp` and both clock-freeze anchors, by counted assertion; `self.init_pigpio()`, `def init_pigpio(` and `external.start_pigpiod()` each still appear exactly once and `external/__init__.py`'s `kill_proc` fail-safe hook is intact (PLAT-33 withdrawn); there is exactly one argument-free `pigpio.pi()` call and at least one `get_clock().attach(`; both `gpio.clear_scripts(self.pi)` calls survive; no `pigpio.py` is vendored anywhere and nothing monkey-patches the module; the single `requirements.txt` pin and the chrony drop-in are asserted present and no `pigpiod` unit or drop-in exists; `pilot.py` is shorter; delta gate `new failures: 0`; `--strict` exit 0.</done>
 </task>
 
 <task type="auto" tdd="true">
@@ -415,8 +482,14 @@ if not ch.exists() or ch.read_text().count('makestep'):
       `Freeze wall clock so it never jumps during the task`. **These are trivially green because Task
       1 already did it** — see `<verified_deletion_map>`. They are kept as a regression guard, and
       the summary must describe them as such rather than as this task's deletion.
-    - `tools/tree_integrity/final_checks.py` contains **no** `NTP_CALLS`, **no** `CLOCK_COMMENTS` and
-      **no** `_ntp_violations`. The guard and the thing it guarded go together, in one commit.
+    - `tools/tree_integrity/final_checks.py` contains **no** `NTP_CALLS`, **no** `CLOCK_COMMENTS`,
+      **no** `def _ntp_violations` and **no** `+= _ntp_violations(`. The guard and the thing it
+      guarded go together, in one commit. **Count those exact forms, not the bare string
+      `_ntp_violations`** — see `<the_f3_guard>`: the string legitimately survives in prose, and a
+      bare-string gate cannot pass on a correct implementation.
+    - The HOLD 1 cross-reference at `final_checks.py:150` was reworded so it no longer points at a
+      deleted function, and the rest of that comment block plus its `_uncommented(body)` assertion
+      are byte-identical. Assert the block's assertion is still present by name.
     - **The collateral-damage assertion, which is why this test exists rather than a bare grep:** the
       REST of `f3_toggles` survives. `open_file`, `_handshake_watchdog`, `set_cdc_manual`, `IR1` and
       `OG_TRIGGER` are all still referenced in `final_checks.py`. Those are unrelated Phase 30
@@ -428,8 +501,8 @@ if not ch.exists() or ch.read_text().count('makestep'):
     - `python3 tools/check_tree_integrity.py --final` produces output (it did not crash) and reports
       **no** F3 NTP / clock-block violation.
 
-    A separate case asserts the whole thing is not vacuous: `_ntp_violations` **was** present in the
-    file at the start of this task. Record the pre-edit `git show HEAD:tools/tree_integrity/final_checks.py`
+    A separate case asserts the whole thing is not vacuous: `def _ntp_violations` **was** present in
+    the file at the start of this task. Record the pre-edit `git show HEAD:tools/tree_integrity/final_checks.py`
     count in the summary, so "the guard is gone" is provably a removal rather than an assertion about
     something that was never there.
   </behavior>
@@ -437,9 +510,11 @@ if not ch.exists() or ch.read_text().count('makestep'):
     1. Write the test first, including the survival assertions for the rest of `f3_toggles` and the
        non-vacuity record.
 
-    2. In `final_checks.py`, delete `NTP_CALLS`, `CLOCK_COMMENTS`, `_ntp_violations` and the call to
-       it inside `f3_toggles`. **Leave every other assertion in that function untouched.** `git diff`
-       the file and read it before committing.
+    2. In `final_checks.py`, delete `NTP_CALLS` (~`:42`), `CLOCK_COMMENTS` (~`:44`), the
+       `def _ntp_violations` at `:49` and the `violations += _ntp_violations(text)` call at `:141`.
+       Then reword the **one** cross-reference at `:150` per `<the_f3_guard>` so it does not name a
+       deleted function. **Leave every other assertion in `f3_toggles` untouched, and leave the rest
+       of the HOLD 1 block byte-identical.** `git diff` the file and read it before committing.
 
     3. Add the deletion-site comment from `<the_f3_guard>`: inverted 2026-08-10 because the user
        deferred the NTP restoration; C1/C2 replaced the estimated tick-to-timestamp mapping with a
@@ -455,7 +530,7 @@ if not ch.exists() or ch.read_text().count('makestep'):
        property on real hardware once C4's card is provisioned. The agent must not run them:
        ```bash
        ssh -i ~/.ssh/pi_mics pi@<SPARE_IP> "/home/pi/.venv/mics/bin/python -c \"import pigpio,hashlib;print(pigpio.__file__);print(hashlib.sha256(open(pigpio.__file__,'rb').read()).hexdigest());print('synchronize' , hasattr(pigpio.pi,'synchronize'));print('ticks_to_timestamp', hasattr(pigpio.pi,'ticks_to_timestamp'))\""
-       ssh -i ~/.ssh/pi_mics pi@<SPARE_IP> "systemctl is-enabled pigpiod; systemctl cat pigpiod.service | head -30"
+       ssh -i ~/.ssh/pi_mics pi@<SPARE_IP> "command -v pigpiod; pigpiod -v; systemctl is-enabled pigpiod; ps -o pid=,ppid=,args= -C pigpiod"
        ```
        Both must report `False` for the two patch attributes. C4's pre-flight runs them.
   </action>
@@ -463,10 +538,15 @@ if not ch.exists() or ch.read_text().count('makestep'):
     <automated>cd /home/ido/mics_core && /home/ido/.venvs/mics_core_dev/bin/python -m pytest -q tests/test_clock_block_removed.py tests/test_stock_pigpio_only.py --tb=short && /home/ido/.venvs/mics_core_dev/bin/python -c "
 import pathlib, subprocess, sys
 fc = pathlib.Path('tools/tree_integrity/final_checks.py').read_text()
-gone = {k: fc.count(k) for k in ('NTP_CALLS', 'CLOCK_COMMENTS', '_ntp_violations')}
-print('retired F3 machinery counts:', gone)
+# Count the DEFINITION and CALL forms, never the bare string: '_ntp_violations' also appears at :150
+# as prose inside the still-live HOLD 1 comment, and may appear in this plan's own deletion-site note.
+gone = {k: fc.count(k) for k in ('NTP_CALLS', 'CLOCK_COMMENTS', 'def _ntp_violations', '+= _ntp_violations(')}
+print('retired F3 machinery counts (definition/call forms):', gone)
 if any(gone.values()):
     sys.exit('the inverted F3 NTP guard is still present: %r' % gone)
+print('bare _ntp_violations occurrences remaining (prose only, not gated):', fc.count('_ntp_violations'))
+if fc.count('_uncommented(body)') != 1:
+    sys.exit('the HOLD 1 _handshake_watchdog assertion was damaged; only its :150 cross-reference comment may change')
 kept = {k: fc.count(k) for k in ('f3_toggles', 'open_file', '_handshake_watchdog', 'set_cdc_manual', 'IR1', 'OG_TRIGGER')}
 print('surviving f3_toggles assertions:', kept)
 missing = [k for k, v in kept.items() if v == 0]
@@ -475,7 +555,9 @@ if missing:
 if fc.count('PLAT-22') == 0 or fc.count('resolved') == 0:
     sys.exit('the deletion site must carry a comment naming PLAT-22 and saying the deferral is RESOLVED, not dropped')
 old = subprocess.run(['git', 'show', 'HEAD:tools/tree_integrity/final_checks.py'], capture_output=True, text=True)
-print('_ntp_violations occurrences at HEAD (non-vacuity check):', old.stdout.count('_ntp_violations'))
+print('def _ntp_violations occurrences at HEAD (non-vacuity check):', old.stdout.count('def _ntp_violations'))
+if old.stdout.count('def _ntp_violations') != 1:
+    sys.exit('non-vacuity check failed: the guard was not present at HEAD, so nothing was retired')
 r = subprocess.run(['python3', 'tools/check_tree_integrity.py', '--final'], capture_output=True, text=True)
 out = r.stdout + r.stderr
 pathlib.Path('/tmp/final31_c3.txt').write_text(out)
@@ -487,13 +569,15 @@ if ntp:
 print('--final captured to /tmp/final31_c3.txt; no F3 NTP/clock-block violation remains')
 " && /home/ido/.venvs/mics_core_dev/bin/python tools/pytest_delta.py && python3 tools/check_tree_integrity.py --strict</automated>
   </verify>
-  <done>`NTP_CALLS`, `CLOCK_COMMENTS` and `_ntp_violations` are gone by counted assertion; `f3_toggles` still exists and its five unrelated Phase 30 assertions provably survive; the deletion site carries a comment naming PLAT-22 and stating the deferral is resolved; the non-vacuity check records that `_ntp_violations` was present at HEAD; `--final` runs, produces output, and reports no F3 NTP/clock-block violation; the per-F-check verdict table is in the summary; delta gate `new failures: 0`; `--strict` exit 0.</done>
+  <done>`NTP_CALLS`, `CLOCK_COMMENTS`, `def _ntp_violations` and `+= _ntp_violations(` are gone by counted assertion on those exact forms (the bare string survives as prose at `:150` and is deliberately not gated), and the HOLD 1 block is intact apart from its reworded cross-reference; `f3_toggles` still exists and its five unrelated Phase 30 assertions provably survive; the deletion site carries a comment naming PLAT-22 and stating the deferral is resolved; the non-vacuity check records that `_ntp_violations` was present at HEAD; `--final` runs, produces output, and reports no F3 NTP/clock-block violation; the per-F-check verdict table is in the summary; delta gate `new failures: 0`; `--strict` exit 0.</done>
 </task>
 
 </tasks>
 
 <verification>
-1. `python3 -c "import pathlib,sys; p=pathlib.Path('/home/ido/mics_core/autopilot/autopilot/core/pilot.py').read_text(); c={k:p.count(k) for k in ('sync_ticks','synchronize','start_pigpiod','init_pigpio','enable_ntp_and_wait','disable_ntp','CLOCK SETUP','Freeze wall clock')}; print(c); sys.exit(0 if not any(c.values()) else 'pilot.py still carries the patched-client or clock-freeze surface')"`
+1. `python3 -c "import pathlib,sys; p=pathlib.Path('/home/ido/mics_core/autopilot/autopilot/core/pilot.py').read_text(); c={k:p.count(k) for k in ('sync_ticks','synchronize','enable_ntp_and_wait','disable_ntp','CLOCK SETUP','Freeze wall clock')}; print(c); sys.exit(0 if not any(c.values()) else 'pilot.py still carries the patched-client or clock-freeze surface')"`
+   -> exit 0
+1b. `python3 -c "import pathlib,sys; p=pathlib.Path('/home/ido/mics_core/autopilot/autopilot/core/pilot.py').read_text(); k={n:p.count(n) for n in ('self.init_pigpio()','def init_pigpio(','external.start_pigpiod()')}; print(k); sys.exit(0 if k=={'self.init_pigpio()':1,'def init_pigpio(':1,'external.start_pigpiod()':1} else 'the pigpiod spawn was altered - PLAT-33 is WITHDRAWN and the spawn is the output fail-safe')"`
    -> exit 0
 2. `python3 -c "import pathlib,sys; v=[str(f) for f in pathlib.Path('/home/ido/mics_core').rglob('pigpio.py')]; print(v); sys.exit(0 if not v else 'a pigpio.py is vendored in the repo')"`
    -> exit 0
@@ -502,7 +586,8 @@ print('--final captured to /tmp/final31_c3.txt; no F3 NTP/clock-block violation 
 5. `python3 tools/check_tree_integrity.py --final` -> runs, produces output, **no F3 NTP/clock-block
    violation**; the remaining failures are named per F-check in the summary
 6. `wc -l /home/ido/mics_core/autopilot/autopilot/core/pilot.py` -> fewer lines than before this plan
-7. `git -C /home/ido/mics_core diff --name-only` -> touches only this plan's five files
+7. `git -C /home/ido/mics_core diff --name-only` -> touches only this plan's five files, and
+   `autopilot/autopilot/external/__init__.py` is expected to show **no** diff
 </verification>
 
 <success_criteria>
@@ -512,8 +597,12 @@ print('--final captured to /tmp/final31_c3.txt; no F3 NTP/clock-block violation 
 - "Stock pigpio" is enforced at run time by `get_clock().attach()`, not merely asserted in a
   requirements file — a patched client is refused loudly.
 - Nothing in the tree monkey-patches pigpio and nothing vendors a client.
-- The pilot no longer spawns `pigpiod`; the daemon is systemd's, and the plan asserts the unit exists
-  before removing the spawn rather than after.
+- The pilot **still** spawns `pigpiod`, and that is asserted rather than assumed: `init_pigpio()`,
+  its call site and `external.start_pigpiod()` each survive exactly once, and the `kill_proc`
+  fail-safe hook in `external/__init__.py` is intact. PLAT-33 was withdrawn 2026-08-17 because that
+  hook is what closes the solenoids at session end; a supervised daemon would outlive a crashed
+  pilot. The gate also asserts **no** `pigpiod` unit or drop-in exists, so the decision cannot be
+  quietly undone from `deploy/`.
 - The Phase 30 clock-freeze deferral is **resolved by being made unnecessary**, with the reasoning in
   the code, and its deliberately-inverted guard is retired in the same change — with the rest of
   `f3_toggles` provably intact.
@@ -530,8 +619,13 @@ Include:
 - the `--final` per-F-check verdict table, naming which remaining failures belong to Phase 30's exit
   criteria and which (if any) belong here;
 - before/after line counts for `pilot.py`;
-- the `external/` verdict with the counted evidence behind it;
-- the `PIGPIOARGS`/`PIGPIOMASK` two-sources-of-truth decision and how it is now enforced;
+- an explicit statement that **PLAT-33 was withdrawn 2026-08-17** and therefore that
+  `self.init_pigpio()`, `init_pigpio()` and `external.start_pigpiod()` were **preserved**, with the
+  counted evidence and the one-sentence reason (the `kill_proc` hook is the rig's output fail-safe);
+  say plainly that `external/__init__.py` has a zero-line diff and that this is the intended outcome;
+- one line recording that the `PIGPIOARGS`/`PIGPIOMASK` two-sources-of-truth item plan 05's earlier
+  text handed here **no longer exists**, because there is no drop-in and `prefs.json` is the only
+  copy — so a reader of that older text stops looking;
 - the paragraph explaining that the NTP deferral was **resolved, not dropped**, cross-referenced to
   `30-HARDWARE-VALIDATION.md` §6.7 — that paragraph belongs in the record, since Phase 30 deliberately
   guarded against exactly this deletion;

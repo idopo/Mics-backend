@@ -1299,8 +1299,11 @@ and connects to the backend — no `./run_pilot.sh`, no SSH step, no lab-built S
 clock becomes correct and safe for 24/7 continuous operation, with hardware-captured GPIO
 timestamps preserved exactly as today.
 
-**Requirements**: PLAT-01 through PLAT-11, PLAT-17 through PLAT-33
-(PLAT-12 through PLAT-16 deferred — they are the lgpio rewrite)
+**Requirements**: PLAT-01 through PLAT-11, PLAT-17 through PLAT-32
+(PLAT-12 through PLAT-16 deferred — they are the lgpio rewrite; **PLAT-33 WITHDRAWN 2026-08-17** — the
+user chose to leave the `pigpiod` spawn in the pilot, because `external.start_pigpiod()`'s `kill_proc`
+hook is what closes the solenoids when a session ends, and a supervised daemon would outlive a
+crashed pilot with `VALVE1-4`/`AIR_PUF`/`ODOR1-5` still open)
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
 **Plans:** 13 plans in 8 waves (01-09, plus the four clean-room clock plans C1-C4, written 2026-08-17). Requirement coverage complete: every active PLAT id is claimed by at least one plan.
 
@@ -1323,8 +1326,9 @@ user's decision after the C4 acceptance gate, and is out of scope here.
    `/boot`-partition config so a rig is provisioned without SSH.
 3. *Clean-room clock layer.* Delete the vendored patched `pigpio.py`, pin stock upstream pigpio,
    and move all timestamping into a MICS-owned module: 64-bit tick extension, one shared calibrated
-   mapping read by both event paths, explicit provenance, loud failures, `pigpiod` supervised by
-   systemd.
+   mapping read by both event paths, explicit provenance and loud failures. The `pigpiod` daemon is
+   still spawned by the pilot (PLAT-33 withdrawn 2026-08-17 — the spawn's `kill_proc` hook is the
+   rig's output fail-safe).
 
 **24/7 timing safety (the phase's central goal):** the deployed patched pigpio client is already
 broken in production. Its callback thread has its own converter with **no wrap detection**
@@ -1351,14 +1355,14 @@ Plans:
 - [ ] 31-02-PLAN.md — Stage 1: shed HDF5/TrialData, port calibration, setup wizard, dead audio
 - [ ] 31-03-PLAN.md — Stage 1: Python 3.11 source compat + audited dependency floor (incl. stock pigpio pin)
 - [ ] 31-04-PLAN.md — Stage 2: prefs.template.json + /boot/firmware/mics.conf rendering
-- [ ] 31-05-PLAN.md — Stage 2: systemd units (incl. pigpiod), chrony drop-in, volatile journald
+- [ ] 31-05-PLAN.md — Stage 2: systemd units (no `pigpiod` unit — PLAT-33 withdrawn), chrony drop-in, volatile journald
 - [ ] 31-06-PLAN.md — Instrument: pulse-timing capture/analyse harness + gate (proves the clock fix)
 - [ ] 31-07-PLAN.md — Stage 2: install.sh / uninstall.sh (owns the box)
 - [ ] 31-08-PLAN.md — USER-RUN: Buster timing baseline + 71.58 min wrap demonstration + LA calibration
 - [ ] 31-09-PLAN.md — USER-RUN: unattended-boot proof on a stock Bookworm 64-bit card
 - [ ] 31-C1-PLAN.md — Stage 3: clock module — 64-bit wrap extension, heartbeat, calibrated mapping, loud failures
 - [ ] 31-C2-PLAN.md — Stage 3: assign_cb adapter — one clock on both event paths, localize_tz contract, provenance
-- [ ] 31-C3-PLAN.md — Stage 3: cut over to stock pigpio, pigpiod as a unit, chrony on, clock-freeze block deleted + F3 retired
+- [ ] 31-C3-PLAN.md — Stage 3: cut over to stock pigpio (the `start_pigpiod()` spawn STAYS), chrony on, clock-freeze block deleted + F3 retired
 - [ ] 31-C4-PLAN.md — Acceptance: clock soak under load + forced clock step + paired capture (USER-RUN)
 
 **Deferred to a future phase (the lgpio rewrite):** PLAT-12 (gpiochip by label), PLAT-13 (I²C to

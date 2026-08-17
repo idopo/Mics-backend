@@ -217,7 +217,43 @@ Not cancelled — they become the requirement set of the Pi 5 / RP1 PIO phase if
 | **PLAT-30** | **One shared clock object.** A single calibrated tick ↔ `CLOCK_MONOTONIC` relation is read by **both** event paths — no scalar snapshot copies (the existing defect), re-fit periodically, and **failures are loud**: the silent revert to raw ticks at `:1214` is removed |
 | **PLAT-31** | **Timestamp provenance is explicit.** Every event records whether its timestamp is hardware-captured (DMA edge) or software-read, so analysis never assumes uniform precision |
 | **PLAT-32** | **Sample and notification loss is detected and reported.** `pigpiod` buffer overflow or dropped notifications surface as an error with a count, never as silence |
-| **PLAT-33** | **`pigpiod` runs as its own systemd unit** ordered before `mics-pilot.service`; the pilot no longer spawns it (`pilot.py:949 external.start_pigpiod()` is removed) so daemon lifetime is supervised and restart-safe under 24/7 |
+| ~~**PLAT-33**~~ | ⛔ **WITHDRAWN 2026-08-17 — see below.** *(Was: `pigpiod` runs as its own systemd unit ordered before `mics-pilot.service`; the pilot no longer spawns it.)* |
+
+### PLAT-33 withdrawn — the `pigpiod` spawn stays in the pilot (user decision, 2026-08-17)
+
+**This was my scope addition, not a user requirement.** It appeared in this document's §5 "New" table
+during the replan, was never asked for, and it traded a real safety property for a supervision
+property. The user was asked and chose to leave the spawn where it is.
+
+**The reasoning, which is decisive and belongs in the record:**
+
+`external.start_pigpiod()` (`external/__init__.py:31`) registers a `kill_proc` hook on `atexit` and
+`SIGTERM` (`:54-59`) that **kills the daemon when the session ends**. Because `pigpiod` drives the
+pins and the pilot merely talks to it over a socket, killing the daemon is what **drops every
+output**. Making `pigpiod` an independently supervised unit inverts that: the daemon would
+**outlive** the pilot, so a pilot crash mid-trial with a solenoid energised would leave
+**`VALVE1-4` / `AIR_PUF` / `ODOR1-5` open**, with no process left to close them. That is an
+animal-welfare hazard, and §3's own fail-safe note already flagged that the pigpio design has no
+process-death line release.
+
+So the current design **fails safe** and the systemd version would not, absent additional fail-safe
+work (a daemon-side safe-state on client disconnect, or a watchdog) that is not in this phase and
+that the user does not want in this phase. Supervision is worth less than a closed valve.
+
+**What still happens, and what does not:**
+
+| Item | Disposition |
+|---|---|
+| `apt install pigpio` in `install.sh` | **Stays.** `external/__init__.py:15` gates on `shutil.which('pigpiod')` and `start_pigpiod()` raises `ImportError` without the binary. The daemon package is still required |
+| `deploy/pigpiod-mics.conf` drop-in | **Dropped** from plan 05 |
+| `systemctl enable pigpiod` in `install.sh` | **Dropped** from plan 07 |
+| `After=` / `Requires=pigpiod.service` on `mics-pilot.service` | **Dropped** from plan 05 |
+| `pilot.py:949 external.start_pigpiod()` and its `:206` call | **KEPT.** C3 no longer deletes them, so `init_pigpio()` is **not** emptied and `:947-953` survives intact |
+| `PIGPIOARGS` / `PIGPIOMASK` | **Single-sourced in `prefs.json`.** The two-sources-of-truth problem plan 05 handed to C3 never arises and that handoff is deleted |
+| Plan 09's mandatory 10-kills-in-30-seconds restart storm | **KEPT.** It is still the only proof of `StartLimitIntervalSec=0` |
+
+Everything else in plan 05 is unchanged: the `LG_WD` removal, `WorkingDirectory=`/`RuntimeDirectory=`,
+chrony, the PLAT-21 relaxation and the `SCHED_FIFO` rejustification all stand on their own reasons.
 
 ---
 
@@ -229,7 +265,7 @@ Not cancelled — they become the requirement set of the Pi 5 / RP1 PIO phase if
 | 31-02 the shed | **Keep unchanged** |
 | 31-03 Python 3.11 + numpy aliases + requirements | **Keep** — add the stock pigpio pin. Note `gpio.py:1039/1042/1077` live in `PWM`, which is **no longer deleted**, so all five sites stay in scope |
 | 31-04 prefs render | **Keep unchanged** |
-| 31-05 systemd units | **Keep** — add the `pigpiod` unit (PLAT-33), drop `LG_WD` |
+| 31-05 systemd units | **Keep** — drop `LG_WD`. *(2026-08-17: the `pigpiod` unit and the `After=`/`Requires=pigpiod.service` ordering are **removed** with PLAT-33's withdrawal.)* |
 | 31-06 pulse-timing harness | **Keep, repurposed** — proves the clock fix rather than comparing GPIO libraries |
 | 31-07 installer | **Keep** — installs stock pigpio instead of purging it |
 | 31-08 Buster baseline capture | **Keep, de-risked** — the "one-way door" largely dissolves: nothing irreplaceable is being rescued now that the patch is not carried forward. A timing **baseline** is still wanted, but it is measurement data, not code |
@@ -248,7 +284,7 @@ Not cancelled — they become the requirement set of the Pi 5 / RP1 PIO phase if
 |---|---|
 | **C1** | The clock module: 64-bit wrap extension, heartbeat, calibrated mapping, shared object, loud failures (PLAT-29, PLAT-30). TDD against the fake notification stream from 31-01 |
 | **C2** | The `assign_cb` adapter: keeps its signature, converts raw tick → `t_mono_ns`, updates `localize_tz`'s contract, puts **both** event paths on the one clock, marks provenance (PLAT-18, PLAT-19, PLAT-27, PLAT-31) |
-| **C3** | Cut over to stock pigpio: delete the vendored patch, pin upstream, `pigpiod` as a systemd unit, chrony enabled, clock-freeze block deleted and the F3 guard retired (PLAT-20, PLAT-22, PLAT-28, PLAT-33) |
+| **C3** | Cut over to stock pigpio: delete the vendored patch, pin upstream, chrony enabled, clock-freeze block deleted and the F3 guard retired (PLAT-20, PLAT-22, PLAT-28). *(2026-08-17: the `pigpiod`-as-a-unit item is gone with PLAT-33; `pilot.py:949 external.start_pigpiod()` **stays**.)* |
 | **C4** | Acceptance soak (PLAT-24, PLAT-25, PLAT-32) — see §8 |
 
 Approximate shape: **13 plans** rather than 16, with the six highest-risk ones replaced by four

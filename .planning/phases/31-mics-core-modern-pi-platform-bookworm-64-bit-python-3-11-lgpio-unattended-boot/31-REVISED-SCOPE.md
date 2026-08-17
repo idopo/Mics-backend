@@ -111,9 +111,26 @@ load-dependent step.
 Why 64 bits is available without touching the wire protocol: the BCM System Timer is a **64-bit**
 free-running 1 MHz counter (`CLO`/`CHI`); pigpio only ever exposes the low half. The notify thread
 dispatches **all** callbacks for **all** GPIOs sequentially (`run()` → `for cb in self.callbacks`),
-so it sees every tick in arrival order and `if tick < last_tick: wraps += 1` reconstructs a 64-bit
-monotonic microsecond counter — at 1 MHz, 64 bits is ~584,000 years. A **64-bit OS does not fix
-this**; the wrap is a protocol field width, not a word size.
+so it sees every tick in arrival order, and the tick can be extended to a 64-bit monotonic
+microsecond counter — at 1 MHz, 64 bits is ~584,000 years. A **64-bit OS does not fix this**; the
+wrap is a protocol field width, not a word size.
+
+> ⚠ **CORRECTION 2026-08-17 — do not implement `if tick < last_tick: wraps += 1`.** That naive rule
+> is correct only for a single strictly-ordered stream. PLAT-29 also requires a **heartbeat on a
+> different thread** feeding the same counter, and one heartbeat sample arriving microseconds out of
+> order is then read as a wrap. Measured: the naive rule turns a 20 µs advance into **4294967316 µs**
+> — a **+4294.967 s** injection, the same magnitude as the defect being deleted, from our own code.
+>
+> Use modular extension instead: `d = (tick - last) % 2**32`, then advance by `d` if `d <= 2**31`,
+> else treat it as a small backward step of `-(2**32 - d)`. This handles genuine wraps and
+> out-of-order samples correctly. Its price is a structural ambiguity limit of **2**31 µs = 35.79
+> min**, which is precisely *why* the heartbeat bound is half the wrap period — the bound is not a
+> safety margin, it is what makes the algorithm well-defined.
+>
+> A second hazard in the same area: a periodic re-fit of the tick ↔ `CLOCK_MONOTONIC` mapping must
+> be **continuity-preserving** — re-anchored so the new fit agrees with the old at the changeover
+> instant. A naive coefficient swap steps the output and puts a backward jump into the very series
+> C4 asserts has none. **A re-fit changes the rate, never the value.**
 
 ### The seam is one the phase already specified
 

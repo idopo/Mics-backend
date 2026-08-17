@@ -1302,7 +1302,7 @@ timestamps preserved exactly as today.
 **Requirements**: PLAT-01 through PLAT-11, PLAT-17 through PLAT-33
 (PLAT-12 through PLAT-16 deferred — they are the lgpio rewrite)
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
-**Plans:** ~13 plans (01-09 as written, plus four clean-room clock plans C1-C4)
+**Plans:** 13 plans in 8 waves (01-09, plus the four clean-room clock plans C1-C4, written 2026-08-17). Requirement coverage complete: every active PLAT id is claimed by at least one plan.
 
 **Repo boundary:** all code changes land in `~/mics_core` on a dedicated feature branch, not in
 `mics-backend`. Planning docs stay here.

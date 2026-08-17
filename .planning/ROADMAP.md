@@ -1286,65 +1286,81 @@ and runs **no git command inside the mirror**. Deployment to the Pi and the Pi t
 > echo listener on the dev host at `132.77.73.125:5597` is a second standing dependency.
 > Teardown is recorded in `18-HARDWARE-VALIDATION.md` §3. Clear this before criterion 1.
 
-### Phase 31: mics_core Modern Pi Platform - Bookworm 64-bit, Python 3.11, lgpio, unattended boot
+### Phase 31: mics_core Modern Pi Platform - Bookworm 64-bit, Python 3.11, correct clock, unattended boot
+
+> **REVISED 2026-08-17 — the lgpio migration was removed from this phase.** A hardware audit found
+> that under lgpio a GPIO line cannot be output-claimed and alert-claimed simultaneously, so every
+> `Digital_Out` on the rig would lose its hardware-timestamped edge events. See
+> `phases/31-.../31-REVISED-SCOPE.md`, which supersedes the lgpio parts of `31-RESEARCH.md`.
 
 **Goal:** A researcher takes a Pi 4B with a stock Raspberry Pi OS Lite 64-bit (Bookworm) card,
 runs one installer script from a `mics_core` clone, reboots, and the pilot comes up on its own
-and connects to the backend — no `./run_pilot.sh`, no SSH step, no lab-built SD image. The GPIO
-layer moves off the unmaintained pigpio daemon onto lgpio, which makes the rig Pi 5-capable and
-makes event timestamps safe for 24/7 continuous operation.
+and connects to the backend — no `./run_pilot.sh`, no SSH step, no lab-built SD image. The event
+clock becomes correct and safe for 24/7 continuous operation, with hardware-captured GPIO
+timestamps preserved exactly as today.
 
-**Requirements**: PLAT-01 through PLAT-27
+**Requirements**: PLAT-01 through PLAT-11, PLAT-17 through PLAT-33
+(PLAT-12 through PLAT-16 deferred — they are the lgpio rewrite)
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
-**Plans:** 16 plans, 14 waves
+**Plans:** ~13 plans (01-09 as written, plus four clean-room clock plans C1-C4)
 
 **Repo boundary:** all code changes land in `~/mics_core` on a dedicated feature branch, not in
 `mics-backend`. Planning docs stay here.
 
-**Scope — three separable stages, risky one last:**
+**Scope — three stages:**
 
 1. *Shed what is already dead.* Remove the on-device HDF5/`TrialData` path, the unused port
-   calibration routine, and the setup-wizard GUI dependencies. Drops 37 pinned packages to 7
-   direct dependencies. Runs on the current system; makes stages 2 and 3 materially smaller.
+   calibration routine, and the setup-wizard GUI dependencies. Drops 37 pinned packages to a small
+   audited set. Runs on the current system; makes stages 2 and 3 materially smaller.
 2. *OS + Python bump.* Raspberry Pi OS Lite 64-bit (Bookworm), Python 3.11. Source impact is
    ~10 lines (numpy alias renames, `setDaemon` → `.daemon`). Deliver `install.sh` (apt packages,
-   dtparams, groups, venv, deps), a systemd unit for unattended start, and `/boot`-partition
-   config so a rig is provisioned without SSH.
-3. *pigpio → lgpio.* Rewrite the hardware libraries and `pilot.py` init. C-timed pulse behaviour
-   for solenoid / TTL / 20 Hz LED must move to `tx_pulse`/`tx_wave` — never Python sleeps, which
-   would make valve-open duration jittery and reward volume variable.
+   dtparams, groups, venv, deps, stock pigpio), systemd units for unattended start, and
+   `/boot`-partition config so a rig is provisioned without SSH.
+3. *Clean-room clock layer.* Delete the vendored patched `pigpio.py`, pin stock upstream pigpio,
+   and move all timestamping into a MICS-owned module: 64-bit tick extension, one shared calibrated
+   mapping read by both event paths, explicit provenance, loud failures, `pigpiod` supervised by
+   systemd.
 
-**24/7 timing safety (a first-class goal, not a side effect):** the current patched pigpio
-`ticks_to_timestamp` estimator rides a 32-bit microsecond counter that wraps every ~71.6 min —
-roughly 20 times a day under continuous operation — and its clock offset goes stale after any
-system-clock step. lgpio replaces this with kernel gpiochip timestamps taken at interrupt
-(64-bit ns). Phase also configures chrony to slew rather than step, and logs monotonic alongside
-realtime so post-hoc correction stays possible.
+**24/7 timing safety (the phase's central goal):** the deployed patched pigpio client is already
+broken in production. Its callback thread has its own converter with **no wrap detection**
+(`pigpio.py:1206-1207`) and holds the sync offset **by value** (`:5264` → `:1157`), so the
+wrap-detecting re-sync on the `pi` object never reaches it. The tick is a 32-bit microsecond field
+in the notification protocol, so it wraps every 71.6 minutes — and on each wrap every GPIO event
+timestamp **jumps backwards by 4294.97 s**, silently, ~20 times a day. `Event_Dispatcher` goes
+through the `pi` object and *does* re-sync, so after the first wrap the two event paths are on
+different clocks. That is the defect this phase fixes. Every one of those lines is an Autopilot
+patch, not upstream pigpio; the `pigpiod` DMA sampler is stock and not implicated.
 
-**Pi 5 forward-compatibility:** resolve the gpiochip by label rather than hardcoding index 0 —
-the header moves chips on the RP1. Pi 5 additionally offers a battery-backed RTC (sane clock
-after an offline reboot) and NVMe boot (SD wear is the top failure mode in 24/7 rigs).
+**Pi 5 forward-compatibility:** deferred to its own phase, targeting the RP1 **PIO** block (which
+can drive *and* timestamp with cycle-exact hardware timing, no wires) rather than lgpio. Accepted
+standing risk: pigpio is unmaintained. Mitigated by the clock layer being library-independent.
 
-**Acceptance gate:** a before/after pulse-timing measurement on a spare card — not "it runs".
-The live rig is not touched; all work happens on spare hardware.
+**Acceptance gate:** a clock soak — ≥3 tick wraps (>3.6 h) under CPU load, with a forced wall-clock
+step forwards and backwards mid-run, asserting monotonicity, zero backward jumps, cross-path
+agreement on the same edge, correct provenance flags, and zero undetected dropped samples; plus a
+paired before/after pulse-timing capture showing no regression. The live rig is not touched; all
+work happens on spare hardware.
 
 Plans:
-- [ ] 31-01-PLAN.md — Wave 0: feature branch, dev-host test harness, fake lgpio, pytest baseline
+- [ ] 31-01-PLAN.md — Wave 0: feature branch, dev-host test harness, fake pigpio notification stream, pytest baseline
 - [ ] 31-02-PLAN.md — Stage 1: shed HDF5/TrialData, port calibration, setup wizard, dead audio
-- [ ] 31-03-PLAN.md — Stage 1: Python 3.11 source compat + audited dependency floor
+- [ ] 31-03-PLAN.md — Stage 1: Python 3.11 source compat + audited dependency floor (incl. stock pigpio pin)
 - [ ] 31-04-PLAN.md — Stage 2: prefs.template.json + /boot/firmware/mics.conf rendering
-- [ ] 31-05-PLAN.md — Stage 2: systemd units, chrony drop-in, volatile journald
-- [ ] 31-06-PLAN.md — Stage 3 instrument: pulse-timing capture/analyse harness + gate
+- [ ] 31-05-PLAN.md — Stage 2: systemd units (incl. pigpiod), chrony drop-in, volatile journald
+- [ ] 31-06-PLAN.md — Instrument: pulse-timing capture/analyse harness + gate (proves the clock fix)
 - [ ] 31-07-PLAN.md — Stage 2: install.sh / uninstall.sh (owns the box)
-- [ ] 31-08-PLAN.md — USER-RUN: pigpio baseline capture + 71.58 min wrap demo + LA calibration
+- [ ] 31-08-PLAN.md — USER-RUN: Buster timing baseline + 71.58 min wrap demonstration + LA calibration
 - [ ] 31-09-PLAN.md — USER-RUN: unattended-boot proof on a stock Bookworm 64-bit card
-- [ ] 31-10-PLAN.md — USER-RUN: lgpio hardware spike (jitter, SCHED_FIFO reach, FIFO headroom, chip label)
-- [ ] 31-11-PLAN.md — Stage 3: lgchip resolver by label + I2C port
-- [ ] 31-12-PLAN.md — Stage 3: gpio.py inputs — claim/alert/callback/debounce, kernel edge timestamps, and the single-clock invariant (PLAT-27)
-- [ ] 31-13-PLAN.md — Stage 3: gpio.py outputs — tx_wave/tx_pulse, 62.5 Hz locked bit-exactly
-- [ ] 31-14-PLAN.md — Stage 3: dual-timebase Event_Dispatcher + the cross-path same-instant proof + one-key manifest update
-- [ ] 31-15-PLAN.md — Stage 3: delete the pigpio lifecycle + retire the --final F3 NTP guard
-- [ ] 31-16-PLAN.md — Acceptance: paired G1 gate, clock step, soak, restart/reboot (USER-RUN)
+- [ ] 31-C1-PLAN.md — Stage 3: clock module — 64-bit wrap extension, heartbeat, calibrated mapping, loud failures
+- [ ] 31-C2-PLAN.md — Stage 3: assign_cb adapter — one clock on both event paths, localize_tz contract, provenance
+- [ ] 31-C3-PLAN.md — Stage 3: cut over to stock pigpio, pigpiod as a unit, chrony on, clock-freeze block deleted + F3 retired
+- [ ] 31-C4-PLAN.md — Acceptance: clock soak under load + forced clock step + paired capture (USER-RUN)
+
+**Deferred to a future phase (the lgpio rewrite):** PLAT-12 (gpiochip by label), PLAT-13 (I²C to
+lgpio), PLAT-14 (edge detection to `gpio_claim_alert`), PLAT-15 (tx_wave/tx_pulse output port),
+PLAT-16 (pigpio lifecycle removal). Old plans 31-10 through 31-16 are superseded; their clock
+substance moved into C1-C4.
+
 
 ---
 *Created: 2026-03-15*

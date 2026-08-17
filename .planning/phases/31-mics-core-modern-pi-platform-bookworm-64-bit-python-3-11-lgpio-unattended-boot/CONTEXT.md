@@ -444,3 +444,43 @@ from the plan-checker's blocker B2 (which concerns the `@log_action` bridge in
   dispatcher timestamp that refer to **the same instant**.
 - **`localize_tz`'s input contract** is updated deliberately (and tested), not incidentally.
 - Consider a test that the invariant **survives a simulated long run** — the current design does not.
+
+
+---
+
+## 14. PHASE REVISED 2026-08-17 — READ `31-REVISED-SCOPE.md` FIRST
+
+**The lgpio migration was removed from this phase.** Sections 1-13 above, and all of
+`31-RESEARCH.md`, were written on the premise that lgpio is a drop-in replacement for pigpio. A
+hardware audit disproved it:
+
+- **Under lgpio a GPIO line cannot be output-claimed and alert-claimed at the same time.**
+  `lgGpio.c:1104-1108` frees the line and re-requests it as `INPUT`; `:1437-1443` silently re-claims
+  it as output on the next write. The kernel enforces this (`gpio_v2_line_flags_validate` requires
+  `INPUT` for edge flags; `gpiochip_lock_as_irq` refuses an IRQ on an output line). Every
+  `Digital_Out` on the rig registers an edge callback in `__init__` (`gpio.py:359` → `:414`) and is
+  then set to output (`:374`), so **all output-pin event logging would be lost**.
+- **Forking lgpio cannot help** — `lg` has no `mmap`, `/dev/mem`, `gpiomem` or DMA anywhere in its
+  source. It is a pure ioctl wrapper with no hardware access to extend.
+- **Loopback jumpers were rejected** by the user: MICS is a deployed platform, and per-rig soldering
+  makes every pilot a hardware project. Also infeasible — 24 of 26 usable header pins are assigned.
+- **A pigpio/lgpio hybrid was rejected** on §13's own terms: it would put the two event paths on two
+  different hardware counters, which is exactly the time bias PLAT-27 forbids.
+
+**§13 remains correct and becomes more important, not less.** The single-clock invariant is already
+broken in production ~20×/day: the callback thread's converter (`pigpio.py:1206-1207`) has no wrap
+detection and holds the offset by value, so every GPIO timestamp jumps backwards 4294.97 s on each
+71.6-minute wrap while `Event_Dispatcher` re-syncs and does not. Fixing that is now the phase's
+central goal, and it is achieved by replacing the Autopilot clock patch with a clean-room
+MICS-owned module — not by changing GPIO library.
+
+**Corrections to §11's locked decisions:**
+- The lgpio decision is **withdrawn**. pigpio stays, upgraded to stock upstream with the vendored
+  patch deleted.
+- `Pulse20Hz`'s 62.5 Hz bit-exactness (§11) is **no longer at risk** — that requirement existed
+  because lgpio's microsecond resolution would have silently changed the rounding. Staying on pigpio
+  preserves the current behaviour by default. The rename and the regression test remain worthwhile.
+- Target OS, `install.sh`-owns-the-box, and journald `Storage=volatile` are **unchanged**.
+
+**Pi 5 is deferred**, and the path is RP1 **PIO** (hardware-timed generation *and* capture, no
+wires), not lgpio.

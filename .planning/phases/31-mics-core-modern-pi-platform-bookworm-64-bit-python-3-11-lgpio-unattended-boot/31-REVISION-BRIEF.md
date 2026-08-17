@@ -47,6 +47,25 @@ hard rules honored, no scope creep, dependency graph acyclic.
 
 ## OUTSTANDING — this is the whole remaining job
 
+> ### ✅ ADDRESSED 2026-08-17 by the planner revision pass — verify, do not re-do
+>
+> Every item below was worked in one pass. **PLAT-27 landed in plan 12 (new Task 3) and closes in
+> plan 14 Task 2**; the four knock-on edits are done (`REQUIREMENTS.md`, `ROADMAP.md`,
+> `31-16-PLAN.md`'s `range(1,28)` + the three "26" strings, `31-VALIDATION.md`). B1-residual,
+> W2, W6, W7, W8, W9 and I2 are done. I3 was skipped as advisory.
+>
+> **One thing the brief did not catch, now fixed:** plans 13 and 14 were both wave 11 and both edit
+> `autopilot/autopilot/hardware/gpio.py` — a parallel-edit hazard on a 1692-line file. Plan 14 now
+> depends on 31-13, so **the layout is 14 waves, not 13**: 05→5, 06→4, 07→6, 08→5, 09→7, 10→8,
+> 11→9, 12→10, 13→11, **14→12, 15→13, 16→14**. `31-VALIDATION.md` is derived from that.
+>
+> **A second correction, inside plan 14:** its `dispatch_event` call-site inventory classified
+> `tasks/task.py:283` as having no edge timestamp. It is the dispatch inside `execute_trigger`, on
+> the `assign_cb` path, with the edge `tick` in scope — exactly the split PLAT-27 exists to prevent.
+> Corrected, and it is now where the mandatory same-instant assertion is anchored.
+>
+> Re-verify against the files rather than against this banner.
+
 ### B9 — the single-clock invariant is unowned *(the only substantive item)*
 
 **Verified 2026-08-17, unchanged:** across all 16 plans, `assign_cb` = **0**, `pi_timestamp` = **0**,

@@ -5,7 +5,7 @@ status: planned
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 ---
 
 # Phase 31 — Validation Strategy
@@ -13,8 +13,10 @@ updated: 2026-08-16
 > Per-phase validation contract for feedback sampling during execution.
 >
 > **Source of truth for design:** `31-RESEARCH.md` → `## Validation Architecture`.
+> **Source of truth for waves and dependencies:** the `31-NN-PLAN.md` frontmatter. This table is
+> derived from it, never the other way round. Re-derive it whenever a plan is re-waved.
 > **Hard constraint:** every hardware capture is **USER-RUN**. The agent supplies the exact
-> command, the user runs it on the Pi, the agent analyses the committed artifact. Never start or
+> command, the user runs it, the agent analyses the committed artifact. Never start or
 > stop the pilot process, never run a Python file on the Pi, never run git on the Pi.
 
 ---
@@ -50,17 +52,24 @@ promoted from an inline heredoc to a committed, tested script.
 
 ## Sampling Rate
 
-- **After every task commit:** `tools/pytest_delta.py` **and** `check_tree_integrity.py --strict`
+- **After every task commit:** `tools/pytest_delta.py` **and** `check_tree_integrity.py --strict`.
+  One documented exception: **plan 01 Task 1**, which runs before `31-PYTEST-BASELINE.json` and
+  `tools/pytest_delta.py` exist — it is the task that creates them. It still runs `--strict`.
 - **After every plan wave:** full suite + `--strict`, plus `shellcheck deploy/*.sh` from wave 4 on
 - **Before `/gsd:verify-work`:** full suite green, `--final` green with F3's NTP guard deliberately
   retired (plan 15), and `analyse.py --gate` exiting 0 on every profile x load pair (plan 16)
-- **Max feedback latency:** **< 10 seconds** for every autonomous task. USER-RUN hardware tasks have
-  a human-scale latency by construction; that is why there are only five of them and why each is
-  batched into a single session.
+- **Max feedback latency:** **< 10 seconds** for every autonomous task, with one measured exception
+  (plan 03 Task 2 — see the sign-off note). USER-RUN hardware tasks have a human-scale latency by
+  construction; that is why there are only **six** of them and why each is batched into a single
+  session.
 
 ---
 
 ## Per-Task Verification Map
+
+Waves below are copied from the plan frontmatter (re-derived 2026-08-17 after PLAT-27 landed in
+plan 12 and plan 14 was serialised behind plan 13 — they both edit `hardware/gpio.py` and must not
+share a wave). **14 waves, 41 tasks.**
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
@@ -74,39 +83,43 @@ promoted from an inline heredoc to a committed, tested script.
 | 31-03-02 | 03 | 3 | PLAT-03 | integration | `pytest -q tests/test_requirements_wheels.py` (skips offline) | ❌ W0 | ⬜ pending |
 | 31-04-01 | 04 | 4 | PLAT-08 | integration | `--strict` + `git ls-files --error-unmatch pilot/prefs.json` must fail | ✅ | ⬜ pending |
 | 31-04-02 | 04 | 4 | PLAT-08 | unit | `shellcheck deploy/render-prefs.sh` + `pytest -q tests/test_prefs_render.py` | ❌ W0 | ⬜ pending |
-| 31-05-01 | 05 | 4 | PLAT-06,09,10,11,21 | unit | `pytest -q tests/test_unit_files.py` | ❌ W0 | ⬜ pending |
-| 31-05-02 | 05 | 4 | PLAT-07 | unit | `shellcheck deploy/firstboot-once.sh` + `pytest -q tests/ -k firstboot` | ❌ W0 | ⬜ pending |
-| 31-05-03 | 05 | 4 | PLAT-20 | unit | `pytest -q tests/ -k unit_files` + drop-in grep assertions | ❌ W0 | ⬜ pending |
-| 31-06-01 | 06 | 4 | PLAT-23 | static | `ast.parse(..., feature_version=(3,7))` + `capture.py --help` | ❌ W0 | ⬜ pending |
+| 31-06-01 | 06 | 4 | PLAT-23 | static | `tools/pulse_timing/py37_gate.py` (closure incl. `gpio.py`) + `capture.py --help` | ❌ W0 | ⬜ pending |
 | 31-06-02 | 06 | 4 | PLAT-23 | unit | `pytest -q tests/test_pulse_timing_analyse.py` | ❌ W0 | ⬜ pending |
-| 31-07-01 | 07 | 5 | PLAT-04, PLAT-05 | static | `bash -n` + `shellcheck` + `pytest -q tests/test_installer_paths.py` | ❌ W0 | ⬜ pending |
-| 31-07-02 | 07 | 5 | PLAT-04 | static | `shellcheck deploy/uninstall.sh` + unit-set equality test | ❌ W0 | ⬜ pending |
-| 31-08-01 | 08 | 5 | PLAT-24 | **manual-only (capture)** | USER-RUN; see Manual-Only table | n/a | ⬜ pending |
+| 31-05-01 | 05 | 5 | PLAT-06,09,10,11,21 | unit | `pytest -q tests/test_unit_files.py` | ❌ W0 | ⬜ pending |
+| 31-05-02 | 05 | 5 | PLAT-07 | unit | `shellcheck deploy/firstboot-once.sh` + `pytest -q tests/ -k firstboot` | ❌ W0 | ⬜ pending |
+| 31-05-03 | 05 | 5 | PLAT-20 | unit | `pytest -q tests/ -k unit_files` + drop-in grep assertions | ❌ W0 | ⬜ pending |
+| 31-08-01 | 08 | 5 | PLAT-24 | **manual-only (capture)** | USER-RUN; gated by `py37_gate.py` first — see Manual-Only table | n/a | ⬜ pending |
 | 31-08-02 | 08 | 5 | PLAT-24 | **manual-only (capture)** | USER-RUN logic-analyser calibration | n/a | ⬜ pending |
 | 31-08-03 | 08 | 5 | PLAT-24 | integration | `analyse.py` over every `pigpio_*.jsonl` + log grep | ✅ (after 06) | ⬜ pending |
-| 31-09-01 | 09 | 6 | PLAT-04..11,20,21 | **manual-only (capture)** | USER-RUN flash/install/reboot | n/a | ⬜ pending |
-| 31-09-02 | 09 | 6 | PLAT-04..11,20,21 | static | `shellcheck deploy/*.sh` + the three deploy test modules | ✅ (after 05,07) | ⬜ pending |
-| 31-09-03 | 09 | 6 | PLAT-04..11,20,21 | integration | evidence-log grep for all ten PLAT ids | ✅ | ⬜ pending |
-| 31-10-01 | 10 | 7 | PLAT-12, PLAT-17 | static | `ast.parse` + no-`gpiochip_open(0)` grep | ✅ | ⬜ pending |
-| 31-10-02 | 10 | 7 | PLAT-12, PLAT-17 | **manual-only (capture)** | USER-RUN spike on hardware | n/a | ⬜ pending |
-| 31-10-03 | 10 | 7 | PLAT-12, PLAT-17 | integration | `analyse.py` over `spike_*.jsonl` + `31-SPIKE.md` grep | ✅ (after 06) | ⬜ pending |
-| 31-11-01 | 11 | 8 | PLAT-12 | unit | `pytest -q tests/test_lgchip.py` (fake, 3 chip layouts + decoy) | ❌ W0 | ⬜ pending |
-| 31-11-02 | 11 | 8 | PLAT-13 | unit | `pytest -q tests/test_i2c_port.py tests/test_mpr121_irq_hygiene.py` | ❌ W0 | ⬜ pending |
-| 31-12-01 | 12 | 9 | PLAT-14 | static | `grep -c pigpio gpio.py` + classification completeness | ✅ | ⬜ pending |
-| 31-12-02 | 12 | 9 | PLAT-14 | unit | `pytest -q tests/test_digital_in_alerts.py` + 3 protected tests | ❌ W0 | ⬜ pending |
-| 31-13-01 | 13 | 10 | PLAT-15 | unit | `pytest -q tests/test_digital_out_tx.py` + script-machinery grep | ❌ W0 | ⬜ pending |
-| 31-13-02 | 13 | 10 | PLAT-15 | unit | `pytest -q tests/test_pulse_train_frequency.py` (8000/8000/0 literal) | ❌ W0 | ⬜ pending |
-| 31-14-01 | 14 | 10 | PLAT-18, PLAT-19 | unit | `pytest -q tests/test_event_dispatcher_clock.py` | ❌ W0 | ⬜ pending |
-| 31-14-02 | 14 | 10 | PLAT-18, PLAT-19 | integration | `--strict` + one-line `git diff` on the manifest | ✅ | ⬜ pending |
-| 31-15-01 | 15 | 11 | PLAT-16 | static | `pytest -q tests/test_no_pigpio.py` + tree-wide pigpio grep | ❌ W0 | ⬜ pending |
-| 31-15-02 | 15 | 11 | PLAT-22 | static | `pytest -q tests/test_clock_block_removed.py` + `--final` | ❌ W0 | ⬜ pending |
-| 31-16-01 | 16 | 12 | PLAT-24 | **manual-only (capture)** | USER-RUN lgpio capture campaign | n/a | ⬜ pending |
-| 31-16-02 | 16 | 12 | PLAT-17, PLAT-25 | **manual-only (capture)** | USER-RUN V1/V3/V4 | n/a | ⬜ pending |
-| 31-16-03 | 16 | 12 | PLAT-17,24,25 | integration | `analyse.py --gate` x10 + `--check-step` + full suite + `--strict` | ✅ (after 06) | ⬜ pending |
+| 31-07-01 | 07 | 6 | PLAT-04, PLAT-05 | static | `bash -n` + `shellcheck` + `pytest -q tests/test_installer_paths.py` | ❌ W0 | ⬜ pending |
+| 31-07-02 | 07 | 6 | PLAT-04 | static | `shellcheck deploy/uninstall.sh` + unit-set equality test | ❌ W0 | ⬜ pending |
+| 31-09-01 | 09 | 7 | PLAT-04..11,20,21 | **manual-only (capture)** | USER-RUN flash/install/reboot | n/a | ⬜ pending |
+| 31-09-02 | 09 | 7 | PLAT-04..11,20,21 | static | `shellcheck deploy/*.sh` + the three deploy test modules | ✅ (after 05,07) | ⬜ pending |
+| 31-09-03 | 09 | 7 | PLAT-04..11,20,21 | integration | evidence-log grep for all ten PLAT ids | ✅ | ⬜ pending |
+| 31-10-01 | 10 | 8 | PLAT-12, PLAT-17 | static | `ast.parse` + no-`gpiochip_open(0)` grep | ✅ | ⬜ pending |
+| 31-10-02 | 10 | 8 | PLAT-12, PLAT-17 | **manual-only (capture)** | USER-RUN spike on hardware | n/a | ⬜ pending |
+| 31-10-03 | 10 | 8 | PLAT-12, PLAT-17 | integration | `analyse.py` over `spike_*.jsonl` + `31-SPIKE.md` grep | ✅ (after 06) | ⬜ pending |
+| 31-11-01 | 11 | 9 | PLAT-12 | unit | `pytest -q tests/test_lgchip.py` (fake, 3 chip layouts + decoy) | ❌ W0 | ⬜ pending |
+| 31-11-02 | 11 | 9 | PLAT-13 | unit | `pytest -q tests/test_i2c_port.py tests/test_mpr121_irq_hygiene.py` | ❌ W0 | ⬜ pending |
+| 31-12-01 | 12 | 10 | PLAT-14 | static | `grep -c pigpio gpio.py` + classification completeness | ✅ | ⬜ pending |
+| 31-12-02 | 12 | 10 | PLAT-14 | unit | `pytest -q tests/test_digital_in_alerts.py` + 3 protected tests | ❌ W0 | ⬜ pending |
+| 31-12-03 | 12 | 10 | **PLAT-27** | unit+static | `pytest -q tests/test_single_clock_invariant.py tests/test_execute_trigger_guard.py` + one-`CLOCK_REALTIME`-site scan + `localize_tz` no-`strptime` AST assertion | ❌ W0 | ⬜ pending |
+| 31-13-01 | 13 | 11 | PLAT-15 | unit | `pytest -q tests/test_digital_out_tx.py` + script-machinery grep | ❌ W0 | ⬜ pending |
+| 31-13-02 | 13 | 11 | PLAT-15 | unit | `pytest -q tests/test_pulse_train_frequency.py` (8000/8000/0 literal) | ❌ W0 | ⬜ pending |
+| 31-14-01 | 14 | 12 | PLAT-18, PLAT-19 | unit | `pytest -q tests/test_event_dispatcher_clock.py` | ❌ W0 | ⬜ pending |
+| 31-14-02 | 14 | 12 | PLAT-18, PLAT-19, **PLAT-27** | unit | `pytest -q tests/test_edge_timestamp_end_to_end.py` (cross-path same-instant assertion) + 2 protected tests | ❌ W0 | ⬜ pending |
+| 31-14-03 | 14 | 12 | PLAT-18, PLAT-19 | integration | `--strict` + one-line `git diff` on the manifest | ✅ | ⬜ pending |
+| 31-15-01 | 15 | 13 | PLAT-16 | static | `pytest -q tests/test_no_pigpio.py` + tree-wide pigpio grep | ❌ W0 | ⬜ pending |
+| 31-15-02 | 15 | 13 | PLAT-22 | static | `pytest -q tests/test_clock_block_removed.py` + `--final` | ❌ W0 | ⬜ pending |
+| 31-16-01 | 16 | 14 | PLAT-24 | **manual-only (capture)** | USER-RUN lgpio capture campaign | n/a | ⬜ pending |
+| 31-16-02 | 16 | 14 | PLAT-17, PLAT-25 | **manual-only (capture)** | USER-RUN V1/V3/V4 | n/a | ⬜ pending |
+| 31-16-03 | 16 | 14 | PLAT-17,24,25,27 | integration | `analyse.py --gate` x10 + `--check-step` + full suite + `--strict` + all-27-PLAT-verdict assertion | ✅ (after 06) | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 *"File Exists" ❌ W0 = the test file is created by that task itself, TDD-style (write it, watch it
 fail, then implement). The shared infrastructure it depends on is created in plan 01.*
+*Rows are ordered by wave, then by plan, so the parallel sets are visible: waves 4, 5 and 12 each
+carry more than one plan.*
 
 ---
 
@@ -129,7 +142,7 @@ Plan 01 owns all of these. Nothing downstream is trustworthy until they are done
 Additional Wave-0-adjacent prerequisites, owned by the plans that first need them:
 
 - [ ] `shellcheck` installed on the dev host (plan 04, first shell script)
-- [ ] `tools/pulse_timing/` capture + analyse + three synthetic fixtures (plan 06)
+- [ ] `tools/pulse_timing/` capture + analyse + `py37_gate.py` + three synthetic fixtures (plan 06)
 - [ ] Spare Pi 4B on the **pre-migration** image, spare SD card, two jumpered GPIO pins (plan 08)
 - [ ] A logic analyser or scope, borrowed **once**, for the loopback calibration (plan 08)
 - [ ] A multimeter for the per-device fail-safe check (plan 16 V4)
@@ -146,7 +159,7 @@ production is not. This is the Phase 30 HYG-01/HYG-02 precedent.
 
 | Behavior | Requirement | Plan | Why Manual | Test Instructions |
 |----------|-------------|------|------------|-------------------|
-| pigpio baseline pulse widths, 5 profiles x 2 loads | PLAT-24 | 08 | Needs the pre-migration image and a loopback jumper; agent may not run Python on the Pi | `capture.py --backend pigpio --profile <P> --out-pin <O> --in-pin <I> --out /tmp/pigpio_<P>_<load>.jsonl`, x10. Analysis: `analyse.py <file>` |
+| pigpio baseline pulse widths, 5 profiles x 2 loads | PLAT-24 | 08 | Needs the pre-migration image and a loopback jumper; agent may not run Python on the Pi | `capture.py --backend pigpio --profile <P> --out-pin <O> --in-pin <I> --out /tmp/pigpio_<P>_<load>.jsonl`, x10. Analysis: `analyse.py <file>`. **Agent precondition:** `py37_gate.py` exits 0 with `hardware/gpio.py` in the closure, before the checklist is issued |
 | 32-bit tick wraparound (V2) | PLAT-25 | 08 | Needs a 75-minute run on the old image; the wrap is at 71.58 min | `capture.py --backend pigpio --profile train --duration-s 4560 --out /tmp/pigpio_wrap_75min.jsonl` |
 | Loopback vs external-observer calibration | PLAT-23, PLAT-24 | 08 | Needs a logic analyser or scope on the physical pin | `sigrok-cli --driver fx2lafw --config samplerate=24m --channels D0 --time 30s --output-file /tmp/la_valve.sr` alongside a `valve` capture |
 | Unattended boot: flash → install → reboot → pilot up | PLAT-04,05,07,08,09,11 | 09 | Needs a real reboot of physical hardware; the clone and the reboot are the user's actions | `sudo bash deploy/install.sh` twice, edit `/boot/firmware/mics.conf`, `sudo reboot`, then the evidence command block in 31-09-PLAN Task 1 Step 7 |
@@ -163,6 +176,13 @@ production is not. This is the Phase 30 HYG-01/HYG-02 precedent.
 | Restart/reboot resilience (V4) | PLAT-09 | 16 | Requires killing and rebooting real hardware | 10x `systemctl kill -s SIGKILL mics-pilot` in 30 s, then `systemctl is-failed`; then `sudo reboot` and `systemctl is-active` |
 | Physical fail-safe output level after SIGKILL | PLAT-15 | 16 | Requires a meter across an energised solenoid, per device | Meter across each output device, then `sudo systemctl kill -s SIGKILL mics-pilot`; report open/closed/chatter per device |
 
+**PLAT-27 is deliberately absent from this table.** The single-clock invariant is proven by test on
+the dev host against the plan-01 fake (`tests/test_single_clock_invariant.py`, plan 12, and
+`tests/test_edge_timestamp_end_to_end.py`, plan 14) — one injected edge, `pi_timestamp_mono_ns`
+asserted equal to the dispatched payload's `t_mono_ns`. Its honest limit belongs in plan 16's "not
+proven" section: nothing here checks that the two paths are still aligned after hours of continuous
+operation, which is precisely the way the pigpio design failed.
+
 ---
 
 ## Validation Sign-Off
@@ -170,20 +190,30 @@ production is not. This is the Phase 30 HYG-01/HYG-02 precedent.
 - [x] All tasks have an `<automated>` verify command, or are `checkpoint:human-action` whose
       artifact is analysed by an automated command in the following task
 - [x] Sampling continuity: no 3 consecutive tasks without an automated verify. Every autonomous
-      task ends in `pytest_delta.py` + `check_tree_integrity.py --strict`; the longest USER-RUN run
-      is 2 consecutive checkpoint tasks (plan 08 T1–T2, plan 16 T1–T2), each immediately followed by
-      an automated analysis task
+      task ends in `pytest_delta.py` + `check_tree_integrity.py --strict` — **with exactly one
+      carve-out, plan 01 Task 1**, which runs before the baseline and the delta script exist because
+      it is the task that creates them (it still runs `--strict`). Verified 2026-08-17 by scanning
+      every `<automated>` block in all 16 plans: 35 autonomous verifies, 34 carry both gates, 1
+      carries `--strict` only. The longest USER-RUN run is 2 consecutive checkpoint tasks (plan 08
+      T1–T2, plan 16 T1–T2), each immediately followed by an automated analysis task
 - [x] Wave 0 covers all MISSING references — every ❌ W0 row above is a test file created TDD-style
       by its own task, on infrastructure plan 01 provides
 - [x] No watch-mode flags anywhere; every command terminates
-- [x] Feedback latency < 10 s for all autonomous tasks (measured: pytest 4.96 s, `--strict` ~2 s)
+- [x] Feedback latency < 10 s for all autonomous tasks (measured: pytest 4.96 s, `--strict` ~2 s),
+      **except plan 03 Task 2**, `tests/test_requirements_wheels.py`, which makes a PyPI round trip
+      per pin to prove every dependency resolves to a prebuilt aarch64 cp311 wheel. That is network
+      time, it is the point of the test, and the test **skips cleanly when offline** — so the gate
+      never becomes a hang or a false failure on a disconnected dev host. No other task leaves the
+      machine
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Basis for `nyquist_compliant: true`:** every one of the 39 tasks in the 16 plans carries an
-automated verify. The five USER-RUN capture tasks are the only exceptions to *agent* execution, and
-each is paired with an automated analysis task in the same plan that gates on the returned artifact
-— so the sampling rate is preserved even across the human-in-the-loop steps. The Wave 0 instrument
-(`pytest_delta.py`) exists specifically so that the pre-existing 179-failure debt cannot mask a new
-regression.
+**Basis for `nyquist_compliant: true`:** every one of the **41** tasks in the 16 plans carries an
+automated verify. The **six** USER-RUN capture tasks — `31-08-01`, `31-08-02`, `31-09-01`,
+`31-10-02`, `31-16-01`, `31-16-02`, matching the Manual-Only table exactly — are the only exceptions
+to *agent* execution, and each is paired with an automated analysis task in the same plan that gates
+on the returned artifact, so the sampling rate is preserved even across the human-in-the-loop steps.
+The Wave 0 instrument (`pytest_delta.py`) exists specifically so that the pre-existing 179-failure
+debt cannot mask a new regression.
 
 **Approval:** pending execution
+</content>

@@ -192,8 +192,11 @@ must be mapped across an IPC boundary by estimation.
 The patched pigpio fork is deleted.
 
 **Direct link to deferred Phase 30 work:** the commented clock-freeze block at
-`pilot.py:1137-1148` (`enable_ntp_and_wait()` / `disable_ntp()`, anchored by
-`# ---- CLOCK SETUP ----` and `# Freeze wall clock so it never jumps during the task`) exists
+`pilot.py:1071-1082` — **corrected 2026-08-17; this document said `:1137-1148`, a stale Phase 30
+citation already superseded by `30-06-ledger.md:21`** — (`# self.enable_ntp_and_wait()` at `:1072`,
+`# self.disable_ntp()` at `:1082`, anchored by `# ---- CLOCK SETUP ----` at `:1071` and
+`# Freeze wall clock so it never jumps during the task` at `:1081`; the method definitions are at
+`:497`/`:513`, and `:1137-1148` is an unrelated block of commented `self.node.send` lines) exists
 *because* a wall-clock jump corrupts the estimated tick→timestamp mapping. Once timestamps come
 from the kernel, freezing the wall clock is no longer necessary. **Plan for deleting that block,
 not restoring it** — and note `30-HARDWARE-VALIDATION.md` §6.7 plus the `--final` F3 assertion

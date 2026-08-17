@@ -89,8 +89,8 @@ daemon — the DMA sampler, the genuinely hard part — is stock and is not impl
 
 | Layer | Decision | Rationale |
 |---|---|---|
-| `pigpiod` DMA sampler | **Keep, stock upstream v79** (rig currently runs v78) | Produces the hardware tick before any of our code runs. Has no 24/7 defect. Reimplementing it is weeks-to-months and Pi 4-only anyway |
-| Vendored patched `pigpio.py` | **Delete entirely** | Source of every clock defect; untracked in git; invisible to review |
+| `pigpiod` DMA sampler | **Keep, stock upstream** (rig runs a v78 source build) | Produces the hardware tick before any of our code runs. Has no 24/7 defect. Reimplementing it is weeks-to-months and Pi 4-only anyway |
+| Vendored patched `pigpio.py` | **Delete entirely**; pin the stock **client** from PyPI | Source of every clock defect; untracked in git; invisible to review |
 | Clock / timestamping | **Clean-room MICS-owned module** | Where 100% of the defects are. Small, well understood, and **library-independent — it survives any future GPIO backend** |
 | lgpio rewrite (plans 11-16) | **Dropped from this phase** | Costs hardware output timestamps and adds software-timed pulse generation, for a Pi 5 capability not currently required |
 | Pi 5 | **Deferred**, pending an RP1 PIO investigation | RP1's PIO block can drive *and* timestamp with cycle-exact hardware timing, no wires — potentially better than today. New development; see §7 |
@@ -132,6 +132,27 @@ timestamp source. `localize_tz`'s contract still changes from ISO-string to inte
   not silently lost (new requirement, PLAT-32).
 
 ---
+
+### Two artifacts, two version numbers — do not conflate them
+
+*(Correction 2026-08-17, found during replan.)* The **C daemon** (`pigpiod`, v78 on the rig, v79
+upstream) and the **Python client** (`import pigpio`, versioned separately on PyPI, pure Python
+`py3-none-any`) are different artifacts. `requirements.txt` pins the **client**; `install.sh`
+installs the **daemon** via apt. An executor told to "pin v79" will not find it. Resolve the client
+pin at execution time against the PyPI JSON API, and give the wheel-check an explicit
+pure-Python allow-list entry alongside `Adafruit-PureIO`.
+
+### Installing stock pigpio breaks the run path until C2/C3 land
+
+*(Correction 2026-08-17.)* `pilot.py:1073` calls `pigpio.pi(sync_ticks=True)` and `:1079` calls
+`self.pi.synchronize()`. Both are **patch-only** — stock pigpio has neither, so `pi(sync_ticks=True)`
+raises `TypeError`. This is bounded: it fires only on the run path when a task starts, which plan 09
+never exercises. But §6's claim that plan 09 is "no longer an awkward intermediate state" was too
+clean — it *is* an intermediate state, just a differently-shaped one, and plan 09 names it.
+
+A knock-on: PLAT-09 (restart-without-latching) used to get its evidence for free, because the pilot
+crash-looped on a missing pigpio import. It no longer crashes, so plan 09 must **force** a
+10-kills-in-30-seconds storm to prove `StartLimitIntervalSec=0`.
 
 ## 4. What the rig actually runs (verified 2026-08-17)
 

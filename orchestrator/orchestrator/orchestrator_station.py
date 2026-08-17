@@ -238,6 +238,21 @@ class OrchestratorStation:
         self._redis_touch(msg.sender)
         # DO NOT clear active_run here
 
+        # The pilot reports its own state. Persist it, or /pilots/live falls back
+        # to its "UNKNOWN" default for any pilot that has never started a run, and
+        # _wait_for_idle never observes IDLE. Older pilots push a bare string.
+        state_value = msg.value.get("state") if isinstance(msg.value, dict) else msg.value
+        if not state_value:
+            return
+
+        self.state.set_state(msg.sender, state_value)
+
+        if self.redis:
+            try:
+                self.redis.hset(f"pilot:{msg.sender}", "state", state_value)
+            except Exception:
+                logger.exception("Redis state write failed for %s", msg.sender)
+
 
     def on_ping(self, msg: Message):
         self._redis_touch(msg.sender)

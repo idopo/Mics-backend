@@ -1304,8 +1304,13 @@ timestamps preserved exactly as today.
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
 **Plans:** 13 plans in 8 waves (01-09, plus the four clean-room clock plans C1-C4, written 2026-08-17). Requirement coverage complete: every active PLAT id is claimed by at least one plan.
 
-**Repo boundary:** all code changes land in `~/mics_core` on a dedicated feature branch, not in
-`mics-backend`. Planning docs stay here.
+**Repo boundary:** all code changes land in `~/mics_core` on the dedicated feature branch
+**`phase-31-modern-pi-platform`**, never in `mics-backend`. Planning docs stay here. Plan 01 cuts
+the branch and **publishes it** (`git push -u origin phase-31-modern-pi-platform`) to
+`git@github.com:idopo/mics_core.git` (private; default branch `main`), so the whole phase lives on
+a remote branch and `main` is never contaminated. Every plan asserts the current branch before it
+commits. No pushes to `main`, no merges into `main`, no force-pushes — integration to `main` is the
+user's decision after the C4 acceptance gate, and is out of scope here.
 
 **Scope — three stages:**
 

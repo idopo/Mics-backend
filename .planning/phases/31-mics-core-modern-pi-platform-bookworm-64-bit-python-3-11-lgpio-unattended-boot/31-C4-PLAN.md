@@ -117,6 +117,15 @@ running anything** — PLAT-29 and PLAT-30 were written on the assumption that i
 
 <repo_boundary>
 ALL code changes land in `/home/ido/mics_core` on branch **`phase-31-modern-pi-platform`**.
+
+<branch_guard>
+**Assert the branch before committing anything.** All Phase 31 code lands on
+`phase-31-modern-pi-platform` in `/home/ido/mics_core`, published to `origin` by plan 01. Before the
+first commit of this plan, run `git branch --show-current` and confirm it is that branch — if it is
+not, STOP and do not commit. Never `git checkout main`, never merge into `main`, never force-push,
+and never push `main`. Integration to `main` is the user's decision after the C4 acceptance gate.
+</branch_guard>
+
 Planning documents stay in `/home/ido/mics-backend/.planning/`.
 </repo_boundary>
 

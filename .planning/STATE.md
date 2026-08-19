@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-19T09:39:41.897Z"
+last_updated: "2026-08-19T09:50:26.977Z"
 progress:
   total_phases: 26
   completed_phases: 8
   total_plans: 107
-  completed_plans: 81
-  percent: 77
+  completed_plans: 82
+  percent: 78
 ---
 
 # STATE: MICS Backend
@@ -35,7 +35,85 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Plan 07 (Wave 4, parallel with 06) executed HYG-10 — `pilot/prefs.json` now ships as a rig-agnostic template.** `TERMINALIP` → `CHANGE_ME_terminal_ip`, `NAME` → `CHANGE_ME_pilot_name`; `SUBJECT` (`bp_s107_r471`), `PORT_CALIBRATION` and the 17-entry dead `HARDWARE.UNREAL` group deleted (16,966 → 12,668 B), and the file now parses as **strict JSON** because `PORT_CALIBRATION` held its only `NaN` literals. The diff is values-only by construction: `json.dumps(d, indent=4)` was verified to reproduce the untouched file byte-for-byte *before* the edit. `prefs_wsl.json`, `prefs_wsl_office.json`, `port_calibration.json` and `port_calibration_fit.json` removed (27,624 B), and `pilot/{data,logs,viz,calibration}/` emptied (182 files, 79,487,931 B) behind `.gitkeep` + `.gitignore`. **The pin-value judgement call was answered by measurement rather than left undecided**: every `pin` in `HARDWARE` was diffed across all three independently authored prefs files before the other two were deleted — **0 differing values** in both comparisons — so all 28 pin values were kept as a cage/HAT wiring convention, and the "undecided" list is empty. The live `IR1` (pin 15) and `OG_TRIGGER` (pin 33) declarations are asserted **present**, not merely left alone. **The "nothing loads the calibration files" check turned out false and was followed through anyway**: 7 references exist, but both boot-path reads are `os.path.exists`-guarded and the two unguarded readers belong to the Terminal workflow removed in plan 03 — and the files were degenerate regardless (one sample per port → the `NaN` fit). Removing `PORT_CALIBRATION` **changes `Solenoid.dur_from_vol`** from an escaping `KeyError` to a logged fallback to the documented default LUT `y = 3.5x + 2`: an improvement, and still a behaviour change on plan 09's watch-list. Guard `--final` **F2 goes red → green**, discharging plan 04's note. The executor **stopped on a permission refusal instead of routing around it with Python** (reversing plans 03/04's fallback, as this wave's instruction required) — the coordinator then executed the deletions, and the user preserved three 2023 behavioural CSVs from `pilot/logs/` to `/home/ido/pi-data-preserved/` that the silent fallback would have destroyed. The `132.77.` allowlist needed its **third** correction: `tools/tree_integrity/final_checks.py:106` *is* F2's assertion, so the gate excludes the instrument rather than widening the allowlist. Two findings for plan 08: `pilot/protocols/` is an empty `Scopes.DIRECTORY` with no `.gitkeep` (assigned as step 0d), and `30-07-PLAN.md`'s `<verification>` prose was never amended with its own gate — **do not transcribe it unamended**. Also recorded: this host's `grep` proxy **strips the `./` path prefix non-deterministically** and failed the Task 2 gate falsely; re-running against `/usr/bin/grep` gave equality and exit 0 with nothing in the tree changed. See `30-07-SUMMARY.md`.
 **Plan 08 (Wave 5) is the phase exit gate, and it is GREEN.** `check_tree_integrity.py --final` exits **0**, with each of F1–F6 verified individually at **0 violations** (the CLI prints one aggregate line, so the checks were imported and called directly) — F3 still asserting the three **call forms** and both **inverted** holds, F1 still asserting `autopilot/{tests,examples,docs}` and `terminal/` absent. **No assertion weakened, no live code deleted to satisfy one.** **HYG-13 proven with zero drift**: all 30 protected paths re-hashed and diffed against the §1 pre-sweep manifest — **0 drift on md5, 0 on sha256, 0 missing** — after first confirming the md5 table and `tree_protect_list.json`'s `baseline_sha256` cover the *same* 30-path set; the three Phase 26 `reserved_absent` names are still absent and were never reported as strays. **The deferred cache purge landed, and ordering was the whole point:** `--final`'s F4 shells out to `compileall` over `autopilot/autopilot/tasks`, so a purge before it regenerates `tasks/__pycache__` and makes the completion criterion false — the executed chain was `compileall → backend pytest → Pi delta → tree-absence tests → --final → purge → assert clean → du`, re-purged after every later `--final`. Final tree state: **0 `__pycache__`, 0 `*.pyc`, no `.pytest_cache`** outside `.git` (unfiltered `os.walk`, not `find`), `du -sb --exclude=.git` **3,429,026 B**, `pilot/sounds` **2,326,388 B unchanged all phase**, **HYG-08 budget 1,102,638 B — 13.1% of the 8,388,608 limit**, i.e. **−98.31%** against the pre-sweep 202,630,324. Suites: `compileall` exit 0, backend **435 passed / 1 skipped**, Pi **179 failed / 203 passed / 382 collected with 0 new failing node ids** and 0 newly passing, guard's own **22** unit tests green. **`30-HARDWARE-VALIDATION.md` is consolidated**: 14-row verdict table (**12 PROVEN**; HYG-01 and HYG-02 deliberately left UNPROVEN because both are user actions), §1b post-sweep measurements with a per-plan size reconciliation, §4 merging all six ledger fragments into one path-sorted removal table carrying each row's four criterion verdicts and owning plan (including the **OVERRIDE** rows where C3 genuinely fails), §6 with 21 findings, §7 a 24-row exit-gate table, §8 a 19-row deferred list. **`30-PUBLISH.md` written**: revoke → fresh `git init` → the `grep -c -F -f` history proof against `/home/ido/.hyg01-probe.txt` (expect 0) plus the one-commit sanity check (expect 1) → the `.28` branch cut → the plan-09 `ExtlinkDemo` blocker, every command copy-pasteable, with **`Known consequences`** (the 8 orphaned `locked_state_source` toolkits, documented with the failure mode and **zero DB writes**; the three behavioural changes) and **`Known defects, deliberately not fixed`** (the `Message` cache, `hardware_state`, both user-deferred holds, the `LOAD_HARDWARE_LIBS` dangler and six more). Steps 0b–0g all landed: the two adafruit runtime deps of `hardware/i2c.py` declared in the **root** `requirements.txt` only and **deliberately unpinned** with the reason written into the file; `pilot/protocols/.gitkeep` added so all five `Scopes.DIRECTORY` prefs are covered; `Message`/`hardware_state` untouched; `/usr/bin/grep` and `/usr/bin/find` used throughout. **The proxy struck a fourth time and produced a passing gate that had done nothing:** the plan's literal `find … -not … -exec rm -rf {} +` was rejected (`rtk find does not support compound predicates or actions`) and deleted **zero** files, while the trailing `rm -rf .pytest_cache` succeeded and the chain reported exit 0 — caught only because the purge was verified with an independent `os.walk` rather than by exit code. Fixed with `/usr/bin/find`. Two propagated numbers were corrected rather than transcribed: plan 02's "28 paths" is 27 paths plus a note row (its 97,691,320 B figure was right), and plan 05's "150,687 B" does not reconcile against its own md5-backed per-path tables, which sum to **141,145 B**. Also corrected: the plan's step 0c names `available_locked_states.file_name`; the column is **`task_filename`** — the row exists (id 24, pilot 1, `class_name='elastic_test'`) and the finding stands, but a query on the wrong column returns an empty set that reads exactly like "clean", the same near-miss plan 04 hit. `--rebaseline` not run, `tree_protect_list.json` unedited, **no git command run in `/home/ido/pi-mirror`**, nothing deployed, no DB row written. See `30-08-SUMMARY.md`.
 **Phase 18 (MICS-Link — Pi Transport + ExternalHardware) is now COMPLETE (2026-08-09, 15/15 plans)** — see the Phase 18 status section below for the six-run rig checkpoint's final verdicts. Phase 26 (OpenEphys Device Control), which depends on Phase 18, can now be planned/executed; residual gaps to note going in: EXTLINK-14 (`sub_connect`) and EXTLINK-18 (`role: "none"` control-only, OpenEphys's own transport shape) are unit-tested but UNPROVEN end-to-end on real hardware.
-**Progress:** [████████░░] 77%
+**Progress:** [████████░░] 78%
+
+### Phase 31 status (2026-08-19) — plans 01-07, C1-C3 executed
+
+**Plan C3 executed (2026-08-19):** PLAT-20/22/28 delivered — the run path now works against a
+**stock** pigpio client, and the Phase 30 clock-freeze deferral is **resolved by being made
+unnecessary**. `pilot.py:943 pigpio.pi(sync_ticks=True)` → `pigpio.pi()` and `:949
+self.pi.synchronize()` deleted: both were Autopilot **fork** additions and, against the
+`pigpio==1.78` stock client plan 03 pinned, raise `TypeError` / `AttributeError` — a **live
+break** on the run path from the moment that pin landed, and closing it was this plan's point.
+`get_clock().attach(self.pi)` replaces them: the one place C1's clock meets the live client, and
+PLAT-28's **runtime** guard, so "stock pigpio" is enforced by the running system rather than
+asserted in a requirements file. A `get_clock().stop()` on the teardown path plus a **defensive**
+one before `attach()` (which raises `RuntimeError` on an already-attached clock, so a run whose
+predecessor died mid-teardown would otherwise be killed for a reason that is not its own).
+
+**This is proven by EXECUTION, not assertion.** `tests/test_stock_pigpio_only.py` extracts
+`run_task`'s run-start statements **by AST from pilot.py itself** (a re-typed copy would keep
+passing after the original regressed) and executes them against `tests/fakes/fake_pigpio.py`,
+which plan 01 built to model the **stock** surface: the client connects and the heartbeat reads a
+tick through it (`heartbeat_missed: 0`, `last_bracket_ns > 0`). Restoring either deleted call site
+reproduces the exact live break — `TypeError: pi.__init__() got an unexpected keyword argument
+'sync_ticks'` and `AttributeError: 'pi' object has no attribute 'synchronize'`.
+
+**PLAT-33 stays WITHDRAWN and the `pigpiod` spawn is PRESERVED**, asserted rather than assumed:
+`self.init_pigpio()`, `def init_pigpio(` and `external.start_pigpiod()` each survive **exactly
+once** and `autopilot/autopilot/external/__init__.py` has a **zero-line diff**. The gate is
+deliberately **stronger than the plan asked**: it scopes the `kill_proc` assertion to
+`start_pigpiod`'s own AST body, because `start_jackd` registers an identical hook and the plan's
+file-wide count stays green after `start_pigpiod`'s is stripped entirely (proven by mutation). It
+also asserts **no** `pigpiod` unit or drop-in under `deploy/`, so the decision cannot be quietly
+undone. **The stated REASON for the withdrawal does not hold, and C3 says so rather than
+propagating it:** `start_pigpiod`'s hook cannot reach the daemon — `Popen('sudo …', shell=True)`
+makes `proc` the shell, `pigpiod` daemonises without `-g` and is reparented to init, and it runs
+under sudo. Pre-existing, **out of scope, deliberately not fixed**, logged in `deferred-items.md`
+with a suggested real fail-safe. The `PIGPIOARGS`/`PIGPIOMASK` two-sources-of-truth item plan 05's
+older text handed here **no longer exists**: there is no drop-in and `prefs.json` is the only copy.
+
+**PLAT-22, and why the guard mattered.** Phase 30 deliberately **inverted** `--final`'s F3 NTP
+assertion on 2026-08-10 (`30-HARDWARE-VALIDATION.md` §6.7, HYG-14) so the clock-freeze block had to
+stay present *in commented form* and HYG-11's sweep could not eat a user deferral. **It worked:**
+the moment Task 1 deleted the block, `--final` failed loudly with exactly its four violations. The
+block existed because a wall-clock jump corrupted the patched client's **estimated**
+tick-to-wall-clock mapping; C1/C2 replaced that with a `CLOCK_MONOTONIC`-derived timeline, so a
+step can no longer move an interval and NTP running normally is now the **point** (PLAT-20) —
+chrony touches only the derived UTC field, which it improves. Guard and guarded were retired in one
+commit, with that paragraph written **into the code** at the deletion site.
+
+**`--final` now exits 0 — the first clean `--final` of the phase.** F1–F6 each verified
+individually: all PASS, 0 violations, no remaining failure owned by Phase 30 or any other phase.
+
+Load-bearing corrections, not silently absorbed (see `31-C3-SUMMARY.md`): (1) the plan's static
+gate specifies **bare tokens**, which taken literally forbids `clock_guard.py` from naming the
+patch surface it exists to refuse and forbids `gpio.py`'s C2 warning — reimplemented as
+call/keyword forms plus a bare-name tier scoped to three documented owner files, with
+`synchronize` excluded because it is an ordinary English word (`jackclient.py:101`); (2) the
+`kill_proc` gate re-scoped as above; (3) `tests/test_tree_integrity.py` — **not** in the plan's
+file list — carried the retired guard's own unit test, which could only fail once the clause was
+gone (Rule 3): deleted, and its `DEFERRED_CLOCK_BLOCK` fixture (the tree's **last** copy of the
+block) renamed `NEUTRAL_PILOT` and stripped; (4) the plan's line numbers had all shifted again
+(`pilot.py` 1062, not 1198).
+
+**20 mutations, 20 caught — but only after two escaped and exposed real defects in the tests.**
+`str.count` could not tell a live `gpio.clear_scripts` call from one a sweep merely **commented
+out** (the exact HYG-11 failure mode) → added an uncommented-only counter; and
+`get_clock().stop() >= 1` stayed green when only the **teardown** stop was deleted → replaced with
+an AST assertion scoped to `run_task`'s `finally` body. On Task 2, dropping a `TOGGLE_FORMS` regex
+was caught **only** by the behavioural collateral-damage test, because the removed names survive in
+unrelated error-message strings — which is why that test exists instead of a bare grep.
+
+Executed **concurrently with plan 31-07** on the same repo/branch; every commit staged files
+individually. Plan 07's in-flight RED tests briefly polluted `pytest_delta.py`, so the delta was
+isolated (**0 new failures**); 07 has since landed and the **unfiltered** delta is also
+`new failures: 0`. `--strict` 0 violations, `py37_gate.py` exit 0 on **34** members (no import
+lost), pigpio still **not** installed on the dev host.
+
+`state advance-plan`, `state record-metric` and `state record-session` remain no-ops on this
+STATE.md structure (the same gap every prior Phase 31 plan hit) — completion is tracked here and
+via `gsd-tools roadmap update-plan-progress 31`. See `31-C3-SUMMARY.md`.
 
 ### Phase 31 status (2026-08-19) — plans 01-07, C1, C2 executed
 
@@ -2168,6 +2246,12 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 31]: C2: `Digital_In` deliberately NOT decorated with @auto_log. Every IR beam-break, lick and touch line is a Digital_In; wrapping the class adds a Hardware_Event per METHOD CALL across the whole rig. Product decision, out of scope. Digital_Out's 12 wrapped methods enumerated at run time.
 - [Phase 31]: C2: did NOT resolve the test_log_action_values.py vs log_value.py contradiction that unblocking the pigpio import exposed. Both files are PROTECTED and they encode the Phase 25 vs Phase 26 CMP-16 value-field contracts; editing either is a Rule 4 user decision. Accepted into the pytest baseline with a typed reason.
 - [Phase 31]: Plan 07: install.sh owns the box (aarch64/bookworm/py3.11 preflight, symlink to /opt/mics, apt pigpio daemon never purged/never a unit, three MICS units enabled, mics.conf seeded once); uninstall.sh reverses it; prefs.template.json re-pointed at /opt/mics + /home/pi/.venv/mics
+- [Phase 31]: 31-C3: the run path now works against STOCK pigpio -- pigpio.pi(sync_ticks=True) and pi.synchronize() were fork-only and raised TypeError/AttributeError against the pinned 1.78 client; get_clock().attach() replaces them and is PLAT-28's runtime guard
+- [Phase 31]: 31-C3: proven by EXECUTION -- pilot.py's run-start statements are extracted by AST and run against the stock-modelling fake; restoring either call site reproduces the real TypeError/AttributeError
+- [Phase 31]: 31-C3: PLAT-33 stays withdrawn and the pigpiod spawn is preserved, but its stated reason is FALSE -- start_pigpiod's kill_proc hook cannot reach the daemon (shell=True, daemonises without -g, runs under sudo). Pre-existing, not fixed, logged in deferred-items.md
+- [Phase 31]: 31-C3: PLAT-22 resolved by being made unnecessary, not dropped -- C1/C2's CLOCK_MONOTONIC timeline removes the reason to freeze the wall clock, so NTP running normally is now the point (PLAT-20). Guard and guarded retired in one commit
+- [Phase 31]: 31-C3: --final exits 0 for the first time in Phase 31 -- F1-F6 all PASS, no remaining failure owned by Phase 30
+- [Phase 31]: 31-C3: the static gate checks CALL/KEYWORD forms, not bare tokens -- a bare-token gate forbids clock_guard.py from naming the surface it exists to refuse, and false-positives on the English word synchronize
 
 ## Accumulated Context
 

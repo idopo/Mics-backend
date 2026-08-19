@@ -57,3 +57,42 @@ contradicts `autopilot/utils/log_value.py`. Both are PROTECTED. Rule 4 — user 
   board`". `board`/`busio` are `adafruit-blinka`, genuinely Pi-only and not installable
   on this dev host. Out of C2's fence; a later plan may want a `collect_ignore` entry or
   a stub.
+
+---
+
+## From plan C3 (2026-08-19)
+
+**`start_pigpiod()`'s `kill_proc` hook cannot actually kill `pigpiod`. PRE-EXISTING, NOT FIXED
+HERE, and it undermines the stated premise of PLAT-33's withdrawal.**
+
+`autopilot/autopilot/external/__init__.py:52-60`:
+
+```python
+proc = subprocess.Popen('sudo ' + launch_pigpiod, shell=True)
+...
+def kill_proc(*args):
+    proc.kill()
+    sys.exit(1)
+atexit.register(kill_proc)
+signal.signal(signal.SIGTERM, kill_proc)
+```
+
+Three independent reasons the hook never reaches the daemon:
+
+1. `shell=True` means `proc` is the **shell wrapper**, not `pigpiod`. Killing the shell does not
+   kill its child.
+2. `pigpiod` **daemonises** (it is not launched with `-g`), so it detaches and is reparented to
+   init. Even the correct PID would be the wrong process by the time the hook runs.
+3. It runs under `sudo`, so `proc.kill()` from the unprivileged pilot could not signal it anyway.
+
+PLAT-33 was withdrawn on the belief that this hook "closes the solenoids at session end". It does
+not: the daemon already outlives the pilot today, which is the exact failure mode a systemd unit
+was said to introduce. **The withdrawal stands by user instruction and C3 changed nothing here** —
+`external/__init__.py` has a zero-line diff and C3's gate asserts the hook is intact.
+
+- **Why C3 did not fix it:** out of C3's fence (the plan explicitly names it as pre-existing and
+  out of scope), and the correct fix is a design decision, not a bug fix.
+- **Suggested resolution, for the user:** if solenoid-safe shutdown is actually wanted, it needs a
+  real fail-safe, not this hook — e.g. `pigpiod -g` under a systemd unit with a `pigs`-based
+  `ExecStopPost` that de-energises `VALVE1-4` / `AIR_PUF` / `ODOR1-5`, or a hardware pull-down. A
+  decision either way should be made on the evidence above rather than on the hook.

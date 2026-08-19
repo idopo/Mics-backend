@@ -96,3 +96,33 @@ was said to introduce. **The withdrawal stands by user instruction and C3 change
   real fail-safe, not this hook — e.g. `pigpiod -g` under a systemd unit with a `pigs`-based
   `ExecStopPost` that de-energises `VALVE1-4` / `AIR_PUF` / `ODOR1-5`, or a hardware pull-down. A
   decision either way should be made on the evidence above rather than on the hook.
+
+---
+
+## From plan C4 Task 0 (2026-08-19)
+
+**Task 0's pre-flight gate contains a clause that is unsatisfiable by construction: plan 08's
+baseline captures. Deviated deliberately, not waived silently.**
+
+- **The clause:** `at least ten before_*.jsonl and one wrap_witness_patched.jsonl under
+  tools/pulse_timing/captures/`. Measured: **0 and 0** — the directory is empty.
+- **Why it cannot be met:** **plan 31-08 was skipped by user decision.** The `before` capture it
+  owned was never taken, so there is nothing for the glob to find. No amount of C4 work produces
+  it; only a Buster card and a re-run of plan 08 would.
+- **What it costs:** PLAT-24's paired regression has **no before arm**. Any G1-style comparison
+  reported as if a baseline existed would be false. §0 and §8 of `31-HARDWARE-VALIDATION.md`
+  state this in those terms, and `tools/pulse_timing/README.md`'s campaign section repeats it at
+  the point of use so the person running the campaign meets it there too.
+- **Mitigation, unchanged:** tag `phase-31-buster-before-arm` @ `9fc8837` preserves the pre-C2
+  tree, keeping a `before` capture re-derivable. **Do not move or delete that tag.**
+- **Every other clause of the gate passes:** C1–C4 tests green (14/14 on `test_clock_soak.py`,
+  the whole C1–C3 set green), `--final` exit 0 with zero VIOLATION lines so C3's F3 retirement
+  holds, `clock_soak.py` outside the py37 closure, `pytest_delta` `new failures: 0`, `--strict`
+  exit 0.
+
+**`31-HARDWARE-VALIDATION.md` did not exist and was created by Task 0.**
+
+The gate's last clause asserts the evidence log exists with an "after arm" section for the plan
+to fill. It had never been created for this phase (phases 23 and 30 have theirs). Task 0 created
+it as a scaffold: every row reads **NOT RUN**, and §8 is a mandatory NOT PROVEN section, so an
+unfilled log states its own emptiness rather than implying completeness.

@@ -21,3 +21,39 @@ only auto-fix issues directly caused by the current task's changes).
    blocked, but by the pigpio chain (`Event_Dispatcher.py:3`), not npyscreen. Plan 01 Task 3's own
    instructions reserve editing this block for plan 02 ("leave the existing `collect_ignore` block
    and its explanatory comment intact — plan 02 revisits it"), so the comment was left as written.
+
+## From plan 31-C2 (2026-08-19)
+
+**`tests/test_log_action_values.py::test_set_non_numeric_logs_raw_instead_of_raising`
+contradicts `autopilot/utils/log_value.py`. Both are PROTECTED. Rule 4 — user decision.**
+
+- **Found during:** C2 Task 2, immediately after removing `Event_Dispatcher.py`'s
+  unconditional `import pigpio`. That import was a *collection error*, so
+  `conftest.py`'s `collect_ignore` had kept this whole module dark since Phase 25. It
+  now collects: 9 of its 10 tests pass.
+- **The contradiction:** the test asserts `event_data["value"] == "baseline"` for a
+  non-numeric `Tracker.set`. That was the Phase 25 contract. Phase 26 (CMP-16) then
+  deliberately changed it — `log_value.coerce_for_event` diverts non-numbers to
+  `value_str` and leaves `value` `None`, because `event.event_data.value` is mapped
+  `long` in `event_log_v2` and a bare non-numeric string makes Elasticsearch reject the
+  **whole document** (proven live, run 549).
+- **Why C2 did not fix it:** both files are protected, and the plan explicitly forbids
+  editing `test_log_action_values.py`. Resolving it means changing one of them, which is
+  an architectural/ownership decision. No C2 code is implicated: `logging_utils`'
+  `Mics_Tracker` branch is byte-identical.
+- **Recorded** in `31-PYTEST-BASELINE.json` under `accepted_new_failures` with the full
+  reason, via `tools/rebaseline_pytest.py` (the only sanctioned path).
+- **Suggested resolution:** update the Phase 25 test to assert `value is None` and
+  `value_str == "baseline"`, since `log_value.py` is the later, deliberate,
+  hardware-proven design. Needs the user's sign-off because the test is protected.
+
+**`tests/test_load_fda_from_json.py` and `tests/test_trigger_assignments.py` now fail on
+`ModuleNotFoundError: No module named 'board'`.**
+
+- Same node ids as before (they were pigpio-blocked in the 187 baseline), so not new
+  failures — they simply fail one link further down the import chain now.
+- Exactly what 31-01-SUMMARY predicted: "whichever later plan first unblocks that chain
+  should expect `i2c.py`'s `MPR121` class to surface a *new* `ModuleNotFoundError:
+  board`". `board`/`busio` are `adafruit-blinka`, genuinely Pi-only and not installable
+  on this dev host. Out of C2's fence; a later plan may want a `collect_ignore` entry or
+  a stub.

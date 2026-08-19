@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-19T09:25:19.080Z"
+last_updated: "2026-08-19T09:39:41.897Z"
 progress:
   total_phases: 26
   completed_phases: 8
   total_plans: 107
-  completed_plans: 80
-  percent: 76
+  completed_plans: 81
+  percent: 77
 ---
 
 # STATE: MICS Backend
@@ -35,9 +35,71 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Plan 07 (Wave 4, parallel with 06) executed HYG-10 — `pilot/prefs.json` now ships as a rig-agnostic template.** `TERMINALIP` → `CHANGE_ME_terminal_ip`, `NAME` → `CHANGE_ME_pilot_name`; `SUBJECT` (`bp_s107_r471`), `PORT_CALIBRATION` and the 17-entry dead `HARDWARE.UNREAL` group deleted (16,966 → 12,668 B), and the file now parses as **strict JSON** because `PORT_CALIBRATION` held its only `NaN` literals. The diff is values-only by construction: `json.dumps(d, indent=4)` was verified to reproduce the untouched file byte-for-byte *before* the edit. `prefs_wsl.json`, `prefs_wsl_office.json`, `port_calibration.json` and `port_calibration_fit.json` removed (27,624 B), and `pilot/{data,logs,viz,calibration}/` emptied (182 files, 79,487,931 B) behind `.gitkeep` + `.gitignore`. **The pin-value judgement call was answered by measurement rather than left undecided**: every `pin` in `HARDWARE` was diffed across all three independently authored prefs files before the other two were deleted — **0 differing values** in both comparisons — so all 28 pin values were kept as a cage/HAT wiring convention, and the "undecided" list is empty. The live `IR1` (pin 15) and `OG_TRIGGER` (pin 33) declarations are asserted **present**, not merely left alone. **The "nothing loads the calibration files" check turned out false and was followed through anyway**: 7 references exist, but both boot-path reads are `os.path.exists`-guarded and the two unguarded readers belong to the Terminal workflow removed in plan 03 — and the files were degenerate regardless (one sample per port → the `NaN` fit). Removing `PORT_CALIBRATION` **changes `Solenoid.dur_from_vol`** from an escaping `KeyError` to a logged fallback to the documented default LUT `y = 3.5x + 2`: an improvement, and still a behaviour change on plan 09's watch-list. Guard `--final` **F2 goes red → green**, discharging plan 04's note. The executor **stopped on a permission refusal instead of routing around it with Python** (reversing plans 03/04's fallback, as this wave's instruction required) — the coordinator then executed the deletions, and the user preserved three 2023 behavioural CSVs from `pilot/logs/` to `/home/ido/pi-data-preserved/` that the silent fallback would have destroyed. The `132.77.` allowlist needed its **third** correction: `tools/tree_integrity/final_checks.py:106` *is* F2's assertion, so the gate excludes the instrument rather than widening the allowlist. Two findings for plan 08: `pilot/protocols/` is an empty `Scopes.DIRECTORY` with no `.gitkeep` (assigned as step 0d), and `30-07-PLAN.md`'s `<verification>` prose was never amended with its own gate — **do not transcribe it unamended**. Also recorded: this host's `grep` proxy **strips the `./` path prefix non-deterministically** and failed the Task 2 gate falsely; re-running against `/usr/bin/grep` gave equality and exit 0 with nothing in the tree changed. See `30-07-SUMMARY.md`.
 **Plan 08 (Wave 5) is the phase exit gate, and it is GREEN.** `check_tree_integrity.py --final` exits **0**, with each of F1–F6 verified individually at **0 violations** (the CLI prints one aggregate line, so the checks were imported and called directly) — F3 still asserting the three **call forms** and both **inverted** holds, F1 still asserting `autopilot/{tests,examples,docs}` and `terminal/` absent. **No assertion weakened, no live code deleted to satisfy one.** **HYG-13 proven with zero drift**: all 30 protected paths re-hashed and diffed against the §1 pre-sweep manifest — **0 drift on md5, 0 on sha256, 0 missing** — after first confirming the md5 table and `tree_protect_list.json`'s `baseline_sha256` cover the *same* 30-path set; the three Phase 26 `reserved_absent` names are still absent and were never reported as strays. **The deferred cache purge landed, and ordering was the whole point:** `--final`'s F4 shells out to `compileall` over `autopilot/autopilot/tasks`, so a purge before it regenerates `tasks/__pycache__` and makes the completion criterion false — the executed chain was `compileall → backend pytest → Pi delta → tree-absence tests → --final → purge → assert clean → du`, re-purged after every later `--final`. Final tree state: **0 `__pycache__`, 0 `*.pyc`, no `.pytest_cache`** outside `.git` (unfiltered `os.walk`, not `find`), `du -sb --exclude=.git` **3,429,026 B**, `pilot/sounds` **2,326,388 B unchanged all phase**, **HYG-08 budget 1,102,638 B — 13.1% of the 8,388,608 limit**, i.e. **−98.31%** against the pre-sweep 202,630,324. Suites: `compileall` exit 0, backend **435 passed / 1 skipped**, Pi **179 failed / 203 passed / 382 collected with 0 new failing node ids** and 0 newly passing, guard's own **22** unit tests green. **`30-HARDWARE-VALIDATION.md` is consolidated**: 14-row verdict table (**12 PROVEN**; HYG-01 and HYG-02 deliberately left UNPROVEN because both are user actions), §1b post-sweep measurements with a per-plan size reconciliation, §4 merging all six ledger fragments into one path-sorted removal table carrying each row's four criterion verdicts and owning plan (including the **OVERRIDE** rows where C3 genuinely fails), §6 with 21 findings, §7 a 24-row exit-gate table, §8 a 19-row deferred list. **`30-PUBLISH.md` written**: revoke → fresh `git init` → the `grep -c -F -f` history proof against `/home/ido/.hyg01-probe.txt` (expect 0) plus the one-commit sanity check (expect 1) → the `.28` branch cut → the plan-09 `ExtlinkDemo` blocker, every command copy-pasteable, with **`Known consequences`** (the 8 orphaned `locked_state_source` toolkits, documented with the failure mode and **zero DB writes**; the three behavioural changes) and **`Known defects, deliberately not fixed`** (the `Message` cache, `hardware_state`, both user-deferred holds, the `LOAD_HARDWARE_LIBS` dangler and six more). Steps 0b–0g all landed: the two adafruit runtime deps of `hardware/i2c.py` declared in the **root** `requirements.txt` only and **deliberately unpinned** with the reason written into the file; `pilot/protocols/.gitkeep` added so all five `Scopes.DIRECTORY` prefs are covered; `Message`/`hardware_state` untouched; `/usr/bin/grep` and `/usr/bin/find` used throughout. **The proxy struck a fourth time and produced a passing gate that had done nothing:** the plan's literal `find … -not … -exec rm -rf {} +` was rejected (`rtk find does not support compound predicates or actions`) and deleted **zero** files, while the trailing `rm -rf .pytest_cache` succeeded and the chain reported exit 0 — caught only because the purge was verified with an independent `os.walk` rather than by exit code. Fixed with `/usr/bin/find`. Two propagated numbers were corrected rather than transcribed: plan 02's "28 paths" is 27 paths plus a note row (its 97,691,320 B figure was right), and plan 05's "150,687 B" does not reconcile against its own md5-backed per-path tables, which sum to **141,145 B**. Also corrected: the plan's step 0c names `available_locked_states.file_name`; the column is **`task_filename`** — the row exists (id 24, pilot 1, `class_name='elastic_test'`) and the finding stands, but a query on the wrong column returns an empty set that reads exactly like "clean", the same near-miss plan 04 hit. `--rebaseline` not run, `tree_protect_list.json` unedited, **no git command run in `/home/ido/pi-mirror`**, nothing deployed, no DB row written. See `30-08-SUMMARY.md`.
 **Phase 18 (MICS-Link — Pi Transport + ExternalHardware) is now COMPLETE (2026-08-09, 15/15 plans)** — see the Phase 18 status section below for the six-run rig checkpoint's final verdicts. Phase 26 (OpenEphys Device Control), which depends on Phase 18, can now be planned/executed; residual gaps to note going in: EXTLINK-14 (`sub_connect`) and EXTLINK-18 (`role: "none"` control-only, OpenEphys's own transport shape) are unit-tested but UNPROVEN end-to-end on real hardware.
-**Progress:** [████████░░] 76%
+**Progress:** [████████░░] 77%
 
-### Phase 31 status (2026-08-19) — plans 01-06, C1, C2 executed
+### Phase 31 status (2026-08-19) — plans 01-07, C1, C2 executed
+
+**Plan 07 executed (2026-08-19):** PLAT-04/05 delivered — the single idempotent
+installer the phase goal's load-bearing sentence names ("runs one installer
+script from a `mics_core` clone, reboots, and the pilot comes up on its own").
+Task 1 built `deploy/install.sh` (270 lines, shellcheck-clean): preflight
+(`aarch64`/`VERSION_CODENAME=bookworm`/`python3.11.x`, fails loudly and names
+what it found otherwise), symlinks the clone to `/opt/mics` (not a copy — keeps
+`git pull` working as the deployed tree), apt-installs `python3-venv python3-dev
+i2c-tools chrony pigpio` + `stress-ng` (records `pigpiod -v`, flags a shadowing
+`/usr/local/bin/pigpiod`), `raspi-config nonint do_i2c 0`, idempotent
+`config.txt` upserts (`dtparam=audio=on`/`dtoverlay=disable-bt`/
+`enable_uart=0`), a venv at `/home/pi/.venv/mics` with no inherited system
+site-packages and no PEP-668 override flag, installs+enables the three plan-05
+MICS units and the two config drop-ins (`systemctl enable` for exactly those
+three units and nothing else), adds `pi` to `i2c gpio spi dialout`, seeds
+`/boot/firmware/mics.conf` only if absent, and prints the four post-boot
+checks. Every file it edits is backed up to `<file>.mics.bak` before the first
+edit only; it does not reboot. **pigpio disposition stated once, precisely,
+because this phase has said the opposite twice before** (31-REVISED-SCOPE.md
+Sec3/Sec5): the DAEMON package is apt-installed (a hard runtime dependency —
+`external/__init__.py`'s `shutil.which('pigpiod')` gates the pilot's own
+spawn), nothing pigpio-related is ever removed outright, the apt Python
+binding is deliberately not installed, and no drop-in/`systemctl enable` for
+any pigpio-named unit exists (PLAT-33 stays withdrawn). Task 2 built `deploy/
+uninstall.sh` (101 lines): reverses exactly the `UNITS` array `install.sh`
+enables (set-equality asserted by a cross-file test), removes the two
+drop-ins, restores every `*.mics.bak` found under `/boot/firmware`/`/etc` by
+glob (not a hardcoded list), and never mentions `/boot/firmware/mics.conf` or
+`/opt/mics` anywhere in its text. README got a `## Deploying to a Pi` section
+opening with the required "owns the box" sentence. **27 new tests**
+(`tests/test_installer_paths.py`), all static (raw-text assertions + `bash
+-n`/`shellcheck` subprocess gates) — matching both tasks' own `<verify>`
+blocks exactly, since `install.sh`'s preflight would refuse to run on this
+non-aarch64/non-bookworm dev host by design; real two-run idempotence is
+plan 09's rig checkpoint to prove live.
+
+...Load-bearing correction (Rule 1, see `31-07-SUMMARY.md`): `pilot/
+prefs.template.json` (plan 04) still held the pre-installer paths
+(`/home/pi/Apps/mice_interactive_home_cage`, `/home/pi/.venv/autopilot`) —
+re-pointed all 11 path-valued keys (`BASEDIR`, `CALIBRATIONDIR`, `DATADIR`,
+`LOGDIR`, `PLUGINDIR`, `PLUGIN_DB`, `PROTOCOLDIR`, `REPODIR`, `SOUNDDIR`,
+`VENV`, `VIZDIR`) at `/opt/mics`/`/home/pi/.venv/mics` so the template and the
+installer agree, per the plan's own explicit instruction not to let them
+disagree; README's "First boot" paragraph, which quoted the old paths as a
+worked example, was corrected in the same commit. Two more self-caught issues,
+both the same class plan 05 already established: explanatory comments in a
+first draft of `install.sh`/`uninstall.sh` named the literal banned substrings
+they were explaining the absence of (`--system-site-packages`, `purged`,
+`python3-pigpio`, the two never-touch paths) — the counted-absence tests read
+raw file text including comments, so all were reworded to paraphrase before
+either task's commit. `check_tree_integrity.py --strict` (39 closure members,
+0 violations) and `tools/pytest_delta.py` (`new failures: 0`) held throughout.
+Executed concurrently with plan 31-C3 in the same repo/branch; C3's files
+(`autopilot/autopilot/core/pilot.py`, `tests/test_stock_pigpio_only.py`, etc.)
+were confirmed untouched via `git diff --stat` before every commit.
+`requirements mark-complete PLAT-04 PLAT-05` found no checkbox/traceability
+row in `REQUIREMENTS.md` (same structural gap as every prior Phase 31 plan) —
+completion tracked here and via `gsd-tools roadmap update-plan-progress 31`
+instead. `state advance-plan`, `state record-metric` and `state record-session`
+remain no-ops on this STATE.md structure (same known gap); `state
+update-progress` and `add-decision` both worked and were used. See
+`31-07-SUMMARY.md`.
 
 **Plan C2 executed (2026-08-19):** PLAT-18/19/27/31 delivered — C1's clock is now wired into
 **both** of the rig's event paths, and one injected edge proves it. `assign_cb` keeps its
@@ -2105,6 +2167,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 31]: C2: the per-edge slot lives on `Hardware`, not `gpio.py` — `logging_utils` already imports `autopilot.hardware`, and importing `gpio` there would be a gpio<->logging_utils cycle. Published as ONE immutable EdgeSlot namedtuple under ONE per-object lock (both disciplines, not either).
 - [Phase 31]: C2: `Digital_In` deliberately NOT decorated with @auto_log. Every IR beam-break, lick and touch line is a Digital_In; wrapping the class adds a Hardware_Event per METHOD CALL across the whole rig. Product decision, out of scope. Digital_Out's 12 wrapped methods enumerated at run time.
 - [Phase 31]: C2: did NOT resolve the test_log_action_values.py vs log_value.py contradiction that unblocking the pigpio import exposed. Both files are PROTECTED and they encode the Phase 25 vs Phase 26 CMP-16 value-field contracts; editing either is a Rule 4 user decision. Accepted into the pytest baseline with a typed reason.
+- [Phase 31]: Plan 07: install.sh owns the box (aarch64/bookworm/py3.11 preflight, symlink to /opt/mics, apt pigpio daemon never purged/never a unit, three MICS units enabled, mics.conf seeded once); uninstall.sh reverses it; prefs.template.json re-pointed at /opt/mics + /home/pi/.venv/mics
 
 ## Accumulated Context
 

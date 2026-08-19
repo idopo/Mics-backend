@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-19T07:21:04.972Z"
+last_updated: "2026-08-19T07:43:31.266Z"
 progress:
   total_phases: 26
   completed_phases: 8
   total_plans: 107
-  completed_plans: 74
+  completed_plans: 75
   percent: 71
 ---
 
@@ -36,6 +36,57 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 **Plan 08 (Wave 5) is the phase exit gate, and it is GREEN.** `check_tree_integrity.py --final` exits **0**, with each of F1–F6 verified individually at **0 violations** (the CLI prints one aggregate line, so the checks were imported and called directly) — F3 still asserting the three **call forms** and both **inverted** holds, F1 still asserting `autopilot/{tests,examples,docs}` and `terminal/` absent. **No assertion weakened, no live code deleted to satisfy one.** **HYG-13 proven with zero drift**: all 30 protected paths re-hashed and diffed against the §1 pre-sweep manifest — **0 drift on md5, 0 on sha256, 0 missing** — after first confirming the md5 table and `tree_protect_list.json`'s `baseline_sha256` cover the *same* 30-path set; the three Phase 26 `reserved_absent` names are still absent and were never reported as strays. **The deferred cache purge landed, and ordering was the whole point:** `--final`'s F4 shells out to `compileall` over `autopilot/autopilot/tasks`, so a purge before it regenerates `tasks/__pycache__` and makes the completion criterion false — the executed chain was `compileall → backend pytest → Pi delta → tree-absence tests → --final → purge → assert clean → du`, re-purged after every later `--final`. Final tree state: **0 `__pycache__`, 0 `*.pyc`, no `.pytest_cache`** outside `.git` (unfiltered `os.walk`, not `find`), `du -sb --exclude=.git` **3,429,026 B**, `pilot/sounds` **2,326,388 B unchanged all phase**, **HYG-08 budget 1,102,638 B — 13.1% of the 8,388,608 limit**, i.e. **−98.31%** against the pre-sweep 202,630,324. Suites: `compileall` exit 0, backend **435 passed / 1 skipped**, Pi **179 failed / 203 passed / 382 collected with 0 new failing node ids** and 0 newly passing, guard's own **22** unit tests green. **`30-HARDWARE-VALIDATION.md` is consolidated**: 14-row verdict table (**12 PROVEN**; HYG-01 and HYG-02 deliberately left UNPROVEN because both are user actions), §1b post-sweep measurements with a per-plan size reconciliation, §4 merging all six ledger fragments into one path-sorted removal table carrying each row's four criterion verdicts and owning plan (including the **OVERRIDE** rows where C3 genuinely fails), §6 with 21 findings, §7 a 24-row exit-gate table, §8 a 19-row deferred list. **`30-PUBLISH.md` written**: revoke → fresh `git init` → the `grep -c -F -f` history proof against `/home/ido/.hyg01-probe.txt` (expect 0) plus the one-commit sanity check (expect 1) → the `.28` branch cut → the plan-09 `ExtlinkDemo` blocker, every command copy-pasteable, with **`Known consequences`** (the 8 orphaned `locked_state_source` toolkits, documented with the failure mode and **zero DB writes**; the three behavioural changes) and **`Known defects, deliberately not fixed`** (the `Message` cache, `hardware_state`, both user-deferred holds, the `LOAD_HARDWARE_LIBS` dangler and six more). Steps 0b–0g all landed: the two adafruit runtime deps of `hardware/i2c.py` declared in the **root** `requirements.txt` only and **deliberately unpinned** with the reason written into the file; `pilot/protocols/.gitkeep` added so all five `Scopes.DIRECTORY` prefs are covered; `Message`/`hardware_state` untouched; `/usr/bin/grep` and `/usr/bin/find` used throughout. **The proxy struck a fourth time and produced a passing gate that had done nothing:** the plan's literal `find … -not … -exec rm -rf {} +` was rejected (`rtk find does not support compound predicates or actions`) and deleted **zero** files, while the trailing `rm -rf .pytest_cache` succeeded and the chain reported exit 0 — caught only because the purge was verified with an independent `os.walk` rather than by exit code. Fixed with `/usr/bin/find`. Two propagated numbers were corrected rather than transcribed: plan 02's "28 paths" is 27 paths plus a note row (its 97,691,320 B figure was right), and plan 05's "150,687 B" does not reconcile against its own md5-backed per-path tables, which sum to **141,145 B**. Also corrected: the plan's step 0c names `available_locked_states.file_name`; the column is **`task_filename`** — the row exists (id 24, pilot 1, `class_name='elastic_test'`) and the finding stands, but a query on the wrong column returns an empty set that reads exactly like "clean", the same near-miss plan 04 hit. `--rebaseline` not run, `tree_protect_list.json` unedited, **no git command run in `/home/ido/pi-mirror`**, nothing deployed, no DB row written. See `30-08-SUMMARY.md`.
 **Phase 18 (MICS-Link — Pi Transport + ExternalHardware) is now COMPLETE (2026-08-09, 15/15 plans)** — see the Phase 18 status section below for the six-run rig checkpoint's final verdicts. Phase 26 (OpenEphys Device Control), which depends on Phase 18, can now be planned/executed; residual gaps to note going in: EXTLINK-14 (`sub_connect`) and EXTLINK-18 (`role: "none"` control-only, OpenEphys's own transport shape) are unit-tested but UNPROVEN end-to-end on real hardware.
 **Progress:** [███████░░░] 71%
+
+### Phase 31 status (2026-08-19) — plans 01-03 executed
+
+**Plan 03 executed (2026-08-19):** PLAT-02/PLAT-03 delivered — the tree is importable
+under real Python 3.11/numpy 1.26 semantics and `requirements.txt` is rewritten from a
+measured import closure. Task 1 fixed all 13 numpy-1.24-removed-alias sites
+(`gpio.py` ×5 incl. three inside the live `PWM` class, `pilot.py` ×1,
+`stim/sound/base.py` ×4, `stim/managers.py` ×1, `transform/geometry.py` ×2) and all 7
+deprecated `.setDaemon(True)` calls (`station.py` ×6, `node.py` ×1) → `.daemon = True`,
+deleted the dead comment at `transform/transforms.py:153` outright, and added
+`tests/test_python311_compat.py` (new, permanent gate, word-boundary regex scanner,
+RED-verified against the pre-fix tree matching the plan's site list exactly). Task 2
+audited the real third-party import closure (cross-checked against the tree-integrity
+guard's 35-member static closure plus direct reads of registry-loaded modules the
+closure tool structurally can't see) and rewrote `requirements.txt`: **18 direct
+dependencies (16 pinned + 2 deliberately-unpinned adafruit lines), not CONTEXT.md's
+"7."** New pins: `pigpio==1.78` (stock upstream client, PLAT-03/PLAT-28),
+`Adafruit-Blinka==9.2.0`, `pytz==2026.3.post1`, `tzlocal==5.4.4`, `packaging==26.3`,
+`validators==0.35.0`, `requests==2.34.2`, `pygame==2.6.1`; `scipy==1.17.1` (the newest
+release that still ships a cp311 wheel — 1.18.0 dropped 3.11 support) and
+`blosc==1.11.4` carried forward from plan 02's live-consumer finding. Deleted
+`autopilot/autopilot/stim/visual/` whole (zero importers tree-wide) — `psychopy` drops.
+Dropped dead pins with zero tree-wide imports (`inputs`, `python-osc`, `scikit-video`,
+`importlib-metadata`). New `tests/test_requirements_wheels.py` (permanent gate) queries
+the live PyPI JSON API per pin, asserting a cp311/aarch64 wheel or a documented
+`ALLOW_PURE_PYTHON`/`ALLOW_SDIST_ONLY` entry; skips cleanly offline. Zero pre-release
+specifiers, zero `lgpio` references, `--strict` unchanged at 35 closure members, 0
+violations, 0 new pytest failures.
+
+**Load-bearing corrections, not silently absorbed (5 total, see `31-03-SUMMARY.md`
+"Deviations from Plan" for full detail):** (1) `hardware/mixer.py` (pygame) is NOT
+dead code, contradicting the plan's own deletion-candidate list — `tasks/mics_task.py:5`
+imports it unconditionally. (2) `utils/wiki.py`/`utils/plugins.py`/`utils/types.py`/
+`utils/requires.py` (backing `requests`/`validators`/`packaging`) are NOT dead either —
+all four are members of the tree-integrity guard's own static closure, reached via
+`utils/registry.py`'s default `import_plugins()` call and `stim/sound/base.py`. Only
+`stim/visual/` (`psychopy`), the fifth of the plan's five deletion candidates, was
+genuinely unreachable. (3) The plan's own `<pigpio_pin>` item 1 text ("supervised by
+pigpiod's systemd unit") was stale against its own more-recent `<verified_facts>`
+(PLAT-33 withdrawn) — corrected in the `requirements.txt` comment. (4) scipy's latest
+PyPI release has no cp311 wheel; pinned the newest one that does (1.17.1). (5) The
+pure-Python wheel carve-out generalizes to 7 packages, not just pigpio as
+`<pigpio_pin>` implied — `pytz`/`tzlocal`/`packaging`/`validators`/`requests`/
+`Adafruit-Blinka` all resolve to genuine `py3-none-any` wheels, each justified
+individually in the new test's allow-list. `requirements mark-complete PLAT-02 PLAT-03`
+found no checkbox/traceability rows in `REQUIREMENTS.md` (same structural gap as prior
+Phase 31 plans) — completion tracked here and via `gsd-tools roadmap
+update-plan-progress 31` instead. `state advance-plan` and `state record-metric`/
+`record-session` still error on this file (same known gap as plans 01/02);
+`state update-progress` and `add-decision` both worked and were used. See
+`31-03-SUMMARY.md`.
 
 ### Phase 31 status (2026-08-19) — plans 01-02 executed
 
@@ -1764,6 +1815,7 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - [Phase 30]: HYG-10: the 132.77 gate excludes the guard's own SELF_PATH (tools/tree_integrity/) rather than widening the allowlist to five — the assertion is about tree content, not the instrument
 - [Phase 31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unattended-boot]: pigpio, not npyscreen/tzlocal, is the true terminal blocker for all 179 pre-existing test failures; frozen baseline documents this rather than the failure count dropping
 - [Phase 31]: Deleted HDF5/TrialData/port-calibration/setup-wizard subsystems from mics_core; scipy/blosc/JACKDSTRING narrowed from the plan's tree-wide ban after finding live unrelated consumers; re-baselined pytest (179/208 -> 187/253, 8 accepted pre-existing pigpio failures, 0 fixed as expected per wave-1 carry-forward)
+- [Phase 31]: requirements.txt rewritten from measured import closure: 18 direct deps (16 pinned + 2 unpinned), not CONTEXT.md's 7 estimate; pigpio stock upstream client pinned per PLAT-03/PLAT-28
 
 ## Accumulated Context
 

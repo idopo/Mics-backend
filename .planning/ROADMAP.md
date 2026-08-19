@@ -1305,7 +1305,7 @@ user chose to leave the `pigpiod` spawn in the pilot, because `external.start_pi
 hook is what closes the solenoids when a session ends, and a supervised daemon would outlive a
 crashed pilot with `VALVE1-4`/`AIR_PUF`/`ODOR1-5` still open)
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
-**Plans:** 13 plans in 8 waves (01-09, plus the four clean-room clock plans C1-C4, written 2026-08-17). Requirement coverage complete: every active PLAT id is claimed by at least one plan.
+**Plans:** 1/13 plans executed
 
 **Repo boundary:** all code changes land in `~/mics_core` on the dedicated feature branch
 **`phase-31-modern-pi-platform`**, never in `mics-backend`. Planning docs stay here. Plan 01 cuts

@@ -32,8 +32,19 @@ from types import SimpleNamespace
 # instantiate with pin=None and the FDA build fails. Mid_LED is a Digital_Out the
 # template does define, with record=True -- the one property the probe needs.
 # Keep this list identical to tools/seed_clock_probe.py:HARDWARE_MODULE_IDS.
-CLOCK_PROBE_MODULE_IDS = [5, 6, 24]
-CLOCK_PROBE_MODULE_NAMES = {"Mid_LED", "TIMER", "COMPUTE"}
+# 7 LICKER (Touch_Detector, lib 9) + 8 TOUCH_INT (Digital_In, lib 8) added 2026-08-24 so the
+# INPUT edge path can be confirmed by hand on a fresh rig -- Mid_LED is an output and proves
+# only the command->pin direction. Neither FDA references them; they are present so a touch
+# dispatches its Hardware_Event (execute_trigger does that unconditionally, independent of
+# trigger_assignments). That is why widening this set must NOT widen what the FDAs may say --
+# see test_every_action_ref_is_in_the_toolkit.
+CLOCK_PROBE_MODULE_IDS = [5, 6, 7, 8, 24]
+CLOCK_PROBE_MODULE_NAMES = {"Mid_LED", "TIMER", "LICKER", "TOUCH_INT", "COMPUTE"}
+
+# The refs the two clock FDAs are actually allowed to use. Deliberately NOT the full toolkit:
+# adding hardware for a human to poke must not silently license the probe's state machine to
+# start driving it, which would change what the clock evidence means.
+CLOCK_PROBE_FDA_REFS = {"Mid_LED", "TIMER"}
 
 
 def _build_short_fda() -> dict:
@@ -211,9 +222,9 @@ def test_every_entry_action_ref_is_a_toolkit_module():
     for name, fda in BOTH_FDAS.items():
         for state_name, state in fda["states"].items():
             for action in state.get("entry_actions", []):
-                assert action["ref"] in CLOCK_PROBE_MODULE_NAMES, (
+                assert action["ref"] in CLOCK_PROBE_FDA_REFS, (
                     f"{name}/{state_name}: entry_action ref {action['ref']!r} is not a module "
-                    f"in the toolkit ({sorted(CLOCK_PROBE_MODULE_NAMES)})"
+                    f"in the clock FDAs' allowed refs ({sorted(CLOCK_PROBE_FDA_REFS)})"
                 )
 
 

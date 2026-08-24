@@ -86,10 +86,39 @@ MODULE_MID_LED = 5  # Digital_Out, lib 8 (gpio) -- the edge source; defined in p
 MODULE_TIMER = 6  # TIMER, lib 11 -- loop driver (trap 2: not a trial counter)
 MODULE_COMPUTE = 24  # ComputeOps, lib 45 -- present in every backend toolkit, included for parity
 
-HARDWARE_MODULE_IDS = [MODULE_MID_LED, MODULE_TIMER, MODULE_COMPUTE]
+# Added 2026-08-24 so a human can confirm the INPUT edge path on a fresh rig by touching the
+# licker, which the Mid_LED-only probe cannot exercise: Mid_LED is an output, so it proves the
+# command->pin->pigpio-tick direction only.
+#
+# Both are required, and neither works alone. The MPR121 does not self-report -- it is read
+# over I2C (Touch_Detector.detect_change) -- and TOUCH_INT is the falling-edge interrupt line
+# that says "a channel changed, go read me". Adding LICKER without TOUCH_INT gives a detector
+# nothing ever polls.
+#
+# These names must match hardware_modules.name EXACTLY: the dispatch spec resolves per-pilot
+# config with `SELECT config FROM pilot_hardware_config WHERE pilot_id=:p AND name=:name`
+# keyed on the MODULE name (api/routers/toolkit_dispatch.py). RecordingBox had a config row
+# named MPR121, not LICKER, so module 7 would have resolved to no config at all and died the
+# same way Opto_Trigger did -- see the retarget note above. A row named LICKER was added.
+MODULE_LICKER = 7  # Touch_Detector, lib 9 (i2c) -- MPR121, 4 channels from first_channel=1
+MODULE_TOUCH_INT = 8  # Digital_In, lib 8 (gpio) -- pin 8, trigger "D": the MPR121 IRQ line
+
+HARDWARE_MODULE_IDS = [
+    MODULE_MID_LED, MODULE_TIMER, MODULE_LICKER, MODULE_TOUCH_INT, MODULE_COMPUTE,
+]
 
 GPIO_LIB_ID = 8
 GPIO_PINNED_VERSION_ID = 159  # see module docstring -- explicit pin, per trap 4
+
+# The licker pulls in the I2C driver, so it needs a pin of its own. Left unpinned it resolved
+# to version 144 (unvalidated, 2026-08-10) -- NOT the `stable` rung (15, from May) and not the
+# current 160. "Whatever resolve_lib_version_id picks today" is exactly what trap 4 exists to
+# stop: the run would silently change meaning the next time a version is promoted.
+# No i2c version carries clock instrumentation, and it does not need to -- a lick is timestamped
+# through TOUCH_INT, a gpio.Digital_In on lib 8 (pinned above), which goes through the edge
+# adapter. The I2C side only reports WHICH channel changed.
+I2C_LIB_ID = 9
+I2C_PINNED_VERSION_ID = 160  # current; also the version door logging was verified against
 
 TOOLKIT_NAME = "clock_probe"
 SUBJECT_NAME = "clock_probe_rig"  # matches the door_test_rig precedent -- can never be confused with an animal
@@ -365,11 +394,22 @@ def ensure_task_definition(
     return defn
 
 
+# Every lib the toolkit's modules pull in gets an explicit pin. Anything omitted here is
+# resolved by resolve_lib_version_id at dispatch time, which is a moving target.
+PINNED_LIB_VERSIONS = {
+    GPIO_LIB_ID: GPIO_PINNED_VERSION_ID,
+    I2C_LIB_ID: I2C_PINNED_VERSION_ID,
+}
+
+
 def pin_hw_lib_version(session: requests.Session, base: str, defn_id: int) -> dict:
-    """Explicit per-task-definition pin (trap 4) -- PUT is an upsert, safe to call every run."""
-    payload = {"version_id": GPIO_PINNED_VERSION_ID}
-    result = _put(session, base, f"/api/task-definitions/{defn_id}/hw-lib-versions/{GPIO_LIB_ID}", payload)
-    print(f"[pinned] task definition {defn_id}: hw_lib_versions[{GPIO_LIB_ID}] = {GPIO_PINNED_VERSION_ID}")
+    """Explicit per-task-definition pins (trap 4) -- PUT is an upsert, safe to call every run."""
+    result = {}
+    for lib_id, version_id in sorted(PINNED_LIB_VERSIONS.items()):
+        result = _put(session, base,
+                      f"/api/task-definitions/{defn_id}/hw-lib-versions/{lib_id}",
+                      {"version_id": version_id})
+        print(f"[pinned] task definition {defn_id}: hw_lib_versions[{lib_id}] = {version_id}")
     return result
 
 

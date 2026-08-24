@@ -200,3 +200,89 @@ and must not be left empty to imply completeness.
 - **PLAT-24 paired regression** — no before arm exists (§0). Unproven, and not provable
   without a Buster capture off tag `phase-31-buster-before-arm`.
 - Every row still reading NOT RUN above.
+
+---
+
+## Plan 10 pre-flight
+
+_Dev-host only, `/home/ido/mics_core`, branch `phase-31-modern-pi-platform`. No rig access
+required or used for this section._
+
+### Inventory re-verification (`grep -n`, not RTK-proxied, 2026-08-24)
+
+Every line number in the plan's `<the_verified_inventory>` still matches the tree exactly.
+No corrections needed.
+
+| Site | Grepped line(s) | Matches plan? |
+|---|---|---|
+| `mics_task.py` `pi_timestamp` injection | 855-856 | yes |
+| `mics_task.py` `{"now": True}` | 520 | yes |
+| `mics_task.py` data-key `now` stamp | 956 | yes |
+| `mics_task.py` `self.t_start` | 123 | yes |
+| `i2c.py` sampled-data `timestamp` | 556 | yes |
+| `i2c.py` sample-window bound | 539-540 | yes |
+| `external_hardware_ingress.py` `now_ms()` / call site | 14-15, 24 | yes |
+| `timer.py` `self.start_time` | 22 | yes |
+| `message.py` (protected, untouched) | 173 | yes |
+| `node.py` / `station.py` (bookkeeping, untouched) | 334, 359 / 319, 389, 415, 435, 1089, 1268 | yes |
+| `external_hardware_binding.py` (liveness, untouched) | 19-20, 83 | yes |
+| `core/pilot.py` (bandwidth_test, untouched) | 711, 725 | yes |
+
+### The live ES mapping that makes Task 1 urgent
+
+```
+$ curl -s "http://132.77.73.217:9200/event_log_v2/_mapping" | python3 -c "..."
+root dynamic: <default=true>
+event_data.pi_timestamp: {"type": "date"}
+event_data.pi_timestamp_mono_ns: null
+```
+
+Confirmed: `pi_timestamp` is mapped `date` and `pi_timestamp_mono_ns` does not exist yet
+(root `dynamic` is the ES default, so it will be created on first write with whatever type
+the first document gives it). This is the mapping the objective's "renders as a plausible
+2017 date" claim depends on.
+
+### Correction to the plan's premise for `mics_task.py:855-856`
+
+**The inventory's framing of this site as "actively corrupting" does not hold for the live
+GPIO-trigger path, and the fix in Task 1 had to change shape as a result.** Traced
+empirically (see `/tmp` script output below, reproduced against the real `Task.execute_trigger`
+with a mocked trigger and hardware):
+
+```
+Task.execute_trigger(t, 'PIN1', True, 1_500_000_000_000, hw)
+captured: {'level': True, 'tick': '2025-11-05T12:39:23.178087+00:00', 'type': <class 'str'>}
+```
+
+`task.py:263` (landed by plan C2) does `tick = localize_tz(tick)` and **rebinds the local
+`tick` variable in place, before** the trigger loop calls `trig(level=level, tick=tick)`
+(`task.py:291`). Every FDA trigger fires through `hw.assign_cb(partial(self.handle_trigger,
+hardware=hw))` (`task.py:181`), so `hardware` is always bound and this rebind always runs
+first. Consequence: `_trigger_ctx.tick`, as published by `mics_task.py`'s
+`_run_trigger_actions` (`:1519-1520`), is **already the ISO string** by the time the `view`
+action reads it at `:854` — never the raw monotonic integer the plan's inventory assumed.
+The raw integer that string was derived from is not preserved anywhere `_trigger_ctx` can
+see; C2's comment at `task.py:252-254` documents this ISO-string handoff to "downstream
+user triggers" as **deliberate**, and `_run_trigger_actions` is one of those triggers by
+construction (it declares `tick` in its signature specifically so `execute_trigger`'s
+`inspect.signature` dispatch selects it).
+
+Implication for Task 1's GREEN step: implementing the plan's literal instruction
+(`call_kwargs["pi_timestamp"] = localize_tz(tick)`, unconditionally) would call
+`localize_tz` on a string on **every real trigger firing** — `localize_tz` raises
+`TypeError` on a string by design (`common.py:349-353`), so this would crash the entire
+trigger action list on every single hardware edge, which is strictly worse than the
+defect being fixed. Task 1's fix is therefore type-dispatching: a `str` tick (today's
+real shape) is emitted as-is with no second conversion; an `int` tick (the shape the
+plan's test drives, and the shape a future non-hardware-rebound trigger source could
+still produce) goes through `localize_tz` exactly as planned, with `pi_timestamp_mono_ns`
+attached. Both branches default `pi_timestamp_source` to `TS_SOFTWARE` — provenance is
+unknowable at this remove either way, and the plan is explicit that `TS_HARDWARE` must
+never be assumed for symmetry.
+
+This does not weaken the objective: `pi_timestamp` still can never be a bare integer
+after this plan lands, from either branch. It only corrects *how* that guarantee is
+reached at this specific site, and it means the corrupting case as literally described
+(a raw ns landing in the ES `date` field via `mics_task.py:855-856` through a real GPIO
+trigger) was not currently reachable — the risk was in what a careless literal fix would
+have introduced, not in the pre-Plan-10 tree.

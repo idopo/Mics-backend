@@ -59,8 +59,37 @@ def _build_short_fda() -> dict:
             "only clock_probe_soak tests the wrap. Literal args only, TIMER-only conditions, no "
             "trial counter -- see tools/seed_clock_probe.py module docstring for why."
         ),
-        "variables": {},
-        "trigger_assignments": [],
+        # Mirrors tools/seed_clock_probe.py:build_licker_trigger_assignments(). Kept literal
+        # here (not imported) because this file is the independent statement of what the two
+        # task definitions must contain -- importing the seeder would make it agree with
+        # itself by construction.
+        "variables": {"pin_number": {}, "level": {}},
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {
+                        "type": "hardware",
+                        "ref": "LICKER",
+                        "method": "detect_change",
+                        "args": [],
+                        "output": ["pin_number", "level"],
+                    },
+                    {
+                        "type": "if",
+                        "condition": {"op": "!=", "left": {"flag": "pin_number"}, "right": None},
+                        "then": [
+                            {
+                                "type": "view",
+                                "source_ref": "LICKER",
+                                "key_template": "{device_name}{pin_number}",
+                                "value": {"flag": "level"},
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
         "states": {
             "start": {},
             "pulse_on": {
@@ -107,8 +136,37 @@ def _build_soak_fda() -> dict:
             "it. Literal args only, TIMER-only conditions, no trial counter -- see "
             "tools/seed_clock_probe.py module docstring for why."
         ),
-        "variables": {},
-        "trigger_assignments": [],
+        # Mirrors tools/seed_clock_probe.py:build_licker_trigger_assignments(). Kept literal
+        # here (not imported) because this file is the independent statement of what the two
+        # task definitions must contain -- importing the seeder would make it agree with
+        # itself by construction.
+        "variables": {"pin_number": {}, "level": {}},
+        "trigger_assignments": [
+            {
+                "trigger_name": "TOUCH_INT",
+                "actions": [
+                    {
+                        "type": "hardware",
+                        "ref": "LICKER",
+                        "method": "detect_change",
+                        "args": [],
+                        "output": ["pin_number", "level"],
+                    },
+                    {
+                        "type": "if",
+                        "condition": {"op": "!=", "left": {"flag": "pin_number"}, "right": None},
+                        "then": [
+                            {
+                                "type": "view",
+                                "source_ref": "LICKER",
+                                "key_template": "{device_name}{pin_number}",
+                                "value": {"flag": "level"},
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
         "states": {
             "start": {},
             "pulse_on": {
@@ -264,3 +322,91 @@ def test_trap3_condition_operands_are_view_timer_or_literal():
                         f"{name}/{transition['from']}->{transition['to']}: condition operand "
                         f"{operand!r} is neither a literal nor {{'view': 'TIMER'}} (trap 3)"
                     )
+
+
+def _walk_actions(actions):
+    """Flatten nested action lists (an `if` action carries its own `then` list)."""
+    for action in actions or []:
+        yield action
+        for key in ("then", "else"):
+            yield from _walk_actions(action.get(key))
+
+# ---------------------------------------------------------------------------
+# Licker (MPR121) trigger assignment -- ported from task definition 186
+# ---------------------------------------------------------------------------
+
+def test_licker_trigger_fires_on_touch_int_and_reads_the_licker():
+    """TOUCH_INT is the IRQ line; LICKER is the I2C detector it tells the task to read.
+    Both names must be the hardware_modules names, because the Pi keys _semantic_hw on
+    the MODULE name -- task definition 186 said 'MPR121', which is no module at all."""
+    for name, fda in BOTH_FDAS.items():
+        assignments = fda["trigger_assignments"]
+        assert len(assignments) == 1, f"{name}: expected exactly one trigger assignment"
+        ta = assignments[0]
+        assert ta["trigger_name"] == "TOUCH_INT", f"{name}: trigger is {ta['trigger_name']!r}"
+        refs = {a.get("ref") or a.get("source_ref") for a in _walk_actions(ta["actions"])}
+        refs.discard(None)
+        assert refs == {"LICKER"}, f"{name}: trigger refs {sorted(refs)} -- must be the module name"
+
+
+def test_licker_reads_before_it_publishes():
+    """The regression this port exists to fix. Task definition 186 ordered the actions
+    [if, detect_change], and _build_trigger_action_list runs them in list order -- so the
+    `if` read pin_number BEFORE detect_change wrote it. Every touch was labelled with the
+    PREVIOUS touch's channel and the first touch did nothing at all."""
+    for name, fda in BOTH_FDAS.items():
+        actions = fda["trigger_assignments"][0]["actions"]
+        read_idx = next(
+            i for i, a in enumerate(actions)
+            if a.get("type") == "hardware" and a.get("method") == "detect_change"
+        )
+        publish_idx = next(
+            i for i, a in enumerate(actions)
+            if a.get("type") == "if"
+        )
+        assert read_idx < publish_idx, (
+            f"{name}: detect_change is at index {read_idx} but the `if` that consumes its "
+            f"output is at {publish_idx} -- the read must come first"
+        )
+
+
+def test_licker_output_names_match_the_key_template_token():
+    """key_template resolves {device_name} from the hardware object; EVERY other token is
+    looked up among the task's flags/variables by name (RUNTIME_KEY_TEMPLATE_TOKENS).
+    So detect_change's output names and the template must agree, or the view write raises
+    KeyError at run time inside the trigger callback."""
+    import re as _re
+    for name, fda in BOTH_FDAS.items():
+        actions = fda["trigger_assignments"][0]["actions"]
+        outputs = set()
+        for a in actions:
+            outputs.update(a.get("output") or [])
+        assert outputs, f"{name}: detect_change declares no output"
+        assert outputs <= set(fda["variables"]), (
+            f"{name}: outputs {sorted(outputs)} are not all declared variables "
+            f"{sorted(fda['variables'])}"
+        )
+        for action in _walk_actions(actions):
+            template = action.get("key_template")
+            if not template:
+                continue
+            tokens = set(_re.findall(r"\{(\w+)\}", template))
+            unresolved = tokens - {"device_name"} - set(fda["variables"])
+            assert not unresolved, (
+                f"{name}: key_template {template!r} uses {sorted(unresolved)}, which is "
+                f"neither {{device_name}} nor a declared variable"
+            )
+
+
+def test_licker_does_not_touch_the_clock_loop():
+    """The probe measures pulse timing. Adding hardware for a human to poke must not let it
+    into the state machine, or the timing evidence changes meaning."""
+    for name, fda in BOTH_FDAS.items():
+        for state_name, state in fda["states"].items():
+            for action in state.get("entry_actions", []):
+                assert action["ref"] != "LICKER", f"{name}/{state_name} drives the licker"
+        for transition in fda["transitions"]:
+            blob = json.dumps(transition)
+            assert "LICKER" not in blob and "TOUCH_INT" not in blob, (
+                f"{name}: transition {transition['from']}->{transition['to']} depends on the licker"
+            )

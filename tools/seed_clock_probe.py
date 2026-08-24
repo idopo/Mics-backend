@@ -158,6 +158,69 @@ def _mint_token() -> str:
 # FDA v2 documents -- literal args only, TIMER conditions only (traps 1-3)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Licker (MPR121) trigger assignment
+# ---------------------------------------------------------------------------
+# Ported from task definition 186 (toolkit 100, source_less_toolkit), which is the shape a
+# researcher builds in the task editor. Two corrections were needed before it could run:
+#
+#   1. `ref`/`source_ref` was "MPR121". No hardware module is named that -- module 7 is
+#      named LICKER, and the Pi's _semantic_hw is keyed on the MODULE name, so 186 would
+#      die with "ref 'MPR121' not found in _semantic_hw" exactly as Opto_Trigger did.
+#      collect_hard_errors reports both refs; 186's stored validation_status says "ok"
+#      only because it predates the check and was never revalidated.
+#   2. The actions were ordered [if, detect_change], so the `if` read pin_number BEFORE
+#      detect_change wrote it -- every touch labelled with the PREVIOUS touch's channel,
+#      and the first touch did nothing. _build_trigger_action_list runs actions in list
+#      order, so detect_change must come first.
+#
+# Variable names are deliberately kept as 186's (`pin_number`, `level`): only {device_name}
+# is resolved from the hardware object (RUNTIME_KEY_TEMPLATE_TOKENS), every other token in a
+# key_template is looked up among the task's flags/variables by name.
+#
+# device_name is LICKER and the config declares first_channel=1, num_detectors=4, so
+# detector_view_keys registers LICKER1..LICKER4. A touch on raw channel 0 therefore resolves
+# to key "LICKER0", which no tracker owns -- the view write is silently dropped (no
+# exception, no data). Channels 1-4 are the wired ones.
+LICKER_REF = "LICKER"  # == hardware_modules.name for module 7, and == its device_name
+TOUCH_TRIGGER_NAME = "TOUCH_INT"  # == hardware_modules.name for module 8, the IRQ line
+
+
+def build_licker_trigger_assignments() -> list[dict[str, Any]]:
+    """One TOUCH_INT assignment: read which channel changed, then publish it to the view."""
+    return [
+        {
+            "trigger_name": TOUCH_TRIGGER_NAME,
+            "actions": [
+                {
+                    "type": "hardware",
+                    "ref": LICKER_REF,
+                    "method": "detect_change",
+                    "args": [],
+                    "output": ["pin_number", "level"],
+                },
+                {
+                    "type": "if",
+                    "condition": {"op": "!=", "left": {"flag": "pin_number"}, "right": None},
+                    "then": [
+                        {
+                            "type": "view",
+                            "source_ref": LICKER_REF,
+                            "key_template": "{device_name}{pin_number}",
+                            "value": {"flag": "level"},
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+
+def build_licker_variables() -> dict[str, dict]:
+    """detect_change's two outputs. Names match key_template's {pin_number} token."""
+    return {"pin_number": {}, "level": {}}
+
+
 def build_short_fda() -> dict[str, Any]:
     """~10 minutes, the reusable regression asset. ~1 Hz edges, ~600 edge pairs.
 
@@ -176,8 +239,12 @@ def build_short_fda() -> dict[str, Any]:
             "only clock_probe_soak tests the wrap. Literal args only, TIMER-only conditions, no "
             "trial counter -- see tools/seed_clock_probe.py module docstring for why."
         ),
-        "variables": {},
-        "trigger_assignments": [],
+        # Licker: NOT part of the clock loop. Present so a human can confirm the INPUT edge
+        # path on a fresh rig by touching the sensor -- Mid_LED is an output and proves only
+        # the command->pin direction. No state references it and no transition depends on it,
+        # so the pulse timing this probe measures is unchanged.
+        "variables": build_licker_variables(),
+        "trigger_assignments": build_licker_trigger_assignments(),
         "states": {
             "start": {},
             "pulse_on": {
@@ -232,8 +299,12 @@ def build_soak_fda() -> dict[str, Any]:
             "it. Literal args only, TIMER-only conditions, no trial counter -- see "
             "tools/seed_clock_probe.py module docstring for why."
         ),
-        "variables": {},
-        "trigger_assignments": [],
+        # Licker: NOT part of the clock loop. Present so a human can confirm the INPUT edge
+        # path on a fresh rig by touching the sensor -- Mid_LED is an output and proves only
+        # the command->pin direction. No state references it and no transition depends on it,
+        # so the pulse timing this probe measures is unchanged.
+        "variables": build_licker_variables(),
+        "trigger_assignments": build_licker_trigger_assignments(),
         "states": {
             "start": {},
             "pulse_on": {

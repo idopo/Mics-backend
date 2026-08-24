@@ -137,3 +137,72 @@ def test_c7_drop_gaps_measure_hardware_edges_only():
     assert c7_gap["gaps_over_2x_period"] == 1, (
         "the 252 software documents must not close the gap left by the missing edges"
     )
+
+
+# ---------------------------------------------------------------------------
+# C3 is a per-module claim: only record=True hardware has two routes
+# ---------------------------------------------------------------------------
+# Run 574 added the licker and C3 went red again at 11/51, on clean data:
+#
+#   Mid_LED    11 groups of 2   record_event + pi_timestamp   (record=True)
+#   TOUCH_INT  40 groups of 1   pi_timestamp only             (record=False)
+#
+# The dual-route pairing exists because record=True registers a record_event callback
+# via assign_cb. TOUCH_INT is configured record=False -- one document per edge is
+# CORRECT for it, not a dropped route.
+
+
+def _hw_doc(t_mono: int, module: str, route: str) -> dict:
+    ed = {"id": module}
+    if route == "record_event":
+        ed.update({"result": None, "func_name": "record_event"})
+    else:
+        ed.update({"pi_timestamp": "2026-08-24T18:56:05.1+03:00",
+                   "pi_timestamp_mono_ns": t_mono, "pi_timestamp_source": "hardware"})
+    return {"_source": {"t_mono_ns": t_mono, "t_utc_ns": 1787584410000000000 + t_mono,
+                        "ts_source": "hardware",
+                        "event": {"event_type": "gpio.X", "event_data": ed}}}
+
+
+def _run_574_shape(n_pulse=11, n_touch=40):
+    docs = []
+    t = 6_393_644_457_519
+    for i in range(n_pulse):                      # Mid_LED: record=True -> BOTH routes
+        et = t + i * 1_000_000_000
+        docs.append(_hw_doc(et, "Mid_LED", "record_event"))
+        docs.append(_hw_doc(et, "Mid_LED", "pi_timestamp"))
+    for j in range(n_touch):                      # TOUCH_INT: record=False -> ONE route
+        docs.append(_hw_doc(t + 250_000_000 + j * 200_000_000, "TOUCH_INT", "pi_timestamp"))
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    return docs
+
+
+def test_c3_ignores_single_route_hardware():
+    """TOUCH_INT's 40 unpairable edges must not fail a run in which every dual-route
+    edge paired perfectly."""
+    c3 = _feed(_run_574_shape())["C3_cross_route_pairing"]
+    assert c3["groups_total"] == 11, "only record=True modules belong in the denominator"
+    assert c3["groups_matched"] == 11
+    assert c3["pairing_rate"] == 1.0
+    assert c3["pass"] is True
+
+
+def test_c3_still_fails_when_a_dual_route_module_loses_a_route():
+    """The failure C3 exists for, and the one the fix must not hide: Mid_LED is known
+    dual-route, so a Mid_LED edge missing its record_event half is a real defect --
+    it must NOT be silently reclassified as single-route."""
+    docs = _run_574_shape()
+    victim = next(d for d in docs
+                  if d["_source"]["event"]["event_data"].get("func_name") == "record_event")
+    docs.remove(victim)
+    c3 = _feed(docs)["C3_cross_route_pairing"]
+    assert c3["groups_total"] == 11
+    assert c3["groups_matched"] == 10
+    assert c3["pass"] is False
+
+
+def test_c3_reports_which_modules_were_single_route():
+    """Silence about excluded data reads as 'everything paired'. Name what was left out."""
+    c3 = _feed(_run_574_shape())["C3_cross_route_pairing"]
+    assert "TOUCH_INT" in (c3.get("single_route_modules") or []), c3
+    assert "Mid_LED" not in (c3.get("single_route_modules") or [])

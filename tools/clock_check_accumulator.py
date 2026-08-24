@@ -37,8 +37,20 @@ class RunAccumulator:
         # finalize the previous group the instant the value changes. O(1) memory.
         self._group_key: int | None = None
         self._group_count = 0
+        self._group_module: str | None = None
+        self._group_has_record_event = False
         self.pair_groups_total = 0
         self.pair_groups_matched = 0  # groups where exactly 2 docs share the t_mono_ns
+        # C3 is a PER-MODULE claim. The two routes exist because record=True registers a
+        # record_event callback alongside the main one (Digital_Out.assign_cb). A module
+        # configured record=False -- TOUCH_INT, the licker IRQ -- emits ONE document per
+        # edge, correctly, and must not be counted as 40 dropped routes. Run 574: Mid_LED
+        # 11 groups of 2, TOUCH_INT 40 groups of 1, reported as 11/51 FAIL on clean data.
+        # Membership is decided by evidence (did this module ever emit a record_event
+        # document?), never by assuming, so a dual-route module that LOSES a route still
+        # fails instead of being quietly reclassified as single-route.
+        self._module_group_sizes: dict[str, list[int]] = {}
+        self._record_event_modules: set[str] = set()
 
         # C4 provenance
         self.hardware_docs = 0
@@ -87,12 +99,19 @@ class RunAccumulator:
             # C1 above deliberately still spans EVERY document -- a backward jump in a software
             # document is just as much a clock defect.
             if ts_source == "hardware":
+                event_data = (source.get("event") or {}).get("event_data") or {}
+                module = event_data.get("id")
                 if self._group_key != t_mono:
                     self._finalize_pair_group()
                     self._group_key = t_mono
                     self._group_count = 0
+                    self._group_module = module
                     self._record_drop_gap(t_mono)
                 self._group_count += 1
+                if event_data.get("func_name") == "record_event":
+                    self._group_has_record_event = True
+                    if module is not None:
+                        self._record_event_modules.add(module)
         elif ts_source == "hardware" and self._group_key is not None:
             # A hardware doc with no t_mono_ns closes out whatever group was open
             # (sort puts these last).
@@ -177,9 +196,8 @@ class RunAccumulator:
     def _finalize_pair_group(self) -> None:
         if self._group_key is None:
             return
-        self.pair_groups_total += 1
-        if self._group_count == 2:
-            self.pair_groups_matched += 1
+        self._module_group_sizes.setdefault(self._group_module, []).append(self._group_count)
+        self._group_has_record_event = False
 
     # -- finalize / report -----------------------------------------------------
 
@@ -215,14 +233,25 @@ class RunAccumulator:
         }
 
     def _check_c3(self) -> dict[str, Any]:
-        pairing_rate = (
-            self.pair_groups_matched / self.pair_groups_total if self.pair_groups_total else None
-        )
+        """Pairing, counted only over modules PROVEN dual-route by their own documents."""
+        total = matched = 0
+        single_route = []
+        for module, sizes in self._module_group_sizes.items():
+            if module in self._record_event_modules:
+                total += len(sizes)
+                matched += sum(1 for n in sizes if n == 2)
+            elif module is not None:
+                single_route.append(module)
+        self.pair_groups_total = total
+        self.pair_groups_matched = matched
+        pairing_rate = matched / total if total else None
         return {
             "pass": pairing_rate == 1.0 if pairing_rate is not None else None,
             "pairing_rate": pairing_rate,
-            "groups_total": self.pair_groups_total,
-            "groups_matched": self.pair_groups_matched,
+            "groups_total": total,
+            "groups_matched": matched,
+            # Named, never silent: excluding data without saying so reads as "all paired".
+            "single_route_modules": sorted(single_route),
         }
 
     def _check_c4(self) -> dict[str, Any]:

@@ -286,3 +286,32 @@ reached at this specific site, and it means the corrupting case as literally des
 (a raw ns landing in the ES `date` field via `mics_task.py:855-856` through a real GPIO
 trigger) was not currently reachable — the risk was in what a careless literal fix would
 have introduced, not in the pre-Plan-10 tree.
+
+### Task 4 — the Elasticsearch contract, checked on recorded payloads
+
+`tests/test_one_clock_every_timestamp.py::test_dispatched_payloads_match_the_es_contract_*`
+(5 tests) assert a field-name-driven contract against real payloads recorded from this
+plan's own dispatch paths — the `view` action's `Event_Dispatcher` payload (both the
+`str`-tick and `int`-tick branches from Task 1), the `i2c.py` accelerometer calibration
+dict (Task 2), and the `external_hardware_ingress.py` mono_ns companion (Task 2):
+
+- every `*_mono_ns` field is an `int`
+- every `pi_timestamp` / `timestamp` field is a float POSIX second (`Event_Dispatcher`'s
+  deliberate retention) or an ISO string `datetime.fromisoformat` parses — **never** a
+  bare integer
+- `ts_source` / `pi_timestamp_source` is exactly `TS_HARDWARE` or `TS_SOFTWARE`
+- a payload claiming `TS_HARDWARE` also carries a sibling `*_mono_ns` field
+
+```
+$ /home/ido/.venvs/mics_core_dev/bin/python -m pytest -q tests/test_one_clock_every_timestamp.py
+..................                                                       [100%]
+18 passed
+```
+
+`test_es_contract_checker_is_not_vacuous` proves the checker itself catches the
+corrupting shape (a bare int in `pi_timestamp`, a malformed `ts_source`, a `TS_HARDWARE`
+claim with no `*_mono_ns` sibling) rather than passing every input handed to it.
+
+**The honest boundary, stated plainly:** this checks the shapes this tree emits, on the
+dev host, against recorded payloads. It does not prove a document indexed. Plan 12 does
+that, from a real backend-dispatched run.

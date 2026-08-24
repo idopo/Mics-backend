@@ -59,12 +59,34 @@ import requests
 # Fixed identifiers, verified in the database 2026-08-24 (see the plan's <the_hardware> table)
 # ---------------------------------------------------------------------------
 
-MODULE_OPTO_TRIGGER = 65  # Digital_Out, lib 8 (gpio) -- the stimulus, the module the whole probe exists to exercise
-MODULE_NOSE_POKE_IR = 64  # Digital_In,  lib 8 (gpio) -- input edge path; assign_cb registration is under test
+# RETARGETED 2026-08-24, on the first real rig run. The plan specified modules 65
+# (Opto_Trigger, Digital_Out) and 64 (Nose_Poke_IR, Digital_In). Those exist in the
+# backend's module registry but are NOT wired into a rig's prefs: the hardware
+# inventory the pilot advertises comes from pilot/prefs.template.json ->
+# prefs.json -> HANDSHAKE payload.prefs.HARDWARE
+# (orchestrator_station.py:140), and that template defines only Left_LED, Solenoid,
+# Right_LED, Mid_LED and TIMER. So both modules instantiated with pin=None and died:
+#
+#   Pin could not be instantiated - Type: Modules, Pin: Opto_Trigger
+#   TypeError: unsupported operand type(s) for <<: 'int' and 'NoneType'
+#       pigpio.py:1118  self.bit = 1<<gpio
+#
+# which left _semantic_hw holding only ['TIMER', 'COMPUTE'] and failed the FDA build
+# with "ref 'Opto_Trigger' not found in _semantic_hw".
+#
+# Mid_LED is a Digital_Out that the template DOES define, with record=True, so one
+# edge still fires the two separately-registered callbacks the cross-route agreement
+# check depends on. That is the only property the clock probe needs from it.
+#
+# Nose_Poke_IR is dropped rather than substituted: no Digital_In exists in the
+# template either, and the probe's clock evidence comes from the OUTPUT edge path.
+# When opto hardware is actually connected, add the modules to the template with real
+# pins and point this back at 65/64.
+MODULE_MID_LED = 5  # Digital_Out, lib 8 (gpio) -- the edge source; defined in prefs.template.json
 MODULE_TIMER = 6  # TIMER, lib 11 -- loop driver (trap 2: not a trial counter)
 MODULE_COMPUTE = 24  # ComputeOps, lib 45 -- present in every backend toolkit, included for parity
 
-HARDWARE_MODULE_IDS = [MODULE_OPTO_TRIGGER, MODULE_NOSE_POKE_IR, MODULE_TIMER, MODULE_COMPUTE]
+HARDWARE_MODULE_IDS = [MODULE_MID_LED, MODULE_TIMER, MODULE_COMPUTE]
 
 GPIO_LIB_ID = 8
 GPIO_PINNED_VERSION_ID = 159  # see module docstring -- explicit pin, per trap 4
@@ -118,7 +140,7 @@ def build_short_fda() -> dict[str, Any]:
         "version": 2,
         "initial_state": "start",
         "description": (
-            "clock_probe_short -- ~10 minute regression asset. Toggles Opto_Trigger at ~1 Hz "
+            "clock_probe_short -- ~10 minute regression asset. Toggles Mid_LED at ~1 Hz "
             "so every edge produces two dispatched records (logging_utils.py:97 and task.py:283 "
             "routes) if the module is configured record=True + trigger. Cannot fail the "
             "monotonicity check (C1) on its own -- 10 minutes contains no 32-bit tick wrap; "
@@ -131,13 +153,13 @@ def build_short_fda() -> dict[str, Any]:
             "start": {},
             "pulse_on": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [True], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [True], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [1], "type": "timer", "method": "set"},
                 ]
             },
             "pulse_off": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [False], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [False], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [1], "type": "timer", "method": "set"},
                 ]
             },
@@ -187,13 +209,13 @@ def build_soak_fda() -> dict[str, Any]:
             "start": {},
             "pulse_on": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [True], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [True], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [5], "type": "timer", "method": "set"},
                 ]
             },
             "pulse_off": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [False], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [False], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [5], "type": "timer", "method": "set"},
                 ]
             },
@@ -231,6 +253,13 @@ def _put(session: requests.Session, base: str, path: str, body: dict) -> dict:
     r = session.put(f"{base}{path}", json=body, timeout=REQUEST_TIMEOUT_S)
     if r.status_code >= 400:
         raise RuntimeError(f"PUT {path} -> {r.status_code}: {r.text}")
+    return r.json()
+
+
+def _patch(session: requests.Session, base: str, path: str, body: dict) -> dict:
+    r = session.patch(f"{base}{path}", json=body, timeout=REQUEST_TIMEOUT_S)
+    if r.status_code >= 400:
+        raise RuntimeError(f"PATCH {path} -> {r.status_code}: {r.text}")
     return r.json()
 
 
@@ -282,7 +311,20 @@ def ensure_toolkit(session: requests.Session, base: str) -> dict:
     if r.status_code == 200:
         variants = r.json()
         toolkit = variants[0]
-        print(f"[idempotent] toolkit '{TOOLKIT_NAME}' already exists: id={toolkit['id']}")
+        # RECONCILE, don't just report. Returning early here meant that when the probe was
+        # retargeted from modules 65/64 to 5 on 2026-08-24, a re-run happily reprinted the
+        # existing toolkit id while it still carried the OLD hardware_module_ids -- the
+        # seeder said "idempotent" about a toolkit that no longer matched its own source.
+        # Idempotent must mean "converges to the declared state", not "does nothing if a
+        # record with this name exists".
+        current = toolkit.get("hardware_module_ids") or []
+        if sorted(current) != sorted(HARDWARE_MODULE_IDS):
+            print(f"[reconcile] toolkit {toolkit['id']} hardware_module_ids "
+                  f"{current} -> {HARDWARE_MODULE_IDS}")
+            toolkit = _patch(session, base, f"/api/toolkits/{toolkit['id']}",
+                             {"hardware_module_ids": HARDWARE_MODULE_IDS})
+        else:
+            print(f"[idempotent] toolkit '{TOOLKIT_NAME}' already exists: id={toolkit['id']}")
         return toolkit
     if r.status_code != 404:
         raise RuntimeError(f"GET toolkits/by-name/{TOOLKIT_NAME} -> {r.status_code}: {r.text}")

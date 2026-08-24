@@ -4,7 +4,7 @@ Both `clock_probe_short` and `clock_probe_soak` are validated here BEFORE any ha
 spent on them -- a rejected FDA discovered on the rig costs a session. These tests exercise the
 exact same hard-error gate `POST /api/task-definitions` runs (`fda_validation.collect_hard_errors`,
 the body `reject_if_hard_errors` calls after its own toolkit lookup) against the REAL
-hardware_modules / hardware_lib_versions rows for modules 65/64/6/24 -- read-only queries only,
+hardware_modules / hardware_lib_versions rows for modules 5/6/24 -- read-only queries only,
 no writes, no dependency on the clock_probe toolkit actually existing yet in the database (a
 SimpleNamespace stands in for the not-yet-created TaskToolkit row, exactly the way
 test_task_definitions_validation.py's `make_toolkit()` does for router-level tests).
@@ -26,10 +26,14 @@ import json
 from types import SimpleNamespace
 
 # Module ids reused from the DB, verified 2026-08-24 (plan's <the_hardware> table):
-#   65 Opto_Trigger (Digital_Out, lib 8)   64 Nose_Poke_IR (Digital_In, lib 8)
-#    6 TIMER (lib 11)                      24 COMPUTE (ComputeOps, lib 45)
-CLOCK_PROBE_MODULE_IDS = [65, 64, 6, 24]
-CLOCK_PROBE_MODULE_NAMES = {"Opto_Trigger", "Nose_Poke_IR", "TIMER", "COMPUTE"}
+#   5 Mid_LED (Digital_Out, lib 8)   6 TIMER (lib 11)   24 COMPUTE (ComputeOps, lib 45)
+# Retargeted 2026-08-24: modules 65/64 (Opto_Trigger/Nose_Poke_IR) exist in the backend
+# registry but are absent from pilot/prefs.template.json, so on a real rig they
+# instantiate with pin=None and the FDA build fails. Mid_LED is a Digital_Out the
+# template does define, with record=True -- the one property the probe needs.
+# Keep this list identical to tools/seed_clock_probe.py:HARDWARE_MODULE_IDS.
+CLOCK_PROBE_MODULE_IDS = [5, 6, 24]
+CLOCK_PROBE_MODULE_NAMES = {"Mid_LED", "TIMER", "COMPUTE"}
 
 
 def _build_short_fda() -> dict:
@@ -37,7 +41,7 @@ def _build_short_fda() -> dict:
         "version": 2,
         "initial_state": "start",
         "description": (
-            "clock_probe_short -- ~10 minute regression asset. Toggles Opto_Trigger at ~1 Hz "
+            "clock_probe_short -- ~10 minute regression asset. Toggles Mid_LED at ~1 Hz "
             "so every edge produces two dispatched records (logging_utils.py:97 and task.py:283 "
             "routes) if the module is configured record=True + trigger. Cannot fail the "
             "monotonicity check (C1) on its own -- 10 minutes contains no 32-bit tick wrap; "
@@ -50,13 +54,13 @@ def _build_short_fda() -> dict:
             "start": {},
             "pulse_on": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [True], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [True], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [1], "type": "timer", "method": "set"},
                 ]
             },
             "pulse_off": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [False], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [False], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [1], "type": "timer", "method": "set"},
                 ]
             },
@@ -98,13 +102,13 @@ def _build_soak_fda() -> dict:
             "start": {},
             "pulse_on": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [True], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [True], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [5], "type": "timer", "method": "set"},
                 ]
             },
             "pulse_off": {
                 "entry_actions": [
-                    {"ref": "Opto_Trigger", "args": [False], "type": "hardware", "method": "set"},
+                    {"ref": "Mid_LED", "args": [False], "type": "hardware", "method": "set"},
                     {"ref": "TIMER", "args": [5], "type": "timer", "method": "set"},
                 ]
             },
@@ -142,7 +146,7 @@ FAKE_TOOLKIT = SimpleNamespace(
 
 def _real_hw_caps():
     """Read-only resolution against the REAL hardware_modules/hardware_lib_versions rows for
-    modules 65/64/6/24, via the exact functions `reject_if_hard_errors` itself calls. No writes.
+    modules 5/6/24, via the exact functions `reject_if_hard_errors` itself calls. No writes.
     """
     from db import engine
     from detector_keys import module_detector_channels
@@ -169,7 +173,7 @@ def _real_hw_caps():
 
 
 def test_real_modules_resolve_to_clock_probe_names():
-    """Sanity check the fixture itself: modules 65/64/6/24 really do resolve to the names the
+    """Sanity check the fixture itself: modules 5/6/24 really do resolve to the names the
     FDA documents reference. If this fails, the module ids in the plan drifted and every other
     test in this file is testing against the wrong hardware.
     """

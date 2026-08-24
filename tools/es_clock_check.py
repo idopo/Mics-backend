@@ -13,7 +13,7 @@ evidence:
                              for the soak (pass `--min-wrap-crossings 3` to enforce it there --
                              the short probe cannot cross a wrap by design, so this stays
                              informational unless the caller asks for a floor).
-  C3 cross-route pairing -- every Opto_Trigger edge should land as exactly two documents sharing
+  C3 cross-route pairing -- every Mid_LED edge should land as exactly two documents sharing
                              one t_mono_ns (the logging_utils.py:97 and task.py:283 routes).
   C4 provenance           -- hardware docs carry ts_source=hardware AND a *_mono_ns field;
                              software/tracker docs carry ts_source=software.

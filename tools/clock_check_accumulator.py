@@ -77,14 +77,25 @@ class RunAccumulator:
         if isinstance(t_mono, (int, float)):
             t_mono = int(t_mono)
             self._update_monotonic_and_wrap(t_mono)
-            if self._group_key != t_mono:
-                self._finalize_pair_group()
-                self._group_key = t_mono
-                self._group_count = 0
-                self._record_drop_gap(t_mono)
-            self._group_count += 1
-        elif self._group_key is not None:
-            # A doc with no t_mono_ns closes out whatever group was open (sort puts these last).
+            # C3/C7 group HARDWARE documents only. Both checks are claims about a commanded
+            # hardware edge: C3 that one edge dispatches down two routes sharing a t_mono_ns,
+            # C7 that no edge went missing. A software document is single-route by construction
+            # and is not a pulse edge, so counting it here made C3's denominator the whole run.
+            # Run 573 (the first real rig run) is the regression: 62 hardware edges, every one
+            # perfectly paired, reported as pairing_rate 0.197 FAIL because the 252 software
+            # documents each formed an unpairable singleton group.
+            # C1 above deliberately still spans EVERY document -- a backward jump in a software
+            # document is just as much a clock defect.
+            if ts_source == "hardware":
+                if self._group_key != t_mono:
+                    self._finalize_pair_group()
+                    self._group_key = t_mono
+                    self._group_count = 0
+                    self._record_drop_gap(t_mono)
+                self._group_count += 1
+        elif ts_source == "hardware" and self._group_key is not None:
+            # A hardware doc with no t_mono_ns closes out whatever group was open
+            # (sort puts these last).
             self._finalize_pair_group()
             self._group_key = None
 

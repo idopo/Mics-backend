@@ -1375,7 +1375,7 @@ Plans:
 - [ ] 31-C3-PLAN.md — Stage 3: cut over to stock pigpio (the `start_pigpiod()` spawn STAYS), chrony on, clock-freeze block deleted + F3 retired
 - [ ] 31-C4-PLAN.md — Acceptance: clock soak under load + forced clock step + paired capture (USER-RUN)
 - [ ] 31-10-PLAN.md — One clock for EVERY logged timestamp (the non-event record paths), + the F7 static guard
-- [ ] 31-11-PLAN.md — The deployed gpio.py IS the repo's gpio.py: hardware-lib publisher, drift gate, clock-contract refusal (BACKEND)
+- [~] 31-11-PLAN.md — ⛔ **WITHDRAWN 2026-08-24** (pinning is by design, not drift) → `withdrawn/`; PLAT-36 withdrawn, **PLAT-37 deferred, needs a new home**
 - [ ] 31-12-PLAN.md — USER-RUN: clock_probe toolkit + two task definitions, end-to-end verified in Elasticsearch
 
 **Deferred to a future phase (the lgpio rewrite):** PLAT-12 (gpiochip by label), PLAT-13 (I²C to

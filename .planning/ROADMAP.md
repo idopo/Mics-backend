@@ -1305,7 +1305,7 @@ user chose to leave the `pigpiod` spawn in the pilot, because `external.start_pi
 hook is what closes the solenoids when a session ends, and a supervised daemon would outlive a
 crashed pilot with `VALVE1-4`/`AIR_PUF`/`ODOR1-5` still open)
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
-**Plans:** 10/16 plans executed *(3 added 2026-08-24 by readiness audit — see plans 10/11/12; plan 08 skipped by user decision)*
+**Plans:** 11/16 plans executed
 
 **Repo boundary — AMENDED 2026-08-24.** The Pi code still lives only in `~/mics_core`, and `main`
 is still never touched. But the artifact a pilot actually executes is a **backend database row**:

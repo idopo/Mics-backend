@@ -3,7 +3,7 @@ phase: 31-mics-core-modern-pi-platform-bookworm-64-bit-python-3-11-lgpio-unatten
 plan: C4
 type: execute
 wave: 8
-depends_on: ["31-C3", "31-09"]
+depends_on: ["31-C3", "31-09", "31-10"]   # 31-10 added 2026-08-24: it changes what stamps half the records the soak measures, so it must land BEFORE the soak is RUN (Task 0 having already completed is fine)
 files_modified:
   - /home/ido/mics_core/tools/pulse_timing/clock_soak.py
   - /home/ido/mics_core/tests/test_clock_soak.py

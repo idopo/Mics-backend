@@ -2364,6 +2364,33 @@ conflicting instruction inside a PLAN file.
 
 ## Next Actions
 
+0. **PHASE 31 — three plans ADDED 2026-08-24 by a readiness audit. Execute in this order.**
+   The audit asked whether the phase, as written, delivers a fresh Bookworm install + the pigpio
+   cut-over + an updated `gpio.py` hw lib + the `pilot.py`/`task.py` clock wiring + something to
+   test it with + the 71.6-minute defect actually gone. Three gaps had no owner:
+   - **31-10 (wave 7, autonomous, `mics_core`)** — one clock for EVERY logged timestamp, not only
+     the two event paths. Seven record timestamps still read the wall clock, and C3's PLAT-20 (NTP
+     restored) made them steppable. Includes the corrupting one: the FDA `view` action injects the
+     trigger's monotonic-ns tick as `pi_timestamp`, and `event.event_data.pi_timestamp` is mapped
+     **`date`** in `event_log_v2` — a numeric there is read as epoch_millis and renders a plausible
+     wrong year. **Must land before C4's soak is RUN** (C4's `depends_on` now says so).
+   - **31-11 (wave 8, autonomous, BACKEND — new branch `phase-31-hw-lib-publication`)** — the
+     deployed `gpio.py` is a database row, not the repo file: `toolkit_dispatch.py:99-104` ships
+     `hardware_lib_versions.source_code` and `mics_task.py:222` `exec()`s it. Verified on the live
+     DB: lib 8's adapter-carrying v159 is `active` but **every** toolkit pins v19/v25 and
+     `stable`=25, so no run would have used C2's `assign_cb` adapter. Adds a publisher
+     (repo -> version, idempotent by sha256), a drift gate in the routine test run, and a
+     symmetric `clock_contract` refusal at dispatch.
+   - **31-12 (wave 9, USER-RUN)** — a `clock_probe` toolkit + two task definitions (10-minute
+     regression, >= 4 h 30 m soak) dispatched from the backend and verified in Elasticsearch:
+     >= 3 wrap crossings, zero backward steps, 100 % cross-route agreement, provenance, and a
+     forced clock step that moves derived UTC and no interval. Every prior acceptance artefact
+     measures `mics_core` in isolation.
+   New requirements **PLAT-34–38**. `31-09`'s prerequisites were also de-blocked: it still carried
+   plan 08's captures and jumper as a gate, and plan 08 was skipped — the same unsatisfiable-gate
+   shape C4's Task 0 logged. **PLAT-24 still has no `before` arm**; tag
+   `phase-31-buster-before-arm` @ `9fc8837` is the only route back to one — do not move it.
+
 1. **Phase 23 is CLOSED (12/12 plans, 2026-08-05).** No further action needed on it. Two pending
    GSD todos carry forward the remaining real work: reinstating CMP-24a/24c (one rig deploy, fixes
    and tests already designed — `2026-08-05-reinstate-cmp-24a-and-cmp-24c-pi-view-mirror-fixes.md`)

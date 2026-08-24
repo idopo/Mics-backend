@@ -1299,15 +1299,21 @@ and connects to the backend — no `./run_pilot.sh`, no SSH step, no lab-built S
 clock becomes correct and safe for 24/7 continuous operation, with hardware-captured GPIO
 timestamps preserved exactly as today.
 
-**Requirements**: PLAT-01 through PLAT-11, PLAT-17 through PLAT-32
+**Requirements**: PLAT-01 through PLAT-11, PLAT-17 through PLAT-32, **PLAT-34 through PLAT-38** (added 2026-08-24)
 (PLAT-12 through PLAT-16 deferred — they are the lgpio rewrite; **PLAT-33 WITHDRAWN 2026-08-17** — the
 user chose to leave the `pigpiod` spawn in the pilot, because `external.start_pigpiod()`'s `kill_proc`
 hook is what closes the solenoids when a session ends, and a supervised daemon would outlive a
 crashed pilot with `VALVE1-4`/`AIR_PUF`/`ODOR1-5` still open)
 **Depends on:** Phase 30 (published the `mics_core` tree this phase modifies)
-**Plans:** 10/13 plans executed
+**Plans:** 10/16 plans executed *(3 added 2026-08-24 by readiness audit — see plans 10/11/12; plan 08 skipped by user decision)*
 
-**Repo boundary:** all code changes land in `~/mics_core` on the dedicated feature branch
+**Repo boundary — AMENDED 2026-08-24.** The Pi code still lives only in `~/mics_core`, and `main`
+is still never touched. But the artifact a pilot actually executes is a **backend database row**:
+`api/routers/toolkit_dispatch.py:99-104` ships `hardware_lib_versions.source_code` in the START
+payload and `mics_task.py:222` `exec()`s it. A Pi-only phase therefore cannot deliver a Pi-only
+fix, so **plans 11 and 12 land backend changes in `mics-backend` on the branch
+`phase-31-hw-lib-publication`** — two repos, two branches, never a commit spanning both. Everything
+below still holds for `mics_core`: all code changes land in `~/mics_core` on the dedicated feature branch
 **`phase-31-modern-pi-platform`**, never in `mics-backend`. Planning docs stay here. Plan 01 cuts
 the branch and **publishes it** (`git push -u origin phase-31-modern-pi-platform`) to
 `git@github.com:idopo/mics_core.git` (private; default branch `main`), so the whole phase lives on
@@ -1344,10 +1350,14 @@ patch, not upstream pigpio; the `pigpiod` DMA sampler is stock and not implicate
 can drive *and* timestamp with cycle-exact hardware timing, no wires) rather than lgpio. Accepted
 standing risk: pigpio is unmaintained. Mitigated by the clock layer being library-independent.
 
-**Acceptance gate:** a clock soak — ≥3 tick wraps (>3.6 h) under CPU load, with a forced wall-clock
+**Acceptance gate (two arms, added to 2026-08-24):** *(a)* the `mics_core` clock soak — ≥3 tick wraps (>3.6 h) under CPU load, with a forced wall-clock
 step forwards and backwards mid-run, asserting monotonicity, zero backward jumps, cross-path
 agreement on the same edge, correct provenance flags, and zero undetected dropped samples; plus a
-paired before/after pulse-timing capture showing no regression. The live rig is not touched; all
+paired before/after pulse-timing capture showing no regression **whose `before` arm does not exist**
+(plan 08 was skipped; tag `phase-31-buster-before-arm` @ `9fc8837` is the only route back to one).
+*(b)* a **backend-dispatched session** (PLAT-38, plan 12) making the same assertions on indexed
+documents — because arm (a) measures `mics_core` in isolation and the researcher path runs a
+database-resident copy of the hardware lib. The live rig is not touched; all
 work happens on spare hardware.
 
 Plans:
@@ -1364,6 +1374,9 @@ Plans:
 - [ ] 31-C2-PLAN.md — Stage 3: assign_cb adapter — one clock on both event paths, localize_tz contract, provenance
 - [ ] 31-C3-PLAN.md — Stage 3: cut over to stock pigpio (the `start_pigpiod()` spawn STAYS), chrony on, clock-freeze block deleted + F3 retired
 - [ ] 31-C4-PLAN.md — Acceptance: clock soak under load + forced clock step + paired capture (USER-RUN)
+- [ ] 31-10-PLAN.md — One clock for EVERY logged timestamp (the non-event record paths), + the F7 static guard
+- [ ] 31-11-PLAN.md — The deployed gpio.py IS the repo's gpio.py: hardware-lib publisher, drift gate, clock-contract refusal (BACKEND)
+- [ ] 31-12-PLAN.md — USER-RUN: clock_probe toolkit + two task definitions, end-to-end verified in Elasticsearch
 
 **Deferred to a future phase (the lgpio rewrite):** PLAT-12 (gpiochip by label), PLAT-13 (I²C to
 lgpio), PLAT-14 (edge detection to `gpio_claim_alert`), PLAT-15 (tx_wave/tx_pulse output port),

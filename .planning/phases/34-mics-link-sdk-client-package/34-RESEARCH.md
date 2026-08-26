@@ -42,10 +42,13 @@ anywhere else, until a future phase builds one.
 `transport.py` thin ZMQ glue behind a factory seam, `sender.py`/`heartbeat.py`/`reconnect.py`/
 `commands.py` as pure, injectable-clock, injectable-thread state machines) — package it with
 `setuptools` + PEP 621 `pyproject.toml` in a `src/` layout under `mics-backend/sdk/`, pin the
-golden-frame corpus's canonical Pi reference to `~/pi-mirror/.../external_hardware_wire.py`
-(pilot 1, the rig this phase's checkpoint actually runs against, is confirmed still on that old
-stack), and treat `~/mics_core/...` as a secondary skip-if-absent parity check documenting the
-migration-drift risk rather than the single source of truth.
+golden-frame corpus's canonical reference to `~/mics_core/.../external_hardware_wire.py` **per
+user direction mid-research (2026-08-26): "we are working on the mics_core"** — this is the
+platform this SDK is being built for going forward. Keep `~/pi-mirror/...` as a secondary
+skip-if-absent parity check, since it is byte-identical today and is what the rig checkpoint's
+own fixture (pilot 1) may still actually be running until its migration status is reconfirmed
+(see Open Question 1 — pilot 1 was last confirmed on the old stack 2026-08-17, nine days stale
+relative to this research).
 
 ## User Constraints
 
@@ -480,25 +483,34 @@ API.
 
 ## Open Questions
 
-1. **Which path is the canonical golden-corpus reference: `~/pi-mirror/...` or
-   `~/mics_core/...`?**
+1. **RESOLVED mid-research by explicit user direction (2026-08-26): "we are working on the
+   mics_core."** Which path is the canonical golden-corpus reference: `~/pi-mirror/...` or
+   `~/mics_core/...`?
    - What we know: both copies were verified byte-identical on 2026-08-26. The existing
      `test_extlink_wire.py` already hardcodes the `pi-mirror` path. The phase's own "Files to
-     change" list in ROADMAP.md names the `mics_core` path as the read-only reference. Pilot 1
-     (`132.77.72.28`), the rig this phase's own checkpoint runs the ten-line sender against, is
-     confirmed **still on the old stack** (per project memory: "the working pilot... do not
-     touch"; migration only completed on `.213`). Phase 35's roadmap section separately flags this
-     exact ambiguity as an **open decision to settle before Phase 35's planning**, written against
-     `mics_core` prospectively.
-   - What's unclear: whether "canonical" should mean "matches the platform this phase's own rig
-     checkpoint runs against" (pi-mirror) or "matches the platform future work is written against"
-     (mics_core).
-   - Recommendation: **pin the primary/named canonical reference to `~/pi-mirror/...`** (matches
-     the actual rig behind this phase's own checkpoint, matches the existing test's precedent,
-     zero new risk), and **keep a secondary interop test against `~/mics_core/...` that
+     change" list in ROADMAP.md names the `mics_core` path as the read-only reference. The user
+     has now stated directly that `mics_core` is the platform this work targets. Pilot 1
+     (`132.77.72.28`), the rig this phase's own checkpoint has historically run the ten-line
+     sender against, was last confirmed **on the old stack** as of 2026-08-17 project memory
+     ("the working pilot... do not touch"; migration only completed on `.213`) — nine days stale
+     relative to this research and to the user's mid-research direction. Phase 35's roadmap
+     section separately flags this exact ambiguity as an **open decision to settle before Phase
+     35's planning**, written against `mics_core` prospectively — Phase 34 now settles it the
+     same way, per the user.
+   - What's unclear: whether pilot 1's migration status has changed since 2026-08-17 (i.e.
+     whether the phase's own rig checkpoint will actually run against a `mics_core`-based pilot,
+     or whether the checkpoint still targets old-stack pilot 1 while the *code* is written against
+     `mics_core`). **This must be confirmed before the rig-checkpoint step of the plan is
+     finalized** — if pilot 1 is still old-stack, the checkpoint is exercising `pi-mirror`'s
+     runtime regardless of which reference the golden corpus is pinned to, and that mismatch
+     should be stated in the plan rather than discovered during the checkpoint.
+   - Recommendation: **pin the primary/named canonical reference to `~/mics_core/...`** (per user
+     direction), and **keep a secondary interop test against `~/pi-mirror/...` that
      skip-if-absent** rather than fails, explicitly asserting the two stay identical for as long as
-     both exist. This gives the corpus one clearly-named source of truth while still catching
-     silent drift between the two trees for free. State this as a decision in the plan, don't
+     both exist — this still catches silent drift between the two trees for free, but now names
+     the forward-looking platform as the source of truth. Separately, confirm which actual pilot
+     backs this phase's rig checkpoint before finalizing that step. State this as a decision in
+     the plan, don't
      inherit the inconsistency.
 
 2. **Does the reconnect-detection mechanism (ZMQ socket monitor) actually survive a real Pi
@@ -559,7 +571,8 @@ API.
 
 | Req ID | Behavior | What the user runs | What they report |
 |--------|----------|----------------------|--------------------|
-| Precondition | `ExtlinkDemo` fixture's standing egress-probe dependency | Confirm/restart the TCP echo listener (`scratchpad/egress_listener.py`) on `132.77.73.125:5597` **before** anything else in this checklist | Listener is up; `demo.alive` does not flip false ~3s into the run |
+| Precondition | `ExtlinkDemo` fixture's standing egress-probe dependency | Confirm/restart the TCP echo listener (`scratchpad/egress_listener.py`, confirmed live during this research: `python3 egress_listener.py`, PID bound to `0.0.0.0:5597` — a standalone throwaway script, **not** the orchestrator, which listens on port 5560/`MSGPORT` instead) on `132.77.73.125:5597` **before** anything else in this checklist | Listener is up; `demo.alive` does not flip false ~3s into the run |
+| Precondition | Confirm which platform actually backs the rig checkpoint | Verify pilot 1 (`132.77.72.28`)'s current migration status before running the ten-line-sender checkpoint — project memory's "untouched" status is dated 2026-08-17 and may be stale now that the user has confirmed work targets `mics_core` | Either pilot 1 is confirmed still old-stack (checkpoint exercises `pi-mirror`'s runtime) or it has migrated (checkpoint exercises `mics_core`'s runtime) — state which, don't assume |
 | SDK-01 (real install) | Install on a genuinely separate machine | `pip install "git+https://github.com/idopo/Mics-backend.git#subdirectory=sdk"` on a non-dev-host machine (or a fresh venv standing in for one), then `python3 -c "import mics_link"` | Install succeeds with only `pyzmq`+`msgpack` pulled in; import works |
 | SDK-03/04/06/07 (integration, real socket) + phase success criterion 3 | Ten-line sender drives a real FDA transition | Agent supplies a ten-line script targeting pilot 1 (`--pi-host 132.77.72.28`, port 5599, `source_id: demo`, using the existing `extlink_demo` task def 434 with its two hand-authored transitions per `tools/extlink_driver/README.md`) | State changes visible in ES for `wait->armed->fired->wait` |
 | SDK-06 (soak / overflow) + phase success criterion 12 | Sustained send at the arc's real target rate, bounded queue drop under saturation | Agent supplies a rate/duration invocation (mirroring `extlink_driver.py --rate`) | Pilot stays up, FDA keeps transitioning, drop counter reported, ES ingestion keeps up |
@@ -581,7 +594,8 @@ API.
 - [ ] `sdk/tests/golden_frames.py` — frozen corpus generation script + frozen values, run once
       against the pinned `~/pi-mirror/.../external_hardware_wire.py`.
 - [ ] `sdk/tests/fake_transport.py` — the in-memory seam substitute every non-codec test depends on.
-- [ ] Decide and document the canonical golden-corpus path (Open Question 1) before writing
+- [ ] Decide and document the canonical golden-corpus path (Open Question 1 — RESOLVED to `mics_core`
+      per user direction 2026-08-26, `pi-mirror` kept as secondary skip-if-absent) before writing
       `test_wire_parity.py`, not after.
 - [ ] Confirm the standing `132.77.73.125:5597` TCP echo listener dependency before any rig
       checkpoint step — it will silently sabotage `demo.alive` observations otherwise (see

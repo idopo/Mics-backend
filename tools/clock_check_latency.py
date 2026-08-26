@@ -24,8 +24,14 @@ bootstrap mapping's slope of exactly 1000.0 ns/us being wrong by the true rate r
 the first re-fit landed at heartbeat_s = 600 s and flattened it to -0.16 ppm.
 
 `drift_ppm` -- an O(1) least-squares slope of latency against edge time -- is kept from
-that episode, because it measures the mapping's residual rate error directly and is worth
-watching even now that it cannot make the latency negative.
+that episode, but READ IT WITH CARE now: it measured the mapping's residual rate error only
+BECAUSE the two ends were on different counters. On one counter that error is common-mode
+and cancels exactly, so what is left is the trend of the queue delay itself -- a
+heavy-tailed quantity (run 579: p50 2.86 ms, max 14.6 ms) whose least-squares slope over a
+short window is mostly noise. Run 579's whole-run value was +21.6 ppm and its 25 s segments
+read -32.8, -22.1, -26.0, +37.1, +44.8: the SIGN FLIPS, which is how you tell. A real rate
+error does not (run 578 pre-re-fit: -10.53 then -11.52). Judge it on consistency across
+segments, never on one number.
 """
 from __future__ import annotations
 
@@ -105,11 +111,9 @@ class LatencyTracker:
                 })
 
     def drift_ppm(self) -> float | None:
-        """How fast the latency itself is moving -- the mapping's residual rate error.
-
-        A healthy re-fitted mapping sits near zero. Run 578's first 10 minutes read about
-        -8.5 ppm, the bootstrap slope's error before the first re-fit.
-        """
+        """How fast the latency itself is moving. See the module docstring before reading
+        it as a rate error: since both ends came onto one counter the mapping's error
+        cancels, and a short window's slope is dominated by queue-delay noise."""
         if self._n < 3:
             return None
         denom = self._n * self._sxx - self._sx * self._sx

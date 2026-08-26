@@ -21,7 +21,7 @@ created: 2026-08-26
 | **Framework** | pytest — `sdk/` gets its own self-contained, socketless test run, independent of the Docker `api` suite (`docker compose exec -T api python -m pytest -q tests/`) |
 | **Config file** | created by plan **34-01** — `[tool.pytest.ini_options]` in `sdk/pyproject.toml`, with `addopts = -q -m "not zmq_loopback"` so the default run stays socketless |
 | **Quick run command** | `cd sdk && python3 -m pytest -q` |
-| **Full suite command** | `cd sdk && python3 -m pytest -q && python3 -m pytest -q tools/extlink_driver/` |
+| **Full suite command** | `cd sdk && python3 -m pytest -q` — the POC driver and its tests are deleted by plan 34-05, so there is no second suite to chain |
 | **Estimated runtime** | ~5 seconds (whole suite is offline; no socket, no network, no rig) |
 
 **Environment note:** the `sdk/` suite runs on the dev host directly, NOT in the api container.
@@ -60,13 +60,13 @@ Task IDs below are `{plan}-T{n}` and resolve to concrete tasks in the PLAN.md fi
 | 34-06-T3 | 34-06 | 3 | SDK-07 (real monitor, loopback only) | integration, opt-in | `cd sdk && python3 -m pytest -q -m zmq_loopback tests/test_zmq_loopback.py` | ❌ W1 | ⬜ pending |
 | 34-04-T1 + 34-04-T2 | 34-04 | 2 | SDK-08 | unit (synthetic frames ONLY — see below) | `cd sdk && python3 -m pytest -q tests/test_command_dispatch.py` | ❌ W1 | ⬜ pending |
 | 34-06-T2 | 34-06 | 3 | SDK-09 | unit | `cd sdk && python3 -m pytest -q tests/test_lifecycle.py` | ❌ W1 | ⬜ pending |
-| 34-05-T1 + 34-05-T2 | 34-05 | 3 | SDK-10 | unit + AST hygiene | `test ! -f tools/extlink_driver/extlink_wire.py && python3 -m pytest -q tools/extlink_driver/` | ✅ existing (retarget) | ⬜ pending |
+| 34-05-T1 + 34-05-T2 | 34-05 | 3 | SDK-10 | deletion assertion | `test ! -f tools/extlink_driver/extlink_wire.py && test ! -f tools/extlink_driver/extlink_driver.py && test -f tools/extlink_driver/extlink_demo_fda.json` | ✅ present (to be deleted) | ⬜ pending |
 | 34-01-T3 | 34-01 | 1 | SDK-11 | AST hygiene | `cd sdk && python3 -m pytest -q tests/test_import_hygiene.py` | ❌ W1 | ⬜ pending |
 | 34-07-T1 + 34-07-T2 | 34-07 | 4 | SDK-12 | unit | `cd sdk && python3 -m pytest -q tests/test_replay.py` | ❌ W1 | ⬜ pending |
 | 34-08-T2 | 34-08 | 5 | SDK-13 | contract test + manual read-through | `cd sdk && python3 -m pytest -q tests/test_readme_contract.py` (ten-line bar, mandatory sections, device-neutrality) + a human read of `sdk/README.md` | ❌ W5 | ⬜ pending |
 | 34-09-T2 | 34-09 | 6 | SDK-01 (foreign machine) | USER-RUN | N/A — checkpoint, see Manual-Only Verifications | N/A | ⬜ pending |
 | 34-09-T3 | 34-09 | 6 | SDK-03/04/05/06/07 (rig) | USER-RUN | N/A — checkpoint, see Manual-Only Verifications | N/A | ⬜ pending |
-| 34-09-T4 | 34-09 | 6 | all — evidence recording | doc + full suite | `cd sdk && python3 -m pytest -q && python3 -m pytest -q tools/extlink_driver/` | ❌ W6 | ⬜ pending |
+| 34-09-T4 | 34-09 | 6 | all — evidence recording | doc + full suite | `cd sdk && python3 -m pytest -q` | ❌ W6 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

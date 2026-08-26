@@ -103,7 +103,10 @@ def test_c1_still_sees_every_document():
     c1 = report["C1_monotonic"]
     assert c1["docs_with_t_mono_ns"] == 62 * 2 + 252
     assert c1["backward_count"] == 0
-    assert c1["pass"] is True
+    # `pass` is deliberately None, not True: iter_run_documents sorts by t_mono_ns, so zero
+    # backward steps is a property of that sort and never of the clock. The coverage claim
+    # this test makes -- C1 spans software documents too -- lives in docs_with_t_mono_ns.
+    assert c1["pass"] is None
 
 
 def test_c4_provenance_counts_are_unchanged():
@@ -206,3 +209,90 @@ def test_c3_reports_which_modules_were_single_route():
     c3 = _feed(_run_574_shape())["C3_cross_route_pairing"]
     assert "TOUCH_INT" in (c3.get("single_route_modules") or []), c3
     assert "Mid_LED" not in (c3.get("single_route_modules") or [])
+
+
+# ---------------------------------------------------------------------------
+# Run 576 (RecordingBox, 2026-08-26, clock_probe_soak on Mid_LED).
+#
+# The hardware timeline sat 137437.61 s -- 31.9997 tick wraps -- BEHIND the software
+# timeline, so every `pi_timestamp` rendered ~38 h before the run started. C5 exists to
+# catch exactly that and reported PASS on 135/135 corrupt documents, because it reads
+# `@timestamp`, a field this index does not have (its field is `timestamp`). With no
+# window, C5's loop never ran, `implausible` stayed 0, and `pass` was True.
+# ---------------------------------------------------------------------------
+
+RUN_576_SW_MONO = 144_511_302_033_164          # CLOCK_MONOTONIC ns, Pi up ~40 h
+RUN_576_DOMAIN_GAP_NS = 137_437_614_792_000    # hardware ran 31.9997 wraps behind
+RUN_576_HW_MONO = RUN_576_SW_MONO - RUN_576_DOMAIN_GAP_NS
+
+
+def _dated_doc(t_mono: int, ts_source: str, wall: str, *, pi_timestamp: str | None = None) -> dict:
+    """A document in the field shape event_log_v2 actually stores: `timestamp`, not `@timestamp`."""
+    ed: dict = {"id": "Mid_LED"}
+    if pi_timestamp is not None:
+        ed.update({"pi_timestamp": pi_timestamp, "pi_timestamp_mono_ns": t_mono,
+                   "pi_timestamp_source": "hardware"})
+    else:
+        ed.update({"result": None, "func_name": "set"})
+    return {"_source": {"t_mono_ns": t_mono, "t_utc_ns": 1787725082981523127,
+                        "ts_source": ts_source, "timestamp": wall,
+                        "event": {"event_type": "gpio.Digital_Out", "event_data": ed}}}
+
+
+def _run_576_shape(n: int = 20) -> list[dict]:
+    """n software commands stamped 2026-08-26, n hardware edges stamped 2026-08-24."""
+    docs = []
+    for i in range(n):
+        docs.append(_dated_doc(RUN_576_HW_MONO + i * 5_000_000_000, "hardware",
+                               "2026-08-24T19:07:25.367799+03:00",
+                               pi_timestamp="2026-08-24T19:07:25.367799+03:00"))
+        docs.append(_dated_doc(RUN_576_SW_MONO + i * 5_000_000_000, "software",
+                               "2026-08-26T09:18:02.932809+03:00"))
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    return docs
+
+
+def test_c5_reads_the_timestamp_field_this_index_actually_has():
+    """Every pi_timestamp is ~38 h outside the run window -- C5 must FAIL, not pass vacuously."""
+    c5 = _feed(_run_576_shape())["C5_plausibility"]
+    assert c5["window_start"] is not None, "no window means C5 checked nothing"
+    assert c5["checked"] == 20
+    assert c5["implausible"] == 20
+    assert c5["pass"] is False
+
+
+def test_c5_never_reports_pass_without_a_window():
+    """Fail-closed: a run whose documents carry no usable wall clock is N/A, never PASS."""
+    docs = [{"_source": {"t_mono_ns": RUN_576_HW_MONO, "ts_source": "hardware",
+                         "event": {"event_type": "gpio.Digital_Out",
+                                   "event_data": {"id": "Mid_LED",
+                                                  "pi_timestamp": "2026-08-24T19:07:25.3+03:00",
+                                                  "pi_timestamp_mono_ns": RUN_576_HW_MONO}}}}]
+    c5 = _feed(docs)["C5_plausibility"]
+    assert c5["pass"] is not True, "an unevaluated check must never read as PASS"
+
+
+def test_c2_counts_wraps_inside_one_clock_domain():
+    """(max-min) across BOTH domains measured the 32-wrap defect and reported it as
+    32 healthy wrap crossings -- the bug disguised as the evidence it was meant to be."""
+    c2 = _feed(_run_576_shape())["C2_wrap_crossings"]
+    assert c2["wrap_crossings"] < 1.0, "20 edges 5 s apart cross no wrap"
+
+
+def test_single_clock_invariant_catches_disjoint_domains():
+    """The hardware and software timelines must overlap. Run 576's were 38 h apart."""
+    c8 = _feed(_run_576_shape())["C8_single_clock"]
+    assert c8["pass"] is False
+    assert c8["domain_gap_s"] > 137_000
+
+
+def test_single_clock_invariant_passes_when_both_paths_share_a_timeline():
+    docs = []
+    for i in range(10):
+        t = RUN_576_SW_MONO + i * 5_000_000_000
+        docs.append(_dated_doc(t, "hardware", "2026-08-26T09:18:02.9+03:00",
+                               pi_timestamp="2026-08-26T09:18:02.9+03:00"))
+        docs.append(_dated_doc(t + 400_000, "software", "2026-08-26T09:18:02.9+03:00"))
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    c8 = _feed(docs)["C8_single_clock"]
+    assert c8["pass"] is True, c8

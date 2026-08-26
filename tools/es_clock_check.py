@@ -8,21 +8,41 @@ documents from other work), sorts by `t_mono_ns`, and reports each check (C1-C7)
 PASS/FAIL/N-A with the numbers that produced it -- a verifier that prints only PASS is not
 evidence:
 
-  C1 monotonic          -- t_mono_ns strictly non-decreasing; zero backward steps required.
-  C2 wrap crossings      -- (max-min) t_mono_ns / one 32-bit tick wrap; >= 3 makes C1 non-vacuous
-                             for the soak (pass `--min-wrap-crossings 3` to enforce it there --
-                             the short probe cannot cross a wrap by design, so this stays
-                             informational unless the caller asks for a floor).
+  C1 monotonic          -- INFORMATIONAL, never PASS. The query sorts by t_mono_ns, so "zero
+                             backward steps" is a property of that sort, not of the clock, and
+                             this check cannot fail. It reports the counts plus `seq_no_
+                             inversions` (t_mono order vs ingest order), which is the honest
+                             lead; C7 and C8 carry the real backward-jump signal.
+  C2 wrap crossings      -- (max-min) t_mono_ns WITHIN ONE ts_source domain (hardware when
+                             present) / one 32-bit tick wrap. Spanning both domains measured
+                             the distance BETWEEN two clocks, not elapsed time: run 576's
+                             11-minute soak reported 32.14 "wrap crossings" that were really
+                             31.9997 wraps of hardware/software skew -- the defect, read as
+                             evidence of a healthy soak. `--min-wrap-crossings 3` enforces a
+                             floor; otherwise informational.
   C3 cross-route pairing -- every Mid_LED edge should land as exactly two documents sharing
                              one t_mono_ns (the logging_utils.py:97 and task.py:283 routes).
   C4 provenance           -- hardware docs carry ts_source=hardware AND a *_mono_ns field;
                              software/tracker docs carry ts_source=software.
-  C5 plausibility         -- event.event_data.pi_timestamp parses inside the run's @timestamp
+  C5 plausibility         -- event.event_data.pi_timestamp parses inside the run's wall-clock
                              window +/- 60 s (catches both known corruptions: monotonic-as-epoch
-                             and microsecond-as-nanosecond).
+                             and microsecond-as-nanosecond). The window is built from `timestamp`
+                             (this index's field; `@timestamp` is the ECS spelling and is absent
+                             here) and from SOFTWARE documents only -- a hardware document's
+                             `timestamp` IS the rendered pi_timestamp, so including it lets a
+                             corrupt clock vouch for itself. Reading the missing field name left
+                             the window empty, the comparison loop never ran, and run 576
+                             reported PASS over 135/135 documents stamped 38 h in the past.
+                             Fails closed: no window means N/A, never PASS.
   C6 clock step           -- around a forced wall-clock step (--step-time-utc), t_utc_ns moves by
                              the step and no t_mono_ns interval moves.
   C7 drops                -- gaps > 2x the commanded --pulse-period-s in the edge-group stream.
+  C8 single clock         -- the hardware and software t_mono_ns ranges must overlap. clock.py's
+                             design is that the GPIO callback path and the dispatcher path read
+                             ONE clock; run 576 had them 137437.6 s (31.9997 tick wraps) apart,
+                             the tick extender seeding its wrap count at attach rather than
+                             carrying the wraps already elapsed since boot, and every other
+                             check still passed.
 
 READ-ONLY, always. This tool (and clock_check_es.py / clock_check_accumulator.py, which it
 imports) runs against the index holding every experiment this lab has recorded (and, if pointed

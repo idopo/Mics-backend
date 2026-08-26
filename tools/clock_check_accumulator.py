@@ -23,15 +23,29 @@ class RunAccumulator:
     ):
         self.total_docs = 0
 
-        # C1 monotonic
+        # C1 monotonic. NOTE the circularity: iter_run_documents sorts by t_mono_ns, so
+        # `backward_count` over that stream is 0 by construction and cannot fail. The real
+        # signal is whether t_mono order still agrees with INGEST order (_seq_no): a wrap
+        # mishandled the way the deployed patched client did it hands out t_mono values that
+        # collide with ones issued ~4295 s earlier, so later-ingested documents sort earlier.
+        # Reported, not asserted -- the dispatcher's async send queue can reorder slightly on
+        # its own, so an inversion is a lead to chase, not proof of a defect.
         self.prev_t_mono_ns: int | None = None
+        self.prev_seq_no: int | None = None
+        self.seq_no_inversions = 0
         self.backward_count = 0
         self.max_backward_step_ns = 0
         self.docs_with_t_mono_ns = 0
 
-        # C2 wrap crossings
+        # C2 wrap crossings / C8 single-clock. Tracked PER ts_source domain: a run whose
+        # hardware and software paths sit on different timelines makes a whole-run (max-min)
+        # span measure the distance BETWEEN the clocks, not elapsed time on either. Run 576
+        # reported 32.14 "wrap crossings" for an 11-minute run -- that number was the defect
+        # (31.9997 wraps of hardware/software skew), read as evidence of a healthy soak.
         self.min_t_mono_ns: int | None = None
         self.max_t_mono_ns: int | None = None
+        self._domain_min: dict[str, int] = {}
+        self._domain_max: dict[str, int] = {}
 
         # C3 cross-route pairing -- docs sorted by t_mono_ns, so same-value docs are contiguous;
         # finalize the previous group the instant the value changes. O(1) memory.
@@ -83,12 +97,20 @@ class RunAccumulator:
         source = doc.get("_source", {})
         self.total_docs += 1
 
+        # ES returns the sort tuple [t_mono_ns, _seq_no]; the tiebreaker is ingest order.
+        sort_key = doc.get("sort")
+        if isinstance(sort_key, list) and len(sort_key) > 1 and isinstance(sort_key[1], int):
+            seq_no = sort_key[1]
+            if self.prev_seq_no is not None and seq_no < self.prev_seq_no:
+                self.seq_no_inversions += 1
+            self.prev_seq_no = seq_no
+
         t_mono = source.get("t_mono_ns")
         ts_source = source.get("ts_source")
 
         if isinstance(t_mono, (int, float)):
             t_mono = int(t_mono)
-            self._update_monotonic_and_wrap(t_mono)
+            self._update_monotonic_and_wrap(t_mono, ts_source)
             # C3/C7 group HARDWARE documents only. Both checks are claims about a commanded
             # hardware edge: C3 that one edge dispatches down two routes sharing a t_mono_ns,
             # C7 that no edge went missing. A software document is single-route by construction
@@ -119,11 +141,18 @@ class RunAccumulator:
             self._group_key = None
 
         self._update_provenance(source, ts_source)
-        at_ts = self._update_plausibility_window(source)
+        at_ts = self._update_plausibility_window(source, ts_source)
         self._buffer_step_window(source, t_mono, at_ts)
 
-    def _update_monotonic_and_wrap(self, t_mono: int) -> None:
+    def _update_monotonic_and_wrap(self, t_mono: int, ts_source: Any = None) -> None:
         self.docs_with_t_mono_ns += 1
+        if isinstance(ts_source, str):
+            lo = self._domain_min.get(ts_source)
+            hi = self._domain_max.get(ts_source)
+            if lo is None or t_mono < lo:
+                self._domain_min[ts_source] = t_mono
+            if hi is None or t_mono > hi:
+                self._domain_max[ts_source] = t_mono
         if self.min_t_mono_ns is None or t_mono < self.min_t_mono_ns:
             self.min_t_mono_ns = t_mono
         if self.max_t_mono_ns is None or t_mono > self.max_t_mono_ns:
@@ -146,13 +175,22 @@ class RunAccumulator:
         else:
             self.other_ts_source_docs += 1
 
-    def _update_plausibility_window(self, source: dict) -> datetime | None:
+    def _update_plausibility_window(self, source: dict, ts_source: Any = None) -> datetime | None:
         # Window ground truth is @timestamp (ES's own ingest-time clock), independent of the
         # pi_timestamp field under test -- this check never uses the value it validates as its
         # own ground truth.
-        at_ts_raw = source.get("@timestamp")
+        # `timestamp` is what event_log_v2 stores; `@timestamp` is the ECS spelling and is
+        # absent from this index entirely. Reading only the missing name left the window None,
+        # so C5's loop never ran and it reported PASS over 135/135 corrupt documents (run 576).
+        at_ts_raw = source.get("timestamp")
+        if at_ts_raw is None:
+            at_ts_raw = source.get("@timestamp")
         at_ts = parse_pi_timestamp(at_ts_raw) if at_ts_raw is not None else None
-        if at_ts is not None:
+        # Bounds come from SOFTWARE documents only. A hardware document's `timestamp` is the
+        # rendered pi_timestamp -- the value under test -- so folding it into the window lets a
+        # corrupt clock vouch for itself: run 576's window would stretch back over the same
+        # 38 h the error moved the events, and every one would land "inside" it.
+        if at_ts is not None and ts_source != "hardware":
             if self._at_ts_min is None or at_ts < self._at_ts_min:
                 self._at_ts_min = at_ts
             if self._at_ts_max is None or at_ts > self._at_ts_max:
@@ -211,25 +249,59 @@ class RunAccumulator:
         checks["C5_plausibility"] = self._check_c5()
         checks["C6_clock_step"] = self._check_c6()
         checks["C7_drops"] = self._check_c7()
+        checks["C8_single_clock"] = self._check_c8()
         return checks
 
     def _check_c1(self) -> dict[str, Any]:
         return {
-            "pass": self.backward_count == 0,
+            # Informational, never PASS: see __init__: the query sorts by the very field this
+            # counts, so "0 backward steps" is a property of the sort, not of the clock.
+            "pass": None,
+            "note": "vacuous under the t_mono_ns sort; C7/C8 carry the backward-jump signal",
             "backward_count": self.backward_count,
             "max_backward_step_ns": self.max_backward_step_ns,
             "docs_with_t_mono_ns": self.docs_with_t_mono_ns,
+            "seq_no_inversions": self.seq_no_inversions,
         }
 
     def _check_c2(self) -> dict[str, Any]:
-        wrap_crossings = 0.0
-        if self.min_t_mono_ns is not None and self.max_t_mono_ns is not None:
-            wrap_crossings = (self.max_t_mono_ns - self.min_t_mono_ns) / NS_PER_TICK_WRAP
+        # Wraps are a property of ONE timeline. Measured on the hardware domain, which is the
+        # one carrying the extended tick; falls back to the widest single domain present.
+        spans = {d: self._domain_max[d] - self._domain_min[d] for d in self._domain_min}
+        domain = "hardware" if "hardware" in spans else (
+            max(spans, key=lambda d: spans[d]) if spans else None
+        )
+        wrap_crossings = spans[domain] / NS_PER_TICK_WRAP if domain else 0.0
         return {
             "pass": None,  # informational unless the caller enforces --min-wrap-crossings
             "wrap_crossings": wrap_crossings,
-            "min_t_mono_ns": self.min_t_mono_ns,
-            "max_t_mono_ns": self.max_t_mono_ns,
+            "measured_on_domain": domain,
+            "min_t_mono_ns": self._domain_min.get(domain) if domain else None,
+            "max_t_mono_ns": self._domain_max.get(domain) if domain else None,
+        }
+
+    def _check_c8(self) -> dict[str, Any]:
+        """The single-clock invariant: both event paths must sit on ONE timeline.
+
+        clock.py's whole design is that the GPIO callback path and the dispatcher path read
+        the same clock. When they do, their t_mono_ns ranges overlap and the gap is 0. Run 576
+        had them 137437.6 s apart -- 31.9997 tick wraps, the extender seeding its wrap count at
+        attach instead of carrying the wraps already elapsed since boot -- and every other
+        check still passed.
+        """
+        hw_lo, hw_hi = self._domain_min.get("hardware"), self._domain_max.get("hardware")
+        sw_lo, sw_hi = self._domain_min.get("software"), self._domain_max.get("software")
+        if hw_lo is None or sw_lo is None:
+            return {"pass": None, "skipped": "run has only one ts_source domain",
+                    "domain_gap_s": None}
+        # 0 when the ranges overlap; otherwise the distance between them.
+        gap_ns = max(0, max(hw_lo, sw_lo) - min(hw_hi, sw_hi))
+        return {
+            "pass": gap_ns < NS_PER_TICK_WRAP // 2,
+            "domain_gap_s": gap_ns / 1e9,
+            "domain_gap_wraps": gap_ns / NS_PER_TICK_WRAP,
+            "hardware_range_ns": [hw_lo, hw_hi],
+            "software_range_ns": [sw_lo, sw_hi],
         }
 
     def _check_c3(self) -> dict[str, Any]:
@@ -275,8 +347,11 @@ class RunAccumulator:
                     implausible += 1
                     if len(examples) < self.max_examples:
                         examples.append({"raw_pi_timestamp": raw, "parsed": parsed.isoformat() if parsed else None})
+        # Fail-closed: with no window nothing was compared, and an unevaluated check must
+        # never read as PASS -- that is precisely how the 38 h error survived a green run.
+        verdict = None if lo is None else (implausible == 0 and self.pi_timestamp_checked > 0)
         return {
-            "pass": implausible == 0 and self.pi_timestamp_checked > 0,
+            "pass": verdict,
             "checked": self.pi_timestamp_checked,
             "implausible": implausible,
             "window_start": lo.isoformat() if lo is not None else None,

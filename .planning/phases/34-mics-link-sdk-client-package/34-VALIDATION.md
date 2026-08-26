@@ -78,12 +78,13 @@ it does not create three consecutive unautomated tasks.
 - [ ] `sdk/tests/` — test package root
 - [ ] `sdk/tests/fake_transport.py` — the in-memory seam substitute every non-codec test depends on
 - [ ] `sdk/tests/golden_frames.py` — frozen corpus + the generation script that produced it
-- [ ] **Decide and document the canonical golden-corpus reference path BEFORE writing
-      `test_wire_parity.py`, not after.** Research recommends
-      `~/pi-mirror/autopilot/autopilot/hardware/external_hardware_wire.py` — pilot 1
-      (`132.77.72.28`, this phase's own rig target) is confirmed still on the old pi-mirror
-      stack, and the existing driver test already sets that precedent. Keep `~/mics_core/...`
-      as a skip-if-absent secondary drift check.
+- [ ] **Pin the canonical golden-corpus reference path BEFORE writing `test_wire_parity.py`,
+      not after.** Per direct user direction (2026-08-26, *"we are working on mics_core"*):
+      **primary = `~/mics_core/autopilot/autopilot/hardware/external_hardware_wire.py`**, with
+      `~/pi-mirror/...` kept as a skip-if-absent secondary drift check. The two are byte-identical
+      today, so this fixes which path the test pins, not the corpus bytes. Note this **reverses**
+      the original research recommendation, which had pinned pi-mirror on the basis of pilot 1's
+      stack — see the reconfirmation row under Manual-Only Verifications.
 - [ ] Framework install: `python3 -m pip install pyzmq msgpack pytest build` in whatever
       environment runs `sdk/`'s tests (separate from the Docker api environment)
 
@@ -91,11 +92,24 @@ it does not create three consecutive unautomated tasks.
 
 ## Manual-Only Verifications
 
-**Precondition — must be satisfied BEFORE any rig row below.** The `ExtlinkDemo` fixture Phase 18
-deliberately left standing requires a TCP echo listener on the dev host at `132.77.73.125:5597`.
-Without it, `demo.alive` flips false ~3s into a run after three egress-probe failures and the
-readiness gate times out — which will silently sabotage every liveness observation here. See
-`18-HARDWARE-VALIDATION.md` §0d/§3.
+### Preconditions — both must be satisfied BEFORE any rig row below
+
+**P1 — the standing egress listener.** The `ExtlinkDemo` fixture Phase 18 deliberately left
+standing requires a TCP echo listener on the dev host at `132.77.73.125:5597`. Without it,
+`demo.alive` flips false ~3s into a run after three egress-probe failures and the readiness gate
+times out — silently sabotaging every liveness observation here. See `18-HARDWARE-VALIDATION.md`
+§0d/§3.
+
+> ⚠ **That listener is NOT the orchestrator.** It was verified live as a standalone throwaway
+> script (`scratchpad/egress_listener.py`, running since the Phase 18 session on 2026-08-09). The
+> orchestrator is a separate process on `MSGPORT 5560`. If the listener ever needs restarting,
+> restarting or killing the orchestrator is **not** the fix and would be a damaging misstep.
+
+**P2 — reconfirm pilot 1's stack before trusting any rig result.** The record that pilot 1
+(`132.77.72.28`, this phase's checkpoint target) still runs the old `pi-mirror` stack dates from
+2026-08-17 — nine days stale as of this phase. If pilot 1 has not in fact migrated to `mics_core`,
+the checkpoint exercises `pi-mirror`'s runtime regardless of which file the golden corpus is
+pinned against. **USER-RUN** — only the user may inspect the Pi. Do not assume either state.
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|

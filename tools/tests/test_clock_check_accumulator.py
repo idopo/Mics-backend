@@ -386,18 +386,20 @@ def test_c10_measures_the_trigger_queue_latency():
     assert check["min_ns"] == check["max_ns"] == DEFAULT_QUEUE_LATENCY_NS
 
 
-def test_c10_counts_a_small_negative_latency_without_failing_on_it():
-    """The edge is a MAPPED tick and the receipt is a RAW clock read, so the fit's bounded
-    prediction error can legitimately put the edge a few ms ahead of the read taken just
-    after it. Run 578 measured exactly this -- 48 of its first 108 edges read negative --
-    and it was the bootstrap slope, not a defect. Counted and reported, never gated."""
+def test_c10_fails_on_a_dequeue_that_precedes_its_own_edge():
+    """Since mics_core 43f7b7b both ends come off the ONE counter -- the edge captured at
+    interrupt time, the receipt read at dequeue -- so the interval is real elapsed time and
+    a negative one means they are no longer on one counter. It was ungated for exactly as
+    long as the receipt came from a raw CLOCK_MONOTONIC read: run 578 read 48 negatives in
+    108 edges purely from the ~10 ppm between the two counters."""
     docs = _run_573_shape(n_edges=4, n_software=0)
     docs += [_doc(3_839_296_775_883 + 99_000_000_000, "hardware",
                   route="pi_timestamp", queue_latency_ns=-5_000_000)]
     check = _feed(docs)["C10_trigger_queue_latency"]
-    assert check["pass"] is True
+    assert check["pass"] is False
     assert check["negative"] == 1
     assert check["over_1s_bound"] == 0
+    assert check["examples"]
 
 
 def test_c10_fails_on_a_gap_no_mapping_error_could_explain():

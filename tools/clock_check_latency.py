@@ -10,23 +10,22 @@ WHAT IS BEING MEASURED. The trigger route is the only route carrying two instant
 Their difference exists to expose the delay between a GPIO interrupt and the trigger
 worker actually handling it.
 
-WHY IT MAY BE NEGATIVE, AND WHY THAT IS NOT A DEFECT. The two numbers are not produced the
-same way. The edge is a pigpio tick MAPPED onto CLOCK_MONOTONIC through the calibrated
-affine fit; the receipt is a RAW `clock_gettime(CLOCK_MONOTONIC)`. The fit has bounded
-prediction error, so a mapped edge can land a few milliseconds ahead of a raw read taken
-just after it, and the difference goes negative. The physical statement "an edge cannot be
-dequeued before it happened" is true of the instants and NOT of these two derived numbers.
+IT CANNOT BE NEGATIVE, and that became true on 2026-08-26. Both ends now come off the SAME
+counter: the edge is a pigpio tick captured at interrupt time, the receipt is a pigpio tick
+read at dequeue, and both are mapped through the same fit. The difference is therefore a
+real elapsed interval, and an edge cannot be dequeued before it happened. A negative
+reading means the two ends are no longer on one counter.
 
-Run 578 measured this for the first time -- nothing before it could, because both fields
-held the same number. The latency drifted linearly from +2.4 ms at t=0 to -2.5 ms at
-t=590 s: 8.5 ppm, which is the BOOTSTRAP mapping's slope of exactly 1000.0 ns/us being
-wrong by the true tick-to-CLOCK_MONOTONIC rate ratio on this Pi, before the first re-fit
-lands at heartbeat_s = 600 s.
+It USED to be negative routinely, and that history is why this file exists. While the
+receipt came from a raw `clock_gettime(CLOCK_MONOTONIC)` the two ends sat on the two
+different physical counters this board has, ~10 ppm apart. Run 578 measured 48 negatives
+in its first 108 edges, drifting linearly from +2.4 ms at t=0 to -2.5 ms at t=590 s -- the
+bootstrap mapping's slope of exactly 1000.0 ns/us being wrong by the true rate ratio, until
+the first re-fit landed at heartbeat_s = 600 s and flattened it to -0.16 ppm.
 
-So this reports `drift_ppm` -- an O(1) least-squares slope of latency against edge time --
-which measures exactly that residual rate error and should collapse toward zero once the
-mapping re-fits. It gates only on GROSS breakage, because a threshold tight enough to
-catch anything else would be a guess.
+`drift_ppm` -- an O(1) least-squares slope of latency against edge time -- is kept from
+that episode, because it measures the mapping's residual rate error directly and is worth
+watching even now that it cannot make the latency negative.
 """
 from __future__ import annotations
 
@@ -76,6 +75,14 @@ class LatencyTracker:
             self.max_ns = latency
         if latency < 0:
             self.negative += 1
+            if len(self.examples) < self.max_examples:
+                self.examples.append({
+                    "pi_timestamp_mono_ns": edge_ns,
+                    "t_mono_ns": received_ns,
+                    "latency_ns": latency,
+                    "module": module,
+                    "why": "dequeued before its own edge -- the two ends are not on one counter",
+                })
 
         if self._x0 is None:
             self._x0 = edge_ns
@@ -118,11 +125,11 @@ class LatencyTracker:
         # reads 253 measured / min 0 / max 0; run 573, 62 of them.
         all_zero = bool(self.measured) and self.min_ns == 0 and self.max_ns == 0
         return {
-            # Gates on GROSS breakage only. The sign is deliberately NOT gated: the edge is
-            # a MAPPED tick and the receipt is a RAW clock read, so the fit's bounded
-            # prediction error can legitimately put the edge a few ms ahead. See the module
-            # docstring. Fails closed: nothing measured means N/A, never PASS.
-            "pass": (self.over_bound == 0) if self.measured else None,
+            # Both ends come off the ONE counter now, so a negative interval is not a
+            # tolerance question -- it means they no longer do. Gated again as of
+            # mics_core 43f7b7b; see the module docstring for why it was ungated between
+            # 65a38b5 and here. Fails closed: nothing measured means N/A, never PASS.
+            "pass": (self.over_bound == 0 and self.negative == 0) if self.measured else None,
             "measured": self.measured,
             "over_1s_bound": self.over_bound,
             "negative": self.negative,

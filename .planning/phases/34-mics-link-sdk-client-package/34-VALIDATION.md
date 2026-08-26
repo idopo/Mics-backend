@@ -19,7 +19,7 @@ created: 2026-08-26
 | Property | Value |
 |----------|-------|
 | **Framework** | pytest — `sdk/` gets its own self-contained, socketless test run, independent of the Docker `api` suite (`docker compose exec -T api python -m pytest -q tests/`) |
-| **Config file** | none yet — Wave 0 creates `[tool.pytest.ini_options]` in `sdk/pyproject.toml` |
+| **Config file** | created by plan **34-01** — `[tool.pytest.ini_options]` in `sdk/pyproject.toml`, with `addopts = -q -m "not zmq_loopback"` so the default run stays socketless |
 | **Quick run command** | `cd sdk && python3 -m pytest -q` |
 | **Full suite command** | `cd sdk && python3 -m pytest -q && python3 -m pytest -q tools/extlink_driver/` |
 | **Estimated runtime** | ~5 seconds (whole suite is offline; no socket, no network, no rig) |
@@ -43,34 +43,53 @@ checkpoint is a separate, non-pytest, USER-RUN activity — it is never an autom
 
 ## Per-Task Verification Map
 
-Task IDs are assigned at plan time. This map is keyed by requirement; the planner MUST attach
-each row to a concrete task ID and carry the automated command into that task's `<verify>` block.
+Task IDs below are `{plan}-T{n}` and resolve to concrete tasks in the PLAN.md files created
+2026-08-26. Each row's automated command is carried into that task's `<verify>` block.
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | 0 | SDK-01 | packaging smoke | `pip install "git+file://$(pwd)#subdirectory=sdk" --target /tmp/mics_link_check && python3 -c "import mics_link"` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 1 | SDK-02 | unit | `cd sdk && python3 -m pytest -q tests/test_wire_parity.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 1 | SDK-03 | unit | `cd sdk && python3 -m pytest -q tests/test_transport_config.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 1 | SDK-04 | unit | `cd sdk && python3 -m pytest -q tests/test_dtype_validation.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 2 | SDK-05 | unit | `cd sdk && python3 -m pytest -q tests/test_heartbeat_scheduling.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 2 | SDK-06 | unit | `cd sdk && python3 -m pytest -q tests/test_sender_bounded_drop.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 2 | SDK-07 | unit | `cd sdk && python3 -m pytest -q tests/test_reconnect_state_machine.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 2 | SDK-08 | unit | `cd sdk && python3 -m pytest -q tests/test_command_dispatch.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 2 | SDK-09 | unit | `cd sdk && python3 -m pytest -q tests/test_lifecycle.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 3 | SDK-10 | unit + AST hygiene | `python3 -m pytest -q tools/extlink_driver/` | ✅ existing (retarget) | ⬜ pending |
-| TBD | TBD | 1 | SDK-11 | AST hygiene | `cd sdk && python3 -m pytest -q tests/test_import_hygiene.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 3 | SDK-12 | unit | `cd sdk && python3 -m pytest -q tests/test_replay.py` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 3 | SDK-13 | manual review | N/A — checklist item in the plan's own review pass | N/A | ⬜ pending |
+| 34-01-T3 | 34-01 | 1 | SDK-01 (local install) | packaging smoke | `rm -rf /tmp/mics_link_pkgcheck && python3 -m pip install --no-build-isolation --no-deps --target /tmp/mics_link_pkgcheck ./sdk && PYTHONPATH=/tmp/mics_link_pkgcheck python3 -c "import mics_link"` | ❌ W1 | ⬜ pending |
+| 34-08-T3 | 34-08 | 5 | SDK-01 (git subdir + wheel) | packaging smoke | `cd sdk && python3 -m build --wheel && ls dist/*.whl` then `python3 -m pip install --no-deps "git+file:///home/ido/mics-backend#subdirectory=sdk" --target /tmp/mics_link_gitcheck && PYTHONPATH=/tmp/mics_link_gitcheck python3 -c "import mics_link"` | ❌ W5 | ⬜ pending |
+| 34-01-T2 | 34-01 | 1 | SDK-02 | unit | `cd sdk && python3 -m pytest -q tests/test_wire_parity.py` | ❌ W1 | ⬜ pending |
+| 34-02-T2 | 34-02 | 2 | SDK-03 | unit | `cd sdk && python3 -m pytest -q tests/test_transport_config.py` | ❌ W1 | ⬜ pending |
+| 34-02-T1 | 34-02 | 2 | SDK-04 | unit | `cd sdk && python3 -m pytest -q tests/test_dtype_validation.py` | ❌ W1 | ⬜ pending |
+| 34-03-T1 | 34-03 | 2 | SDK-05 | unit | `cd sdk && python3 -m pytest -q tests/test_heartbeat_scheduling.py` | ❌ W1 | ⬜ pending |
+| 34-02-T3 | 34-02 | 2 | SDK-06 | unit | `cd sdk && python3 -m pytest -q tests/test_sender_bounded_drop.py` | ❌ W1 | ⬜ pending |
+| 34-03-T2 | 34-03 | 2 | SDK-07 (state machine) | unit | `cd sdk && python3 -m pytest -q tests/test_reconnect_state_machine.py` | ❌ W1 | ⬜ pending |
+| 34-06-T1 | 34-06 | 3 | SDK-07 (seq continuity over fake transport) | unit | `cd sdk && python3 -m pytest -q tests/test_client_integration.py` | ❌ W1 | ⬜ pending |
+| 34-06-T3 | 34-06 | 3 | SDK-07 (real monitor, loopback only) | integration, opt-in | `cd sdk && python3 -m pytest -q -m zmq_loopback tests/test_zmq_loopback.py` | ❌ W1 | ⬜ pending |
+| 34-04-T1 + 34-04-T2 | 34-04 | 2 | SDK-08 | unit (synthetic frames ONLY — see below) | `cd sdk && python3 -m pytest -q tests/test_command_dispatch.py` | ❌ W1 | ⬜ pending |
+| 34-06-T2 | 34-06 | 3 | SDK-09 | unit | `cd sdk && python3 -m pytest -q tests/test_lifecycle.py` | ❌ W1 | ⬜ pending |
+| 34-05-T1 + 34-05-T2 | 34-05 | 3 | SDK-10 | unit + AST hygiene | `test ! -f tools/extlink_driver/extlink_wire.py && python3 -m pytest -q tools/extlink_driver/` | ✅ existing (retarget) | ⬜ pending |
+| 34-01-T3 | 34-01 | 1 | SDK-11 | AST hygiene | `cd sdk && python3 -m pytest -q tests/test_import_hygiene.py` | ❌ W1 | ⬜ pending |
+| 34-07-T1 + 34-07-T2 | 34-07 | 4 | SDK-12 | unit | `cd sdk && python3 -m pytest -q tests/test_replay.py` | ❌ W1 | ⬜ pending |
+| 34-08-T2 | 34-08 | 5 | SDK-13 | contract test + manual read-through | `cd sdk && python3 -m pytest -q tests/test_readme_contract.py` (ten-line bar, mandatory sections, device-neutrality) + a human read of `sdk/README.md` | ❌ W5 | ⬜ pending |
+| 34-09-T2 | 34-09 | 6 | SDK-01 (foreign machine) | USER-RUN | N/A — checkpoint, see Manual-Only Verifications | N/A | ⬜ pending |
+| 34-09-T3 | 34-09 | 6 | SDK-03/04/05/06/07 (rig) | USER-RUN | N/A — checkpoint, see Manual-Only Verifications | N/A | ⬜ pending |
+| 34-09-T4 | 34-09 | 6 | all — evidence recording | doc + full suite | `cd sdk && python3 -m pytest -q && python3 -m pytest -q tools/extlink_driver/` | ❌ W6 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-**Sampling continuity:** every requirement except SDK-13 has an automated command. SDK-13
-(README completeness) is inherently a read-through; it is the only manual-only offline item and
-it does not create three consecutive unautomated tasks.
+**Wave 0 note:** the original draft assumed a separate Wave 0. There is none — plan **34-01
+(Wave 1)** IS the wave-0 deliverable: it creates `sdk/pyproject.toml`, the package skeleton, the
+`tests/` root, `tests/pi_reference.py`, `tests/golden_frames.py` + its generator, and the pytest
+config. `tests/fake_transport.py` is created by plan **34-02** (Wave 2) alongside the seam it
+substitutes, because it must implement that seam's exact interface.
+
+**Sampling continuity:** every requirement except SDK-13's read-through half has an automated
+command, and no three consecutive tasks in any plan lack an `<automated>` verify. The only
+manual-only offline item is the README read-through (34-08), and it sits beside an automated
+contract test in the same plan.
+
+**SDK-08 evidence caveat, restated here so it cannot be lost:** the automated command above proves
+SDK-08 with **synthetic CMD frames built by the Pi's own `encode()`**. It is NOT a live Pi-initiated
+round trip, because no Pi-side CMD sender exists anywhere in either autopilot tree. Plan 34-09 must
+record this in `34-HARDWARE-VALIDATION.md`, and `/gsd:verify-work` must not be told SDK-08 was
+rig-proven.
 
 ---
 
-## Wave 0 Requirements
+## Wave 0 Requirements (delivered by plan 34-01, Wave 1)
 
 - [ ] `sdk/pyproject.toml` — build metadata, `src/` layout, setuptools backend, `requires-python
       >=3.8`, deps pinned to exactly `pyzmq` + `msgpack`
@@ -113,6 +132,7 @@ pinned against. **USER-RUN** — only the user may inspect the Pi. Do not assume
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
+| Reconfirm pilot 1's platform (P2) | — (evidence scoping) | Only the user may touch the Pi | State whether pilot 1 (`132.77.72.28`) runs `pi-mirror` or `mics_core` today. Reading over SSH is fine; the agent runs nothing on the Pi. Report: which stack |
 | Install on a genuinely foreign machine | SDK-01 | Needs a host that has never seen MICS; dev host cannot prove it | `pip install "git+https://github.com/idopo/Mics-backend.git#subdirectory=sdk"` on a non-dev-host machine (or a fresh venv standing in), then `python3 -c "import mics_link"`. Report: install succeeds, only `pyzmq`+`msgpack` pulled in, import works |
 | Ten-line sender drives a real FDA transition | SDK-03/04/06/07 + success criterion 3 | Requires the live rig and ES | Agent supplies a ten-line script targeting pilot 1 (`--pi-host 132.77.72.28`, port 5599, `source_id: demo`, against `extlink_demo` task def 434). Report: `wait→armed→fired→wait` visible in ES |
 | Soak at the arc's real rate | SDK-06 + success criterion 12 | Requires the live rig, real session length | Agent supplies a rate/duration invocation mirroring `extlink_driver.py --rate`. Report: pilot stays up, FDA keeps transitioning, drop counter reported, ES ingestion keeps up. **No latency number is printed or claimed** (Phase 28) |

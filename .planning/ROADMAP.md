@@ -28,7 +28,7 @@
 | 15 | Compound Transition Conditions | ConditionGroup DNF types, normaliseTransition migration, ConditionGroupsEditor UI, Pi DNF evaluator | COND-01–05 | ✓ Complete 2026-05-27 |
 | 16 | 3/3 | Complete    | 2026-05-27 | ○ Pending |
 | 17 | Free-Form Pilot Hardware Config | Name-keyed pilot_hardware_config CRUD + free-form React table + HardwareCheckModal fix | HW-08, HW-11 | ✓ Complete 2026-05-29 |
-| 18 | 15/15 | Complete   | 2026-08-09 | EXTLINK-01–18 | ○ Pending — **context revised 2026-08-03, must be re-planned** (old plans in `superseded/`) |
+| 18 | MICS-Link — Pi Transport + ExternalHardware | Structured, crash-safe input channel: `ExternalHardware` libs with `@signal`/`@event`/`@command`/`@decoder`, two transport roles + control-only, liveness split from staleness, egress queue, lifecycle hooks, device lease, editor-authorable external signals | EXTLINK-01–20 | ✓ **Complete 2026-08-09** — 15/15 plans, rig-proven on pilot 1 (runs 552–556). ⚠ `sub_connect` (EXTLINK-14) and `role: "none"` (EXTLINK-18) remain UNPROVEN on hardware — unit-tested only. Teardown deliberately not run: the `ExtlinkDemo` fixture stands on pilot 1 and needs a TCP echo listener at `132.77.73.125:5597` |
 | 23 | 12/12 | Complete    | 2026-08-05 | ✓ **Complete 2026-08-05** — 12/12 plans, all waves closed including the operand-namespace consistency pass (CMP-20–25). Rig-proven across runs 535–550 and 551: compute action dispatches, executes, writes a variable and gates a transition through both branches; 41 draws with zero routing violations; CMP-16 pair intact 10/10 for a non-numeric output with zero rejected documents; the one read namespace (`view`) drives real transitions with the legacy `flag`/`hardware` escape surviving a GUI resave byte-identical. See `23-HARDWARE-VALIDATION.md`. ⚠ Open: gonogo task never built (equivalent FDA validated instead); compute op **args** absent from the event log (CMP-16 partial); CMP-18 researcher-authored lib upload unproven on hardware; CMP-24b/CMP-25 deployed but not rig-exercised; CMP-24a/24c reverted before deploy (pending GSD todo); Pi unit tests still unrun on the Pi |
 | 24 | Trigger Assignment Action Lists | Triggers run the same action vocabulary as state `entry_actions` (+ new `view` action, return-value capture, `{trigger: level/tick}` args); backend validation for `trigger_assignments`; on a **sourceless** toolkit a constrained one-pick detector write drives the licker trackers with no way to cross pin and tracker; `trigger_name` picked from the toolkit's trigger-capable hardware | TRIGA-01–10, 11a, 12, 14–19 | ✓ **8/8 plans executed 2026-07-27** — rig-proven (runs 478/480/481: 144 triggers, 63 licker writes, 0 correctness errors); 8/8 save-time negative cases 422. ⚠ Pi test suite still never run (user-run) |
 | 25 | Detector-Derived View Keys | `LICKER*` keys derived by the backend, offered in the FDA editor's view-operand and `key_template` pickers, resolved per-pilot in Phase 13 preflight. **Absorbs TRIGA-13.** **DVK-09 added from rig evidence** — channels must be declarable, not assumed 0-based (a live spout is currently discarded); resolved 2026-07-29 to `first_channel` + count, no channel list. **DVK-11 added 2026-07-29** — operands store a detector ref + channel index, never the resolved per-pilot key. **DVK-10 added 2026-07-29** — `execute_trigger`'s over-broad `except KeyError` swallowed that discard as `"No valid trigger"`. Transitions on a licker key are unavailable until this lands | DVK-01–11 | ◐ **5/6 plans executed 2026-07-29** — plan 01 landed the backend derivation core (DVK-01/02/07/09/11); plan 02 landed the Pi runtime half (DVK-09/10/11: `first_channel` in `check_for_detectors`, `execute_trigger` error containment, `view_detector` build-time resolution); plan 03 wired preflight resolution (DVK-06/11: out-of-range channel / unreachable literal key / unresolvable `{device_name}` template all fail preflight with the pilot's actual wiring) and `detector_channels` onto every toolkit read route including `by-name`; plan 04 made detector channels first-class pickable view operands in the FDA editor (DVK-03/04/05/07/11: grouped `<optgroup>` picker emitting `{"view_detector": {"ref","channel"}}`, `key_template` suggestions, unknown-key preservation); plan 05 renders `view_key_unresolved` preflight issues in `HardwareCheckModal` (both shapes, no start gate, PUT loop provably skipped) and adds the `first_channel` config affordance with a live key preview (DVK-06/09) — only plan 06 (deploy + rig proof) remains |
@@ -38,8 +38,10 @@
 | 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
 | 30 | 8/9 | In Progress|  | ○ Exit gate green 2026-08-10 (`--final` 0, zero manifest drift); publication + rig proof are USER-RUN (plan 09) |
+| 34 | MICS-Link SDK Client Package | `pip install mics-link` — the supported sender-side library: DEALER connect w/ identity, the locked MessagePack envelope, non-blocking bounded send, heartbeat, reconnect, inbound `@command`, replay driver. Retires `extlink_driver`'s hand-rolled wire copy | SDK-01–13 | ○ Pending — not yet planned |
+| 35 | DeepLabCut Keypoint Likelihood Integration | A trained DLC model on a separate vision box pushes per-keypoint likelihoods to the Pi; FDA transitions gate on them, authored in the editor's operand picker. Occlusion reads as likelihood 0, never a stuck value. **No video into MICS** | DLC-01–12 | ○ Pending — not yet planned |
 
-**Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. See `.planning/STABILIZATION_PLAN.md`.
+**Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. **Phases 34–35 (the DeepLabCut arc, added 2026-08-26) are the second consumer and run independently of 26–28** — both were reserved in Phase 18's own NOT-in-scope list, and neither changes the substrate. See `.planning/STABILIZATION_PLAN.md`.
 
 ---
 
@@ -1384,6 +1386,360 @@ PLAT-16 (pigpio lifecycle removal). Old plans 31-10 through 31-16 are superseded
 substance moved into C1-C4.
 
 
+### Phase 32: Rig output fail-safe for unattended 24/7 operation
+
+**Goal:** When the pilot process dies, every animal-facing output de-energises. Today it does
+not: GPIO outputs keep their state after the process exits, so a valve, air puff, odor line or
+LED can stay energised indefinitely with nobody watching. This is the remaining blocker between
+"the clock/logging path survives unattended operation" (Phase 31, proven on soak run 580) and
+"we can run 24/7 experiments with animals".
+
+**The characterised defect:** `start_pigpiod()`'s `kill_proc` hook cannot reach `pigpiod` — the
+`Popen` uses `shell=True`, the daemon detaches, and it runs under `sudo`. Nothing de-energises
+the pins. PLAT-33 was withdrawn on a false premise and this has never been fixed. Prior analysis
+is in `.planning/phases/31-*/deferred-items.md` (plan C3 section) and the closing notes of
+`PI_TRIXIE_INSTALL.txt`.
+
+**Candidate approaches, to be chosen during planning:**
+- systemd `ExecStopPost` that de-energises `VALVE1-4` / `AIR_PUF` / `ODOR1-5`
+- hardware pull-downs on the output lines
+- repairing the `pigpiod` lifecycle so the kill hook actually works
+
+**Requirements**: TBD — likely a replacement for the withdrawn PLAT-33
+**Depends on:** Phase 31
+**Validation:** must be exercised on RecordingBox (132.77.73.213), including a killed pilot.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 32 to break down)
+
+### Phase 33: Crash detection and run recovery for unattended operation
+
+**Goal:** A run that dies unattended is *detected*, *correctly classified*, *recorded in the
+backend*, and recovered according to a policy — instead of sitting in the DB as `running`
+forever with nobody watching. Phase 32 makes failure harmless; this phase makes it temporary.
+
+---
+
+**THE CENTRAL DISTINCTION (user, 2026-08-26).** A task error and a service crash are NOT the
+same event and must not be collapsed into one status. They differ in who can report them, and
+they differ in what recovery is correct:
+
+| | Task error | Service crash |
+|---|---|---|
+| What died | the task; the pilot process is alive | the pilot process itself (or the Pi) |
+| Who can report it | **the Pi, in-band** — it is alive and can speak | **nobody on the Pi** — it is gone |
+| How the backend learns | `TASK_ERROR` over ZMQ | inferred from heartbeat silence, plus systemd-level signal, plus reconciliation on reconnect |
+| Likely on restart | **recurs** (bad params, bad FDA, bad hardware) | **transient** — resume is usually safe |
+| Correct policy | do NOT blindly restart; surface it | resume or restart per the resume policy below |
+
+Silence alone cannot separate "process crashed", "Pi powered off" and "network partition" —
+only the reconnect distinguishes them. Design principle: **the Pi reports what it can; the
+orchestrator infers what the Pi cannot report; the backend records the two distinctly.**
+`session_runs` today has only `RUNNING` (`api/models.py:424`) — the status vocabulary needs to
+grow to carry cause, because cause determines policy.
+
+---
+
+**WHAT ALREADY EXISTS — build on it, do not rebuild it:**
+- `on_task_error` (`orchestrator_station.py:497`) is a **complete** handler: hard-STOPs the
+  pilot, resolves the run by subject key. **But `grep` over `mics_core` and `pi-mirror` finds
+  ZERO sends of `TASK_ERROR` — the Pi never emits it.** The receiver is built and wired and has
+  never been connected at the source. This is the cheapest first plan in the phase and it is a
+  Pi-side change, not a backend one.
+- `OrchestratorState._last_seen` + `_redis_touch`, refreshed on **every** message from a live
+  pilot (`state.py:18-46`) — a genuine liveness signal.
+- `_lease_reconcile_loop` → `api.reconcile_device_leases(heartbeats)` every 15 s — a working
+  liveness→backend pipeline already in production.
+- systemd already restarts the pilot process forever by design (`PI_TRIXIE_INSTALL.txt` STEP 7:
+  "it restarts forever rather than latching into failed; that is the 24/7 requirement"). The
+  process returns; **the run does not**. The gap is reconciliation on reconnect, not restart.
+
+**LANDMINE — `_run_watchdog` is DEAD CODE AND MUST STAY DEAD.** It sits in the same file, looks
+exactly like what this phase wants, and its thread-start is deliberately commented out. It keys
+off `active_run["started_at"]`, set once at `start_run()` and never refreshed, with an
+`elapsed > 30` threshold — enabling it would error-out **every** behavioural session longer than
+30 seconds. Its own docstring says so. Whoever plans this will find it and be tempted.
+
+---
+
+**OWNERSHIP SPLIT (decided in discussion, 2026-08-26):**
+- **Pi owns reporting** — what am I running, and did my task die.
+- **Orchestrator owns detection and actuation** — it already holds liveness and the ZMQ START
+  path. Building a second detector in the backend would duplicate this and be slower.
+- **Backend owns policy** — it holds the durable record (trials completed, graduation state, and
+  the future termination conditions), so only it can answer "should this resume, and from where".
+
+**IDEMPOTENCY IS REQUIRED, NOT OPTIONAL.** Under a network partition the pilot is alive while the
+orchestrator is blind. A naive re-START then double-starts a task that never stopped and corrupts
+trial counts. START must be keyed by `run_id` and the Pi must reject a START for a run it is
+already running.
+
+---
+
+**OPEN DECISION — resume vs restart. This is a scientific call, not an engineering one, and it
+must be settled before planning tasks.** If a run dies 40 minutes into a session and returns 3
+minutes later, is that one session or two? `run_progress` holds the trial counters, so resuming
+mid-protocol is technically feasible; whether the resulting data is one session is a question
+about the experiment. It determines whether this phase builds "resume" or "abandon and restart
+clean".
+
+**ALSO REQUIRED BY UNATTENDED OPERATION:**
+- **Restart budget with backoff.** VERIFIED in `deploy/mics-pilot.service`: the process already
+  restarts automatically — `Restart=always`, `RestartSec=5`, and `StartLimitIntervalSec=0` in
+  `[Unit]` to defeat systemd's default 5-starts-in-10s limit, which would otherwise latch the
+  unit into `failed` permanently. That is correct and must not be changed. **But it restarts the
+  PROCESS, not the RUN** (systemd has no concept of a run), and disabling the rate limit removes
+  the only built-in signal that something is chronically broken: a pilot crashing at startup now
+  restarts every 5 s, forever, silently. This phase must replace that lost signal at the
+  application layer — count restarts, escalate when the count is absurd. Do not "fix" it by
+  re-enabling the systemd limit.
+- **An alerting path** — nobody is watching at 3 a.m.; a run that gives up must reach a human.
+
+**Requirements**: TBD
+**Depends on:** Phase 32 — outputs must de-energise reliably BEFORE anything auto-restarts.
+Safe first, then automatic. *(Note for Phase 32, found in the same unit file: `KillSignal=SIGINT`
+with `TimeoutStopSec=20` means any output-safing handler runs ONLY on a clean exit within 20 s —
+past that systemd sends SIGKILL and no handler runs at all. A software fail-safe therefore cannot
+cover the hard cases, which argues for hardware pull-downs alongside it, not instead of it.)*
+**Validation:** must be exercised on RecordingBox (132.77.73.213) for all four failure modes —
+task exception, killed pilot process, Pi reboot, and network partition.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 33 to break down)
+
+## MICS-Link consumers: the DeepLabCut arc (Phases 34–35)
+
+Phases 34–35 are the **second consumer** of the Phase 18 `ExternalHardware` substrate, running
+parallel to and independent of the OpenEphys arc (26–28). Phase 18 completed 2026-08-09 and
+explicitly reserved both halves of this arc in its NOT-in-scope list: *"`mics-link` Python SDK
+package"* and *"DeepLabCut reference hw_lib + template + rig demo"*. Nothing in the substrate
+changes here — that is the point. If either phase finds itself editing
+`external_hardware_wire.py`'s envelope, the design has gone wrong.
+
+**Locked scope decisions (2026-08-26 session):**
+- **Transport is `router_bind` + our SDK.** The DLC machine dials INTO the Pi as a DEALER with
+  `identity = source_id`. This is the one role rig-proven end-to-end (runs 554/556, hand-driven
+  from a Mac). It keeps the DLC machine's address out of every `pilot_hardware_config` row, so a
+  DHCP or Wi-Fi change on the vision box cannot break a rig. **`sub_connect` was rejected for this
+  arc** despite matching the word "broadcast": it is the one Phase 18 role that remains
+  permanently UNPROVEN on hardware (unit-tested only), and adopting it here would make a new
+  feature carry an old risk.
+- **The wire carries declared per-keypoint scalars, not poses.** The envelope has no batched
+  frame — `SIG` is `{k, ts_src, seq, sig, v}`, one scalar per message
+  (`external_hardware_wire.py:26`). 12 keypoints × (x, y, likelihood) at 60 Hz is 2160 msg/s into
+  an ingress queue bounded at 256, against a proven soak of ~60 msg/s. **Adding a batched wire
+  kind was rejected** — it reopens the contract of a completed, rig-proven substrate. The sender
+  decimates instead, and the FDA reads ordinary view keys with zero substrate change.
+- **Keypoint signals are STATIC in the hardware lib's source, one lib version per trained model.**
+  They cannot come from per-pilot config: `ast_metadata.extlink` is extracted **statically** by the
+  backend AST extractor (EXTLINK-09), and EXTLINK-19's FDA-editor picker reads that metadata. A
+  config-driven signal set would be invisible to the picker, making the transitions unauthorable —
+  the exact authoring gap Phase 18 had to reopen itself to close on 2026-08-09. Versioning the
+  keypoint set alongside the model is also the honest mapping: the bodypart list *is* a property
+  of the trained model.
+- **Video stays outside the experimental system in v1.** No camera trigger, no frame-accurate
+  sync, no video capture by MICS. The vision box watches the cage and reports; nothing else.
+- **No latency claims anywhere in this arc.** `(ts_src, ts_pi_recv)` pairs are logged for later
+  co-registration and nothing is asserted about them. Clock-domain comparison belongs to Phase 28,
+  which measures both paths inside one recording — the same deferral Phase 18 made on 2026-08-09
+  when it dropped its "within 50 ms" criterion.
+
+**Open decision carried into planning — which Pi platform.** The extlink substrate exists in BOTH
+`~/pi-mirror` (old stack, Python 3.7.3, `msgpack==1.0.5` pinned by plan 18-04) and `~/mics_core`
+(Phase 31's Bookworm / Python 3.11 platform). Phase 18's rig proof ran on the old stack. These
+phases are written against **`mics_core`**; if the DLC rig turns out to be a pilot still on the old
+image, the `msgpack` pin and the Python-3.7 dialect constraints of `external_hardware_wire.py`
+apply and the SDK's minimum Python must be re-checked. **Settle this before planning Phase 35.**
+
+---
+
+### Phase 34: MICS-Link SDK Client Package
+
+**Goal:** An external computer that is not a Pi and knows nothing about MICS can push data into a
+running task's View / FDA framework in ten lines of Python. `pip install mics-link`, point it at a
+pilot's `listen_port` with the configured `source_id`, call `send_signal("left_paw_x", 0.7)` — and
+an FDA transition fires on the rig. One supported wire implementation on the sender side, replacing
+the hand-rolled copy in `tools/extlink_driver/extlink_wire.py`. No DeepLabCut and no trained model
+in this phase; its first real customer is Phase 35.
+
+**Requirements**: SDK-01 through SDK-13
+
+**Depends on:** Phase 18 (complete — the `ExternalHardware` substrate, the locked MessagePack
+envelope, `role: router_bind`, and the `ExtlinkDemo` fixture left standing on pilot 1). Nothing
+else. Independent of Phases 26–33.
+
+**Success criteria:**
+1. `pip install` of the built package succeeds on a machine that is not the dev host and has never
+   seen MICS, with `pyzmq` + `msgpack` as the only dependencies pulled in; `import mics_link` works
+   on Python 3.8+ on macOS, Windows and Linux.
+2. **Wire parity is enforced by a test, not by review.** A frozen golden-frame corpus is decoded by
+   `external_hardware_wire.py` and encoded by the SDK, byte-for-byte, for `SIG` / `EVT` / `HB` /
+   `ACK`, and `CMD` decodes in the SDK. Changing either side without the other fails a test.
+3. A ten-line script using only the public API drives a state change on the rig against the
+   existing `extlink_demo` task definition (task def 434, toolkit 100, module 62 / lib 177 / pilot
+   config 21 on pilot 1) — observed as a state change in ES, **with no latency asserted**.
+4. **Sends never block the caller.** A caller thread that sends into a saturated network continues
+   at full speed; the bounded queue drops the NEWEST, increments a counter the caller can read, and
+   surfaces the loss. A silent drop is a failure of this criterion.
+5. **Heartbeat keeps a quiet source alive.** A client that sends no signals for well over the Pi's
+   configured `stale_ms` keeps `<source_id>.alive` true, with the signals going stale per their own
+   declared policy — EXTLINK-07's split, observed from the sender side.
+6. **A Pi restart mid-session does not require restarting the sender.** The client reconnects on its
+   own, `seq` continuity is maintained or explicitly reset with a visible state-change callback, and
+   no exception ever reaches the caller's loop.
+7. `@link.command("...")` handlers receive an inbound `CMD`, run off the caller's hot path, and
+   reply `ACK` with the matching `cmd_id`; a handler that raises produces an error `ACK` and the
+   client keeps running.
+8. **Exactly one sender-side wire implementation exists.** `tools/extlink_driver/extlink_wire.py`
+   is deleted, `extlink_driver.py` imports the SDK, and the driver's CLI surface (interactive,
+   `--sweep`, `--rate`) and its existing tests are unchanged in behaviour.
+9. **The whole SDK is unit-testable with no socket and no Pi** — the dev host has neither a rig nor
+   a guaranteed `zmq`. The transport is behind a seam the tests substitute.
+10. **A replay entry point plays a recorded `(t, signal, value)` file at real time** (and at a scale
+    factor), which is what proves Phase 35 without a camera, a model, or an animal.
+11. **A README a non-MICS programmer can follow end to end** — install, what must already exist on
+    the rig, the exact `pilot_hardware_config.config` row the sender expects, a working sender, and
+    how to see the result in the FDA. Distribution is a deliverable, not an afterthought.
+12. **Soak from a non-Pi machine**: sustained sending at the rate the arc actually needs, for a real
+    session length, with the pilot staying up, the FDA still transitioning, drops reported rather
+    than silent, and ES ingestion keeping up. Pass/fail is observed on the rig side; no number is
+    printed that claims to be latency.
+
+**Files to change:**
+- `mics-backend/sdk/mics_link/` (new — the package: client, wire codec, bounded sender, heartbeat,
+  reconnect, command dispatch, replay. Deliberately NOT under `~/pi-mirror/` or `~/mics_core/`,
+  both of which are rsynced to a Pi)
+- `mics-backend/sdk/pyproject.toml` + `README.md` (new — build metadata and the researcher-facing doc)
+- `mics-backend/sdk/tests/` (new — socketless unit tests + the golden-frame parity corpus)
+- `mics-backend/tools/extlink_driver/extlink_driver.py` (edit — import the SDK)
+- `mics-backend/tools/extlink_driver/extlink_wire.py` (**delete** — superseded by the SDK)
+- `mics-backend/tools/extlink_driver/test_extlink_wire.py` (edit — retarget onto the SDK)
+- `~/mics_core/autopilot/autopilot/hardware/external_hardware_wire.py` (**read-only reference** — the
+  golden corpus is generated against it; this phase must not edit it)
+
+**NOT in scope:**
+- Stub generation from a hardware lib's declared `@signal`s, bootstrap-zip endpoints, and the
+  "Download SDK" GUI button — all three remain deferred from Phase 18.
+- `sub_connect` support in the SDK. The SDK is a DEALER that dials in; a foreign publisher needs no
+  SDK at all, it needs a `@decoder` in a hardware lib.
+- Any change to the wire envelope, the Pi ingress path, or any `ExternalHardware` behaviour.
+- Publishing to PyPI. Install is from the repo or a built wheel; a public package name is a
+  separate decision.
+- Latency or jitter measurement — Phase 28.
+
+**Verification posture:** The SDK and its tests are agent-driven (they run on the dev host, no Pi
+needed). The rig checkpoint is USER-RUN: the agent supplies commands, the user runs the sender from
+a non-Pi machine and reports what the FDA did. The agent does not run git on the Pi, does not
+start/stop the pilot process, and does not run Python on the Pi.
+
+**Standing dependency inherited from Phase 18's teardown decision:** the `ExtlinkDemo` fixture was
+deliberately left in place on pilot 1 rather than removed, and it requires a TCP echo listener on
+the dev host at `132.77.73.125:5597` to stay running — without it, `demo.alive` flips false after
+three egress-probe failures and the readiness gate times out. See `18-HARDWARE-VALIDATION.md` §3.
+⚠ That listener is a standalone throwaway script on `5597` — **not** the orchestrator, which lives
+on `MSGPORT 5560`. Restarting the orchestrator is not the remedy and would be a damaging misstep.
+
+**Golden-corpus reference, settled 2026-08-26 by direct user direction** (*"we are working on
+mics_core"*): canonical = `~/mics_core/autopilot/autopilot/hardware/external_hardware_wire.py`,
+with `~/pi-mirror/...` kept as a skip-if-absent secondary drift check (byte-identical as of
+2026-08-26). Pilot 1's own stack is stale-dated 2026-08-17 and is RECONFIRMED by the user as a
+precondition of the rig checkpoint, not assumed.
+
+**Plans:** 9 plans in 6 waves
+
+Plans:
+- [ ] 34-01-PLAN.md — Wave 1 — package skeleton, pure wire codec, golden-frame parity corpus, import hygiene (SDK-02, SDK-11)
+- [ ] 34-02-PLAN.md — Wave 2 — transport seam + identity lock, call-site dtype validation, bounded drop-NEWEST sender (SDK-03, SDK-04, SDK-06)
+- [ ] 34-03-PLAN.md — Wave 2 — pure heartbeat scheduler + pure reconnect state machine (SDK-05, SDK-07)
+- [ ] 34-04-PLAN.md — Wave 2 — inbound CMD dispatch + ACK, off the hot path, synthetic frames only (SDK-08)
+- [ ] 34-05-PLAN.md — Wave 3 — driver cutover: delete `extlink_wire.py`, retarget driver + tests (SDK-10)
+- [ ] 34-06-PLAN.md — Wave 3 — client assembly: one IO thread, monitor wiring, lifecycle/close, loopback smoke (SDK-07, SDK-09)
+- [ ] 34-07-PLAN.md — Wave 4 — replay entry point: CSV/JSONL, three timing modes, malformed rows counted (SDK-12)
+- [ ] 34-08-PLAN.md — Wave 5 — README + distribution: one-line install, wheel, counted ten-line example (SDK-01, SDK-13)
+- [ ] 34-09-PLAN.md — Wave 6 — **USER-RUN rig checkpoint** + evidence recording (SDK-01/03/04/05/06/07 rig, SDK-08 limitation)
+
+---
+
+### Phase 35: DeepLabCut Keypoint Likelihood Integration
+
+**Goal:** A DeepLabCut model already trained and running on a separate computer on the lab network,
+watching the experiment's video, pushes per-keypoint likelihoods to the Pi — and the task's state
+machine transitions on them. A researcher authors `dlc.nose_likelihood > 0.9` in the FDA editor's
+operand picker, exactly as they would author a lick or a GPIO edge. The vision box is not otherwise
+connected to the experimental system: MICS neither triggers the camera nor captures video.
+
+**Requirements**: DLC-01 through DLC-12
+
+**Depends on:** Phase 34 (the `mics-link` SDK and its replay driver — the DLC adapter is written
+against it, and replay is how this phase is proven without a camera). Phase 18 (the substrate).
+Transitively Phases 9 / 10 / 11 / 13 / 17 — the DLC lib is an ordinary versioned hardware lib and
+travels the ordinary hw_lib → hw_module → pilot-config → toolkit-dispatch → preflight pipeline.
+
+**Success criteria:**
+1. **A keypoint likelihood drives a state change on the rig, from a live model.** The trained model
+   runs on the vision box, watches an animal, and an FDA transition gated on a declared keypoint's
+   likelihood fires — observed as a state change in ES.
+2. **The transition is authored in the browser** (EXTLINK-19's path), not by hand-PUTing
+   `fda_json`: the editor's view-operand picker shows an option group for the DLC module containing
+   the declared keypoint signals with their dtypes, the definition saves with no 422, and it
+   round-trips without rendering as "(unknown)".
+3. **Occlusion reads as "not confident", never as a stuck value.** A keypoint that stops updating
+   returns its declared default (likelihood `0.0`) after `stale_after_ms`, not the last high value.
+   Verified by stopping the sender mid-run and observing the FDA respond. This is the safety-
+   critical semantic of the whole phase.
+4. **Liveness and tracking-loss are distinct and both gateable.** `dlc.alive` (the vision process is
+   reachable) is independent of a keypoint's staleness; an FDA can gate on either, and a DLC process
+   that is running but tracking nothing is distinguishable from one that has died.
+5. **The whole path is proven by replay before any animal is involved** — a recorded DLC output file
+   played at real time through the SDK's replay driver produces the same state sequence as the live
+   model. This is the regression test the phase leaves behind.
+6. **The declared keypoint set is visible everywhere it must be**: static in the lib source, picked
+   up by the AST extractor into `ast_metadata.extlink`, offered in the editor picker, and validated
+   at preflight against the target pilot's config.
+7. **Rate stays inside the proven envelope, and the achieved rate is reported.** The sender
+   decimates (deadband + per-signal Hz cap); the run reports how many messages it actually sent and
+   how many the bounded queues dropped. A drop is acceptable; a silent one is not.
+8. **A soak at the real frame rate for a real session length**: pilot up, FDA transitioning, drops
+   reported, ES keeping up.
+9. A malformed or unexpected frame from the vision box is dropped and counted; the pilot keeps
+   running with no traceback (EXTLINK-08, re-verified for this consumer).
+10. **A second DLC module on a second pilot does not cross-talk** — two `source_id`s, two tracker
+    prefixes, two sets of view keys, no interference.
+
+**Files to change:**
+- `mics-backend/api/seed_libs/` or an uploaded lib version (new — the `DLCKeypoints`
+  `ExternalHardware` subclass; delivery mechanism to be settled in planning, following Phase 26's
+  seeded-first-party-lib precedent)
+- `mics-backend/sdk/mics_link/` (extend — the DLC adapter: a `dlclive`-compatible Processor plus a
+  standalone loop, taking a pose array + bodypart list and pushing declared signals)
+- `mics-backend/tools/` (new — the lib-source generator: model bodypart list → hardware lib source,
+  so a new model does not mean hand-writing thirty decorated methods)
+- `pilot_hardware_config` row + `hardware_modules` row + toolkit + a `dlc_demo` task definition
+  (data, not code — created during the rig checkpoint)
+
+**NOT in scope:**
+- **Video into MICS.** No camera trigger, no frame-accurate sync, no capture, no storage, no
+  playback in the UI. The vision box owns the video.
+- Running DeepLabCut itself, training a model, or any inference code — the model is given.
+- A batched multi-signal wire frame. If the declared-keypoint + decimation approach proves
+  insufficient at a real frame rate, that is a Phase 18 amendment with its own contract tests, not
+  a quiet edit here.
+- Latency or jitter measurement — Phase 28.
+- `sub_connect` / a third-party DLC pipeline we do not control. The sender is ours.
+- Closed-loop actuation on pose beyond ordinary FDA transitions — no new action vocabulary.
+
+**Verification posture:** Backend and SDK edits are agent-driven. The rig checkpoint and the live
+model are USER-RUN: the agent supplies commands and the config rows, the user runs the vision box
+and the pilot and reports what happened. The agent does not run git on the Pi, does not start/stop
+the pilot process, and does not run Python on the Pi.
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 35 to break down)
+
 ---
 *Created: 2026-03-15*
-*Last updated: 2026-05-28 — Phase 17 added: free-form pilot hardware config CRUD (HW-08, HW-11)*
+*Last updated: 2026-08-26 — Phases 34-35 added: the DeepLabCut arc (MICS-Link SDK client package, then DLC keypoint-likelihood integration), the second consumer of Phase 18's ExternalHardware substrate. Both were reserved in Phase 18's NOT-in-scope list.*

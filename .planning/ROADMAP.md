@@ -39,7 +39,7 @@
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
 | 30 | 8/9 | In Progress|  | ○ Exit gate green 2026-08-10 (`--final` 0, zero manifest drift); publication + rig proof are USER-RUN (plan 09) |
 | 34 | MICS-Link SDK Client Package | `pip install mics-link` — the supported sender-side library: DEALER connect w/ identity, the locked MessagePack envelope, non-blocking bounded send, heartbeat, reconnect, inbound `@command`, replay driver. Retires the `extlink_driver` POC entirely (its hand-rolled wire copy included) | SDK-01–13 | ○ Pending — not yet planned |
-| 35 | DeepLabCut Keypoint Likelihood Integration | A trained DLC model on a separate vision box pushes per-keypoint likelihoods to the Pi; FDA transitions gate on them, authored in the editor's operand picker. Occlusion reads as likelihood 0, never a stuck value. **No video into MICS** | DLC-01–12 | ○ Pending — not yet planned |
+| 35 | DeepLabCut Keypoint Likelihood Integration | A trained DLC model on a separate vision box pushes per-keypoint likelihoods to the Pi; FDA transitions gate on them, authored in the editor's operand picker. Occlusion reads as likelihood 0, never a stuck value. **No video into MICS** | DLC-01–13 | ○ Pending — not yet planned |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. **Phases 34–35 (the DeepLabCut arc, added 2026-08-26) are the second consumer and run independently of 26–28** — both were reserved in Phase 18's own NOT-in-scope list, and neither changes the substrate. See `.planning/STABILIZATION_PLAN.md`.
 
@@ -1676,7 +1676,7 @@ machine transitions on them. A researcher authors `dlc.nose_likelihood > 0.9` in
 operand picker, exactly as they would author a lick or a GPIO edge. The vision box is not otherwise
 connected to the experimental system: MICS neither triggers the camera nor captures video.
 
-**Requirements**: DLC-01 through DLC-12
+**Requirements**: DLC-01 through DLC-13
 
 **Depends on:** Phase 34 (the `mics-link` SDK and its replay driver — the DLC adapter is written
 against it, and replay is how this phase is proven without a camera). Phase 18 (the substrate).
@@ -1691,6 +1691,15 @@ travels the ordinary hw_lib → hw_module → pilot-config → toolkit-dispatch 
    `fda_json`: the editor's view-operand picker shows an option group for the DLC module containing
    the declared keypoint signals with their dtypes, the definition saves with no 422, and it
    round-trips without rendering as "(unknown)".
+   > **This closes a standing debt, and it is the first time the picker is exercised at all.**
+   > Phase 18 recorded EXTLINK-19 with a ⚠ **SPLIT VERDICT** (`18-HARDWARE-VALIDATION.md` §5):
+   > runtime execution of a signal-gated transition ✅ PROVEN, but authoring one through the picker
+   > ⬛ UNPROVEN — task def 434's two transitions were authored **via the API by the coordinator,
+   > not the picker**, and plan 18-14's UI "was not clicked". Its own FDA description warned against
+   > exactly that substitution. Phase 34 does not exercise the picker either (its checkpoint reuses
+   > 434's existing transitions), so **the first real click happens here**. Budget for the
+   > possibility that it does not work: `buildViewOptions` was never observed enumerating dotted
+   > extlink keys against a live toolkit.
 3. **Occlusion reads as "not confident", never as a stuck value.** A keypoint that stops updating
    returns its declared default (likelihood `0.0`) after `stale_after_ms`, not the last high value.
    Verified by stopping the sender mid-run and observing the FDA respond. This is the safety-
@@ -1713,6 +1722,12 @@ travels the ordinary hw_lib → hw_module → pilot-config → toolkit-dispatch 
    running with no traceback (EXTLINK-08, re-verified for this consumer).
 10. **A second DLC module on a second pilot does not cross-talk** — two `source_id`s, two tracker
     prefixes, two sets of view keys, no interference.
+11. **Declaring the contract is as easy as using the SDK** (DLC-13). The path from a working sender
+    to an authored transition is a written, numbered runbook with every step named; a signal is
+    declared in exactly one place; the lib source is generated from a bodypart list rather than
+    hand-written; and the adapter wraps a pose pipeline the researcher already runs without asking
+    them to restructure it. If the runbook cannot be made short and linear, the obstacle is named
+    in writing rather than absorbed as folklore — **that finding is a deliverable, not a failure**.
 
 **Files to change:**
 - `mics-backend/api/seed_libs/` or an uploaded lib version (new — the `DLCKeypoints`
@@ -1724,6 +1739,9 @@ travels the ordinary hw_lib → hw_module → pilot-config → toolkit-dispatch 
   so a new model does not mean hand-writing thirty decorated methods)
 - `pilot_hardware_config` row + `hardware_modules` row + toolkit + a `dlc_demo` task definition
   (data, not code — created during the rig checkpoint)
+- A researcher-facing **runbook** (new — "my sender works" → "I authored a transition on my signal
+  in the browser", every step numbered; DLC-13(d)). Placement to be settled in planning; it is the
+  Pi-side counterpart to the SDK's own README (SDK-13)
 
 **NOT in scope:**
 - **Video into MICS.** No camera trigger, no frame-accurate sync, no capture, no storage, no

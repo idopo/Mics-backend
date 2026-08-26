@@ -119,17 +119,32 @@ Two consequences that bind the whole design:
   `pyzmq 27.1.0`; the rig is pinned to `msgpack==1.0.5` on Python 3.7. The corpus must be
   valid under both, and the SDK targets Python 3.8+ (SDK-01).
 
-### Driver cutover (SDK-10)
+### Driver retirement (SDK-10) — REVISED 2026-08-26, later the same day
 
-- `tools/extlink_driver/extlink_wire.py` is **deleted**; `extlink_driver.py` imports the SDK;
-  the CLI surface (interactive stdin, `--sweep`, `--rate`) and existing test behaviour are
-  unchanged.
-- **The driver's distribution story changes and the plan must handle it.** The driver
-  currently reaches laptops as a self-contained hand-copied bundle (an
-  `extlink_driver_mac.zip` sits at the repo root) with `extlink_wire.py` as a sibling module.
-  Once it imports `mics_link`, a laptop running the driver must have the SDK installed. This
-  is a real consequence of SDK-10, not an incidental detail — the driver's own docs need the
-  install line, and any refreshed zip must not silently reintroduce a second wire copy.
+> **This section originally specified a cutover** (delete `extlink_wire.py`, point
+> `extlink_driver.py` at the SDK, keep its CLI and tests behaviourally unchanged). In a later
+> session the same day the user scoped that work out: *"the laptop mac script was for the sake of
+> a proof of concept, no need to touch it now — we will test the actual sdk properly by doing the
+> dlc thing in phase 35."* SDK-10 and ROADMAP criterion 8 were amended to match. The cutover text
+> is preserved above this line only as history; the decision below is what binds.
+
+- **`tools/extlink_driver/` is deleted, not ported.** `extlink_wire.py`, `extlink_driver.py` and
+  `test_extlink_wire.py` are removed outright. There is no `extlink_cli.py` and no retargeted
+  driver. SDK-10 is satisfied by removal — exactly one sender-side wire implementation remains,
+  `sdk/src/mics_link/wire.py`.
+- **Two files are deliberately retained:** `extlink_demo_fda.json` (the rig fixture the 34-09
+  checkpoint runs against) and `README.md`, rewritten as a redirect to the SDK. The README is the
+  only written record outside the DB of the demo fixture's IDs — deleting it would break the rig
+  checkpoint that depends on those facts.
+- **The distribution question dissolves rather than being answered.** The driver reached laptops as
+  a hand-copied bundle (`extlink_driver_mac.zip` at the repo root) carrying `extlink_wire.py` as a
+  sibling. With the driver gone there is no second wire copy to keep in sync — which was the whole
+  concern. The zip is untracked and the user's; the phase only notes it as stale.
+- **What replaces it:** `sdk/examples/ten_line_sender.py` and `sdk/examples/rig_checkpoint_sender.py`
+  (plans 34-08/34-09) are the worked senders, and Phase 35's DLC adapter is the real integration
+  proof. A hand-driven sweep, if ever wanted again, is ~15 lines against the public API.
+- **Traceability note:** the driver was Phase 18's EXTLINK-20 deliverable, completed 2026-08-09.
+  EXTLINK-20 is marked SUPERSEDED in `REQUIREMENTS.md` — historically met, artifact since removed.
 
 ### Testing posture
 
@@ -192,8 +207,9 @@ Explicitly delegated by the user this session ("not sure — I just want…"):
 ### Integration Points
 - **New:** `mics-backend/sdk/` — package, `pyproject.toml`, `README.md`, `tests/`. Must NOT
   live under `~/pi-mirror/` or `~/mics_core/`, both rsynced to a Pi (SDK-01).
-- **Edited:** `tools/extlink_driver/extlink_driver.py` (imports the SDK),
-  `test_extlink_wire.py` (retargeted). **Deleted:** `extlink_wire.py`.
+- **Deleted:** `tools/extlink_driver/extlink_wire.py`, `extlink_driver.py`,
+  `test_extlink_wire.py`. **Retained:** `extlink_demo_fda.json` (unmodified) and `README.md`
+  (rewritten as a redirect, rig facts preserved).
 - **Read-only reference:** `external_hardware_wire.py` — golden corpus generated against it.
 - **Rig fixture (already standing on pilot 1):** task def 434, toolkit 100, module 62,
   hw lib 177, `pilot_hardware_config` row 21.

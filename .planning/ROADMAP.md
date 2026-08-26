@@ -38,7 +38,7 @@
 | 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
 | 30 | 8/9 | In Progress|  | ○ Exit gate green 2026-08-10 (`--final` 0, zero manifest drift); publication + rig proof are USER-RUN (plan 09) |
-| 34 | MICS-Link SDK Client Package | `pip install mics-link` — the supported sender-side library: DEALER connect w/ identity, the locked MessagePack envelope, non-blocking bounded send, heartbeat, reconnect, inbound `@command`, replay driver. Retires `extlink_driver`'s hand-rolled wire copy | SDK-01–13 | ○ Pending — not yet planned |
+| 34 | MICS-Link SDK Client Package | `pip install mics-link` — the supported sender-side library: DEALER connect w/ identity, the locked MessagePack envelope, non-blocking bounded send, heartbeat, reconnect, inbound `@command`, replay driver. Retires the `extlink_driver` POC entirely (its hand-rolled wire copy included) | SDK-01–13 | ○ Pending — not yet planned |
 | 35 | DeepLabCut Keypoint Likelihood Integration | A trained DLC model on a separate vision box pushes per-keypoint likelihoods to the Pi; FDA transitions gate on them, authored in the editor's operand picker. Occlusion reads as likelihood 0, never a stuck value. **No video into MICS** | DLC-01–12 | ○ Pending — not yet planned |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. **Phases 34–35 (the DeepLabCut arc, added 2026-08-26) are the second consumer and run independently of 26–28** — both were reserved in Phase 18's own NOT-in-scope list, and neither changes the substrate. See `.planning/STABILIZATION_PLAN.md`.
@@ -1592,9 +1592,12 @@ else. Independent of Phases 26–33.
 7. `@link.command("...")` handlers receive an inbound `CMD`, run off the caller's hot path, and
    reply `ACK` with the matching `cmd_id`; a handler that raises produces an error `ACK` and the
    client keeps running.
-8. **Exactly one sender-side wire implementation exists.** `tools/extlink_driver/extlink_wire.py`
-   is deleted, `extlink_driver.py` imports the SDK, and the driver's CLI surface (interactive,
-   `--sweep`, `--rate`) and its existing tests are unchanged in behaviour.
+8. **Exactly one sender-side wire implementation exists: `sdk/src/mics_link/wire.py`.**
+   `tools/extlink_driver/extlink_wire.py`, `extlink_driver.py` and `test_extlink_wire.py` are
+   **deleted outright** — the driver was a Phase 18 proof of concept and the SDK supersedes it.
+   `extlink_demo_fda.json` and a redirect `README.md` are retained as rig knowledge. **Amended
+   2026-08-26**: the original criterion required porting the driver onto the SDK with its CLI
+   unchanged; that work was scoped out, so this is satisfied by removal, not cutover.
 9. **The whole SDK is unit-testable with no socket and no Pi** — the dev host has neither a rig nor
    a guaranteed `zmq`. The transport is behind a seam the tests substitute.
 10. **A replay entry point plays a recorded `(t, signal, value)` file at real time** (and at a scale
@@ -1608,14 +1611,17 @@ else. Independent of Phases 26–33.
     printed that claims to be latency.
 
 **Files to change:**
-- `mics-backend/sdk/mics_link/` (new — the package: client, wire codec, bounded sender, heartbeat,
+- `mics-backend/sdk/src/mics_link/` (new — the package, `src/` layout: client, wire codec, bounded sender, heartbeat,
   reconnect, command dispatch, replay. Deliberately NOT under `~/pi-mirror/` or `~/mics_core/`,
   both of which are rsynced to a Pi)
 - `mics-backend/sdk/pyproject.toml` + `README.md` (new — build metadata and the researcher-facing doc)
 - `mics-backend/sdk/tests/` (new — socketless unit tests + the golden-frame parity corpus)
-- `mics-backend/tools/extlink_driver/extlink_driver.py` (edit — import the SDK)
-- `mics-backend/tools/extlink_driver/extlink_wire.py` (**delete** — superseded by the SDK)
-- `mics-backend/tools/extlink_driver/test_extlink_wire.py` (edit — retarget onto the SDK)
+- `mics-backend/tools/extlink_driver/extlink_wire.py` (**delete**)
+- `mics-backend/tools/extlink_driver/extlink_driver.py` (**delete** — POC, superseded by the SDK)
+- `mics-backend/tools/extlink_driver/test_extlink_wire.py` (**delete** — tests a deleted module)
+- `mics-backend/tools/extlink_driver/README.md` (edit — rewritten as a redirect to the SDK,
+  **preserving the rig-prerequisites facts** that the rig checkpoint cites)
+- `mics-backend/tools/extlink_driver/extlink_demo_fda.json` (**retained, unmodified** — rig fixture)
 - `~/mics_core/autopilot/autopilot/hardware/external_hardware_wire.py` (**read-only reference** — the
   golden corpus is generated against it; this phase must not edit it)
 

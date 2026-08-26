@@ -20,9 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from clock_check_accumulator import RunAccumulator
 
 
-def _doc(t_mono: int, ts_source: str, *, route: str = "record_event") -> dict:
+def _doc(t_mono: int, ts_source: str, *, route: str = "record_event",
+         level: int = 1, module: str = "Mid_LED") -> dict:
     """One event_log_v2 document, in the field shape run 573 actually wrote."""
-    event_data: dict = {"id": "Mid_LED"}
+    event_data: dict = {"id": module}
     if route == "record_event":
         event_data.update({"result": None, "func_name": "record_event"})
     else:
@@ -36,7 +37,8 @@ def _doc(t_mono: int, ts_source: str, *, route: str = "record_event") -> dict:
             "t_mono_ns": t_mono,
             "t_utc_ns": 1787584410976265902 + t_mono,
             "ts_source": ts_source,
-            "event": {"event_type": "gpio.Digital_Out", "event_data": event_data},
+            "event": {"event_type": "gpio.Digital_Out", "event_data": event_data,
+                      "level": level},
         }
     }
 
@@ -296,3 +298,44 @@ def test_single_clock_invariant_passes_when_both_paths_share_a_timeline():
     docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
     c8 = _feed(docs)["C8_single_clock"]
     assert c8["pass"] is True, c8
+
+
+# ---------------------------------------------------------------------------
+# C9 -- run 576's OTHER defect, and the one no check here was looking for.
+#
+# Every Mid_LED edge landed as two documents sharing one t_mono_ns, so C3 reported a
+# perfect pairing_rate of 1.0. The two documents carried OPPOSITE levels, on 253 of 253
+# edges: `@log_action` read `hardware_state` before anything had written this edge's
+# value to it, so on an alternating pulse it reported the inverse every time. Agreeing
+# about WHEN an edge happened and disagreeing about WHAT it was is not a paired edge.
+# ---------------------------------------------------------------------------
+
+
+def test_c9_passes_when_both_routes_report_the_same_level():
+    result = _feed(_run_573_shape())
+    check = result["C9_route_level_agreement"]
+    assert check["pass"] is True
+    assert check["groups_checked"] == 62
+    assert check["disagreements"] == 0
+
+
+def test_c9_catches_run_576s_inverted_log_action_route():
+    docs = []
+    t = 7_073_688_308_588
+    for i in range(10):
+        edge_t = t + i * 5_000_000_000
+        level = 1 - (i % 2)
+        docs.append(_doc(edge_t, "hardware", route="record_event", level=1 - level))
+        docs.append(_doc(edge_t, "hardware", route="pi_timestamp", level=level))
+    check = _feed(docs)["C9_route_level_agreement"]
+    assert check["pass"] is False
+    assert check["disagreements"] == 10
+    assert check["examples"], "a disagreement must name the edge it was found on"
+
+
+def test_c9_is_not_reported_as_pass_when_there_was_nothing_to_check():
+    """An unevaluated check reading PASS is how the 38 h error survived a green run."""
+    docs = [_doc(1_000_000_000 + i, "software") for i in range(5)]
+    check = _feed(docs)["C9_route_level_agreement"]
+    assert check["pass"] is None
+    assert check["groups_checked"] == 0

@@ -4,7 +4,7 @@
     python3 tools/es_clock_check.py --run-id N --session S [--host 132.77.73.217:9200]
 
 Isolates the run with `subject: bp_s<session>_r<run_id>` (trap 6 -- the index holds ~2.9 M
-documents from other work), sorts by `t_mono_ns`, and reports each check (C1-C7) as a named
+documents from other work), sorts by `t_mono_ns`, and reports each check (C1-C9) as a named
 PASS/FAIL/N-A with the numbers that produced it -- a verifier that prints only PASS is not
 evidence:
 
@@ -43,6 +43,13 @@ evidence:
                              the tick extender seeding its wrap count at attach rather than
                              carrying the wraps already elapsed since boot, and every other
                              check still passed.
+  C9 route level agreement -- the two documents describing ONE edge must agree about WHAT it
+                             was, not only about when. C3 proves they share a t_mono_ns; run
+                             576's Mid_LED paired perfectly (C3 1.0) while the two routes
+                             reported OPPOSITE levels on 253 of 253 edges, because @log_action
+                             read `hardware_state` before this edge's value had been written to
+                             it and an alternating pulse makes a stale read the exact inverse.
+                             Fails closed: no multi-document group means N/A, never PASS.
 
 READ-ONLY, always. This tool (and clock_check_es.py / clock_check_accumulator.py, which it
 imports) runs against the index holding every experiment this lab has recorded (and, if pointed

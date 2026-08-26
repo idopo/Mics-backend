@@ -66,6 +66,16 @@ class RunAccumulator:
         self._module_group_sizes: dict[str, list[int]] = {}
         self._record_event_modules: set[str] = set()
 
+        # C9 route-level agreement. C3 proves two documents describe ONE edge; nothing
+        # proved they described it the SAME WAY. Run 576's Mid_LED paired perfectly (C3
+        # 1.0) while the two routes reported OPPOSITE levels on 253 of 253 edges --
+        # @log_action read hardware_state before this edge's value had been written to it,
+        # so on an alternating pulse it reported the inverse every time.
+        self._group_levels: list[Any] = []
+        self.level_groups_checked = 0
+        self.level_disagreements = 0
+        self.level_examples: list[dict] = []
+
         # C4 provenance
         self.hardware_docs = 0
         self.software_docs = 0
@@ -128,8 +138,10 @@ class RunAccumulator:
                     self._group_key = t_mono
                     self._group_count = 0
                     self._group_module = module
+                    self._group_levels = []
                     self._record_drop_gap(t_mono)
                 self._group_count += 1
+                self._group_levels.append((source.get("event") or {}).get("level"))
                 if event_data.get("func_name") == "record_event":
                     self._group_has_record_event = True
                     if module is not None:
@@ -235,7 +247,25 @@ class RunAccumulator:
         if self._group_key is None:
             return
         self._module_group_sizes.setdefault(self._group_module, []).append(self._group_count)
+        self._judge_group_levels()
         self._group_has_record_event = False
+
+    def _judge_group_levels(self) -> None:
+        """C9, closed out with the group. Only a group that actually has two or more
+        documents can disagree; a single-route module has nothing to compare against."""
+        levels = [lvl for lvl in self._group_levels if lvl is not None]
+        if len(levels) < 2:
+            return
+        self.level_groups_checked += 1
+        if len(set(levels)) == 1:
+            return
+        self.level_disagreements += 1
+        if len(self.level_examples) < self.max_examples:
+            self.level_examples.append({
+                "t_mono_ns": self._group_key,
+                "module": self._group_module,
+                "levels": levels,
+            })
 
     # -- finalize / report -----------------------------------------------------
 
@@ -250,7 +280,21 @@ class RunAccumulator:
         checks["C6_clock_step"] = self._check_c6()
         checks["C7_drops"] = self._check_c7()
         checks["C8_single_clock"] = self._check_c8()
+        checks["C9_route_level_agreement"] = self._check_c9()
         return checks
+
+    def _check_c9(self) -> dict[str, Any]:
+        """Both documents for one edge must say the same thing about it.
+
+        Fail-closed like C5: with no multi-document group there was nothing to compare,
+        and an unevaluated check must never read as PASS.
+        """
+        return {
+            "pass": (self.level_disagreements == 0) if self.level_groups_checked else None,
+            "groups_checked": self.level_groups_checked,
+            "disagreements": self.level_disagreements,
+            "examples": self.level_examples,
+        }
 
     def _check_c1(self) -> dict[str, Any]:
         return {

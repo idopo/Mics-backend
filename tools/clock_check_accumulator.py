@@ -10,6 +10,17 @@ from typing import Any
 
 from clock_check_es import NS_PER_TICK_WRAP, PLAUSIBILITY_WINDOW_S, get_nested, has_suffix_field, parse_pi_timestamp
 
+GROUP_WINDOW_NS = 2_000_000_000
+"""How far past an edge the stream must move before that edge's group is closed, in ns.
+
+Bounded on both sides, and both matter. The gap it has to span is the trigger-queue
+latency -- the trigger route's payload timestamp is a read taken when the message came
+off the queue, so its document sorts that far after the record_event document for the
+same edge. That is milliseconds; 2 s is ~3 orders of magnitude of headroom. And it is far
+below the shortest inter-trial interval on this rig, so a window can never swallow two
+edges into one group. Memory is bounded by how many edges fall inside 2 s, not by the run.
+"""
+
 
 class RunAccumulator:
     """One forward pass, O(1) (or small-bounded) memory per check -- never holds the whole run."""
@@ -47,12 +58,15 @@ class RunAccumulator:
         self._domain_min: dict[str, int] = {}
         self._domain_max: dict[str, int] = {}
 
-        # C3 cross-route pairing -- docs sorted by t_mono_ns, so same-value docs are contiguous;
-        # finalize the previous group the instant the value changes. O(1) memory.
-        self._group_key: int | None = None
-        self._group_count = 0
-        self._group_module: str | None = None
-        self._group_has_record_event = False
+        # C3 cross-route pairing. The two documents for one edge NO LONGER share a
+        # t_mono_ns and therefore no longer sort adjacent: since 2026-08-26 the trigger
+        # route's payload timestamp is the QUEUE-RECEIPT read and only its
+        # event.event_data.pi_timestamp_mono_ns is the edge. Grouping on the ES sort key
+        # would pair nothing at all. Groups are keyed on the EDGE and held open in a
+        # window that closes once the stream's t_mono_ns has moved GROUP_WINDOW_NS past
+        # them -- still bounded memory, because the queue latency is milliseconds and the
+        # window is seconds.
+        self._open_groups: dict[int, dict] = {}
         self.pair_groups_total = 0
         self.pair_groups_matched = 0  # groups where exactly 2 docs share the t_mono_ns
         # C3 is a PER-MODULE claim. The two routes exist because record=True registers a
@@ -71,7 +85,6 @@ class RunAccumulator:
         # 1.0) while the two routes reported OPPOSITE levels on 253 of 253 edges --
         # @log_action read hardware_state before this edge's value had been written to it,
         # so on an alternating pulse it reported the inverse every time.
-        self._group_levels: list[Any] = []
         self.level_groups_checked = 0
         self.level_disagreements = 0
         self.level_examples: list[dict] = []
@@ -92,6 +105,17 @@ class RunAccumulator:
         self.step_time_utc = step_time_utc
         self.step_window = timedelta(seconds=step_window_s) if step_time_utc else None
         self._step_buffer: list[dict] = []  # only docs within the window -- small by construction
+
+        # C10 trigger-queue latency. The trigger route carries TWO instants on purpose --
+        # the edge in event_data, and its own payload timestamp taken when the message
+        # came off the trigger queue. Their difference is the queue latency, which is the
+        # reason that route carries both, and it cannot be negative.
+        self.latency_measured = 0
+        self.latency_negative = 0
+        self.latency_min_ns: int | None = None
+        self.latency_max_ns: int | None = None
+        self._latency_sum_ns = 0
+        self.latency_examples: list[dict] = []
 
         # C7 drops against the commanded pulse period
         self.pulse_period_ns = int(pulse_period_s * 1e9) if pulse_period_s else None
@@ -121,36 +145,20 @@ class RunAccumulator:
         if isinstance(t_mono, (int, float)):
             t_mono = int(t_mono)
             self._update_monotonic_and_wrap(t_mono, ts_source)
-            # C3/C7 group HARDWARE documents only. Both checks are claims about a commanded
-            # hardware edge: C3 that one edge dispatches down two routes sharing a t_mono_ns,
-            # C7 that no edge went missing. A software document is single-route by construction
-            # and is not a pulse edge, so counting it here made C3's denominator the whole run.
-            # Run 573 (the first real rig run) is the regression: 62 hardware edges, every one
-            # perfectly paired, reported as pairing_rate 0.197 FAIL because the 252 software
-            # documents each formed an unpairable singleton group.
-            # C1 above deliberately still spans EVERY document -- a backward jump in a software
-            # document is just as much a clock defect.
-            if ts_source == "hardware":
-                event_data = (source.get("event") or {}).get("event_data") or {}
-                module = event_data.get("id")
-                if self._group_key != t_mono:
-                    self._finalize_pair_group()
-                    self._group_key = t_mono
-                    self._group_count = 0
-                    self._group_module = module
-                    self._group_levels = []
-                    self._record_drop_gap(t_mono)
-                self._group_count += 1
-                self._group_levels.append((source.get("event") or {}).get("level"))
-                if event_data.get("func_name") == "record_event":
-                    self._group_has_record_event = True
-                    if module is not None:
-                        self._record_event_modules.add(module)
-        elif ts_source == "hardware" and self._group_key is not None:
-            # A hardware doc with no t_mono_ns closes out whatever group was open
-            # (sort puts these last).
-            self._finalize_pair_group()
-            self._group_key = None
+            # C3/C7/C9/C10 are claims about a commanded hardware EDGE: C3 that one edge
+            # dispatches down two routes, C7 that no edge went missing, C9 that the two
+            # routes describe it the same way, C10 that the trigger route's second instant
+            # is a plausible queue receipt. A document with no edge behind it is not a
+            # pulse edge and must not be counted -- run 573 is the regression: 62 hardware
+            # edges, every one perfectly paired, reported as pairing_rate 0.197 FAIL
+            # because 252 software documents each formed an unpairable singleton group.
+            # C1 above deliberately still spans EVERY document -- a backward jump in a
+            # software document is just as much a clock defect.
+            self._record_queue_latency(source, t_mono)
+            edge_ns = self._edge_instant(source, t_mono, ts_source)
+            if edge_ns is not None:
+                self._add_to_edge_group(source, edge_ns)
+                self._close_groups_before(t_mono - GROUP_WINDOW_NS)
 
         self._update_provenance(source, ts_source)
         at_ts = self._update_plausibility_window(source, ts_source)
@@ -228,6 +236,8 @@ class RunAccumulator:
             })
 
     def _record_drop_gap(self, t_mono: int) -> None:
+        """Called with the EDGE instant, and once per edge, so the gap it measures is
+        edge-to-edge rather than document-to-document."""
         if not self.pulse_period_ns:
             return
         if self._prev_edge_group_t_mono_ns is not None:
@@ -243,17 +253,55 @@ class RunAccumulator:
                     })
         self._prev_edge_group_t_mono_ns = t_mono
 
-    def _finalize_pair_group(self) -> None:
-        if self._group_key is None:
-            return
-        self._module_group_sizes.setdefault(self._group_module, []).append(self._group_count)
-        self._judge_group_levels()
-        self._group_has_record_event = False
+    def _edge_instant(self, source: dict, t_mono: int, ts_source: Any) -> int | None:
+        """WHEN THE LEVEL CHANGED, from whichever field this route puts it in, or None.
 
-    def _judge_group_levels(self) -> None:
+        The trigger route puts it in ``event.event_data.pi_timestamp_mono_ns`` and uses
+        its payload timestamp for the queue receipt instead. The ``@log_action`` route
+        dispatches from inside the notify thread, so its payload timestamp IS the edge.
+        Anything else -- a command, a tracker, a state transition -- has no edge.
+        """
+        edge = get_nested(source, "event.event_data.pi_timestamp_mono_ns")
+        if isinstance(edge, (int, float)):
+            return int(edge)
+        return t_mono if ts_source == "hardware" else None
+
+    def _add_to_edge_group(self, source: dict, edge_ns: int) -> None:
+        event = source.get("event") or {}
+        event_data = event.get("event_data") or {}
+        module = event_data.get("id")
+        group = self._open_groups.get(edge_ns)
+        if group is None:
+            group = {"count": 0, "module": module, "levels": []}
+            self._open_groups[edge_ns] = group
+            self._record_drop_gap(edge_ns)
+        group["count"] += 1
+        group["levels"].append(event.get("level"))
+        if group["module"] is None:
+            group["module"] = module
+        if event_data.get("func_name") == "record_event" and module is not None:
+            self._record_event_modules.add(module)
+
+    def _close_groups_before(self, cutoff_ns: int) -> None:
+        """Close every group the stream has moved GROUP_WINDOW_NS past. In EDGE order, so
+        C7's gap sequence stays a sequence."""
+        stale = sorted(key for key in self._open_groups if key < cutoff_ns)
+        for key in stale:
+            self._close_group(key, self._open_groups.pop(key))
+
+    def _close_all_groups(self) -> None:
+        for key in sorted(self._open_groups):
+            self._close_group(key, self._open_groups[key])
+        self._open_groups.clear()
+
+    def _close_group(self, edge_ns: int, group: dict) -> None:
+        self._module_group_sizes.setdefault(group["module"], []).append(group["count"])
+        self._judge_group_levels(edge_ns, group)
+
+    def _judge_group_levels(self, edge_ns: int, group: dict) -> None:
         """C9, closed out with the group. Only a group that actually has two or more
         documents can disagree; a single-route module has nothing to compare against."""
-        levels = [lvl for lvl in self._group_levels if lvl is not None]
+        levels = [lvl for lvl in group["levels"] if lvl is not None]
         if len(levels) < 2:
             return
         self.level_groups_checked += 1
@@ -262,15 +310,37 @@ class RunAccumulator:
         self.level_disagreements += 1
         if len(self.level_examples) < self.max_examples:
             self.level_examples.append({
-                "t_mono_ns": self._group_key,
-                "module": self._group_module,
+                "t_mono_ns": edge_ns,
+                "module": group["module"],
                 "levels": levels,
             })
+
+    def _record_queue_latency(self, source: dict, t_mono: int) -> None:
+        """C10. Only the trigger route holds two instants, so only it can be measured."""
+        edge = get_nested(source, "event.event_data.pi_timestamp_mono_ns")
+        if not isinstance(edge, (int, float)):
+            return
+        latency = t_mono - int(edge)
+        self.latency_measured += 1
+        self._latency_sum_ns += latency
+        if self.latency_min_ns is None or latency < self.latency_min_ns:
+            self.latency_min_ns = latency
+        if self.latency_max_ns is None or latency > self.latency_max_ns:
+            self.latency_max_ns = latency
+        if latency < 0:
+            self.latency_negative += 1
+            if len(self.latency_examples) < self.max_examples:
+                self.latency_examples.append({
+                    "pi_timestamp_mono_ns": int(edge),
+                    "t_mono_ns": t_mono,
+                    "latency_ns": latency,
+                    "module": get_nested(source, "event.event_data.id"),
+                })
 
     # -- finalize / report -----------------------------------------------------
 
     def finalize(self) -> dict[str, Any]:
-        self._finalize_pair_group()
+        self._close_all_groups()
         checks: dict[str, Any] = {}
         checks["C1_monotonic"] = self._check_c1()
         checks["C2_wrap_crossings"] = self._check_c2()
@@ -281,7 +351,37 @@ class RunAccumulator:
         checks["C7_drops"] = self._check_c7()
         checks["C8_single_clock"] = self._check_c8()
         checks["C9_route_level_agreement"] = self._check_c9()
+        checks["C10_trigger_queue_latency"] = self._check_c10()
         return checks
+
+    def _check_c10(self) -> dict[str, Any]:
+        """The trigger route's second instant must be a plausible queue receipt.
+
+        `t_mono_ns - event_data.pi_timestamp_mono_ns` is the time between the level
+        changing and execute_trigger dequeuing the message. It cannot be negative -- an
+        edge cannot be processed before it happened -- and a negative reading means the
+        two fields are no longer on one clock. The distribution is REPORTED, not gated:
+        this run's own numbers are what a ceiling would have to be derived from, and a
+        threshold invented here would be a guess.
+
+        Fails closed like C5 and C9: nothing measured means N/A, never PASS.
+        """
+        mean = (self._latency_sum_ns / self.latency_measured) if self.latency_measured else None
+        # Reported separately because it is not a clock defect, it is a DEPLOY signal: a
+        # run where every latency is exactly 0 is a run whose trigger route still passes
+        # the edge as its own payload timestamp, i.e. the Pi is on pre-2026-08-26 code.
+        # Run 576 reads 253 measured / min 0 / max 0.
+        all_zero = bool(self.latency_measured) and self.latency_min_ns == 0 and self.latency_max_ns == 0
+        return {
+            "pass": (self.latency_negative == 0) if self.latency_measured else None,
+            "measured": self.latency_measured,
+            "negative": self.latency_negative,
+            "min_ns": self.latency_min_ns,
+            "mean_ns": mean,
+            "max_ns": self.latency_max_ns,
+            "all_zero_the_two_instants_have_collapsed": all_zero,
+            "examples": self.latency_examples,
+        }
 
     def _check_c9(self) -> dict[str, Any]:
         """Both documents for one edge must say the same thing about it.

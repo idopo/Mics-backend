@@ -20,23 +20,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from clock_check_accumulator import RunAccumulator
 
 
+# The trigger route's payload timestamp is the QUEUE-RECEIPT read, not the edge, so the
+# two documents for one edge no longer share a t_mono_ns and no longer sort adjacent.
+DEFAULT_QUEUE_LATENCY_NS = 380_000
+
+
 def _doc(t_mono: int, ts_source: str, *, route: str = "record_event",
-         level: int = 1, module: str = "Mid_LED") -> dict:
-    """One event_log_v2 document, in the field shape run 573 actually wrote."""
+         level: int = 1, module: str = "Mid_LED",
+         queue_latency_ns: int = DEFAULT_QUEUE_LATENCY_NS) -> dict:
+    """One event_log_v2 document, in the field shape the rig writes.
+
+    `t_mono` is the EDGE for every caller. For the trigger route the emitted payload
+    timestamp is `t_mono + queue_latency_ns` and its ts_source is forced to `software`,
+    because that read is the dispatcher's own -- which is the whole point of that route
+    carrying two instants.
+    """
     event_data: dict = {"id": module}
+    payload_t_mono = t_mono
+    payload_source = ts_source
     if route == "record_event":
         event_data.update({"result": None, "func_name": "record_event"})
     else:
         event_data.update({
             "pi_timestamp": "2026-08-24T18:13:30.976265+03:00",
             "pi_timestamp_mono_ns": t_mono,
-            "pi_timestamp_source": "hardware",
+            "pi_timestamp_source": ts_source,
         })
+        payload_t_mono = t_mono + queue_latency_ns
+        payload_source = "software"
     return {
         "_source": {
-            "t_mono_ns": t_mono,
-            "t_utc_ns": 1787584410976265902 + t_mono,
-            "ts_source": ts_source,
+            "t_mono_ns": payload_t_mono,
+            "t_utc_ns": 1787584410976265902 + payload_t_mono,
+            "ts_source": payload_source,
             "event": {"event_type": "gpio.Digital_Out", "event_data": event_data,
                       "level": level},
         }
@@ -54,7 +70,7 @@ def _run_573_shape(n_edges: int = 62, n_software: int = 252) -> list[dict]:
     # software documents each carry their own distinct t_mono_ns
     for j in range(n_software):
         docs.append(_doc(t + 500_000_000 + j * 7_000_000, "software"))
-    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])   # iter_run_documents' own sort
     return docs
 
 
@@ -111,10 +127,15 @@ def test_c1_still_sees_every_document():
     assert c1["pass"] is None
 
 
-def test_c4_provenance_counts_are_unchanged():
+def test_c4_counts_the_trigger_routes_payload_read_as_the_software_read_it_is():
+    """62 record_event documents are hardware-stamped -- their payload timestamp IS the
+    edge. The 62 trigger-route documents are software-stamped, because their payload
+    timestamp is the queue-receipt read; the edge they also carry keeps its own
+    provenance in `pi_timestamp_source`. Before 2026-08-26 both were hardware (124/252),
+    which is what claiming one instant twice looks like in a provenance count."""
     c4 = _feed(_run_573_shape())["C4_provenance"]
-    assert c4["hardware_docs"] == 124
-    assert c4["software_docs"] == 252
+    assert c4["hardware_docs"] == 62
+    assert c4["software_docs"] == 252 + 62
     assert c4["other_ts_source_docs"] == 0
     assert c4["hardware_without_mono_field"] == 0
 
@@ -129,15 +150,18 @@ def test_c7_drop_gaps_measure_hardware_edges_only():
     # Drop two CONSECUTIVE edges -> a 3 s gap at a 1 s period. Two are needed, not one:
     # a single dropped edge leaves exactly 2 x period, and the check is `> 2x`, which
     # deliberately excludes the boundary so ordinary jitter cannot false-positive.
-    edge_ts = sorted({
-        d["_source"]["t_mono_ns"] for d in docs if d["_source"]["ts_source"] == "hardware"
-    })
+    # BOTH documents for the victim edge have to go. They no longer share a t_mono_ns --
+    # only route a's payload timestamp is the edge -- so the edge each document belongs
+    # to is the thing to select on, exactly as the accumulator now groups on it.
+    def edge_of(doc):
+        data = doc["_source"]["event"]["event_data"]
+        if "pi_timestamp_mono_ns" in data:
+            return data["pi_timestamp_mono_ns"]
+        return doc["_source"]["t_mono_ns"] if doc["_source"]["ts_source"] == "hardware" else None
+
+    edge_ts = sorted({e for e in (edge_of(d) for d in docs) if e is not None})
     victims = set(edge_ts[len(edge_ts) // 2:][:2])
-    thinned = [
-        d for d in docs
-        if not (d["_source"]["ts_source"] == "hardware"
-                and d["_source"]["t_mono_ns"] in victims)
-    ]
+    thinned = [d for d in docs if edge_of(d) not in victims]
     c7_gap = _feed(thinned, pulse_period_s=1.0)["C7_drops"]
     assert c7_gap["gaps_over_2x_period"] == 1, (
         "the 252 software documents must not close the gap left by the missing edges"
@@ -178,7 +202,7 @@ def _run_574_shape(n_pulse=11, n_touch=40):
         docs.append(_hw_doc(et, "Mid_LED", "pi_timestamp"))
     for j in range(n_touch):                      # TOUCH_INT: record=False -> ONE route
         docs.append(_hw_doc(t + 250_000_000 + j * 200_000_000, "TOUCH_INT", "pi_timestamp"))
-    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])   # iter_run_documents' own sort
     return docs
 
 
@@ -250,7 +274,7 @@ def _run_576_shape(n: int = 20) -> list[dict]:
                                pi_timestamp="2026-08-24T19:07:25.367799+03:00"))
         docs.append(_dated_doc(RUN_576_SW_MONO + i * 5_000_000_000, "software",
                                "2026-08-26T09:18:02.932809+03:00"))
-    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])   # iter_run_documents' own sort
     return docs
 
 
@@ -339,3 +363,83 @@ def test_c9_is_not_reported_as_pass_when_there_was_nothing_to_check():
     check = _feed(docs)["C9_route_level_agreement"]
     assert check["pass"] is None
     assert check["groups_checked"] == 0
+
+
+# ---------------------------------------------------------------------------
+# C10 -- the trigger route's two instants, 2026-08-26.
+#
+# `event_data.pi_timestamp_mono_ns` is when the level changed; the payload's own
+# `t_mono_ns` is when the message came off the trigger queue. Their difference is the
+# queue latency, and it is the reason that route carries both. It cannot be negative:
+# an edge cannot be dequeued before it happened.
+#
+# Note what this also proves about C3/C9: those two documents no longer share a
+# t_mono_ns, so grouping on the sort key alone would pair nothing at all.
+# ---------------------------------------------------------------------------
+
+
+def test_c10_measures_the_trigger_queue_latency():
+    check = _feed(_run_573_shape())["C10_trigger_queue_latency"]
+    assert check["pass"] is True
+    assert check["measured"] == 62
+    assert check["negative"] == 0
+    assert check["min_ns"] == check["max_ns"] == DEFAULT_QUEUE_LATENCY_NS
+
+
+def test_c10_fails_on_a_dequeue_that_precedes_its_own_edge():
+    docs = _run_573_shape(n_edges=4, n_software=0)
+    docs += [_doc(3_839_296_775_883 + 99_000_000_000, "hardware",
+                  route="pi_timestamp", queue_latency_ns=-5_000_000)]
+    check = _feed(docs)["C10_trigger_queue_latency"]
+    assert check["pass"] is False
+    assert check["negative"] == 1
+    assert check["examples"]
+
+
+def test_c10_names_a_run_whose_two_instants_have_collapsed_into_one():
+    """Run 576's shape and the signature of a Pi still on pre-2026-08-26 code: both
+    timestamp fields hold the edge, so every latency reads exactly 0. Not a clock defect
+    and not a FAIL -- a deploy signal, and it must be visible rather than inferred."""
+    docs = _run_573_shape(n_edges=8, n_software=0)
+    docs = [d for d in docs
+            if "pi_timestamp_mono_ns" not in d["_source"]["event"]["event_data"]] + [
+        _doc(3_839_296_775_883 + i * 1_000_000_000, "hardware",
+             route="pi_timestamp", queue_latency_ns=0) for i in range(8)]
+    check = _feed(docs)["C10_trigger_queue_latency"]
+    assert check["pass"] is True
+    assert check["all_zero_the_two_instants_have_collapsed"] is True
+
+
+def test_c10_does_not_cry_collapse_on_a_healthy_run():
+    check = _feed(_run_573_shape())["C10_trigger_queue_latency"]
+    assert check["all_zero_the_two_instants_have_collapsed"] is False
+
+
+def test_c10_is_not_reported_as_pass_when_there_was_nothing_to_measure():
+    docs = [_doc(1_000_000_000 + i, "software") for i in range(5)]
+    check = _feed(docs)["C10_trigger_queue_latency"]
+    assert check["pass"] is None
+    assert check["measured"] == 0
+
+
+def test_c3_still_pairs_when_the_two_routes_do_not_share_a_t_mono_ns():
+    """The regression the two-instant change would otherwise cause: grouping on the ES
+    sort key pairs nothing, because only route a's t_mono_ns is the edge."""
+    result = _feed(_run_573_shape())
+    assert result["C3_cross_route_pairing"]["pass"] is True
+    assert result["C3_cross_route_pairing"]["groups_matched"] == 62
+    assert result["C9_route_level_agreement"]["groups_checked"] == 62
+
+
+def test_c9_still_catches_an_inversion_across_the_latency_gap():
+    docs = []
+    t = 7_073_688_308_588
+    for i in range(10):
+        edge_t = t + i * 5_000_000_000
+        level = 1 - (i % 2)
+        docs.append(_doc(edge_t, "hardware", route="record_event", level=1 - level))
+        docs.append(_doc(edge_t, "hardware", route="pi_timestamp", level=level))
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    check = _feed(docs)["C9_route_level_agreement"]
+    assert check["pass"] is False
+    assert check["disagreements"] == 10

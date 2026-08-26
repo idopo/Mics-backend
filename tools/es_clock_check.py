@@ -4,7 +4,7 @@
     python3 tools/es_clock_check.py --run-id N --session S [--host 132.77.73.217:9200]
 
 Isolates the run with `subject: bp_s<session>_r<run_id>` (trap 6 -- the index holds ~2.9 M
-documents from other work), sorts by `t_mono_ns`, and reports each check (C1-C9) as a named
+documents from other work), sorts by `t_mono_ns`, and reports each check (C1-C10) as a named
 PASS/FAIL/N-A with the numbers that produced it -- a verifier that prints only PASS is not
 evidence:
 
@@ -20,8 +20,15 @@ evidence:
                              31.9997 wraps of hardware/software skew -- the defect, read as
                              evidence of a healthy soak. `--min-wrap-crossings 3` enforces a
                              floor; otherwise informational.
-  C3 cross-route pairing -- every Mid_LED edge should land as exactly two documents sharing
-                             one t_mono_ns (the logging_utils.py:97 and task.py:283 routes).
+  C3 cross-route pairing -- every Mid_LED edge should land as exactly two documents (the
+                             logging_utils.py:97 and task.py:283 routes). Grouped on the
+                             EDGE, which the two routes put in DIFFERENT fields: route a
+                             dispatches from inside the notify thread so its payload
+                             `t_mono_ns` is the edge, while route b runs on the trigger
+                             worker and puts the edge in
+                             `event.event_data.pi_timestamp_mono_ns`, keeping its payload
+                             timestamp for the queue receipt (see C10). Grouping on the
+                             ES sort key alone would therefore pair nothing.
   C4 provenance           -- hardware docs carry ts_source=hardware AND a *_mono_ns field;
                              software/tracker docs carry ts_source=software.
   C5 plausibility         -- event.event_data.pi_timestamp parses inside the run's wall-clock
@@ -50,6 +57,17 @@ evidence:
                              read `hardware_state` before this edge's value had been written to
                              it and an alternating pulse makes a stale read the exact inverse.
                              Fails closed: no multi-document group means N/A, never PASS.
+  C10 trigger queue latency -- `t_mono_ns - event.event_data.pi_timestamp_mono_ns` on the
+                             trigger route: the time between the level changing and
+                             execute_trigger dequeuing the message. That route carries two
+                             instants precisely so this is measurable. It cannot be
+                             negative -- an edge cannot be processed before it happened --
+                             and a negative reading means the two fields are no longer on
+                             one clock. Run 576 could not be measured at all: both fields
+                             held the edge, so every latency read exactly 0. The
+                             distribution is REPORTED, not gated; a ceiling would have to
+                             be derived from these numbers rather than guessed. Fails
+                             closed: nothing measured means N/A, never PASS.
 
 READ-ONLY, always. This tool (and clock_check_es.py / clock_check_accumulator.py, which it
 imports) runs against the index holding every experiment this lab has recorded (and, if pointed

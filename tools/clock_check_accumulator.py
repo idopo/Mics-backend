@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from clock_check_es import NS_PER_TICK_WRAP, PLAUSIBILITY_WINDOW_S, get_nested, has_suffix_field, parse_pi_timestamp
+from clock_check_step import StepDetector
 
 GROUP_WINDOW_NS = 2_000_000_000
 """How far past an edge the stream must move before that edge's group is closed, in ns.
@@ -101,10 +102,14 @@ class RunAccumulator:
         self._at_ts_max: datetime | None = None
         self._pi_ts_buffer: list[tuple[Any, Any]] = []  # (parsed pi_timestamp, raw value)
 
-        # C6 clock step (only populated when step_time_utc given -- bounded window buffer)
+        # C6 clock step. Detected from the epoch-offset series (t_utc_ns - t_mono_ns),
+        # which is flat to within chrony's slew and moves only at a step -- so the step
+        # locates itself and --step-time-utc is a cross-check rather than the input the
+        # whole check is built from. See clock_check_step.py for the three defects in the
+        # previous window-and-string-compare implementation that this replaces.
         self.step_time_utc = step_time_utc
-        self.step_window = timedelta(seconds=step_window_s) if step_time_utc else None
-        self._step_buffer: list[dict] = []  # only docs within the window -- small by construction
+        self._step = StepDetector(self.pulse_period_ns_for_step(pulse_period_s),
+                                  step_time_utc, step_window_s, max_examples)
 
         # C10 trigger-queue latency. The trigger route carries TWO instants on purpose --
         # the edge in event_data, and its own payload timestamp taken when the message
@@ -124,6 +129,10 @@ class RunAccumulator:
         self.gap_examples: list[dict] = []
 
         self.max_examples = max_examples
+
+    @staticmethod
+    def pulse_period_ns_for_step(pulse_period_s: float | None) -> int | None:
+        return int(pulse_period_s * 1e9) if pulse_period_s else None
 
     # -- per-document update -------------------------------------------------
 
@@ -161,8 +170,8 @@ class RunAccumulator:
                 self._close_groups_before(t_mono - GROUP_WINDOW_NS)
 
         self._update_provenance(source, ts_source)
-        at_ts = self._update_plausibility_window(source, ts_source)
-        self._buffer_step_window(source, t_mono, at_ts)
+        self._update_plausibility_window(source, ts_source)
+        self._step.add(source)
 
     def _update_monotonic_and_wrap(self, t_mono: int, ts_source: Any = None) -> None:
         self.docs_with_t_mono_ns += 1
@@ -224,16 +233,6 @@ class RunAccumulator:
             if len(self._pi_ts_buffer) < 200_000:
                 self._pi_ts_buffer.append((parse_pi_timestamp(pi_ts_raw), pi_ts_raw))
         return at_ts
-
-    def _buffer_step_window(self, source: dict, t_mono: Any, at_ts: datetime | None) -> None:
-        if self.step_time_utc is None or at_ts is None:
-            return
-        if abs(at_ts - self.step_time_utc) <= self.step_window:
-            self._step_buffer.append({
-                "t_mono_ns": t_mono if isinstance(t_mono, int) else None,
-                "t_utc_ns": source.get("t_utc_ns"),
-                "@timestamp": at_ts.isoformat(),
-            })
 
     def _record_drop_gap(self, t_mono: int) -> None:
         """Called with the EDGE instant, and once per edge, so the gap it measures is
@@ -504,42 +503,7 @@ class RunAccumulator:
         }
 
     def _check_c6(self) -> dict[str, Any]:
-        if self.step_time_utc is None:
-            return {"pass": None, "skipped": "no --step-time-utc given"}
-
-        buf = sorted(
-            (d for d in self._step_buffer if d["t_mono_ns"] is not None),
-            key=lambda d: d["t_mono_ns"],
-        )
-        if len(buf) < 2:
-            return {"pass": None, "skipped": "fewer than 2 documents in the step window"}
-
-        step_iso = self.step_time_utc.isoformat()
-        before = [d for d in buf if d["@timestamp"] < step_iso]
-        after = [d for d in buf if d["@timestamp"] >= step_iso]
-        if not before or not after:
-            return {"pass": None, "skipped": "no documents on one side of the step boundary"}
-
-        utc_ns_before = before[-1].get("t_utc_ns")
-        utc_ns_after = after[0].get("t_utc_ns")
-        utc_shift_s = (
-            (utc_ns_after - utc_ns_before) / 1e9
-            if isinstance(utc_ns_before, (int, float)) and isinstance(utc_ns_after, (int, float))
-            else None
-        )
-
-        # Largest t_mono_ns interval anywhere in the window vs. the boundary interval itself.
-        intervals = [buf[i + 1]["t_mono_ns"] - buf[i]["t_mono_ns"] for i in range(len(buf) - 1)]
-        boundary_interval = after[0]["t_mono_ns"] - before[-1]["t_mono_ns"]
-        max_interval = max(intervals) if intervals else 0
-
-        return {
-            "pass": max_interval == boundary_interval if intervals else None,
-            "observed_utc_shift_s": utc_shift_s,
-            "boundary_t_mono_ns_interval": boundary_interval,
-            "max_t_mono_ns_interval_in_window": max_interval,
-            "docs_in_window": len(buf),
-        }
+        return self._step.result()
 
     def _check_c7(self) -> dict[str, Any]:
         return {

@@ -41,8 +41,26 @@ evidence:
                              the window empty, the comparison loop never ran, and run 576
                              reported PASS over 135/135 documents stamped 38 h in the past.
                              Fails closed: no window means N/A, never PASS.
-  C6 clock step           -- around a forced wall-clock step (--step-time-utc), t_utc_ns moves by
-                             the step and no t_mono_ns interval moves.
+  C6 clock step           -- a forced wall-clock step must move derived UTC by the step and
+                             move NO logged interval (PLAT-25/PLAT-34). Detected from the
+                             epoch-offset series (`t_utc_ns - t_mono_ns`), which is flat to
+                             within chrony's slew and moves only at a step -- so the step
+                             LOCATES ITSELF and `--step-time-utc` is an optional
+                             cross-check rather than the input the check is built from.
+                             `--pulse-period-s` is required for the second half: the
+                             `t_mono_ns` interval ACROSS each step must stay inside 2x the
+                             pulse period, exactly as C7 measures every other interval.
+                             Rebuilt 2026-08-26; the previous implementation had three
+                             defects, each reproduced against a HEALTHY synthetic rig and
+                             now pinned in tools/tests/test_clock_check_step.py: an ISO
+                             STRING compare across different UTC offsets that put every
+                             document on one side (N/A on every real run); a window keyed
+                             on the very timestamp the step displaces (a +1 h step threw
+                             the far side outside a 180 s window); and a pass condition,
+                             `max_interval == boundary_interval`, that FAILED on a healthy
+                             rig with ordinary jitter and PASSED when the step had leaked
+                             into the monotonic timeline. Fails closed: no step found
+                             means N/A, never PASS.
   C7 drops                -- gaps > 2x the commanded --pulse-period-s in the edge-group stream.
   C8 single clock         -- the hardware and software t_mono_ns ranges must overlap. clock.py's
                              design is that the GPIO callback path and the dispatcher path read

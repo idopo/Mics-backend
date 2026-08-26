@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from clock_check_es import NS_PER_TICK_WRAP, PLAUSIBILITY_WINDOW_S, get_nested, has_suffix_field, parse_pi_timestamp
+from clock_check_latency import LatencyTracker
 from clock_check_step import StepDetector
 
 GROUP_WINDOW_NS = 2_000_000_000
@@ -112,15 +113,10 @@ class RunAccumulator:
                                   step_time_utc, step_window_s, max_examples)
 
         # C10 trigger-queue latency. The trigger route carries TWO instants on purpose --
-        # the edge in event_data, and its own payload timestamp taken when the message
-        # came off the trigger queue. Their difference is the queue latency, which is the
-        # reason that route carries both, and it cannot be negative.
-        self.latency_measured = 0
-        self.latency_negative = 0
-        self.latency_min_ns: int | None = None
-        self.latency_max_ns: int | None = None
-        self._latency_sum_ns = 0
-        self.latency_examples: list[dict] = []
+        # the edge in event_data, and its own payload timestamp taken when the message came
+        # off the trigger queue. See clock_check_latency.py for why their difference may be
+        # negative without anything being wrong.
+        self._latency = LatencyTracker(max_examples)
 
         # C7 drops against the commanded pulse period
         self.pulse_period_ns = int(pulse_period_s * 1e9) if pulse_period_s else None
@@ -317,24 +313,8 @@ class RunAccumulator:
     def _record_queue_latency(self, source: dict, t_mono: int) -> None:
         """C10. Only the trigger route holds two instants, so only it can be measured."""
         edge = get_nested(source, "event.event_data.pi_timestamp_mono_ns")
-        if not isinstance(edge, (int, float)):
-            return
-        latency = t_mono - int(edge)
-        self.latency_measured += 1
-        self._latency_sum_ns += latency
-        if self.latency_min_ns is None or latency < self.latency_min_ns:
-            self.latency_min_ns = latency
-        if self.latency_max_ns is None or latency > self.latency_max_ns:
-            self.latency_max_ns = latency
-        if latency < 0:
-            self.latency_negative += 1
-            if len(self.latency_examples) < self.max_examples:
-                self.latency_examples.append({
-                    "pi_timestamp_mono_ns": int(edge),
-                    "t_mono_ns": t_mono,
-                    "latency_ns": latency,
-                    "module": get_nested(source, "event.event_data.id"),
-                })
+        if isinstance(edge, (int, float)):
+            self._latency.add(int(edge), t_mono, get_nested(source, "event.event_data.id"))
 
     # -- finalize / report -----------------------------------------------------
 
@@ -354,33 +334,7 @@ class RunAccumulator:
         return checks
 
     def _check_c10(self) -> dict[str, Any]:
-        """The trigger route's second instant must be a plausible queue receipt.
-
-        `t_mono_ns - event_data.pi_timestamp_mono_ns` is the time between the level
-        changing and execute_trigger dequeuing the message. It cannot be negative -- an
-        edge cannot be processed before it happened -- and a negative reading means the
-        two fields are no longer on one clock. The distribution is REPORTED, not gated:
-        this run's own numbers are what a ceiling would have to be derived from, and a
-        threshold invented here would be a guess.
-
-        Fails closed like C5 and C9: nothing measured means N/A, never PASS.
-        """
-        mean = (self._latency_sum_ns / self.latency_measured) if self.latency_measured else None
-        # Reported separately because it is not a clock defect, it is a DEPLOY signal: a
-        # run where every latency is exactly 0 is a run whose trigger route still passes
-        # the edge as its own payload timestamp, i.e. the Pi is on pre-2026-08-26 code.
-        # Run 576 reads 253 measured / min 0 / max 0.
-        all_zero = bool(self.latency_measured) and self.latency_min_ns == 0 and self.latency_max_ns == 0
-        return {
-            "pass": (self.latency_negative == 0) if self.latency_measured else None,
-            "measured": self.latency_measured,
-            "negative": self.latency_negative,
-            "min_ns": self.latency_min_ns,
-            "mean_ns": mean,
-            "max_ns": self.latency_max_ns,
-            "all_zero_the_two_instants_have_collapsed": all_zero,
-            "examples": self.latency_examples,
-        }
+        return self._latency.result()
 
     def _check_c9(self) -> dict[str, Any]:
         """Both documents for one edge must say the same thing about it.

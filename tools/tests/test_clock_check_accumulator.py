@@ -386,14 +386,54 @@ def test_c10_measures_the_trigger_queue_latency():
     assert check["min_ns"] == check["max_ns"] == DEFAULT_QUEUE_LATENCY_NS
 
 
-def test_c10_fails_on_a_dequeue_that_precedes_its_own_edge():
+def test_c10_counts_a_small_negative_latency_without_failing_on_it():
+    """The edge is a MAPPED tick and the receipt is a RAW clock read, so the fit's bounded
+    prediction error can legitimately put the edge a few ms ahead of the read taken just
+    after it. Run 578 measured exactly this -- 48 of its first 108 edges read negative --
+    and it was the bootstrap slope, not a defect. Counted and reported, never gated."""
     docs = _run_573_shape(n_edges=4, n_software=0)
     docs += [_doc(3_839_296_775_883 + 99_000_000_000, "hardware",
                   route="pi_timestamp", queue_latency_ns=-5_000_000)]
     check = _feed(docs)["C10_trigger_queue_latency"]
-    assert check["pass"] is False
+    assert check["pass"] is True
     assert check["negative"] == 1
+    assert check["over_1s_bound"] == 0
+
+
+def test_c10_fails_on_a_gap_no_mapping_error_could_explain():
+    """The shape it does still catch: a mapping on the wrong timeline. Run 576 had the two
+    paths 137437 s apart. The 1 s bound is derived -- DEFAULT_MAX_PPM (200) x
+    DEFAULT_HEARTBEAT_S (600 s) = 120 ms of worst legitimate drift, cleared ~8x."""
+    docs = _run_573_shape(n_edges=4, n_software=0)
+    docs += [_doc(3_839_296_775_883 + 99_000_000_000, "hardware",
+                  route="pi_timestamp", queue_latency_ns=137_437_000_000_000)]
+    check = _feed(docs)["C10_trigger_queue_latency"]
+    assert check["pass"] is False
+    assert check["over_1s_bound"] == 1
     assert check["examples"]
+
+
+def test_c10_measures_the_mappings_residual_rate_error_as_drift_ppm():
+    """Run 578's finding, and the reason drift_ppm exists: latency slid from +2.4 ms at
+    t=0 to -2.5 ms at t=590 s, a linear -8.5 ppm, which is the BOOTSTRAP mapping's slope of
+    exactly 1000.0 ns/us being wrong before the first re-fit at heartbeat_s = 600 s. A
+    re-fitted mapping sits near zero."""
+    docs, t = [], 3_839_296_775_883
+    for i in range(60):                       # 1 Hz edges; latency slides 10 us per second
+        edge = t + i * 1_000_000_000
+        docs.append(_doc(edge, "hardware", route="record_event"))
+        docs.append(_doc(edge, "hardware", route="pi_timestamp",
+                         queue_latency_ns=2_000_000 - i * 10_000))
+    docs.sort(key=lambda d: d["_source"]["t_mono_ns"])
+    check = _feed(docs)["C10_trigger_queue_latency"]
+    assert check["pass"] is True
+    # 10_000 ns of latency per 1 s of edge time == 1e-5 s/s == 10 ppm.
+    assert abs(check["drift_ppm"] - (-10.0)) < 0.01
+
+
+def test_c10_reports_no_drift_for_a_steady_latency():
+    check = _feed(_run_573_shape())["C10_trigger_queue_latency"]
+    assert abs(check["drift_ppm"]) < 1e-6
 
 
 def test_c10_names_a_run_whose_two_instants_have_collapsed_into_one():

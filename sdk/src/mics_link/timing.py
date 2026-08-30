@@ -1,12 +1,12 @@
 """`Pacer` — the origin-relative, drift-free scheduler behind mics-link's replay driver
-(Phase 34, Plan 07, "DLC-Live and Windows" amendment). Public because Phase 35's video
-frame loop needs the exact same scheduling `replay()` uses, rather than a second
-implementation (the same argument that retired the second wire codec, SDK-10):
+(Phase 34, Plan 07's cross-platform/vendor-neutrality amendment). Public because Phase
+35's video frame loop needs the exact same scheduling `replay()` uses, rather than a
+second implementation (the same argument that retired the second wire codec, SDK-10):
 
     pacer = Pacer("realtime"); pacer.start()
     for i, frame in enumerate(frames):
         pacer.wait_until(i / fps)
-        adapter.push(live.get_pose(frame))
+        adapter.push(model.infer(frame))
 
 Origin-relative, not cumulative: every `wait_until(t_rel)` call measures against the ONE
 `start()` timestamp, never against the previous call's target. Cumulative per-call sleeping

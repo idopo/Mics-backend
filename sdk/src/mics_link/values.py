@@ -3,7 +3,7 @@ coercion lifted from the retired POC driver's `coerce_value` (`tools/extlink_dri
 deleted in plan 34-05; Phase 18, EXTLINK-12).
 
 `validate_value`/`validate_payload` implement SDK-04 (decision 1, AMENDED 2026-08-30 —
-"DLC-Live and Windows"): a bad value raises `InvalidValueError` at the researcher's own
+the cross-platform/vendor-neutrality amendment): a bad value raises `InvalidValueError` at the researcher's own
 call site — never a frame the Pi silently counts as `type_mismatch` and drops, which is
 invisible from the sender. The check is EXACT type (`type(value) is float`), not
 `isinstance`: a `numpy.float64` IS a `float` subclass, so an `isinstance` check would let it

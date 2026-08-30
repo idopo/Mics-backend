@@ -1,8 +1,8 @@
 """Replay entry point (Phase 34, Plan 07, SDK-12): plays a recorded `(t, signal, value)`
 file through a `mics_link` client at real time, at a scale factor, or as fast as possible.
 This is the phase's own regression vehicle and the mechanism by which Phase 35 is proven
-without a camera, a trained model or an animal — and afterwards, the way a DLC-driven task
-is re-run deterministically.
+without a camera, a trained model or an animal — and afterwards, the way a model-driven
+task is re-run deterministically.
 
 `replay()` takes a `link`, it does not create one (decision 6) — `main()` builds it via the
 public `mics_link.connect(...)` inside a `with` block, so SDK-09's lifecycle applies and

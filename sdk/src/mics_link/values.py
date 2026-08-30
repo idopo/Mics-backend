@@ -38,7 +38,7 @@ def _rejection_message(signal_name, value):
     )
     if _looks_like_array_scalar(value):
         message += (
-            " — this looks like a numpy/array scalar; convert it explicitly with "
+            " - this looks like a numpy/array scalar; convert it explicitly with "
             "mics_link.values.as_scalar(value) before sending"
         )
     return message

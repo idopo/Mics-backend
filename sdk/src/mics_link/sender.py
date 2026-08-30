@@ -146,7 +146,7 @@ class BoundedSender(object):
         if should_log_drop(self._last_log_at, now, self._drop_log_interval_s):
             self._last_log_at = now
             self._logger.warning(
-                "mics_link: dropped a frame (queue full) — %d dropped total",
+                "mics_link: dropped a frame (queue full) - %d dropped total",
                 self.stats.dropped,
             )
 

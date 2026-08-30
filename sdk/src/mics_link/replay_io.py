@@ -88,7 +88,7 @@ def _detect_shape(field_names):
         return "long", None
     if "signal" in fields:
         raise MicsLinkError(
-            "mics-link-replay: ambiguous header — a column named 'signal' is present "
+            "mics-link-replay: ambiguous header - a column named 'signal' is present "
             "without 'value', so this cannot be told apart from a wide (t + one column "
             "per signal) file that happens to have a signal named 'signal'"
         )

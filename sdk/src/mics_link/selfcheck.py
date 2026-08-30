@@ -53,7 +53,7 @@ def selfcheck():
         raise MicsLinkError(
             "mics_link.selfcheck: wire codec produced unexpected bytes for a known frame. "
             "This usually means msgpack_numpy.patch() (or something else) has reassigned "
-            "msgpack.packb/unpackb globally somewhere in this process — msgpack-numpy is "
+            "msgpack.packb/unpackb globally somewhere in this process - msgpack-numpy is "
             "common in scientific Python environments and does exactly this. "
             "observed={} expected={}".format(observed.hex(), expected.hex())
         )

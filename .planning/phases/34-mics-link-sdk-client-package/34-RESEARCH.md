@@ -562,7 +562,7 @@ API.
 | SDK-07 | Reconnect state machine transitions correctly on synthetic monitor events; no exception escapes | unit | `python3 -m pytest -q sdk/tests/test_reconnect_state_machine.py` | ❌ Wave 0 |
 | SDK-08 | Synthetic CMD frame -> dispatched off hot path -> correct ACK bytes; raising handler -> error ACK, no crash | unit | `python3 -m pytest -q sdk/tests/test_command_dispatch.py` | ❌ Wave 0 |
 | SDK-09 | Context manager enter/exit calls close(); close() drains-or-abandons per stated rule | unit | `python3 -m pytest -q sdk/tests/test_lifecycle.py` | ❌ Wave 0 |
-| SDK-10 | `extlink_wire.py` deleted; `extlink_driver.py` imports SDK; existing driver tests still pass unchanged | unit + hygiene (AST import check reused from `test_extlink_wire.py`) | `python3 -m pytest -q tools/extlink_driver/` | ✅ existing tests to retarget |
+| SDK-10 | SUPERSEDED (plan 34-05 amendment, 2026-08-26): the driver is deleted outright, not retargeted — no cutover, no surviving driver test suite | deletion assertion | `test ! -f tools/extlink_driver/extlink_wire.py && test ! -f tools/extlink_driver/extlink_driver.py` | ✅ deleted (34-05) |
 | SDK-11 | Whole suite runs with `zmq` uninstalled/unavailable except transport-glue-specific tests | hygiene | AST-based "no zmq at module scope outside transport.py" test, reusing `test_wire_module_never_imports_zmq`'s pattern | ❌ Wave 0 (adapt existing pattern) |
 | SDK-12 | Replay: CSV + JSONL, three timing modes, malformed row counted not fatal | unit | `python3 -m pytest -q sdk/tests/test_replay.py` | ❌ Wave 0 |
 | SDK-13 | README completeness (manual read-through, not automatable) | manual review | N/A — checklist item in the plan's own review pass | N/A |

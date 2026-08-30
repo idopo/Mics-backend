@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-24T10:43:43.493Z"
+last_updated: "2026-08-30T08:15:23.503Z"
 progress:
-  total_phases: 26
+  total_phases: 30
   completed_phases: 8
-  total_plans: 109
+  total_plans: 118
   completed_plans: 84
-  percent: 78
+  percent: 27
 ---
 
 # STATE: MICS Backend
@@ -19,12 +19,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Core value:** Researchers can define, modify, and deploy behavioral task logic without writing Python or restarting the Pi.
-**Current focus:** Planning complete — ready to begin Phase 1
+**Current focus:** Phase 34 — mics-link-sdk-client-package
 
 ---
 
 ## Current Position
 
+Phase: 34 (mics-link-sdk-client-package) — EXECUTING
+Plan: 1 of 9
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).
@@ -871,19 +873,24 @@ layer for a fabricated `FakeVideoRecorder` and greps the shared sources for `ope
 `Record Node` / `37497` / `experiment_number` / `recording_number`.
 
 **Research findings that changed the design:**
+
 1. **No disk-space endpoint exists in the OE REST API** — the user's decision was conditional ("yes
    *if* the API exposes it"), so the precheck is **dropped**, not substituted with SSH or a mount.
    The underlying risk (session dies when the disk fills) is accepted and unmitigated.
+
 2. **OE does not return a ready-made path.** It imposes `Record Node <id>/experiment<N>/recording<M>/`
    beneath whatever directory MICS sets, so the resolved path must be **read back** via a follow-up
    `GET /api/recording`. Always read back; never predict.
+
 3. **The collision check has no OE-side path** — no directory-listing endpoint. It becomes a MICS-side
    uniqueness check against the artifact table. **Accepted residual gap:** a folder created by hand in
    the OE GUI is invisible to it.
+
 4. **Project/experiment resolution is ambiguous** — `Subject`↔`Project` and `Experiment`↔`Protocol`
    are both many-to-many. Decided: `LIMIT 1` (matching `preflight_validate`'s existing shortcut) +
    **warn on ambiguity** + surface the chosen pair in the API and session view. Rejected refusing to
    start (would block legitimately multi-project subjects).
+
 5. **No new dependencies** — `requests` already pinned on the Pi, `httpx` already in `api/`. Unlike
    Phase 18, no user-run pip step.
 
@@ -914,20 +921,24 @@ Phase 18 execution**; Phase 26 must not fork the transport design.
    or let OE auto-increment. Researcher-editable with **token validation** at save.
    ⚠ **Coupled decision:** the hierarchy embeds mutable metadata in the path, so it is only safe
    because MICS persists the **resolved** path (below). Do not implement one without the other.
+
 2. **Recording record** — resolved absolute path + OE start/stop timestamps + host, in a **small
    dedicated table keyed `(run_id, device_name)`** (chosen so DeepLabCut can reuse it; rejected
    columns-on-`session_runs` and the `overrides` JSON). Project/experiment names **snapshotted**.
    **Incomplete-coverage flag** when OE wasn't recording for the run's full duration. Surfaced in
    the React session/run view, not just the API.
+
 3. **Markers** — MICS always brackets with run-start/stop; everything else author-placed. Auto trial
    markers **rejected** (would couple to `INC_TRIAL_COUNTER`, which tasks must send explicitly, so a
    task omitting it would look like an ephys bug). Free text + same-toolkit autocomplete. Payload
    carries `label|run|trial`. **Every send dual-logged to ES** — that diff against what landed in the
    recording *is* Phase 28's measurement, making the validation phase nearly free.
+
 4. **Bad state** — already-RECORDING → **fail the gate, never take over** (the lease cannot see
    manual GUI use, so it may be a colleague's session). Disk precheck **only if the OE REST API
    exposes free space** — research must confirm, don't invent it. Mid-run stop → log, flip `alive`,
    surface prominently.
+
 5. **Delivery + opt-out** — `OpenEphys` ships as a **seeded first-party lib**
    (`api/seed_libs/openephys.py`, following Phase 23's `compute_ops.py` pattern) so ephys works after
    a deploy with no manual upload. A **per-run override** lets a researcher run without ephys without
@@ -1289,7 +1300,9 @@ plus one new passing regression test in `test_mics_task_attrs.py`
 `mics_task.end() -> super().end()` chokepoint `on_run_stop()` (plan 18-10) depends on. All public
 names in `18-02-PLAN.md`'s `<interfaces>` block were followed character-for-character. **No git
 commands were run against `/home/ido/pi-mirror`** (user-owned repo, plan-mandated), same as plan
+
 01. One pre-existing, out-of-scope issue discovered and logged (not fixed): `test_mics_task_attrs.py`'s
+
 original 6 tests fail when the file is run standalone on this dev host (dotted `autopilot.tasks.
 mics_task` imports hit the already-documented missing-`npyscreen` constraint) — reproduced
 identically against the unmodified original file, confirming this plan's edit didn't cause it;
@@ -1413,6 +1426,7 @@ forces:
    `validate_role_liveness(role, has_override, class_name="")` — pinned in 18-01's `<interfaces>`,
    tested by five `test_role_none_*` cases, implemented in 18-05, **called** (not re-implemented)
    by 18-10, and given a rig-side deliberate-breakage step 6b in 18-12.
+
 2. **The egress seam would have forked Phase 26.** `18-02` pinned `EgressWorker(send_fn, …)` with
    item-model tests, while `26-10-PLAN.md:90,169-171` already writes
    `self._egress.enqueue(lambda: …)` — a zero-arg callable that the item model would store as data
@@ -1420,6 +1434,7 @@ forces:
    socketless device: the base class has no transport-specific `send_fn` to supply, so "how to send"
    belongs in each call site's closure. Pinned verbatim in 18-02/18-06/18-10 as
    `EgressWorker(send_fn=lambda fn: fn(), …)`, attribute spelled **`_egress`**.
+
 3. **The now-mandatory liveness override would have blocked the shared IOLoop.** 18-10 put liveness
    on a `PeriodicCallback` on the pilot's `Net_Node` loop — the same loop `18-06` already keeps
    egress *off* because "a blocking HTTP PUT there freezes the STOP channel." Blocker 1 made this
@@ -1438,20 +1453,26 @@ the seven Pi-touching plans: no git that **mutates** `/home/ido/pi-mirror`, no g
 read-only inspection of the local mirror permitted.
 
 **Advisories folded in after the PASS** (iteration-2 A1–A7, applied directly to the plans):
+
 - **`alive` now has exactly one writer, `_recompute_alive()`.** Liveness and the egress
   failure-threshold both flip device health, and EXTLINK-15 requires *one* signal regardless of
   direction — separate writers meant a liveness tick could silently overwrite the `False` the egress
   counter had just written.
+
 - **`PeriodicCallback.start()/stop()` must go through `ioloop.add_callback`** — they use
   `call_later`/`remove_timeout`, which are not thread-safe, and both `BIND_STEP_LIVENESS` and
   `release()` run on the task thread. Same reason socket creation was already routed that way.
+
 - `LivenessPoller.stop()` must not fire `on_change` after stop is requested (bounded join means an
   in-flight HTTP GET can outlive `release()` and touch a torn-down View) — new
   `test_liveness_poller_no_on_change_after_stop`.
+
 - `-k drop_newest` was timing-dependent (the worker could free a slot mid-enqueue); now pinned
   deterministic via a `started` Event.
+
 - `on_drop` must name the lost item by `__qualname__`, not log a bare `<lambda>` — otherwise
   EXTLINK-15's "the loss is *recorded*" is not actually satisfied under the callable model.
+
 - `liveness_hook` must be declared at **class level**; an instance-level assignment is invisible to
   `validate_role_liveness` and raises at construction (fails closed, but confusingly).
 
@@ -1464,6 +1485,7 @@ no Phase 26 plan mentioned the hook at all. Fixed in 26-10 / 26-13 / 26-VALIDATI
   class-level-vs-instance trap (`validate_role_liveness` reads `type(self)`, so a hook assigned in
   `__init__` is invisible and raises confusingly). Also pinned that `alive` has one writer in the
   base (`_recompute_alive`) — this lib must never write the Tracker directly.
+
 - **26-10 Task 1** — `liveness_hook(self, last_msg_ts_ms, now_ms, stale_ms)` is now a specified,
   mandatory class-level method: one `oc.get_status(...)` call, True on a status dict, False on any
   error, never raises, all three timestamp args deliberately ignored (they exist for the
@@ -1472,12 +1494,15 @@ no Phase 26 plan mentioned the hook at all. Fixed in 26-10 / 26-13 / 26-VALIDATI
   outlives `release()` and stacks at the `stale_ms / 2` poll rate. The vague "the readiness hook
   (whatever the shipped base class names it)" line now states explicitly that readiness ≠ liveness:
   `liveness_hook` answers *is the box reachable*, readiness answers *has recording started*.
+
 - **26-10 Task 1 verify** — AST check extended to require `liveness_hook` **in the class body**.
 - **26-10 Task 2** — documents the hand-entered `pilot_hardware_config.config` shape in the seeded
   lib's module docstring (the hardware-libs UI renders it), including that `role: "none"` is
   mandatory with no default, and why `host` is still required with no inbound socket (egress target
+
   + device-lease key). New fifth seeding test asserting the class-level hook on the **stored**
   source, so a drifted seed is caught in CI rather than on the rig.
+
 - **26-13 step 4a** (new rig check, count 9 → 10) — proves on real hardware that liveness and
   readiness are distinct (box on but IDLE ⇒ `alive=true`, not ready), that the outbound poll flips
   `alive` when the box is powered off while the behavioural session keeps running (EXTLINK-07: loss
@@ -1496,6 +1521,7 @@ for:
    dropped out of RECORD would have read `alive=true` forever, silently dropping a locked decision
    with no test failing. **Fixed:** the predicate is composite — reachable AND, while a run is
    active, still in `RECORD`.
+
 2. **The mandated bounded HTTP timeout had nowhere to live.** `c1d5629` required a client timeout
    "comfortably under the poll interval", but neither client plan shipped a factory taking one —
    `DEFAULT_TIMEOUT_S = 5.0` is the only knob, and at the canonical `stale_ms: 3000` the poll is
@@ -1572,27 +1598,30 @@ connects to. Evidence it was already biting: plan 18-12 had made its control-onl
 `sub_connect` because no better option existed.
 
 Resolution (EXTLINK-18 amended; `18-CONTEXT.md` § Transport roles carries the full block):
+
 - Third role value `"none"` — `socket_plan` returns a plan with **no socket**, invents no port, and
   does not fall back to a default. `identity_ok` and the `@decoder` path are inapplicable.
+
 - Config validation must not require `listen_port`/`connect_port` for this role; `host` **is** still
   required, for egress, and is still the lease key.
+
 - `.bind()` does everything else — `.alive` tracker, liveness poll, egress worker, lifecycle hooks —
   so a control-only module participates fully in the readiness gate. Explicitly **not** a reduced
   path.
+
 - **`role: "none"` requires an explicit liveness override, enforced by raising at construction.** The
   default predicate is "a message arrived within `stale_ms`", which a socketless module never
   satisfies — it would sit permanently `alive=False` and hang the gate with no diagnosis. Consistent
   with EXTLINK-12's import-time `TypeError` for an unresolvable `@signal` dtype. Silently defaulting
   to `alive=True` was rejected: that is exactly the "device is off but we think it's fine" failure OE's
   HTTP check exists to catch.
+
 - Rejected: making `role` optional/absent to mean "no transport" — an explicit value validates cleanly
   and distinguishes deliberate control-only from a forgotten field.
 
 **Side effect: EXTLINK-18 is no longer rig-only.** Three new agent-runnable validation rows
 (`-k role_none` on both sides, `-k control_only` on the Pi); the rig row survives but now proves only
 end-to-end wiring, not the mechanism.
-
-
 
 **Planning complete 2026-08-03.** Research → validation strategy → 12 plans in 5 waves →
 plan-checker **VERIFICATION PASSED** (all 18 EXTLINK IDs covered, no same-wave file collisions,
@@ -1603,13 +1632,16 @@ execution order still puts 23 and 25 ahead of it.
 W2 = 18-05/06/07/08 · W3 = 18-09/10 · W4 = 18-11 · W5 = 18-12 (single consolidated rig checkpoint).
 
 **Three research findings that changed the design** (all contradicted the pre-research context):
+
 1. **`msgpack` is NOT on the Pi** — verified by SSH into `~/.venv/autopilot`; nothing in the codebase
    uses it (wire format is JSON). Genuine new dependency, pin needed for **Python 3.7.3**. Plan 18-04
    is a USER-RUN step that resolves the pin by real `pip install` rather than guessing.
+
 2. **The backend reconciliation the lease depends on does not exist.** `orchestrator_station.py::_run_watchdog`
    is dead code (thread-start commented out) with a broken staleness rule (wall-clock since
    `started_at`, never refreshed — would kill every normal multi-minute session). Built in 18-09,
    keyed on `_redis_touch`'s `updated_at`.
+
 3. **IOLoop thread hazard:** `init_hardware()` runs in the Pilot's `run_task` thread, not the thread
    driving the IOLoop. `IOLoop.current()` inside `.bind()` would silently create a loop nothing polls.
    Must pass `self.node.loop` and register via `add_callback()`.
@@ -1648,19 +1680,24 @@ Closing that belongs to Phase 26, which owns the OE control channel.
 precedent). Neither had been executed, so nothing is lost but planning time.
 
 **Five additions to the `ExternalHardware` substrate** (all new, none previously specified):
+
 1. **Transport roles** — `router_bind` (original: MICS SDK dials in) + `sub_connect` (new: Pi dials
    out to a foreign PUB), with a per-lib `@decoder` hook. Required because the OE ZMQ Interface
    plugin is a PUB in its own JSON+binary format and will never speak our MessagePack envelope.
+
 2. **Liveness split from staleness** — `alive` now means *reachable*, via a lib-supplied liveness
    hook (default: data-within-`stale_ms`; OE overrides to poll HTTP status). Signal freshness stays
    with the per-signal stale policy. **Amends EXTLINK-07**, which assumed every source sends `HB`.
+
 3. **Egress path** — FIFO one-worker-per-device outbound queue, fire-and-forget with **no retry**
    (a late marker corrupts alignment worse than a missing one), bounded with drop-newest +
    recorded loss, N consecutive failures flip `alive`.
+
 4. **Run lifecycle hooks** — `on_run_start(run_ctx)` async + retried inside the wait window,
    `on_run_stop()` on all Pi paths plus a backend safety net for the Pi-crash case (otherwise OE
    records forever). **Amends EXTLINK-13**: the readiness gate now keys on "all required *ready*"
    (lib-defined, defaults to `alive`) rather than "all required alive".
+
 5. **Device lease** — backend-side arbitration keyed on normalized `host`, hard-blocking as a new
    preflight issue kind naming the holder. Needed because the OE box is shared across pilots
    (sequentially). Auto-released by the same reconciliation that stops orphaned recordings, plus a
@@ -1689,12 +1726,16 @@ distribution, **no cutover** — evidence gate only). DeepLabCut stays reserved 
 `sub_connect` for free.
 
 **REQUIREMENTS.md amended 2026-08-03** — this is now resolved, not outstanding:
+
 - **EXTLINK-07 amended** — liveness split from signal staleness; lib-supplied hook replaces the
   heartbeat-only rule that assumed every source sends MICS `HB`.
+
 - **EXTLINK-13 amended** — readiness gate keys on "all required *ready*" (lib-defined, defaults to
   `alive`) rather than "all required alive".
+
 - **EXTLINK-14–18 added** — transport roles + `@decoder`, egress queue, run lifecycle hooks, device
   lease, control-only zero-signal modules.
+
 - **EPHYS-01–12 added** — new requirements section covering Phases 26/27/28.
 
 **Still outstanding before planning 18:** nothing in the planning docs. The one open *external*
@@ -2114,20 +2155,26 @@ Blast-radius re-confirmed unchanged: task defs 181/185(Gili's)/187 blocked from 
 method rule, none edited. See `24-08-SUMMARY.md`.
 
 **Read these two files first when resuming:**
+
 - `.planning/phases/24-trigger-assignment-action-lists/24-HARDWARE-VALIDATION.md` — what is
   proven, the 7 post-execution defects and their commits, infrastructure incidents, and the
   exact deployed/registry/DB state.
+
 - `.planning/phases/24-trigger-assignment-action-lists/24-REPLAN-BRIEF.md` — what changes in
   plans 06/07/08 for the sourceless-only decision, requirement by requirement.
 
 **Re-plan discussion COMPLETE (2026-07-27).** Decisions R1–R11 are in `24-CONTEXT.md`
 § `<replan_2026_07_27>`; REQUIREMENTS.md and ROADMAP.md are updated to match. Headlines:
+
 - **Constrained one-pick detector write** in the editor, emitting ordinary FDA JSON (UI macro).
   The researcher cannot read electrode 2 and write `LICKER0`. No detector code on the Pi.
+
 - **`{device_name}` token** in `key_template` + `source_ref` on the `view` action, resolved at
   runtime — task definitions stay pilot-agnostic.
+
 - **Level comes from `detect_change`'s return, never `{"trigger":"level"}`** — the trigger's level
   is IRQ assert/deassert, not electrode state. Run 475's alternating 0/1 was that handshake.
+
 - **TRIGA-11 dropped** (vacuous on a sourceless toolkit) → **TRIGA-11a** rig proof.
 - **TRIGA-13 moved to Phase 25**, which now runs **immediately after 24, before 23**.
 - **New: TRIGA-16** (validate hardware action `method` — `method:""` currently 200s and silently
@@ -2143,10 +2190,12 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 `24-HARDWARE-VALIDATION.md` §2b.
 
 **Outstanding:**
+
 1. **Pi tests STILL never run anywhere** (`autopilot` unimportable on dev host) — the one real
    gap in phase 24. ~60 tests now, including `test_check_for_detectors.py`,
    `test_log_action_values.py` and additions to three existing files. USER-RUN:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
+
 2. **Phase 25 is next** (agreed order: 24 → 25 → 23). It now carries **DVK-09**, added from rig
    evidence: the rig's four spouts sit on MPR121 channels **1–4**, so `range(0, num_detectors)`
    builds a dead `LICKER0` and **silently discards channel 4** (9 real events lost in runs
@@ -2156,19 +2205,24 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
    `range(first_channel, first_channel + num_detectors)`. **Not** an explicit channel list — the
    extra editor UI is not justified by contiguous 1–4 wiring. Non-contiguous channels are
    consciously out of scope.
+
 3. **DVK-10 (new, 2026-07-29)** — traced *why* DVK-09 was silent: `mics_task.py:717-721` **does**
    raise `KeyError` for the unknown `LICKER4`, `_run_trigger_actions` (`mics_task.py:1323-1328`)
    has no `except`, and `execute_trigger`'s `except KeyError` (`task.py:285-298`) — intended for a
    missing `self.triggers[pin]` lookup — swallows it and logs `"No valid trigger for {pin}"` at
    DEBUG. Wrong handler, wrong message, no mention of the key. Narrow that guard to the lookup
    alone. Hides every action-list key error DVK-06 preflight does not catch first.
+
 4. `process_queue` (`task.py:262-266`) has no exception handler: any trigger-callback exception
    permanently disables all trigger processing with no operator-visible signal. Found via defect
+
    8. User deferred it; not scoped. Distinct from DVK-10 — the LICKER4 `KeyError` never reached
    `process_queue`, which is why the worker survived and the other 63 writes succeeded.
+
 5. Optional: clear legacy `trigger_assignments` rows in task defs 181 and 185 (185 is Gili's).
    Note task defs 181/185/187 also hold state-body hardware actions with an empty `method` and
    cannot be re-saved until fixed (TRIGA-16 blast radius).
+
 6. `detect_change` reports only `changes[0]`, so simultaneous multi-electrode transitions are
    lost unrecoverably (`i2c.py`, off-limits, pre-existing). Bounds what concurrent multi-spout
    licking can measure.
@@ -2349,14 +2403,20 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 ### Pending Todos
 
 2 pending (`/gsd:check-todos`):
+
 - **Reinstate CMP-24a and CMP-24c Pi view-mirror fixes** (`pi`) — two one-line `mics_task.py`
   fixes, built with passing tests in phase 23-12 then reverted before deploy; one rig deploy for
   both. Full diagnosis in `23-compute-primitives-variables/deferred-items.md`.
+
 - **Fix stale React bundle trap in web_ui static output** (`ui`) — unhashed `main.js` + no
   `cache-control` + un-purged old chunks let a browser silently run months-old editor code after
   a correct deploy. Cost a debugging cycle in phase 23.
 
 ### Roadmap Evolution
+
+- Phases 34–35 added (2026-08-26): **the DeepLabCut arc** — the second consumer of Phase 18's `ExternalHardware` substrate, independent of and parallel to the OpenEphys arc (26–28). Both halves were pre-reserved in Phase 18's own NOT-in-scope list. **Phase 34 (SDK-01–13)** delivers the `mics-link` client package: DEALER connect with `identity = source_id`, the locked MessagePack envelope, non-blocking bounded sends, background heartbeat, survivable reconnect, inbound `@command` → `ACK`, a replay driver, and a README — retiring `tools/extlink_driver/extlink_wire.py`'s hand-rolled copy so exactly one sender-side wire implementation exists. **Phase 35 (DLC-01–12)** delivers the DLC hardware lib, the `dlclive` adapter, editor-authorable keypoint transitions and the rig proof. Four scope decisions locked in session: (1) **`router_bind` + our SDK**, not `sub_connect` — `sub_connect` is the one Phase 18 role still UNPROVEN on hardware and a new feature must not carry an old risk; (2) **declared per-keypoint scalars with sender-side decimation**, not poses — `SIG` is one scalar per message (`external_hardware_wire.py:26`), the ingress queue is bounded at 256, and the proven soak is ~60 msg/s, so 12 keypoints × 3 fields × 60 Hz = 2160 msg/s is out of the question; **adding a batched wire kind was rejected** as reopening a completed, rig-proven contract; (3) **the keypoint set is static in the lib source, one lib version per trained model** — `ast_metadata.extlink` is extracted statically and EXTLINK-19's picker reads it, so config-driven signals would be unauthorable, which is the exact gap Phase 18 reopened itself to close on 2026-08-09; (4) **no video into MICS and no latency claims** — the vision box owns the video, and clock-domain comparison stays with Phase 28.
+- **OPEN DECISION for the DLC arc — which Pi platform.** The extlink substrate exists in BOTH `~/pi-mirror` (old stack, Python 3.7.3, `msgpack==1.0.5` pinned by plan 18-04) and `~/mics_core` (Phase 31's Bookworm / Python 3.11 platform). Phase 18's rig proof ran on the old stack. Phases 34–35 are written against **`mics_core`**; if the DLC rig is a pilot still on the old image, the msgpack pin and `external_hardware_wire.py`'s Python-3.7 dialect constraints apply and the SDK's minimum Python must be re-checked. **Settle before planning Phase 35.**
+- Roadmap correction (2026-08-26): Phase 18's Phase-Summary row still read "○ Pending — context revised 2026-08-03, must be re-planned", contradicting STATE.md's own "Phase 18 status (2026-08-09) — PHASE COMPLETE, 15/15 plans done". Corrected to Complete, carrying the two standing caveats (`sub_connect`/`role: "none"` unproven on hardware; the `ExtlinkDemo` fixture left on pilot 1 needing a TCP echo listener at `132.77.73.125:5597`).
 
 - Phases 1–4 archived (2026-07-26): moved to `.planning/archive/`. Superseded and re-planned inside phases 9–17 — the system is well past them. **Ignore when reviewing GSD phases.** Phases 5–8 (Pi Code Editor) marked Deferred: never started, not in the current plan.
 - Phase 24 added (2026-07-26): Trigger Assignment Action Lists — triggers run the same action vocabulary as state `entry_actions`, assigned from the UI. Sequenced **before** Phase 23 per stabilization plan.
@@ -2369,6 +2429,8 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
 - Defects surfaced by the Phase 30 audit, tracked but not folded into it: `mics_task.py:1589` imports the non-resolving `autopilot.autopilot.core.pilot`, so **`LOAD_HARDWARE_LIBS` silently fails whenever a task is running** (exception dies unhandled in the `Net_Node` listen thread) — this undercuts the mechanism the whole hardware-centralization arc rests on; the Pi has **no `TASK_ERROR` emitter at all**, so a failed START leaves the run `running` in the DB indefinitely; `i2c.py:819`'s `except(e):` on an undefined name; `pilot.py:887`'s call to the undefined `get_hardware_class`. Also: `hardware_libs` version 26 and the Pi's `i2c.py` have **already drifted 6 bytes**, with no process keeping the exec'd DB copy in sync with disk.
 - Bookkeeping errors found 2026-08-10 while auditing: `ROADMAP.md`'s phase-summary table had **no row for Phase 29** (added) and its Phase 18 row still reads `○ Pending — must be re-planned` although `STATE.md:276` records **Phase 18 COMPLETE, 15/15 plans, 2026-08-09**. The column-shift corruption noted in `STABILIZATION_PLAN.md:191-193` still affects rows 11–14, 16 and 18.
 - Phase 31 added (2026-08-16): **mics_core Modern Pi Platform** — migrate the Pi pilot off Raspberry Pi OS Buster / Python 3.7 / pigpio onto **Raspberry Pi OS Lite 64-bit (Bookworm) / Python 3.11 / lgpio**, in `~/mics_core` on a feature branch. Outcome: stock modern OS + one installer script + reboot ⇒ pilot auto-starts and connects, with no `./run_pilot.sh` and no SSH provisioning step. Three separable stages (dead-code shed → OS/Python + installer/systemd → pigpio→lgpio rewrite), risky one last. **This phase resolves the NTP work deferred at Phase 30** (see the SUPERSEDED entry above): the commented clock-freeze block at **`pilot.py:1071-1082`** — *line range corrected 2026-08-17; the `:1137-1148` figure carried forward from the Phase 30 entries is stale, and `30-06-ledger.md:21` already recorded the shift. Verified against the 1198-line file: `# ---- CLOCK SETUP ----` `:1071`, `# self.enable_ntp_and_wait()` `:1072`, `# Freeze wall clock…` `:1081`, `# self.disable_ntp()` `:1082`; method defs at `:497`/`:513`; `:1137-1148` is an unrelated commented `self.node.send` block. Corrected in `31-15-PLAN.md`, `REQUIREMENTS.md` PLAT-22 and `CONTEXT.md` §6.* — exists because a wall-clock jump mid-task corrupts pigpio's estimated tick→timestamp mapping. lgpio's kernel gpiochip timestamps (64-bit ns, taken at interrupt) remove that coupling, so freezing the wall clock stops being necessary — the deferred block should be **deleted, not restored**, and replaced by chrony configured to slew rather than step plus monotonic+realtime dual logging. Also removes the 32-bit µs counter that wraps every ~71.6 min (~20×/day under the intended 24/7 operation). Pi 5 forward-compat is designed in (resolve gpiochip by label, not index — the header moves chips on RP1). Basis: a repo + live-rig audit on 2026-08-16 (see `31-…/` phase dir); acceptance is a before/after pulse-timing measurement on spare hardware, not "it runs".
+- Phase 32 added (2026-08-26): **Rig output fail-safe for unattended 24/7 operation** — when the pilot process dies, GPIO outputs keep their state, so a valve, air puff, odor line or LED can stay energised indefinitely unattended. `start_pigpiod()`'s `kill_proc` hook cannot reach `pigpiod` (`Popen shell=True`, the daemon detaches, it runs under `sudo`); PLAT-33 was withdrawn on a false premise and this was never fixed. Candidates: systemd `ExecStopPost` de-energising `VALVE1-4`/`AIR_PUF`/`ODOR1-5`, hardware pull-downs, or repairing the `pigpiod` lifecycle. Prior analysis in `31-*/deferred-items.md` (plan C3) and the closing notes of `PI_TRIXIE_INSTALL.txt`. **This is the remaining blocker between Phase 31's result — the clock/logging path survives unattended operation, proven on soak run 580 — and actually running 24/7 experiments with animals.** Must be validated on RecordingBox (132.77.73.213) with a killed pilot.
+- Phase 33 added (2026-08-26): **Crash detection and run recovery for unattended operation** — a dead run today sits in the DB as `running` forever. **User's framing: a task error and a service crash are different events and must be recorded distinctly.** A task error is self-reported in-band (the pilot is alive and can speak) and is LIKELY TO RECUR on restart; a service crash can only be inferred from heartbeat silence plus reconciliation on reconnect, and is usually TRANSIENT — so cause determines recovery policy, and `session_runs` (only `RUNNING` today, `api/models.py:424`) must grow a status vocabulary that carries it. **Key finding: the `TASK_ERROR` receiver is already complete** (`orchestrator_station.py:497` hard-STOPs the pilot and resolves the run) **but the Pi never sends it** — zero hits across `mics_core` and `pi-mirror`. The cheapest first plan is the Pi-side emitter, not backend work. Also reusable: `OrchestratorState._last_seen`/`_redis_touch` and `_lease_reconcile_loop`'s 15 s liveness→backend pipeline; systemd already restarts the pilot process forever, so the gap is reconciliation on reconnect, not restart. **`_run_watchdog` is dead code and must stay dead** (30 s threshold on a never-refreshed `started_at` would kill every session over 30 s). Ownership: Pi reports, orchestrator detects and actuates, backend owns policy. START must be idempotent on `run_id` or a network partition double-starts a live task. **Open decision blocking planning — resume vs abandon-and-restart is a scientific call about whether a run that returns 3 min later is the same session.** Depends on Phase 32: safe before automatic.
 - TRIGA-12 added to Phase 24 (2026-07-27) and folded into plan 24-06: `check_for_detectors` matches detectors by capability instead of `isinstance(v, Touch_Detector)`. Identity matching silently yields zero `LICKER` trackers for a detector declared through the hardware-module registry, because `_resolve_hardware_classes` `exec`s the class from `source_code` into a fresh class object. `hardware/i2c.py` stays off-limits, so the fix lives in `check_for_detectors`. Plan 06's "do not touch `mics_task.py`" constraint is now scoped to that one method — safe because 06 is the only wave-3 plan and runs after 01 and 04.
 
 - **Scope change (2026-07-27): sourceless toolkits only.** All future work targets
@@ -2376,36 +2438,45 @@ specific messages, including TRIGA-16's method gate). See `24-07-SUMMARY.md` and
   longer run. Detector/lick functionality must still exist — via registered hardware modules
   on the sourceless path, not the `learning_cage` Python class. Invalidates plans 06/07/08 as
   written; see `24-REPLAN-BRIEF.md`. Plans 01–05 unaffected.
+
 - **Constraint discovered (2026-07-27): a sourceless task receives ONLY the `Modules` group.**
   `mics_task.py:94` replaces `self.HARDWARE` wholesale and `get_dispatch_spec` emits only
   `hardware["Modules"]`, so there is no `GPIO`/`I2C`/`Timers` group. Everything a sourceless
   task touches must be a registered hardware module. This makes Pi-class `SEMANTIC_HARDWARE`
   irrelevant on that path, including the `learning_cage` entry added by plan 24-01.
+
 - **Correction (2026-07-27): TRIGA-06's DB claim is wrong.** It records task def 185 as the
   only row with non-empty `trigger_assignments`. Task def **181** has one too, and it caused
   three of the seven post-execution defects. Re-run the query; do not trust the recorded finding.
+
 - **Registry additions (2026-07-27):** hardware modules 7 (`MPR121`→`Touch_Detector`, i2c.py)
   and 8 (`TOUCH_INT`→`Digital_In`, gpio.py) created with pilot-1 configs and attached to
   toolkit 100. These were prerequisites for any sourceless detector work.
+
 - **Phase 18 context REVISED (2026-08-03)** — generalized from a DLC-shaped transport into the
   general external-device substrate, so OpenEphys can be its first consumer. Five additions
   (transport roles + `@decoder`, liveness/staleness split, egress queue, run lifecycle hooks,
   device lease). `18-01`/`18-02` plans superseded → `superseded/`; **Phase 18 must be re-planned.**
   EXTLINK-07 and EXTLINK-13 amended; EXTLINK-14–18 added.
+
 - **Phases 26, 27, 28 added (2026-08-03): the OpenEphys arc.** 26 OpenEphys Device Control
   (EPHYS-01–05) → 27 OpenEphys Firing Rate over ZMQ (EPHYS-06–10) → 28 TTL vs Network Sync
   Validation (EPHYS-11–12). All three depend on Phase 18. Roadmap gains an arc preamble section
   documenting the locked scope decisions; `REQUIREMENTS.md` gains an EPHYS section.
+
 - **Execution order amended (2026-08-03):** **24 → 25 → 23 → review → 18 → 26 → 27 → 28.**
   Supersedes the 2026-07-26 order, which ended with a generic "Open Ephys".
+
 - **Scope decisions locked (2026-08-03):** the Pi owns both OE channels (HTTP control + ZMQ data),
   backend owns only the lease; the OE box is shared across rigs but never concurrently, so the
   lease is a safety net with no scheduling UX; **the TTL cable stays** and Phase 28 measures the
   network path against it rather than replacing it.
+
 - **External prerequisite flagged for Phase 27 (2026-08-03):** the OE signal chain needs a spike
   detector/sorter upstream of the ZMQ plugin, with sorting configured — the plugin transfers
   **spikes, not firing rate**, and sorted unit IDs do not exist without it. Rig configuration, not
   MICS work, but 27 is unplannable as scoped until confirmed.
+
 - **Phase 29 added (2026-08-05): FDA Builder Canvas UX.** Pure UI/UX work on the task editor
   canvas — parallel/bidirectional transition edges bow apart instead of crossing, per-edge
   condition labels and arrowheads, and node positions persisted in a new
@@ -2439,14 +2510,18 @@ conflicting instruction inside a PLAN file.
 1. **Verify sync first** (Pi is source of truth). Read-only:
    `rsync -avzi --dry-run --exclude='__pycache__' --exclude='.git' -e "ssh -i ~/.ssh/pi_mics" pi@132.77.72.28:~/Apps/mice_interactive_home_cage/ /home/ido/pi-mirror/`
    Do **not** pull while an agent is mid-edit — it clobbers in-flight work.
+
 2. **Edit** in `/home/ido/pi-mirror/` only. Never edit on the Pi.
 3. **Syntax check**: `cd /home/ido/pi-mirror && python3 -m py_compile <file>`.
    `autopilot` **cannot be imported** on this host (`npyscreen` missing), so only
    stdlib-only tests (`tests/test_fda_vocabulary.py`) are agent-runnable.
+
 4. **Deploy only session-edited files**, never the whole mirror, never `--delete`:
    `rsync -avz --relative -e "ssh -i ~/.ssh/pi_mics" /home/ido/pi-mirror/./<path> … pi@132.77.72.28:~/Apps/mice_interactive_home_cage/`
+
 5. **NO git in `/home/ido/pi-mirror`** — not even `status`. To prove a file is untouched:
    `diff <(ssh -i ~/.ssh/pi_mics pi@132.77.72.28 'cat ~/Apps/.../f.py') /home/ido/pi-mirror/.../f.py`
+
 6. **Never start/stop the pilot; never run Python on the Pi.** Hand the user the command.
 7. Pi tests are USER-RUN, from `~/Apps/mice_interactive_home_cage` **on the Pi** — not from
    `~/pi-mirror`, which is the dev host.
@@ -2460,12 +2535,14 @@ conflicting instruction inside a PLAN file.
    The audit asked whether the phase, as written, delivers a fresh Bookworm install + the pigpio
    cut-over + an updated `gpio.py` hw lib + the `pilot.py`/`task.py` clock wiring + something to
    test it with + the 71.6-minute defect actually gone. Three gaps had no owner:
+
    - **31-10 (wave 7, autonomous, `mics_core`)** — one clock for EVERY logged timestamp, not only
      the two event paths. Seven record timestamps still read the wall clock, and C3's PLAT-20 (NTP
      restored) made them steppable. Includes the corrupting one: the FDA `view` action injects the
      trigger's monotonic-ns tick as `pi_timestamp`, and `event.event_data.pi_timestamp` is mapped
      **`date`** in `event_log_v2` — a numeric there is read as epoch_millis and renders a plausible
      wrong year. **Must land before C4's soak is RUN** (C4's `depends_on` now says so).
+
    - **31-11 (wave 8, autonomous, BACKEND — new branch `phase-31-hw-lib-publication`)** — the
      deployed `gpio.py` is a database row, not the repo file: `toolkit_dispatch.py:99-104` ships
      `hardware_lib_versions.source_code` and `mics_task.py:222` `exec()`s it. Verified on the live
@@ -2473,6 +2550,7 @@ conflicting instruction inside a PLAN file.
      `stable`=25, so no run would have used C2's `assign_cb` adapter. Adds a publisher
      (repo -> version, idempotent by sha256), a drift gate in the routine test run, and a
      symmetric `clock_contract` refusal at dispatch.
+
    - **31-12 (wave 9, USER-RUN)** — a `clock_probe` toolkit + two task definitions (10-minute
      regression, >= 4 h 30 m soak) dispatched from the backend and verified in Elasticsearch:
      >= 3 wrap crossings, zero backward steps, 100 % cross-route agreement, provenance, and a
@@ -2488,6 +2566,7 @@ conflicting instruction inside a PLAN file.
    and tests already designed — `2026-08-05-reinstate-cmp-24a-and-cmp-24c-pi-view-mirror-fixes.md`)
    and the stale React bundle trap (`2026-08-05-fix-stale-react-bundle-trap-in-web-ui-static-output.md`).
    Neither blocks any other phase. See "Phase 23 status" above and `23-12-SUMMARY.md`.
+
 2. **Execute Phase 25 Plan 06** (last plan in phase 25, still outstanding) — **deploy** plan 02's
    seven pi-mirror files (`fda_vocabulary.py`, `mics_task.py`, `task.py`, and four `tests/` files —
    see `25-02-SUMMARY.md` "Next Phase Readiness" for the exact rsync list) AND the plan 04/05 React
@@ -2501,12 +2580,15 @@ conflicting instruction inside a PLAN file.
    "(unknown)" flag, the S3 type-switch guard) and plan 05's `HardwareCheckModal`/
    `PilotHardwareConfig` rendering (both `view_key_unresolved` shapes, the edit-flow
    `first_channel` round-trip) — both deferred per their own `<verification>` notes.
+
 3. **Run the full Pi test suite** (USER-RUN — `autopilot` unimportable on the dev host), still
    outstanding from phase 24 and now larger after phases 23/25's additions:
    `cd ~/Apps/mice_interactive_home_cage && python3 -m pytest tests/ -q`
+
 4. After 25 and the "review" step: **Phase 18** (re-planned, verification passed, blocked on
    nothing — approved for `/gsd:execute-phase 18`), then **26 → 27 → 28** (the OpenEphys arc,
    depends on 18). See execution order in "Roadmap Evolution" below.
+
 5. **Phase 30 Wave 1 — plans 02 and 03, in parallel** (no shared files). Wave 0 is complete and
    its instrument is live. Every deletion task must run
    `python3 /home/ido/pi-mirror/tools/check_tree_integrity.py --strict` (expect

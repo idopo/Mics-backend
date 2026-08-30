@@ -282,3 +282,25 @@ def test_send_signal_before_and_while_disconnected_never_raises():
     assert link.connected is False
     result = link.send_signal("y", 2)
     assert result in (True, False)
+
+
+def test_commands_dropped_is_surfaced_via_link_commands_dropped():
+    """WR-02: inbound CMD drops (CommandWorker's bounded inbox overflowing) must be
+    observable from MicsLink, not only from the private `link._commands.dropped`.
+
+    Stops the worker's thread immediately so nothing ever drains the inbox while it is
+    deliberately overflowed — deterministic, no timing/threading race, same pattern as
+    test_command_dispatch.py's own "worker deliberately not started" overflow test.
+    """
+    transport = FakeTransport()
+    link = MicsLink(transport, autostart=False)
+    link._commands.stop(timeout=2.0)
+
+    assert link.commands_dropped == 0
+    cmd = {"cmd_id": 0, "name": "noop", "args": None, "ts_pi": 0}
+    for i in range(34):  # inbox maxsize is 32 -> the last 2 submits are dropped
+        link._commands.submit(dict(cmd, cmd_id=i))
+
+    assert link.commands_dropped == 2
+    assert link.commands_dropped == link._commands.dropped
+    link.close()

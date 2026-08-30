@@ -113,7 +113,8 @@ most common way to misread this config.
 ## 5. A working sender
 
 **The pull-loop shape** -- for when you already have a loop that produces values (a
-camera read, a sensor poll, a per-sample model output). This is `sdk/examples/ten_line_sender.py`, verbatim, and is ten lines or fewer of real code --
+camera read, a sensor poll, a per-sample model output). This is
+`sdk/examples/ten_line_sender.py`, verbatim, and is ten lines or fewer of real code --
 enforced by `sdk/tests/test_readme_contract.py`, not by eyeballing:
 
 ```python
@@ -139,6 +140,9 @@ straight back. This is `sdk/examples/callback_sender.py` (exempt from the ten-li
 which only applies to the pull-loop example above):
 
 ```python
+from mics_link import connect
+from mics_link.values import as_scalar
+
 with connect("132.77.72.28", 5599, "demo") as link:
 
     def on_sample(value):  # your library calls this, on its own thread

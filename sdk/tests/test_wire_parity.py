@@ -108,10 +108,10 @@ def test_seq_counter_has_no_public_reset_or_setter():
 
 def test_seq_counter_value_property_reflects_last_issued():
     counter = wire.SeqCounter()
-    assert counter.value == 0
-    counter.next()
-    counter.next()
-    assert counter.value == 2
+    first = counter.next()
+    assert counter.value == first
+    second = counter.next()
+    assert counter.value == second == first + 1
 
 
 # --- Group 2: live-interop against the canonical Pi reference, skip-if-absent ---

@@ -45,8 +45,7 @@ def test_send_signal_invalid_value_raises_and_enqueues_nothing():
         assert False, "expected InvalidValueError"
     except InvalidValueError:
         pass
-    link._io_once()
-    assert transport.sent == []
+    assert link._sender.pending() == 0
 
 
 def test_send_event_produces_evt_frame_with_payload_intact():
@@ -109,6 +108,8 @@ def test_full_pi_restart_sequence_preserves_seq_continuity():
     transport = FakeTransport()
     link = MicsLink(transport, autostart=False, on_state_change=calls.append,
                      heartbeat_s=9999.0)
+    link._io_once()  # consumes the mandatory "nothing ever sent yet" initial heartbeat
+    transport.sent = []  # start the scenario below from a clean slate
 
     transport.pending_events = [MONITOR_CONNECTED]
     link._io_once()
@@ -130,9 +131,10 @@ def test_full_pi_restart_sequence_preserves_seq_continuity():
 
     assert calls == [True, False, True]
     seqs = [_decode(f)["seq"] for f in transport.sent]
-    assert seqs == sorted(seqs)
-    assert seqs == list(range(len(seqs)))  # strictly increasing, never reset to 0 again
     assert len(seqs) == 8
+    # Strictly increasing, contiguous, and never reset back to a lower value across the
+    # disconnect/reconnect edge — this is SDK-07's whole claim in one assertion.
+    assert seqs == list(range(seqs[0], seqs[0] + len(seqs)))
 
 
 # --- heartbeat: due when idle, suppressed by traffic ---

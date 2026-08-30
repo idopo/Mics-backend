@@ -210,7 +210,16 @@ class MicsLink:
             self._send_frame(wire.hb_frame(seq))
 
     def _send_frame(self, frame):
-        self._transport.send(frame)
+        """`frame` has already left the bounded queue (34-review CR-01): if
+        `transport.send()` raises, the frame is not silently gone — it is counted in
+        `stats.send_failed` before the exception is re-raised for `_io_once()`'s existing
+        handler to log (rate-limited) and move on to the next iteration.
+        """
+        try:
+            self._transport.send(frame)
+        except Exception:
+            self._sender.record_send_failure()
+            raise
         self._sender.stats.sent += 1
         self._heartbeat.note_sent(self._clock())
 

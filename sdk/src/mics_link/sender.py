@@ -29,6 +29,15 @@ frame rate, and `queue.Queue.put_nowait` being thread-safe does not make a bare
 plain attribute can lose an update when two threads race it. `record_external_drop()` is
 the one seam plan 34-06's `close()`-rejected sends use to record a drop that never reaches
 `enqueue()` at all, through the same lock.
+
+`stats.send_failed` (34-review CR-01 fix): a frame this module already handed off — it left
+the bounded queue via `pop()` — is a DIFFERENT event than a `dropped` frame, which never
+left the queue at all (backpressure, still sitting behind a full `maxsize`). A frame that
+`transport.send()` raised on was attempted and lost, not refused for capacity reasons; the
+distinct counter keeps that failure mode countable rather than folding it into a `dropped`
+number whose meaning ("the queue was full") would then be wrong. `record_send_failure()` is
+the one seam plan 34-06's IO thread uses when `transport.send()` raises, through the same
+lock as every other counter here.
 """
 import logging
 import queue
@@ -44,6 +53,7 @@ class SenderStats(object):
         self.sent = 0
         self.dropped = 0
         self.abandoned = 0  # set by plan 34-06's close()
+        self.send_failed = 0  # a dequeued frame transport.send() raised on (34-review CR-01)
 
     def snapshot(self):
         return {
@@ -51,6 +61,7 @@ class SenderStats(object):
             "sent": self.sent,
             "dropped": self.dropped,
             "abandoned": self.abandoned,
+            "send_failed": self.send_failed,
         }
 
 
@@ -114,6 +125,15 @@ class BoundedSender(object):
         can never race each other's read-modify-write.
         """
         self._record_drop()
+
+    def record_send_failure(self):
+        """Thread-safe increment of `stats.send_failed` for a frame that already left the
+        bounded queue (via `pop()`) but that `transport.send()` then raised on (34-review
+        CR-01) — an attempted-and-lost send, not a capacity-refused `dropped` one. Uses the
+        same lock as every other counter here.
+        """
+        with self._stats_lock:
+            self.stats.send_failed += 1
 
     def _record_drop(self):
         with self._stats_lock:

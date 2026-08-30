@@ -82,10 +82,30 @@ def test_transport_send_failure_does_not_raise_and_next_send_succeeds():
     link._io_once()  # swallowed — frame lost, no retry
     assert transport.sent == []
 
+    # 34-review CR-01: the dequeued-but-unsent frame must be COUNTED, not silently gone.
+    # This is the exact scenario the review found un-caught: this test previously proved
+    # only that no exception escaped and that transport.sent stayed empty — it never
+    # checked a single counter, so the frame's loss went unaccounted-for even though this
+    # test passed. `send_failed` is the dedicated counter for "attempted and lost"; it is
+    # distinct from `dropped` (never left the queue) and the enqueued==sent+dropped+
+    # abandoned+send_failed+pending invariant tests assert elsewhere must hold here too.
+    snap = link.stats.snapshot()
+    assert snap["enqueued"] == 1
+    assert snap["sent"] == 0
+    assert snap["dropped"] == 0
+    assert snap["abandoned"] == 0
+    assert snap["send_failed"] == 1
+    pending = link._sender.pending()
+    assert pending == 0
+    assert snap["enqueued"] == (
+        snap["sent"] + snap["dropped"] + snap["abandoned"] + snap["send_failed"] + pending
+    )
+
     link.send_signal("b", 2)
     link._io_once()
     assert len(transport.sent) == 1
     assert _decode(transport.sent[0])["sig"] == "b"
+    assert link.stats.snapshot()["sent"] == 1
 
 
 # --- monitor events -> on_state_change edges ---

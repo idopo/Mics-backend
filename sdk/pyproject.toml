@@ -11,6 +11,7 @@ build-backend = "setuptools.build_meta"
 name = "mics-link"
 version = "0.1.0"
 description = "Socket-free wire codec and client for streaming signals/events to a MICS pilot over ZMQ"
+readme = "README.md"
 requires-python = ">=3.8"
 # Floors chosen to be ALREADY SATISFIED by a typical scientific Python environment, not
 # matched to one machine. pyzmq/msgpack are common transitive deps of Jupyter, IPython,

@@ -9,7 +9,7 @@ Two file shapes, detected by header/keys, never by a flag (SDK-12 as amended 202
   long: columns/keys are exactly t, signal, value (extra columns ignored)
   wide: a "t" column plus one column per signal; every non-empty cell in a row becomes one
         (t, signal, value) tuple sharing that row's t. An empty cell is skipped SILENTLY —
-        it means "no sample" (an occluded DLC keypoint is the motivating case), not a
+        it means "no sample" (an occluded tracked feature is the motivating case), not a
         malformed row.
 A header/keys containing "signal" without "value" is AMBIGUOUS (looks wide, but "signal" is
 also the long format's own column name) and raises `MicsLinkError` — a file-level error,
@@ -170,7 +170,7 @@ def _read_jsonl(path, stats):
     # Shape (long vs wide) is decided ONCE, from the first parseable record's keys — a
     # file-level property, mirroring the CSV header. Unlike CSV, a wide JSONL record's OWN
     # key set is used per-line for its signal columns (not a fixed list from the first
-    # record): JSON, unlike a CSV row, can simply omit a key for an occluded keypoint, and
+    # record): JSON, unlike a CSV row, can simply omit a key for an occluded feature, and
     # forcing every line to carry every column seen on line one would defeat that.
     shape = None
     with open(path, "r", encoding="utf-8") as handle:

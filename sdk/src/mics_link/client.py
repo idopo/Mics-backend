@@ -16,9 +16,10 @@ is why they must not — the command worker's `ack_sink` is also `sender.enqueue
 **`send_signal`/`send_event` are thread-safe, non-blocking, perform no I/O, hold no lock
 across a network call, and are safe to call before a connection exists and while
 disconnected** (SDK-15): they are called from a foreign library's callback thread at frame
-rate (e.g. `dlclive`'s `Processor.process`, invoked synchronously on DLC's own inference
-thread once per frame). The only shared mutable state on that call path — the `SeqCounter`
-and `BoundedSender`'s stats — is protected by small locks for exactly this reason.
+rate (e.g. a vendor inference SDK's per-frame callback, invoked synchronously on that
+library's own worker thread once per frame). The only shared mutable state on that call
+path — the `SeqCounter` and `BoundedSender`'s stats — is protected by small locks for
+exactly this reason.
 
 **No exception ever escapes the IO thread, absolute** (decision 3). `send_signal`/
 `send_event` may raise `InvalidValueError` — that is the ONE deliberate exception, SDK-04's

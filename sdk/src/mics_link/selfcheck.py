@@ -1,8 +1,9 @@
 """Detects a globally-patched msgpack before it silently corrupts every frame we send
-(SDK-02 as amended, 34-01-PLAN.md amendment "DLC-Live and Windows").
+(SDK-02 as amended, 34-01-PLAN.md's cross-platform/vendor-neutrality amendment).
 
-`msgpack-numpy` is commonly present in scientific/DeepLabCut environments (verified in an
-inspected `DEEPLABCUT223` env) and its `msgpack_numpy.patch()` reassigns
+`msgpack-numpy` is commonly present in scientific Python environments that patch msgpack
+globally (verified against an inspected scientific-computing conda environment) and its
+`msgpack_numpy.patch()` reassigns
 `msgpack.packb`/`unpackb`/`Packer`/`Unpacker` at MODULE level — binding `msgpack.packb`
 inside `wire.py` at import time does NOT dodge it (verified against msgpack_numpy's own
 source). If anything else in the researcher's process calls `patch()`, every frame
@@ -53,7 +54,7 @@ def selfcheck():
             "mics_link.selfcheck: wire codec produced unexpected bytes for a known frame. "
             "This usually means msgpack_numpy.patch() (or something else) has reassigned "
             "msgpack.packb/unpackb globally somewhere in this process — msgpack-numpy is "
-            "common in DeepLabCut environments and does exactly this. "
+            "common in scientific Python environments and does exactly this. "
             "observed={} expected={}".format(observed.hex(), expected.hex())
         )
     return True

@@ -1,5 +1,5 @@
 """mics-link — a socket-free-to-import client SDK for streaming signals and events from a
-researcher's own process (e.g. a DeepLabCut-Live inference loop) to a MICS pilot over ZMQ.
+researcher's own process (e.g. a live model-inference loop) to a MICS pilot over ZMQ.
 
 Everything a README-only reader's ``from mics_link import ...`` needs is re-exported here,
 and nothing else is — every name below is documented in ``sdk/README.md`` (plan 34-08).
@@ -14,10 +14,11 @@ and nothing else is — every name below is documented in ``sdk/README.md`` (pla
 though an earlier plan's amendment suggested it should be — a researcher who needs it can
 still ``from mics_link.values import as_scalar``.
 
-``Pacer`` (``mics_link.timing.Pacer``) IS re-exported (plan 34-07's "DLC-Live and Windows"
-amendment, dated after 34-06 locked ``__all__`` to six names — this is that lock's one
-documented, amendment-mandated addition): Phase 35's video frame loop needs the exact same
-origin-relative scheduler ``replay()`` uses, rather than a second implementation.
+``Pacer`` (``mics_link.timing.Pacer``) IS re-exported (plan 34-07's cross-platform/
+vendor-neutrality amendment, dated after 34-06 locked ``__all__`` to six names — this is
+that lock's one documented, amendment-mandated addition): Phase 35's video frame loop
+needs the exact same origin-relative scheduler ``replay()`` uses, rather than a second
+implementation.
 """
 from .client import MicsLink
 from .errors import InvalidValueError, MicsLinkError

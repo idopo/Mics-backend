@@ -1,0 +1,40 @@
+# This repo's other services use requirements.txt (see root CLAUDE.md). This is a
+# deliberate, narrow exception: sdk/ is a redistributable package meant to be installed
+# on machines OUTSIDE this repo entirely (a researcher's laptop, a DeepLabCut conda env),
+# so it needs real PEP 621 build metadata rather than a service-local requirements file.
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mics-link"
+version = "0.1.0"
+description = "Socket-free wire codec and client for streaming signals/events to a MICS pilot over ZMQ"
+requires-python = ">=3.8"
+# Floors chosen to be ALREADY SATISFIED by a typical scientific Python environment, not
+# matched to one machine. pyzmq/msgpack are common transitive deps of Jupyter, IPython,
+# Spyder and napari; a floor above what's already installed turns "install our SDK" into
+# "upgrade the researcher's notebook stack". NEVER upper-bound these, and never raise the
+# floors casually — see 34-CONTEXT.md "DLC-Live and Windows" / SDK-14.
+dependencies = ["pyzmq>=22", "msgpack>=1.0"]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+# Dangling until plan 34-07 creates mics_link/replay.py — setuptools does not verify
+# entry-point targets at build time, so `pip install` still succeeds. Declared now so the
+# packaging shape is final and later plans don't need to touch this file again.
+mics-link-replay = "mics_link.replay:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not zmq_loopback'"
+markers = [
+    "zmq_loopback: needs a real local ZMQ loopback socket (deselected by default)",
+]

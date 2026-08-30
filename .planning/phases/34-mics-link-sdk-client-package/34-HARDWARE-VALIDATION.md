@@ -111,7 +111,7 @@ beyond the pilot restart the USER performs for the SDK-07 row (decision 4,
 
 | # | Observation | Requirement | RESULT |
 |---|---|---|---|
-| A | Transition — FDA cycles `wait -> armed -> fired -> wait` | success criterion 3 | ✅ PASS (run 582, 2026-08-30) — 3/3 cycles, see §3b |
+| A | Transition — FDA cycles `wait -> armed -> fired -> wait` | success criterion 3 | ✅ PASS (run 583, 2026-08-30) — 3/3 cycles, live timing, see §3c |
 | B | Quiet — `demo.alive` stays true 20s while `demo.left_paw_x` goes stale | success criterion 5 (SDK-05) | ⬜ pending |
 | C | Soak — pilot stays up, FDA keeps transitioning, `stats.dropped` reported, ES keeps up | success criterion 12 (SDK-06) | ⬜ pending |
 | D | Reconnect — sender survives a pilot restart without being restarted, `seq` climbs across it | success criterion 6 (SDK-07) | ⬜ pending |
@@ -285,3 +285,47 @@ non-Pi machine.
 
 ### Still pending on this pilot
 Observations B (heartbeat/quiet), C (soak), D (reconnect) -- all unrun.
+
+---
+
+## 3c. Observation A re-run — run 583, the definitive evidence
+
+Run 582 passed but its first cycle was a flushed DEALER backlog (§3b caveat 1). Run 583 was
+started in the corrected order -- **run first, then sender** -- and with task def 434's GPIO
+pin repointed from lib 8 v4 (id 25) to v7 (id 174). It supersedes 582.
+
+**Three cycles, all live, all correctly caused:**
+
+| t (s) | -> state | last `value_raw` |
+|---|---|---|
+| 0.059 | wait | 0.0 (initial) |
+| 4.766 | armed | 0.7 |
+| 6.773 | fired | 0.1 |
+| 6.774 | wait | 0.1 |
+| 8.803 | armed | 0.7 |
+| 10.772 | fired | 0.1 |
+| 10.772 | wait | 0.1 |
+| 12.835 | armed | 0.7 |
+| 14.790 | fired | 0.1 |
+| 14.791 | wait | 0.1 |
+
+**Hold durations are real, not replayed.** armed->fired gaps: **2.007s, 1.969s, 1.955s**
+against the script's 2.0s target; cycle starts 4.03s apart (2s high + 2s low). Compare run 582:
+`0.025s, 1.715s, 1.968s` -- its first "cycle" was 25ms of flushed queue. 132 `left_paw_x`
+frames logged, raw values `[0.0, 0.1, 0.7]`.
+
+**The GPIO repin is confirmed working on hardware.** `Left_LED` and `Mid_LED` now show
+`assign_cb -> set -> assign_cb` in ES, where run 582 showed only `assign_cb` before construction
+failed. The user confirmed the `np.int` tracebacks are gone from the pilot journal.
+
+### Change that produced this
+`UPDATE task_definitions SET hw_lib_versions = jsonb_set(hw_lib_versions,'{8}','174') WHERE id=434;`
+Prior value saved for rollback: `{"7":13,"8":25,"9":144,"10":16,"11":17,"45":41,"162":119,"163":125,"164":121}`.
+v7 is not merely the `np.int` rename -- it is the Phase 31 GPIO driver (stock upstream pigpio +
+CLOCK_MONOTONIC adapter) and it DROPS logs for edges whose tick cannot be converted, rather than
+software-stamping them. That behaviour was not exercised by this FDA, which reads no GPIO.
+
+### Deliberately NOT changed
+- `hardware_libs.stable_version_id` for lib 8 still points at the broken v4 (id 25), so every
+  unpinned resolution still inherits `np.int`.
+- Task defs **186** (pins 25) and **179** (pins 19) remain on broken versions.

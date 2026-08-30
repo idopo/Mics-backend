@@ -11,12 +11,17 @@ and nothing else is — every name below is documented in ``sdk/README.md`` (pla
             link.send_signal("left_paw_x", frame.x)
 
 ``as_scalar`` (``mics_link.values.as_scalar``) is deliberately NOT re-exported here even
-though an earlier plan's amendment suggested it should be — this plan's own Task 3 test
-locks ``__all__`` to exactly the six names below, and a researcher who needs it can still
-``from mics_link.values import as_scalar``.
+though an earlier plan's amendment suggested it should be — a researcher who needs it can
+still ``from mics_link.values import as_scalar``.
+
+``Pacer`` (``mics_link.timing.Pacer``) IS re-exported (plan 34-07's "DLC-Live and Windows"
+amendment, dated after 34-06 locked ``__all__`` to six names — this is that lock's one
+documented, amendment-mandated addition): Phase 35's video frame loop needs the exact same
+origin-relative scheduler ``replay()`` uses, rather than a second implementation.
 """
 from .client import MicsLink
 from .errors import InvalidValueError, MicsLinkError
+from .timing import Pacer
 
 # Aliased on import (not `from .selfcheck import selfcheck`): binding the plain name
 # `selfcheck` at package-root scope would overwrite the `mics_link.selfcheck` SUBMODULE
@@ -35,6 +40,7 @@ __all__ = [
     "MicsLinkError",
     "InvalidValueError",
     "SenderStats",
+    "Pacer",
     "__version__",
 ]
 

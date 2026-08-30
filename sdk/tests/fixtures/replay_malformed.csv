@@ -1,0 +1,7 @@
+t,signal,value
+0.0,good1,1.5
+abc,sig2,2.0
+0.2,,3.0
+0.3,sig4,
+0.4,sig5,{"a": 1}
+0.5,good2,true

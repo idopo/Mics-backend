@@ -1,0 +1,5 @@
+{"t": 0.00, "signal": "nose_p", "value": 0.98}
+{"t": 0.00, "signal": "tail_p", "value": 0.41}
+{"t": 0.03, "signal": "count", "value": 3}
+{"t": 0.03, "signal": "visible", "value": true}
+{"t": 0.03, "signal": "label", "value": "left"}

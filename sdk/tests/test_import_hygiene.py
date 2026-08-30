@@ -1,8 +1,9 @@
 """AST-based import-hygiene guard for mics_link (Phase 34, Plan 01, Task 3).
 
-Generalizes `tools/extlink_driver/test_extlink_wire.py::test_wire_module_never_imports_zmq`
-from one hardcoded file to a walk of the WHOLE `mics_link` package, so it keeps guarding
-modules plans 34-02..34-07 have not written yet.
+Generalizes the retired POC driver's `test_wire_module_never_imports_zmq`
+(`tools/extlink_driver/`, deleted in plan 34-05) from one hardcoded file to a walk of the
+WHOLE `mics_link` package, so it keeps guarding modules plans 34-02..34-07 have not written
+yet.
 
 Extended per the 34-01-PLAN.md "DLC-Live and Windows" amendment: no module-scope zmq
 import, no import-time side effects, and none of a short list of POSIX-only / process-

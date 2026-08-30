@@ -22,8 +22,8 @@ SECONDARY_PI_WIRE_PATH = "/home/ido/pi-mirror/autopilot/autopilot/hardware/exter
 def load_pi_wire(path):
     """Load the Pi's wire codec module by file path, isolated from this package's own
     ``mics_link.wire`` (different module name, no sys.path pollution). Skips the calling
-    test (not a hard failure) when the path doesn't exist — the same posture
-    ``tools/extlink_driver/test_extlink_wire.py::_load_pi_wire_module`` already uses,
+    test (not a hard failure) when the path doesn't exist — the same posture the retired
+    POC driver's test suite (``tools/extlink_driver/``, deleted in plan 34-05) used,
     retargeted rather than reinvented.
     """
     import os

@@ -1,6 +1,6 @@
 """Call-site dtype validation for signal/event values, plus the shared CSV/stdin token
-coercion lifted from `tools/extlink_driver/extlink_wire.py:coerce_value` (Phase 18,
-EXTLINK-12).
+coercion lifted from the retired POC driver's `coerce_value` (`tools/extlink_driver/`,
+deleted in plan 34-05; Phase 18, EXTLINK-12).
 
 `validate_value`/`validate_payload` implement SDK-04 (decision 1, AMENDED 2026-08-30 —
 "DLC-Live and Windows"): a bad value raises `InvalidValueError` at the researcher's own
@@ -91,19 +91,19 @@ def coerce_token(token, allow_json_dict=False):
     """str -> bool|int|float|str (|dict when allow_json_dict=True). Never raises, on any
     input — the driver/replay loops calling this must survive a stray or malformed token.
 
-    Lifted from `tools/extlink_driver/extlink_wire.py:coerce_value` (Phase 18, EXTLINK-12).
-    Bools are checked BEFORE any numeric coercion: `bool` is an `int` subclass in Python, and
-    this ordering mirrors the receiving side's own guard
+    Lifted from the retired POC driver's `coerce_value` (`tools/extlink_driver/`, deleted in
+    plan 34-05; Phase 18, EXTLINK-12). Bools are checked BEFORE any numeric coercion: `bool`
+    is an `int` subclass in Python, and this ordering mirrors the receiving side's own guard
     (`external_hardware_wire.coerce_value`), which special-cases `bool` against
     `isinstance(raw, bool)` specifically because `float(True) == 1.0` would otherwise
     silently misrepresent a bool as a float — checking `"true"`/`"false"` first here keeps
     the token parser symmetric with that guard rather than ever routing a bool-looking token
     through `int()`/`float()` first.
 
-    The JSON-dict branch is opt-in (`allow_json_dict`): plan 34-05's driver passes
-    `allow_json_dict=True` to keep its EVT-from-stdin behaviour byte-identical to the retired
-    `extlink_wire.py`; plan 34-07's CSV replay uses the default `False` — a `{...}`-shaped
-    token stays a plain string unless the caller opts in.
+    The JSON-dict branch is opt-in (`allow_json_dict`): the retired POC driver passed
+    `allow_json_dict=True` to give its EVT-from-stdin mode `{...}`-shaped payloads; plan
+    34-07's CSV replay uses the default `False` — a `{...}`-shaped token stays a plain string
+    unless the caller opts in.
     """
     try:
         lowered = token.lower()

@@ -109,6 +109,8 @@ class MicsLink:
         self._thread = None
         self._closed = False
         self._close_lock = threading.Lock()
+        self._transport_closed = False
+        self._transport_close_lock = threading.Lock()
 
         self._commands.start()
         if autostart:
@@ -169,8 +171,13 @@ class MicsLink:
         self._thread.start()
 
     def _io_loop(self):
-        while not self._stop.is_set():
-            self._io_once()
+        """(CR-02) `finally` closes the transport HERE, after this loop genuinely stops —
+        never from `close()`'s foreign thread while a call may still be in flight."""
+        try:
+            while not self._stop.is_set():
+                self._io_once()
+        finally:
+            self._close_transport()
 
     def _io_once(self):
         """One iteration of decision 2's loop, wrapped in the try/except of decision 3 —
@@ -210,11 +217,8 @@ class MicsLink:
             self._send_frame(wire.hb_frame(seq))
 
     def _send_frame(self, frame):
-        """`frame` has already left the bounded queue (34-review CR-01): if
-        `transport.send()` raises, the frame is not silently gone — it is counted in
-        `stats.send_failed` before the exception is re-raised for `_io_once()`'s existing
-        handler to log (rate-limited) and move on to the next iteration.
-        """
+        """CR-01: `frame` already left the queue — count a send() failure, don't drop it
+        silently, then re-raise for `_io_once()`'s existing handler to log."""
         try:
             self._transport.send(frame)
         except Exception:
@@ -245,6 +249,7 @@ class MicsLink:
         (LINGER=0). close() is idempotent, is safe to call from any thread, and never raises.
         After close(), send_signal returns False and increments stats.dropped rather than
         raising — a researcher's loop that outlives the `with` block must not crash.
+        (CR-02) Never closes the transport itself while the IO thread may still be mid-call.
         """
         with self._close_lock:
             if self._closed:
@@ -257,8 +262,10 @@ class MicsLink:
             while self._sender.pending() > 0 and self._clock() < deadline:
                 time.sleep(0.01)
         self._stop.set()
+        thread_still_running = False
         if self._thread is not None:
             self._thread.join(timeout=self._drain_timeout_s)
+            thread_still_running = self._thread.is_alive()
 
         abandoned = 0
         while True:
@@ -271,6 +278,21 @@ class MicsLink:
 
         self._commands.stop(timeout=self._drain_timeout_s)
 
+        if thread_still_running:
+            # CR-02: don't close from this foreign thread — _io_loop's own finally will.
+            self._logger.warning(
+                "mics_link: IO thread did not stop within drain_timeout_s; transport left open"
+            )
+        elif self._thread is None:
+            self._close_transport()  # never started; no _io_loop will run to do it
+
+    def _close_transport(self):
+        """The only two call sites that ever reach `transport.close()` (CR-02): here from
+        `_io_loop`'s own `finally`, or from `close()` when the IO thread never started."""
+        with self._transport_close_lock:
+            if self._transport_closed:
+                return
+            self._transport_closed = True
         try:
             self._transport.close()
         except Exception:

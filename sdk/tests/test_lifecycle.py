@@ -15,18 +15,42 @@ class _BlockingTransport(FakeTransport):
     """A transport whose `send()` blocks until explicitly released — proves close()
     returns within a bounded time even against a permanently stuck transport call, without
     leaking a thread past the end of the test (the release lets the stuck call finish).
+
+    (34-review CR-02) Also records whether `close()` ever arrives while a `send()` is
+    genuinely in flight — the real unsafety `FakeTransport.close()` alone cannot model,
+    since it just sets a flag and does not interact with a concurrently-blocked `send()`.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._release = threading.Event()
+        self._send_in_flight = threading.Event()
+        self.closed_while_send_in_flight = False
 
     def send(self, frame):
-        self._release.wait()
-        super().send(frame)
+        self._send_in_flight.set()
+        try:
+            self._release.wait()
+            super().send(frame)
+        finally:
+            self._send_in_flight.clear()
+
+    def close(self):
+        if self._send_in_flight.is_set():
+            self.closed_while_send_in_flight = True
+        super().close()
 
     def release(self):
         self._release.set()
+
+
+def _wait_until(predicate, timeout_s, what="condition"):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError("timed out after {}s waiting for: {}".format(timeout_s, what))
 
 
 def test_context_manager_closes_transport_and_joins_thread_on_exit():
@@ -101,7 +125,18 @@ def test_abandon_when_transport_blocks_past_drain_timeout():
     assert link.stats.sent == 0
     assert link.stats.abandoned == 4
 
+    # 34-review CR-02: close() must not tear the transport down while the IO thread is
+    # still mid-send() on it. At this point the blocked send() has NOT been released yet,
+    # so if close() had closed the transport unconditionally (the pre-fix behavior) it
+    # would have done so while _send_in_flight was still set.
+    assert transport.closed is False
+    assert transport.closed_while_send_in_flight is False
+
     transport.release()  # let the permanently-stuck send() finish so no thread leaks
+    # The IO thread's own loop now runs its finally and closes the transport itself, once
+    # it has genuinely stopped touching it — never while send() was still in flight.
+    _wait_until(lambda: transport.closed is True, timeout_s=2.0, what="transport to close")
+    assert transport.closed_while_send_in_flight is False
 
 
 def test_send_signal_after_close_returns_false_and_increments_dropped_never_raises():

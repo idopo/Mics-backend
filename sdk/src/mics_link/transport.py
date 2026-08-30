@@ -152,7 +152,14 @@ class ZmqTransport(Transport):
             return None
 
     def send(self, frame):
-        self._socket.send(frame)
+        """Non-blocking (WR-01): passes `zmq.NOBLOCK` so a stalled peer raises `zmq.Again`
+        instead of blocking the IO thread indefinitely — the caller (`client.py`'s
+        `_send_frame`, CR-01) treats any exception here, `zmq.Again` included, as a lost
+        send to count, not something to retry or block on.
+        """
+        import zmq
+
+        self._socket.send(frame, zmq.NOBLOCK)
 
     def poll(self, timeout_ms):
         """Returns a list of inbound frames, `[]` on timeout. Swallows `zmq.Again`."""

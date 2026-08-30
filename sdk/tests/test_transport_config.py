@@ -87,6 +87,30 @@ def test_zmq_transport_source_id_has_no_public_setter():
         transport.source_id = "other"
 
 
+def test_zmq_transport_send_uses_noblock_so_it_never_blocks_the_io_thread():
+    """WR-01: a stalled peer must raise (`zmq.Again`) rather than block the IO thread
+    forever — proven by asserting the actual flag passed to the underlying socket, not by
+    exercising real backpressure.
+    """
+    zmq = pytest.importorskip("zmq")
+
+    class _RecordingSocket(FakeSocket):
+        def __init__(self):
+            super().__init__()
+            self.send_calls = []
+
+        def send(self, frame, flags=0):
+            self.send_calls.append((frame, flags))
+
+    fake_socket = _RecordingSocket()
+    factory = fake_socket_factory(fake_socket)
+    transport = ZmqTransport("132.77.72.28", 5599, "demo", socket_factory=factory)
+
+    transport.send(b"frame")
+
+    assert fake_socket.send_calls == [(b"frame", zmq.NOBLOCK)]
+
+
 def test_zmq_transport_does_not_expose_raw_socket_publicly():
     """The only reference to the raw socket must be underscored/name-mangled — a public
     attribute holding it would re-invite `setsockopt(IDENTITY, ...)` from outside."""

@@ -1802,6 +1802,26 @@ the pilot process, and does not run Python on the Pi.
 Plans:
 - [ ] TBD (run /gsd:plan-phase 35 to break down)
 
+### Phase 36: Sender-side contract enforcement for mics-link
+
+**Goal:** A researcher using the `mics-link` SDK finds out at `connect()` that their signal name,
+dtype, event payload or publish rate does not match what the Pi's hardware lib declares -- instead
+of discovering it hours later, or never. Today the contract is enforced only on the Pi, silently,
+and the verdict never travels back to the sender.
+
+**Requirements**: TBD -- **needs `/gsd-discuss-phase 36` first.** Scope is deliberately open: at
+minimum the contract-fetch path, possibly also surfacing the Pi's existing decode counters.
+See `36-SEED.md` for the evidence gathered 2026-08-30.
+
+**Depends on:** Phase 34 (the SDK and its `connect()` path). NOT Phase 35 -- this is independent of
+DeepLabCut and could land before it, though Phase 35 is the strongest argument for doing it: a
+keypoint feed is exactly where a name typo or a too-slow publish rate goes unnoticed for hours.
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 36 to break down)
+
 ---
 *Created: 2026-03-15*
 *Last updated: 2026-08-26 — Phases 34-35 added: the DeepLabCut arc (MICS-Link SDK client package, then DLC keypoint-likelihood integration), the second consumer of Phase 18's ExternalHardware substrate. Both were reserved in Phase 18's NOT-in-scope list.*

@@ -20,18 +20,24 @@ def test_public_names_import_from_the_package_root():
         InvalidValueError,
         MicsLink,
         MicsLinkError,
+        Pacer,
         SenderStats,
         connect,
     )
 
 
 def test_all_contains_exactly_the_documented_names_plus_version():
+    """Locked to six names by this plan (34-06); amended by plan 34-07's "DLC-Live and
+    Windows" amendment to ADD exactly one more — `Pacer` — dated after this lock was
+    written. See `mics_link/__init__.py`'s docstring for the amendment citation.
+    """
     assert set(mics_link.__all__) == {
         "connect",
         "MicsLink",
         "MicsLinkError",
         "InvalidValueError",
         "SenderStats",
+        "Pacer",
         "__version__",
     }
 

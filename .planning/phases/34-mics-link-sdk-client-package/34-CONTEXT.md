@@ -157,6 +157,94 @@ Two consequences that bind the whole design:
   host. The rig checkpoint is **USER-RUN** — the agent supplies commands, the user runs the
   sender from a non-Pi machine and reports what the FDA did.
 
+### DLC-Live and Windows — REVISED 2026-08-30 (user session)
+
+The user directed that Phase 34 be planned with the **DeepLabCut-Live** execution model
+concretely in mind, that the **first workflow be a prerecorded video run through the trained
+model** (with live camera following), and that the vision box is **most likely Windows**. What was
+verified against `DeepLabCut/DeepLabCut-live` source rather than assumed:
+
+```python
+from dlclive import DLCLive, Processor
+class MicsProcessor(Processor):
+    def process(self, pose, **kwargs):   # pose: np.ndarray (n_bodyparts, 3) -> x, y, likelihood
+        return pose                      # MUST return the pose or DLC breaks
+live = DLCLive(model_path, model_type="pytorch", processor=MicsProcessor(), resize=0.5)
+live.init_inference(first_frame)
+pose = live.get_pose(frame)              # calls processor.process() INSIDE, on THIS thread
+live.close()
+```
+
+Four properties of that call site bind this phase:
+
+1. **`process()` runs synchronously on the inference thread, once per frame.** The researcher does
+   not own the call site — `get_pose()` calls into them. The SDK's send path must therefore be
+   thread-safe, non-blocking and microsecond-cheap (SDK-15). The existing architecture already
+   delivers this (threadless bounded queue + one IO thread); what was missing is that it was never
+   *stated as a contract* or *tested* — a concurrent-senders test now proves it.
+2. **Every pose value is a numpy scalar.** `pose[i][2]` is `numpy.float32`/`float64`. Plan 34-02's
+   strict rejection is the right call and stays — but the check must be on **exact type**, because
+   `numpy.float64` *is* a `float` subclass and an `isinstance` check would pass it into `msgpack`,
+   which cannot pack it, turning a call-site error into an invisible IO-thread failure. The SDK
+   ships `mics_link.values.as_scalar(v)` (`.item()` when present) so the fix is one documented
+   name; `.item()` preserves int/bool/float where `float(...)` flattens them.
+3. **A video FILE runs unpaced.** `dlclive/benchmark.py` reads with `cv2.VideoCapture` and infers
+   as fast as the model allows. For the user's first workflow that is wrong by default: the signal
+   rate would bear no relation to the live case, and DLC-05's `stale_after_ms` would be exercised
+   at the wrong timebase. The origin-relative scheduler in plan 34-07 becomes public as
+   `mics_link.timing.Pacer` so Phase 35's frame loop paces at the video's native FPS with the same
+   drift-free code instead of a second implementation (SDK-10's argument, applied again).
+4. **A DLC export is not a `(t, signal, value)` file.** DLC writes `.h5`, and its CSV carries a
+   3-row `scorer/bodyparts/coords` MultiIndex header. 34-07 decision 1's claim that a DLC export
+   replays "without a conversion step" is **false and must be corrected**. Resolution: the SDK
+   additionally accepts a **wide** file (`t` + one column per signal), which is device-neutral and
+   ~24x smaller for a real export; Phase 35 still owns the DLC-specific converter.
+
+**Windows is a first-class target, not a footnote.** SDK-01 always said macOS/Windows/Linux; no
+plan tested or designed for it. SDK-14 now enumerates the hazards (tcp-only, no fork/SIGALRM,
+explicit utf-8 + `newline=""`, ASCII-only output, pathlib, ~15.6 ms `time.sleep` granularity below
+Python 3.11, daemon IO thread so Ctrl+C works, `python -m` fallback for the console script), and
+plan 34-09 gains a **USER-RUN Windows checkpoint** — the agent cannot run Windows and will not
+claim a pass it did not observe.
+
+**Install on Windows — user decision, 2026-08-30.** `pip install "git+https://..."` needs `git.exe`
+on PATH, which an Anaconda DLC box usually lacks, and pip's `#subdirectory=` fragment is documented
+for VCS/local-directory requirements only (a GitHub `.zip` URL is not a supported substitute). The
+user chose: **attach the built `py3-none-any` wheel to a GitHub Release** and document
+`python -m pip install <release-wheel-URL>` as the git-free path. This **relaxes plan 34-08
+decision 5's blanket "no `gh release`"** for exactly one artifact — the wheel. PyPI remains out of
+scope (SDK-13).
+
+**One real DLC environment was inspected — as evidence, not as a commitment.** The user supplied
+the conda list for `DEEPLABCUT223` (Python **3.8.19**, `deeplabcut 2.2.3` — TensorFlow engine, not
+PyTorch — `tensorflow 2.7.0`, `numpy 1.21.5`, **`pyzmq 22.3.0` and `msgpack 1.0.3` already
+installed**, plus `msgpack-numpy 0.4.7.1`) and then clarified they will **not necessarily run from
+it**. So the SDK targets a **range**, and that env is the worked example of what the range has to
+survive. Do not hardcode it anywhere.
+
+Three consequences, stated as rules rather than as a match to one machine:
+1. **Supported range is Python 3.8–3.12, and the `>=3.8` floor stays.** A DLC 2.2.3 model with the
+   period-correct `deeplabcut-live 1.0.4` (`>=3.7.1,<3.11`) lands on 3.8–3.10; a fresh env with
+   `deeplabcut-live 1.1.0` lands on 3.10–3.12. The floor costs nothing and covers both. Below
+   Python 3.11 `time.sleep` granularity is ~15.6 ms, not ~1 ms (SDK-14f).
+2. **Dependency floors are `pyzmq>=22`, `msgpack>=1.0` — low enough never to force an upgrade.**
+   Scientific environments usually already carry pyzmq (Jupyter, IPython, Spyder, napari all depend
+   on it), so a higher floor turns "install our SDK" into "upgrade the researcher's notebook
+   stack". In the inspected env six such packages share pyzmq 22.3.0. Where the packages are
+   already present the install must be a **no-op for dependencies**; in a fresh env, installing
+   both is the correct result. (The earlier `pyzmq>=27` idea also needed Python 3.9+, so it failed
+   twice over.)
+3. **`msgpack-numpy` is common in these environments** and `msgpack_numpy.patch()` globally
+   reassigns `msgpack.packb`/`unpackb`/`Packer`/`Unpacker` — a patched process silently emits
+   frames the Pi counts `malformed`. SDK-02 requires a `selfcheck` against the golden hex, run
+   inside `connect()`. This defends against any msgpack anomaly, not just that one package.
+   Full analysis: `35-DLC-LIVE-NOTES.md`.
+
+**Dependency hygiene against a DLC environment.** A DLC env hard-pins tensorflow and numpy.
+The SDK declares `pyzmq` and `msgpack` with **lower bounds only, never upper bounds**, and never
+depends on numpy — so `pip install` into that env cannot provoke a resolver conflict. This is a
+correctness property of the phase, not a packaging nicety.
+
 ### Claude's Discretion
 
 Explicitly delegated by the user this session ("not sure — I just want…"):

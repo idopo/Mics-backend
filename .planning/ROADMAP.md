@@ -1564,7 +1564,9 @@ an FDA transition fires on the rig. One supported wire implementation on the sen
 the hand-rolled copy in `tools/extlink_driver/extlink_wire.py`. No DeepLabCut and no trained model
 in this phase; its first real customer is Phase 35.
 
-**Requirements**: SDK-01 through SDK-13
+**Requirements**: SDK-01 through SDK-15 (SDK-14 cross-OS/Windows and SDK-15
+foreign-thread send added 2026-08-30; SDK-01/04/12 amended the same day — see
+`34-CONTEXT.md` -> *"DLC-Live and Windows"*)
 
 **Depends on:** Phase 18 (complete — the `ExternalHardware` substrate, the locked MessagePack
 envelope, `role: router_bind`, and the `ExtlinkDemo` fixture left standing on pilot 1). Nothing
@@ -1609,12 +1611,39 @@ else. Independent of Phases 26–33.
     session length, with the pilot staying up, the FDA still transitioning, drops reported rather
     than silent, and ES ingestion keeping up. Pass/fail is observed on the rig side; no number is
     printed that claims to be latency.
+13. **Windows is proven, or recorded as unproven — never asserted** (SDK-14). The SDK installs on
+    the Windows vision box **inside the DeepLabCut conda environment** (which hard-pins torch and
+    numpy) with `python -m pip check` clean, and from that box a replay drives the same FDA cycle
+    as from Linux: the console script resolves (or `python -m mics_link.replay` does), a path with
+    backslashes and a space works, the printed summary survives a cp1252 console, and Ctrl+C stops
+    it cleanly. Criterion 1 has claimed macOS/Windows/Linux since Phase 18 with nothing behind it;
+    this phase either checks it on the real machine or writes UNPROVEN with the reason.
+14. **The send path survives a foreign library's callback thread at frame rate** (SDK-15).
+    `send_signal` / `send_event` are thread-safe, non-blocking, do no I/O, and are safe before a
+    connection exists — proven by 8 concurrent threads producing a strictly increasing `seq` with
+    no duplicates and no escaped exception. This is the shape `dlclive`'s
+    `Processor.process(pose, **kwargs)` imposes (it is called synchronously on the inference
+    thread, once per frame, from inside `DLCLive.get_pose()`), and the shape most vendor
+    acquisition SDKs impose. The README shows the callback form beside the ten-line pull loop.
+15. **A prerecorded video run is timing-faithful, not just functional.** The public
+    `mics_link.timing.Pacer` — the same drift-free origin-relative scheduler `replay()` uses — lets
+    Phase 35 pace a video-file frame loop at the source's native FPS. Unpaced, `cv2.VideoCapture`
+    on a file yields frames as fast as the model consumes them, and DLC-05's `stale_after_ms` would
+    be exercised at a timebase unrelated to the live case. The replay reader also accepts **wide**
+    files (`t` + one column per signal) alongside long `(t, signal, value)` ones; the
+    DeepLabCut-specific MultiIndex converter stays in Phase 35, so nothing device-specific enters
+    `mics_link`.
 
 **Files to change:**
 - `mics-backend/sdk/src/mics_link/` (new — the package, `src/` layout: client, wire codec, bounded sender, heartbeat,
-  reconnect, command dispatch, replay. Deliberately NOT under `~/pi-mirror/` or `~/mics_core/`,
+  reconnect, command dispatch, replay, `timing.py`'s public `Pacer`. Deliberately NOT under `~/pi-mirror/` or `~/mics_core/`,
   both of which are rsynced to a Pi)
 - `mics-backend/sdk/pyproject.toml` + `README.md` (new — build metadata and the researcher-facing doc)
+- `mics-backend/sdk/examples/` (new — `ten_line_sender.py` (the counted pull-loop example),
+  `callback_sender.py` (the push/callback shape DLC and most vendor SDKs impose), and
+  `rig_checkpoint_sender.py`)
+- A `py3-none-any` wheel attached to a **GitHub Release** (user-run `gh release create` — the
+  git-free install path for a Windows/Anaconda box; PyPI remains out of scope)
 - `mics-backend/sdk/tests/` (new — socketless unit tests + the golden-frame parity corpus)
 - `mics-backend/tools/extlink_driver/extlink_wire.py` (**delete**)
 - `mics-backend/tools/extlink_driver/extlink_driver.py` (**delete** — POC, superseded by the SDK)
@@ -1671,7 +1700,8 @@ Plans:
 ### Phase 35: DeepLabCut Keypoint Likelihood Integration
 
 **Goal:** A DeepLabCut model already trained and running on a separate computer on the lab network,
-watching the experiment's video, pushes per-keypoint likelihoods to the Pi — and the task's state
+watching the experiment's video, pushes per-keypoint likelihoods AND (opt-in) normalised x/y
+coordinates to the Pi — and the task's state
 machine transitions on them. A researcher authors `dlc.nose_likelihood > 0.9` in the FDA editor's
 operand picker, exactly as they would author a lick or a GPIO edge. The vision box is not otherwise
 connected to the experimental system: MICS neither triggers the camera nor captures video.
@@ -1733,8 +1763,16 @@ travels the ordinary hw_lib → hw_module → pilot-config → toolkit-dispatch 
 - `mics-backend/api/seed_libs/` or an uploaded lib version (new — the `DLCKeypoints`
   `ExternalHardware` subclass; delivery mechanism to be settled in planning, following Phase 26's
   seeded-first-party-lib precedent)
-- `mics-backend/sdk/mics_link/` (extend — the DLC adapter: a `dlclive`-compatible Processor plus a
-  standalone loop, taking a pose array + bodypart list and pushing declared signals)
+- `mics-backend/dlc_link/` (**new, a SEPARATE package — NOT inside `sdk/`**). The DLC adapter: a
+  `dlclive`-compatible Processor plus a standalone loop, depending on `mics-link` as an ordinary
+  installed dependency. **Amended 2026-08-30 — this previously read `sdk/mics_link/ (extend)`,
+  which would have broken Phase 34.** `34-08-PLAN.md` Task 2 enforces a device-neutrality guard
+  that fails if `deeplabcut`, `keypoint`, `bodypart`, `pose` or `\bdlc\b` appears anywhere under
+  `sdk/` — README, examples or source. Extending `sdk/mics_link/` with a DLC adapter would fail
+  that test, and correctly so: the phase's whole premise is that DLC is an ordinary customer of the
+  public API with no privileged hooks, which stops being true the moment the SDK knows what a
+  keypoint is. (The old path was also stale in a second way — Phase 34 uses a `src/` layout,
+  `sdk/src/mics_link/`.)
 - `mics-backend/tools/` (new — the lib-source generator: model bodypart list → hardware lib source,
   so a new model does not mean hand-writing thirty decorated methods)
 - `pilot_hardware_config` row + `hardware_modules` row + toolkit + a `dlc_demo` task definition

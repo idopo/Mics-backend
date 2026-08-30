@@ -10,11 +10,16 @@ reached the transport, not just what `send_signal` returned.
 """
 import inspect
 import os
+import re
 
 import pytest
 
+import mics_link.replay as replay_module
+from mics_link.client import MicsLink
 from mics_link.errors import MicsLinkError
-from mics_link.replay import ReplayStats, read_rows
+from mics_link.replay import ReplayStats, main, read_rows, replay
+
+from fake_transport import FakeTransport
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -187,3 +192,179 @@ def test_suffix_dispatch_is_case_insensitive(tmp_path):
 def test_read_rows_accepts_a_plain_str_path_not_only_pathlike():
     rows = _rows(str(_fixture("replay_sample.csv")))
     assert len(rows) == 5
+
+
+# ============================================================================
+# Task 2: timing modes, replay(), main() and the console-script entry point
+# ============================================================================
+
+
+def _paced_clock_and_sleep(start=0.0):
+    box = [start]
+    calls = []
+
+    def clock():
+        return box[0]
+
+    def sleep(seconds):
+        calls.append(seconds)
+        box[0] += seconds
+
+    return clock, sleep, calls
+
+
+def _link(**kwargs):
+    kwargs.setdefault("heartbeat_s", 9999.0)  # keep the mandatory initial HB off the wire
+    transport = FakeTransport()
+    return MicsLink(transport, autostart=False, **kwargs), transport
+
+
+# --- three timing modes, driven through replay() directly ---
+
+
+def test_replay_fast_mode_never_sleeps_and_sends_every_row():
+    link, transport = _link()
+    calls = []
+    rows = [(0.0, "a", 1), (0.5, "b", 2), (1.5, "c", 3)]
+    stats = replay(link, rows, mode="fast", sleep=lambda s: calls.append(s))
+    assert calls == []
+    assert stats.sent == 3
+    link._io_once()
+    assert len(transport.sent) == 3
+
+
+def test_replay_realtime_mode_sleeps_expected_origin_relative_deltas():
+    link, _transport = _link()
+    clock, sleep, calls = _paced_clock_and_sleep()
+    rows = [(0.0, "a", 1), (0.5, "b", 2), (1.5, "c", 3)]
+    replay(link, rows, mode="realtime", sleep=sleep, clock=clock)
+    assert calls == pytest.approx([0.5, 1.0])
+
+
+def test_replay_scaled_mode_scale_2_halves_the_sleeps():
+    link, _transport = _link()
+    clock, sleep, calls = _paced_clock_and_sleep()
+    rows = [(0.0, "a", 1), (0.5, "b", 2), (1.5, "c", 3)]
+    replay(link, rows, mode="scaled", scale=2.0, sleep=sleep, clock=clock)
+    assert calls == pytest.approx([0.25, 0.5])
+
+
+def test_replay_scaled_mode_scale_half_doubles_the_sleeps():
+    link, _transport = _link()
+    clock, sleep, calls = _paced_clock_and_sleep()
+    rows = [(0.0, "a", 1), (0.5, "b", 2), (1.5, "c", 3)]
+    replay(link, rows, mode="scaled", scale=0.5, sleep=sleep, clock=clock)
+    assert calls == pytest.approx([1.0, 2.0])
+
+
+def test_replay_falling_behind_sends_every_row_with_no_negative_sleep():
+    link, _transport = _link()
+    box = [0.0]
+    calls = []
+
+    def clock():
+        return box[0]
+
+    def sleep(seconds):
+        calls.append(seconds)
+        box[0] += seconds
+
+    def _rows():
+        yield (0.0, "a", 1)
+        box[0] += 10.0  # a slow iteration eats into the schedule on its own
+        yield (0.5, "b", 2)
+
+    stats = replay(link, _rows(), mode="realtime", sleep=sleep, clock=clock)
+    assert calls == []
+    assert stats.sent == 2
+
+
+# --- ReplayStats: reader + sender counters share one object ---
+
+
+def test_replay_stats_over_sample_csv_all_sent_none_dropped_or_rejected():
+    link, _transport = _link()
+    stats = ReplayStats()
+    rows = read_rows(_fixture("replay_sample.csv"), stats=stats)
+    replay(link, rows, mode="fast", stats=stats)
+    assert stats.rows_read == 5
+    assert stats.sent == 5
+    assert stats.dropped == 0
+    assert stats.rejected == 0
+
+
+def test_replay_continues_past_a_dropped_row_when_the_queue_is_full():
+    link, _transport = _link(queue_size=1)
+    rows = [(0.0, "a", 1), (0.0, "b", 2), (0.0, "c", 3)]
+    stats = replay(link, rows, mode="fast")
+    assert stats.sent == 1
+    assert stats.dropped == 2
+
+
+def test_replay_continues_past_a_rejected_value_and_invalid_value_error_never_escapes():
+    link, _transport = _link()
+    rows = [(0.0, "a", 1), (0.1, "bad", [1, 2]), (0.2, "c", 3)]
+    stats = replay(link, rows, mode="fast")  # must not raise InvalidValueError
+    assert stats.rejected == 1
+    assert stats.sent == 2
+
+
+# --- main() / CLI ---
+
+
+def test_main_fast_mode_returns_zero_and_prints_counts_with_no_timing_claim(
+    monkeypatch, capsys
+):
+    link, _transport = _link()
+    monkeypatch.setattr(replay_module, "connect", lambda *a, **k: link)
+    rc = main(
+        [
+            "--host", "h", "--port", "5599", "--source-id", "demo",
+            "--file", _fixture("replay_sample.csv"), "--mode", "fast",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "sent" in out and "rows_malformed" in out
+    assert re.search(r"laten|jitter|drift|ms\b", out, re.IGNORECASE) is None
+
+
+def test_main_rejects_non_positive_scale_with_clear_message_and_nonzero_exit(capsys):
+    rc = main(
+        [
+            "--host", "h", "--port", "5599", "--source-id", "demo",
+            "--file", _fixture("replay_sample.csv"), "--mode", "scaled", "--scale", "0",
+        ]
+    )
+    assert rc != 0
+    assert "scale" in capsys.readouterr().err.lower()
+
+
+def test_main_nonexistent_file_exits_nonzero_with_clear_message(tmp_path, capsys):
+    rc = main(
+        [
+            "--host", "h", "--port", "5599", "--source-id", "demo",
+            "--file", str(tmp_path / "does_not_exist.csv"),
+        ]
+    )
+    assert rc != 0
+    assert "not found" in capsys.readouterr().err.lower()
+
+
+def test_help_exits_zero_and_never_reaches_connect(monkeypatch):
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("connect() must not be called for --help")
+
+    monkeypatch.setattr(replay_module, "connect", _boom)
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+    assert exc_info.value.code == 0
+
+
+def test_main_entry_point_resolves_from_pyproject():
+    """`mics-link-replay = mics_link.replay:main` (pyproject.toml [project.scripts]) — the
+    dangling entry point plan 34-01 declared. Proves the target actually exists and is
+    callable, without requiring an install.
+    """
+    assert callable(replay_module.main)
+

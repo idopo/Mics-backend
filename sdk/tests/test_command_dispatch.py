@@ -275,6 +275,72 @@ def test_submit_on_full_inbox_returns_false_and_increments_dropped():
     assert worker.dropped == 1
 
 
+def test_submit_dropped_increment_goes_through_a_lock():
+    """IN-02: `self.dropped += 1` was a plain, unlocked compound read-modify-write — the
+    same bug class `BoundedSender.enqueue`'s counters were fixed for. A genuine race on
+    this specific increment is, in practice, unreliable to trigger deterministically under
+    CPython's GIL (the same limitation the codebase's own SDK-15 concurrent test for
+    `BoundedSender` has) — so this proves the fix directly: the overflow path must acquire
+    a lock around the increment. Fails pre-fix simply because `_dropped_lock` does not
+    exist yet; swaps in a thin spy AFTER construction (real `threading.Lock` objects can't
+    be monkeypatched directly, and patching `threading.Lock` globally would also break
+    `queue.Queue`'s own internal locking).
+    """
+    registry = CommandRegistry()
+    worker = CommandWorker(registry, lambda ack: True, maxsize=1)
+    pi = load_pi_wire(CANONICAL_PI_WIRE_PATH)
+    cmd = _pi_cmd(pi, "cmd-full", "noop", {})
+    worker.submit(cmd)  # occupies the one inbox slot
+
+    real_lock = worker._dropped_lock
+    entered_with_dropped_at = []
+
+    class _SpyLock:
+        def __enter__(self):
+            entered_with_dropped_at.append(worker.dropped)
+            return real_lock.__enter__()
+
+        def __exit__(self, *exc):
+            return real_lock.__exit__(*exc)
+
+    worker._dropped_lock = _SpyLock()
+    worker.submit(cmd)  # this one overflows (the inbox slot is already occupied)
+
+    # Entered the lock exactly once, and dropped was still 0 (not yet incremented) at the
+    # moment of entry — the increment happens INSIDE the lock, not before or without it.
+    assert entered_with_dropped_at == [0]
+    assert worker.dropped == 1
+
+
+def test_submit_dropped_counter_stays_correct_under_concurrent_overflow():
+    """8 threads x 500 calls, all guaranteed to overflow (maxsize=1, worker never started
+    so nothing ever drains it), must land exactly 4000 in `dropped` with no exceptions.
+    """
+    registry = CommandRegistry()
+    worker = CommandWorker(registry, lambda ack: True, maxsize=1)
+    pi = load_pi_wire(CANONICAL_PI_WIRE_PATH)
+    cmd = _pi_cmd(pi, "cmd-full", "noop", {})
+    worker.submit(cmd)  # occupies the one inbox slot; every further submit overflows
+
+    errors = []
+
+    def _worker():
+        try:
+            for _ in range(500):
+                worker.submit(cmd)
+        except Exception as exc:  # pragma: no cover - assertion below is authoritative
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert worker.dropped == 4000
+
+
 def test_stop_joins_thread_and_is_idempotent():
     registry = CommandRegistry()
     registry.register("noop", lambda args: None)

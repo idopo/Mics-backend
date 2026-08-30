@@ -141,6 +141,11 @@ class CommandWorker(object):
         self._started = False
         self._stopped = False
         self.dropped = 0
+        # IN-02: a dedicated lock for `dropped`, separate from `_lock` (start/stop state) —
+        # same reasoning as sender.py's own `_stats_lock`: a plain `self.dropped += 1` is a
+        # compound read-modify-write that can lose an update if `submit()` is ever called
+        # from more than one thread at once.
+        self._dropped_lock = threading.Lock()
 
     def submit(self, cmd):
         """Never blocks, never raises. Returns False (and increments `dropped`) when the
@@ -151,7 +156,8 @@ class CommandWorker(object):
             self._queue.put_nowait(cmd)
             return True
         except queue.Full:
-            self.dropped += 1
+            with self._dropped_lock:
+                self.dropped += 1
             return False
 
     def start(self):

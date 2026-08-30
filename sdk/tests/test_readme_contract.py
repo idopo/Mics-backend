@@ -24,6 +24,7 @@ _EXAMPLES_DIR = _SDK_ROOT / "examples"
 _SRC_DIR = _SDK_ROOT / "src" / "mics_link"
 _TEN_LINE_EXAMPLE = _EXAMPLES_DIR / "ten_line_sender.py"
 _CALLBACK_EXAMPLE = _EXAMPLES_DIR / "callback_sender.py"
+_WINDOWS_SMOKE_EXAMPLE = _EXAMPLES_DIR / "windows_smoke.py"
 
 # Word-boundary, case-insensitive: a plain substring match on "pose" would also flag
 # ordinary English words like "purpose"/"exposed"/"supposed" throughout the README and
@@ -171,6 +172,42 @@ def test_callback_sender_imports_only_names_in_mics_link_all():
                     "callback_sender.py imports {!r} from mics_link, which is not in "
                     "mics_link.__all__".format(alias.name)
                 )
+
+
+# --- Windows install smoke (34-09 addition): standalone, rig-free, deliberately reaches
+# past mics_link.__all__ into wire/selfcheck/replay -- unlike ten_line_sender.py and
+# callback_sender.py it is NOT checked against __all__ (that would be wrong for this
+# file: proving the internal wire codec, the selfcheck guard, and the replay path all work
+# on a fresh install IS the point). It IS still parsed and still covered by the
+# device-neutrality and ASCII-only parametrized tests above, via the same
+# `_EXAMPLES_DIR.glob("*.py")` sweep. ---
+
+
+def test_windows_smoke_parses():
+    ast.parse(_WINDOWS_SMOKE_EXAMPLE.read_text(encoding="utf-8"))
+
+
+def test_windows_smoke_deliberately_uses_internal_submodules_not_just_all():
+    """Documents the exemption above as an executable fact, not just a comment: this file
+    imports at least one of mics_link's internal submodules (wire/selfcheck/replay), which
+    ten_line_sender.py and callback_sender.py are forbidden from doing. If a future edit
+    strips all of them out, this file no longer needs the exemption and this test should be
+    deleted along with it.
+    """
+    tree = ast.parse(_WINDOWS_SMOKE_EXAMPLE.read_text(encoding="utf-8"))
+    internal_submodules = {"mics_link.wire", "mics_link.selfcheck", "mics_link.replay"}
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in internal_submodules:
+            imported.add(node.module)
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in internal_submodules:
+                    imported.add(alias.name)
+    assert imported, (
+        "windows_smoke.py no longer imports any of mics_link's internal submodules -- "
+        "the __all__-exemption comment above is now stale"
+    )
 
 
 # --- README's mandatory markers ---

@@ -111,7 +111,7 @@ beyond the pilot restart the USER performs for the SDK-07 row (decision 4,
 
 | # | Observation | Requirement | RESULT |
 |---|---|---|---|
-| A | Transition — FDA cycles `wait -> armed -> fired -> wait` | success criterion 3 | ⬜ pending |
+| A | Transition — FDA cycles `wait -> armed -> fired -> wait` | success criterion 3 | ✅ PASS (run 582, 2026-08-30) — 3/3 cycles, see §3b |
 | B | Quiet — `demo.alive` stays true 20s while `demo.left_paw_x` goes stale | success criterion 5 (SDK-05) | ⬜ pending |
 | C | Soak — pilot stays up, FDA keeps transitioning, `stats.dropped` reported, ES keeps up | success criterion 12 (SDK-06) | ⬜ pending |
 | D | Reconnect — sender survives a pilot restart without being restarted, `seq` climbs across it | success criterion 6 (SDK-07) | ⬜ pending |
@@ -225,3 +225,63 @@ platform claim on Windows — visible in the user's output above, which reads `L
 box. Left unfixed it would have entered this very document as false evidence. Now derived from
 `platform.system()`; on Windows it reads `"This is a WINDOWS run -- the SDK-14 cross-OS checkpoint
 itself."` Both branches verified against a real install.
+
+---
+
+## 3b. Observation A — PASSED 2026-08-30, run 582 (pilot 3, RecordingBox)
+
+Sender: Windows box `YizharGPU12`, conda env `mics-link`, Python 3.11.16,
+`rig_checkpoint_sender.py --mode transition` against `132.77.73.213:5599`, source_id `demo`.
+Run 582 / session 115, subject `bp_s115_r582`, 11:43:12-11:43:44 UTC. 152 docs in
+`event_log_v2` on `132.77.73.217`.
+
+**Three complete `wait -> armed -> fired -> wait` cycles**, every transition caused by the
+value actually sent (no transition fired on a stale default):
+
+| t (s) | -> state | last `left_paw_x` value_raw before it | condition |
+|---|---|---|---|
+| 0.057 | wait  | 0.0 | initial state |
+| 0.479 | armed | 0.7 | `> 0.5` |
+| 0.503 | fired | 0.1 | `< 0.2` |
+| 0.504 | wait  | 0.1 | unconditional |
+| 0.529 | armed | 0.7 | `> 0.5` |
+| 2.244 | fired | 0.1 | `< 0.2` |
+| 2.245 | wait  | 0.1 | unconditional |
+| 4.307 | armed | 0.7 | `> 0.5` |
+| 6.275 | fired | 0.1 | `< 0.2` |
+| 6.275 | wait  | 0.1 | unconditional |
+
+SDK-03 (signal ingestion), and roadmap success criterion 3, are PROVEN on hardware from a
+non-Pi machine.
+
+### Caveats, recorded rather than smoothed over
+
+1. **Cycle 1 was a flushed backlog, not live streaming.** ~20 frames arrive between t=0.48 and
+   t=0.53 -- a 50ms window that should span 2s at the sender's 10Hz hold rate. The sender was
+   started BEFORE the run, so its DEALER queued frames while the Pi's ROUTER was unbound and
+   delivered them in a burst on connect. Cycles 2 and 3 are properly spaced (1.7s, 2.0s) and
+   ARE live. Only cycles 2-3 evidence real-time end-to-end behaviour.
+2. **Start order on this pilot is the reverse of pilot 1.** Row 33 is `required: false`, so
+   there is no readiness gate holding the run for the sender. Correct order here is RUN FIRST,
+   then sender. The opposite guidance (correct for pilot 1's `required: true` row 21) is what
+   produced both the run-581 total miss and run 582's burst.
+3. **Run 581 (11:35) was a genuine miss, cause understood.** All 16 FDA reads saw
+   `value_raw = 0.0`: the sender had already exited before the ROUTER bound, so ZMQ discarded
+   the queued frames at socket close. Compounded by `transition` mode's original
+   send-once-then-sleep, since `left_paw_x` is `stale_after_ms=200, stale_policy=return_default`.
+   Fixed by holding the value at 10Hz (commit `4a04951`).
+4. **`event_data.value` is NOT the signal value.** It is an int-cast (0.7 -> 0); `value_raw`
+   carries the float. Any future analysis of extlink signals in ES must read `value_raw`.
+5. **Unrelated pre-existing failure on this pilot, NOT caused by this phase:** `Left_LED` and
+   `Mid_LED` fail to instantiate every run with `AttributeError: module 'numpy' has no
+   attribute 'int'`, from hardware lib 8 (`GPIO Driver`) version 4 / version_id 25, line 367
+   (`.astype(np.int)`; also lines 506, 1039, 1042, 1077). `.213` runs Python 3.13 with a numpy
+   that removed the alias. Versions 5/6/7 (ids 159/173/174) of that lib are already clean, but
+   `hardware_libs.stable_version_id` for lib 8 still points at the broken version 25. Task defs
+   434, 186 (pin 25) and 179 (pin 19) are affected; the clock_probe defs pin clean versions.
+   The extlink FDA never reads those LEDs, so observation A is unaffected.
+   Note the orchestrator logged `HARDWARE_LIB_TEST_RESULT version_id=25 ok=True` -- the
+   preflight lib test proves a module imports, not that its classes instantiate.
+
+### Still pending on this pilot
+Observations B (heartbeat/quiet), C (soak), D (reconnect) -- all unrun.

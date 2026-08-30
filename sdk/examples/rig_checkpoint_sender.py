@@ -25,7 +25,17 @@ import time
 
 from mics_link import connect
 
-DEFAULT_HOST = "132.77.72.28"
+# Default target is pilot 3, "RecordingBox" (132.77.73.213), NOT pilot 1 as plan 34-09
+# originally specified. Deviation is deliberate, user direction 2026-08-30:
+#   - .213 runs mics_core, and the frozen golden corpus is pinned to mics_core's
+#     external_hardware_wire.py -- so .213 exercises the exact runtime the byte-parity
+#     corpus came from. Pilot 1 is still on pi-mirror and would need a caveat recorded.
+#   - Its pilot_hardware_config row 33 already carries ExtlinkDemo / router_bind / 5599 /
+#     source_id "demo", so port and source_id below match it with no backend change.
+# Note row 33 has `required: false` (pilot 1's row 21 has `true`): there is NO readiness
+# gate here, so a run proceeds even if this sender never connects -- you get silence, not
+# an error. Pass --host 132.77.72.28 to target pilot 1 instead.
+DEFAULT_HOST = "132.77.73.213"
 DEFAULT_PORT = 5599
 DEFAULT_SOURCE_ID = "demo"
 DEFAULT_SIGNAL = "left_paw_x"

@@ -232,10 +232,9 @@ class MicsLink:
         """close() stops accepting new sends, gives the IO thread up to `drain_timeout_s`
         (default 2.0s) to flush the queue, then ABANDONS whatever remains and records the
         count in `stats.abandoned`, stops the command worker, and closes the transport
-        (LINGER=0). close() is idempotent, is safe to call from any thread, and never
-        raises. After close(), send_signal returns False and increments stats.dropped
-        rather than raising — a researcher's loop that outlives the `with` block must not
-        crash.
+        (LINGER=0). close() is idempotent, is safe to call from any thread, and never raises.
+        After close(), send_signal returns False and increments stats.dropped rather than
+        raising — a researcher's loop that outlives the `with` block must not crash.
         """
         with self._close_lock:
             if self._closed:

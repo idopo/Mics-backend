@@ -107,7 +107,7 @@ beyond the pilot restart the USER performs for the SDK-07 row (decision 4,
 
 ---
 
-## 3. Results — all `⬜ pending`
+## 3. Results
 
 | # | Observation | Requirement | RESULT |
 |---|---|---|---|
@@ -117,8 +117,8 @@ beyond the pilot restart the USER performs for the SDK-07 row (decision 4,
 | D | Reconnect — sender survives a pilot restart without being restarted, `seq` climbs across it | success criterion 6 (SDK-07) | ⬜ pending |
 | P1 | TCP echo listener state on `132.77.73.125:5597` | precondition | ⬜ pending |
 | P2 | Pilot 1's confirmed platform (`pi-mirror` / `mics_core`) | precondition | ⬜ pending |
-| Install | Foreign-machine install — dependency list, import works | SDK-01 | ⬜ pending |
-| SDK-14 | Windows install — env used, pip's full output, `pip check`, selfcheck, Python version | SDK-14 | ⬜ pending |
+| Install | Foreign-machine install — dependency list, import works | SDK-01 | ✅ PASS (2026-08-30, Windows box `YizharGPU12`) |
+| SDK-14 | Windows install — env used, pip's full output, `pip check`, selfcheck, Python version | SDK-14 | ✅ PASS (2026-08-30) — `windows_smoke.py` 7/7, see §3a |
 | SDK-14e | Windows replay + rig send — console command resolution, spaced path, ASCII summary, FDA cycle, Ctrl+C behaviour | SDK-14 | ⬜ pending |
 
 ---
@@ -155,3 +155,73 @@ silently absorbed (decision 5, `34-09-PLAN.md`).
 *Phase: 34-mics-link-sdk-client-package*
 *Prepared: 2026-08-30 (Task 1 — structure only). Tasks 2-4 (checkpoints + evidence
 recording) are USER-RUN and remain open.*
+
+---
+
+## 3a. SDK-14 Windows checkpoint — PASSED 2026-08-30
+
+Run by the user on the lab Windows box, in a dedicated conda env, verbatim:
+
+```
+(mics-link) C:\MICS>python windows_smoke.py
+sys.executable: C:\Users\YizharGPU12\.conda\envs\mics-link\python.exe
+sys.version: 3.11.16 | packaged by conda-forge | (main, Aug 21 2026, 22:37:11) [MSC v.1944 64 bit (AMD64)]
+platform.platform(): Windows-10-10.0.19044-SP0
+[PASS] interpreter + platform report
+
+mics_link.__version__: 0.1.0, __file__: C:\Users\YizharGPU12\.conda\envs\mics-link\Lib\site-packages\mics_link\__init__.py
+[PASS] import mics_link
+
+pyzmq version: 27.2.0
+msgpack version: 1.2.2
+[PASS] numpy not required -- numpy is not in sys.modules
+[PASS] mics-link declares no numpy dependency
+[PASS] dependency closure
+
+[PASS] mics_link.selfcheck.selfcheck() -- OK
+
+[PASS] wire parity: SIG
+[PASS] wire parity: EVT
+[PASS] wire parity: HB
+
+[PASS] loopback round trip -- pyzmq send/receive over tcp://127.0.0.1 works
+
+[PASS] replay smoke -- sent 2 row(s) via mics_link.replay.replay
+
+SUMMARY: 7/7 steps passed
+```
+
+**Environment:** Windows 10 (10.0.19044), Python 3.11.16 conda-forge, conda env `mics-link`,
+pyzmq 27.2.0, msgpack 1.2.2. Installed from the `py3-none-any` wheel copied off
+`\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\sdk`.
+
+### What this PROVES on Windows
+- The wheel installs and imports on Windows with no compilation step (`py3-none-any` holds).
+- Byte-exact wire parity against the frozen golden corpus holds on Windows — SIG, EVT, HB.
+- `selfcheck()` passes: msgpack is unpatched in that env, so emitted frames are not numpy-extended.
+- A real pyzmq `tcp://127.0.0.1` bind + round trip works — no firewall block, no `ipc://` dependency.
+- The replay path runs in-process.
+- No POSIX-only API (`fork`, `SIGALRM`, `fcntl`, `termios`, `getuid`) is reached on the import or
+  send paths, since none exist on Windows and the run completed.
+
+### What this does NOT prove — still open
+- **The dependency no-op claim (SDK-01 as amended) is UNTESTED.** This was a fresh env, so pip
+  installed pyzmq 27.2.0 and msgpack 1.2.2 from scratch — the correct result for an empty env, but
+  it exercises nothing. The actual requirement is that installing into an environment that ALREADY
+  has pyzmq/msgpack upgrades neither. That can only be tested in the real DLC env
+  (the inspected example carried Python 3.8.19 / pyzmq 22.3.0 / msgpack 1.0.3).
+- **`msgpack-numpy` was absent** from this env, so the selfcheck's failure path was not exercised
+  here — only its success path. The DLC env is where that guard actually earns its place.
+- **Legacy console codepage was not stressed.** The output is ASCII-only by construction and the
+  library's four non-ASCII runtime messages were fixed (commit `f26d888`), but this console did not
+  force a `cp437` failure, and no error message was actually printed during a passing run.
+- **`mics-link-replay` console-script PATH resolution (SDK-14e) is untested** — `windows_smoke.py`
+  calls `replay()` in-process, never via the console entry point in `<env>\Scripts\`.
+- **Nothing here touched a Pi.** Observations A-D remain pending.
+
+### Defect found by this run
+The script's closing line was hardcoded to `"This is a LINUX run..."` and therefore printed a false
+platform claim on Windows — visible in the user's output above, which reads `LINUX` on a Windows 10
+box. Left unfixed it would have entered this very document as false evidence. Now derived from
+`platform.system()`; on Windows it reads `"This is a WINDOWS run -- the SDK-14 cross-OS checkpoint
+itself."` Both branches verified against a real install.

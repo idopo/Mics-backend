@@ -289,7 +289,16 @@ def main():
     total = len(results)
     print("SUMMARY: {}/{} steps passed".format(passed, total))
     if passed == total:
-        print("This is a LINUX run. A Windows run of this same file is the actual checkpoint.")
+        # Derive this from the live platform: a hardcoded string here would assert
+        # "LINUX run" on a Windows box and land in the validation record as false
+        # evidence, which is the one thing this script exists to avoid.
+        if platform.system() == "Windows":
+            print("This is a WINDOWS run -- the SDK-14 cross-OS checkpoint itself.")
+        else:
+            print(
+                "This is a {} run. A Windows run of this same file is the actual "
+                "checkpoint.".format(platform.system().upper() or "NON-WINDOWS")
+            )
         return 0
     return 1
 

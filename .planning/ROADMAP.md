@@ -38,7 +38,7 @@
 | 28 | TTL vs Network Sync Validation | Run both paths into one recording, quantify offset/jitter over a real session, report whether network-only alignment meets experimental tolerance. **No cutover** — evidence only | EPHYS-11–12 | ○ Pending |
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
 | 30 | 8/9 | In Progress|  | ○ Exit gate green 2026-08-10 (`--final` 0, zero manifest drift); publication + rig proof are USER-RUN (plan 09) |
-| 34 | MICS-Link SDK Client Package | 7/9 | In Progress|  |
+| 34 | MICS-Link SDK Client Package | 8/9 | In Progress|  |
 | 35 | DeepLabCut Keypoint Likelihood Integration | A trained DLC model on a separate vision box pushes per-keypoint likelihoods to the Pi; FDA transitions gate on them, authored in the editor's operand picker. Occlusion reads as likelihood 0, never a stuck value. **No video into MICS** | DLC-01–13 | ○ Pending — not yet planned |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. **Phases 34–35 (the DeepLabCut arc, added 2026-08-26) are the second consumer and run independently of 26–28** — both were reserved in Phase 18's own NOT-in-scope list, and neither changes the substrate. See `.planning/STABILIZATION_PLAN.md`.
@@ -1682,7 +1682,7 @@ with `~/pi-mirror/...` kept as a skip-if-absent secondary drift check (byte-iden
 2026-08-26). Pilot 1's own stack is stale-dated 2026-08-17 and is RECONFIRMED by the user as a
 precondition of the rig checkpoint, not assumed.
 
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 
 Plans:
 - [x] 34-01-PLAN.md — Wave 1 — package skeleton, pure wire codec, golden-frame parity corpus, import hygiene (SDK-02, SDK-11)
@@ -1692,7 +1692,7 @@ Plans:
 - [x] 34-05-PLAN.md — Wave 3 — driver cutover: delete `extlink_wire.py`, retarget driver + tests (SDK-10)
 - [x] 34-06-PLAN.md — Wave 3 — client assembly: one IO thread, monitor wiring, lifecycle/close, loopback smoke (SDK-07, SDK-09)
 - [x] 34-07-PLAN.md — Wave 4 — replay entry point: CSV/JSONL, three timing modes, malformed rows counted (SDK-12)
-- [ ] 34-08-PLAN.md — Wave 5 — README + distribution: one-line install, wheel, counted ten-line example (SDK-01, SDK-13)
+- [x] 34-08-PLAN.md — Wave 5 — README + distribution: one-line install, wheel, counted ten-line example (SDK-01, SDK-13)
 - [ ] 34-09-PLAN.md — Wave 6 — **USER-RUN rig checkpoint** + evidence recording (SDK-01/03/04/05/06/07 rig, SDK-08 limitation)
 
 ---

@@ -112,9 +112,9 @@ beyond the pilot restart the USER performs for the SDK-07 row (decision 4,
 | # | Observation | Requirement | RESULT |
 |---|---|---|---|
 | A | Transition — FDA cycles `wait -> armed -> fired -> wait` | success criterion 3 | ✅ PASS (run 583, 2026-08-30) — 3/3 cycles, live timing, see §3c |
-| B | Quiet — `demo.alive` stays true 20s while `demo.left_paw_x` goes stale | success criterion 5 (SDK-05) | ⬜ pending |
-| C | Soak — pilot stays up, FDA keeps transitioning, `stats.dropped` reported, ES keeps up | success criterion 12 (SDK-06) | ⬜ pending |
-| D | Reconnect — sender survives a pilot restart without being restarted, `seq` climbs across it | success criterion 6 (SDK-07) | ⬜ pending |
+| B | Quiet — `demo.alive` stays true 20s while `demo.left_paw_x` goes stale | success criterion 5 (SDK-05) | ⚠️ INCONCLUSIVE (run 584) — blocked by a lib override, see §3d |
+| C | Soak — pilot stays up, FDA keeps transitioning, `stats.dropped` reported, ES keeps up | success criterion 12 (SDK-06) | ✅ PASS (run 584) — see §3d |
+| D | Reconnect — sender survives a pilot restart without being restarted, `seq` climbs across it | success criterion 6 (SDK-07) | ❌ NOT EXERCISED (run 584) — no disconnect occurred, see §3d |
 | P1 | TCP echo listener state on `132.77.73.125:5597` | precondition | ⬜ pending |
 | P2 | Pilot 1's confirmed platform (`pi-mirror` / `mics_core`) | precondition | ⬜ pending |
 | Install | Foreign-machine install — dependency list, import works | SDK-01 | ✅ PASS (2026-08-30, Windows box `YizharGPU12`) |
@@ -329,3 +329,74 @@ software-stamping them. That behaviour was not exercised by this FDA, which read
 - `hardware_libs.stable_version_id` for lib 8 still points at the broken v4 (id 25), so every
   unpinned resolution still inherits `np.int`.
 - Task defs **186** (pins 25) and **179** (pins 19) remain on broken versions.
+
+---
+
+## 3d. Observations B, C, D — run 584 (2026-08-30, 210s, pilot 3)
+
+All three modes were run back-to-back inside run 584. Phase boundaries are unambiguous in
+`event_log_v2` (4726 docs): quiet t=0-40s, soak t=41-71s, reconnect t=82-201s.
+
+### C — Soak: PASS
+
+30 seconds at 60Hz. ES logged **~59 `Tracker` frames per second, every second**, plus ~85
+`state_transition` per second (soak toggles 0.7/0.1, so each pair crosses both authored
+thresholds). ~1830 signal frames delivered against ~1800 nominally sent. The pilot stayed up for
+the full window, the FDA kept transitioning throughout, and ES ingestion kept pace with no
+visible backlog. Success criterion 12 / SDK-06 met.
+
+**Incomplete on one axis:** the sender's own `stats.dropped` was not captured from the terminal.
+ES can only show what ARRIVED; it cannot show what the sender's bounded queue discarded. Record
+that number on any future soak. No latency figure was produced or inferred (decision 5 / Phase 28).
+
+### B — Quiet: INCONCLUSIVE, and not fixable at the rig
+
+`demo.alive` was emitted exactly **twice, both at t=0.06s**, and never again across 210 seconds.
+It is logged on change only, so silence is consistent with "stayed true" — but the evidence is
+worthless here, because hardware lib 177 v2 hardcodes it:
+
+```python
+def liveness_hook(self, last_msg_ts_ms, now_ms, stale_ms):
+    """DIAGNOSTIC OVERRIDE (v2). ... Returning True unconditionally isolates the fault"""
+    return True
+```
+
+`alive` would read true with the sender switched off entirely, so this proves nothing about the
+SDK's heartbeat. **SDK-05 is unproven on hardware.**
+
+The half that DID hold: no state transitions during the quiet window, i.e. `left_paw_x` correctly
+reverted to its `0.0` default under `stale_policy=return_default`. So the stale-vs-alive *split*
+is half-evidenced — the stale half is real, the alive half is not.
+
+**To unblock:** lib 177 needs a v3 with the override removed, then task def 434 repinned to it.
+Note the override's own docstring says the default liveness path "reported not-alive while
+`on_recv` was demonstrably stamping `_last_msg_ts_ms`, stranding the readiness gate in 2 of 4 rig
+runs" — so removing it may resurface a real bug in the default path. That is its own
+investigation, not a checkbox.
+
+### D — Reconnect: NOT EXERCISED
+
+The mode ran for its full 120 seconds, but **no disconnect ever happened**: inter-frame gaps
+across the whole window max out at **1.61s**, with nothing above 2.5s. A pilot restart or a run
+stop would appear as a multi-second hole. The pilot was never restarted, so SDK-07 was not tested
+— the run only demonstrates that the sender stays connected when nothing disturbs it.
+
+**Two things to fix before retrying:**
+
+1. **`seq` continuity is NOT verifiable in ES.** Tracker events carry
+   `{id, value, value_raw, result, func_name}` — there is no `seq` field anywhere. Plan 34-09's
+   instruction to verify "`seq` values ... CONTINUE upward" in ES cannot be followed as written.
+   The available evidence is the sender's own `CONNECTED`/`DISCONNECTED` output plus data
+   resuming in ES after the gap. Fix the plan text or add `seq` to the logged payload.
+2. **A cheaper equivalent exists.** `.213` binds port 5599 only for the duration of a run, so
+   stopping the run and starting a new one exercises the SDK's reconnect FSM identically to a
+   pilot restart — the client cannot tell the two apart. That avoids touching the pilot service
+   at all. Procedure: start run -> start `--mode reconnect --seconds 240` -> after ~30s stop the
+   run from the UI (`/react/pilots/RecordingBox/sessions-ui`) or
+   `POST :9000/runs/<id>/stop` -> wait ~20s -> start a NEW run -> the sender must print
+   CONNECTED and resume with no human intervention. Ctrl+C on the sender voids the test.
+
+**Prior offline evidence, which is NOT a substitute:** plan 34-06 drove the ZMQ socket monitor
+through connect -> disconnect -> reconnect against a real local loopback ROUTER with `seq`
+continuity preserved (this answered 34-RESEARCH Open Question 2). The FSM is therefore proven in
+isolation on a Linux dev host; it is unproven against a real Pi.

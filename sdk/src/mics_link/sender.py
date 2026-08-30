@@ -21,9 +21,18 @@ carried over to the sender side).
 34-06's IO thread increments `sent` after a `transport.send()` actually succeeds, and its
 `close()` sets `abandoned` for whatever is still queued at shutdown. `BoundedSender` only
 knows about `enqueued`/`dropped`, the two counts a bounded queue can prove by itself.
+
+`enqueued`/`dropped` are incremented under a small lock (34-06 addition, SDK-15): plan
+34-06's `send_signal`/`send_event` are called from a FOREIGN library's callback thread at
+frame rate, and `queue.Queue.put_nowait` being thread-safe does not make a bare
+`self.stats.enqueued += 1` afterward thread-safe too — a compound read-modify-write on a
+plain attribute can lose an update when two threads race it. `record_external_drop()` is
+the one seam plan 34-06's `close()`-rejected sends use to record a drop that never reaches
+`enqueue()` at all, through the same lock.
 """
 import logging
 import queue
+import threading
 import time
 
 
@@ -79,6 +88,7 @@ class BoundedSender(object):
         self._drop_log_interval_s = drop_log_interval_s
         self._clock = clock
         self._last_log_at = None
+        self._stats_lock = threading.Lock()
         self.stats = SenderStats()
 
     def enqueue(self, frame):
@@ -89,12 +99,25 @@ class BoundedSender(object):
         try:
             self._queue.put_nowait(frame)
         except queue.Full:
-            self.stats.dropped += 1
+            self._record_drop()
             self._maybe_log_drop()
             self._fire_on_drop(frame)
             return False
-        self.stats.enqueued += 1
+        with self._stats_lock:
+            self.stats.enqueued += 1
         return True
+
+    def record_external_drop(self):
+        """Thread-safe increment of `stats.dropped` for a send that never reaches
+        `enqueue()` at all — e.g. a closed `MicsLink` rejecting `send_signal` before it
+        touches the queue. Uses the same lock as `enqueue()`'s own drop path so the two
+        can never race each other's read-modify-write.
+        """
+        self._record_drop()
+
+    def _record_drop(self):
+        with self._stats_lock:
+            self.stats.dropped += 1
 
     def _maybe_log_drop(self):
         if not self._log:

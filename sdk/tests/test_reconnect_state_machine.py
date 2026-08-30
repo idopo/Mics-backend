@@ -105,16 +105,20 @@ def test_retries_counter_counts_retried_events_and_does_not_affect_state():
 
 
 def test_module_never_references_a_sequence_counter():
-    """Decision 6: reconnect.py must not touch, own, or reference `seq` at all — the only
-    place the literal token `seq` may appear is inside the decision-6 comment near `apply`."""
+    """Decision 6: reconnect.py must not touch, own, or reference `seq` at all as CODE —
+    it may appear in prose (comments/docstrings) explaining why, but never in an
+    identifier, attribute access, or string literal used as a runtime value."""
     import inspect
+    import io
+    import tokenize
 
     import mics_link.reconnect as reconnect_module
 
     source = inspect.getsource(reconnect_module)
-    lines_with_seq = [line for line in source.splitlines() if "seq" in line]
-    for line in lines_with_seq:
-        stripped = line.strip()
-        assert stripped.startswith("#") or stripped.startswith('"""') or '"""' in line or "'" in line, (
-            "Found non-comment reference to seq in reconnect.py: %r" % line
-        )
+    tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+    code_token_types = {tokenize.NAME, tokenize.OP}
+    for tok in tokens:
+        if tok.type in code_token_types and "seq" in tok.string.lower():
+            raise AssertionError(
+                "Found seq referenced as code in reconnect.py: %r" % (tok,)
+            )

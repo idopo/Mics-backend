@@ -8,17 +8,18 @@ socket, no clock and no object graph — the underlying messaging library's nume
 ids are translated to the three strings below inside `transport.py`, never inside this
 module.
 
-TODO(34-06): the MONITOR_* constants below are defined locally because plan 34-02's
-`transport.py` has not landed in this worktree yet. Reconcile so both modules reference a
-single definition (either this module re-exports from `transport.py`, or vice versa) —
-whichever plan 34-06 finds landed second should import from the other rather than keep two
-copies.
+The MONITOR_* constants are re-exported from `transport.py` (34-06 merge reconciliation —
+plan 34-02's `transport.py` had not landed in this worktree when this module was first
+written, so a second, independently-maintained copy briefly existed here; `transport.py` is
+the single owner now, since it is where the messaging library's numeric event ids are
+actually translated into these three strings). Importing `transport.py` does not pull the
+socket library in here: its own module scope only imports `.errors`, and every socket-
+library reference in that file lives inside a function body — this module stays importable
+with no socket library installed.
 """
 import logging
 
-MONITOR_CONNECTED = "connected"
-MONITOR_DISCONNECTED = "disconnected"
-MONITOR_RETRIED = "retried"
+from .transport import MONITOR_CONNECTED, MONITOR_DISCONNECTED, MONITOR_RETRIED
 
 STATE_DISCONNECTED = "disconnected"
 STATE_CONNECTED = "connected"

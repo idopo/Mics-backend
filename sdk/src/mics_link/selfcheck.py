@@ -13,10 +13,17 @@ Usage:
     python -m mics_link.selfcheck        # CLI, exits 1 with a message on failure
     from mics_link.selfcheck import selfcheck
     selfcheck()                          # called once inside connect() (plan 34-06)
+
+`MicsLinkError` is imported from `mics_link.errors` — the package's single home for every
+exception `mics_link` raises (34-06 merge reconciliation: this module used to define its own
+unrelated `MicsLinkError` class, which meant `except mics_link.MicsLinkError` around
+`commands.py`/`transport.py` silently missed selfcheck failures). See
+`tests/test_public_api.py` for the cross-module isinstance proof.
 """
 import sys
 
 from . import wire
+from .errors import MicsLinkError
 
 # One known SIG frame + its frozen expected hex. Deliberately duplicated (not imported)
 # from tests/golden_frames.py's first entry: this module ships inside the installed
@@ -27,10 +34,6 @@ _KNOWN_SIG_HEX = (
     "85a16ba3534947a674735f737263cf0000018bcfe5687ba37365710ca3736967"
     "aa6c6566745f7061775f78a176cb3fe6666666666666"
 )
-
-
-class MicsLinkError(Exception):
-    """Raised when mics_link detects it cannot safely produce correct wire bytes."""
 
 
 def selfcheck():

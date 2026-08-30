@@ -25,7 +25,7 @@ import queue
 import threading
 
 from . import wire
-from .selfcheck import MicsLinkError
+from .errors import MicsLinkError
 
 # Key names used inside the ACK `result` dict (decision 1 in 34-04-PLAN.md):
 #   success:          {ACK_OK: True, "value": <handler return>}

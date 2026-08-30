@@ -233,3 +233,9 @@ in `sdk/src/mics_link/__init__.py` stays intentionally minimal until plan 34-06 
 ---
 *Phase: 34-mics-link-sdk-client-package*
 *Completed: 2026-08-30*
+
+## Self-Check: PASSED
+
+All 13 claimed files verified present on disk. All 5 task commits
+(`b83052d`, `5bb80a1`, `b03342c`, `8819287`, `831cb42`) plus the SUMMARY commit (`126ae4b`)
+verified present in `git log`.

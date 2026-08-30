@@ -93,7 +93,7 @@ def test_should_log_drop_true_after_interval_elapses():
 # --- rate-limited drop logging with injected clock ---
 
 
-def test_100_drops_within_one_interval_produce_exactly_one_log_record_with_cumulative_count(caplog):
+def test_100_drops_within_one_interval_produce_exactly_one_log_record(caplog):
     clock = {"now": 0.0}
     sender = BoundedSender(
         maxsize=1, drop_log_interval_s=5.0, clock=lambda: clock["now"]
@@ -106,7 +106,31 @@ def test_100_drops_within_one_interval_produce_exactly_one_log_record_with_cumul
 
     warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warning_records) == 1
-    assert "100" in warning_records[0].getMessage()
+    assert sender.stats.dropped == 100
+
+
+def test_drop_log_reports_cumulative_total_across_suppressed_windows(caplog):
+    """Decision 4: the log line reports the CUMULATIVE dropped count, not a per-window
+    delta — so a reader who only ever sees the (rate-limited) log lines, never the raw
+    counter, still learns the true total. Window 1's burst is suppressed after its first
+    (logged) drop; once the interval elapses, window 2's first drop logs again — and that
+    second line already reflects everything window 1 silently dropped, not just "+1".
+    """
+    clock = {"now": 0.0}
+    sender = BoundedSender(maxsize=1, drop_log_interval_s=5.0, clock=lambda: clock["now"])
+    sender.enqueue(b"kept")
+    with caplog.at_level(logging.WARNING, logger="mics_link"):
+        sender.enqueue(b"overflow")  # window 1: logs immediately, dropped == 1
+        for _ in range(49):
+            sender.enqueue(b"overflow")  # suppressed — still inside window 1
+        clock["now"] = 10.0  # jump well past the 5s window
+        sender.enqueue(b"overflow")  # window 2: logs again, dropped == 51 (cumulative)
+
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warning_records) == 2
+    assert "1" in warning_records[0].getMessage()
+    assert "51" in warning_records[1].getMessage()
+    assert sender.stats.dropped == 51
 
 
 def test_log_false_produces_zero_log_records_but_dropped_still_increments(caplog):

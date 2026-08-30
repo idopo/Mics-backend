@@ -55,17 +55,45 @@ def _print_stats(link, prefix="final"):
     )
 
 
+# extlink_demo's left_paw_x is declared `stale_after_ms=200, stale_policy="return_default"`
+# (hardware lib 177 v2), so the Pi reverts it to 0.0 just 200ms after the last frame. A single
+# send followed by a sleep therefore leaves the signal live for 200ms out of every hold window
+# and at its default for the rest -- the FDA samples on its own cadence and almost never lands
+# inside that sliver. Rig run 581 (2026-08-30) did exactly this: 6 sends, 0 drops, 0 send
+# failures, and every one of the 16 FDA reads in ES saw 0.0, so no transition ever fired.
+# The value must therefore be HELD by resending it, not sent once.
+HOLD_REFRESH_HZ = 10.0
+
+
+def _hold(link, signal, value, hold_s, refresh_hz=HOLD_REFRESH_HZ):
+    """Keep `signal` at `value` for `hold_s` by resending at `refresh_hz`.
+
+    The refresh period (100ms at 10Hz) must stay comfortably under the signal's
+    `stale_after_ms`; do not lower this rate without checking that declaration.
+    """
+    period = 1.0 / refresh_hz
+    deadline = time.time() + hold_s
+    sends = 0
+    while time.time() < deadline:
+        link.send_signal(signal, value)
+        sends += 1
+        time.sleep(period)
+    return sends
+
+
 def run_transition(link, signal, cycles=3, high=0.7, low=0.1, hold_s=2.0):
     """Crosses task def 434's two authored transitions (`>0.5` then `<0.2`) `cycles`
-    times: `wait -> armed -> fired -> wait`. Prints every send.
+    times: `wait -> armed -> fired -> wait`, HOLDING each value across its window.
     """
     for cycle in range(1, cycles + 1):
-        print("cycle {}/{}: sending {}={} (expect wait->armed)".format(cycle, cycles, signal, high))
-        link.send_signal(signal, high)
-        time.sleep(hold_s)
-        print("cycle {}/{}: sending {}={} (expect armed->fired->wait)".format(cycle, cycles, signal, low))
-        link.send_signal(signal, low)
-        time.sleep(hold_s)
+        print("cycle {}/{}: holding {}={} for {}s (expect wait->armed)".format(
+            cycle, cycles, signal, high, hold_s))
+        n = _hold(link, signal, high, hold_s)
+        print("  held with {} frames at {}Hz".format(n, HOLD_REFRESH_HZ))
+        print("cycle {}/{}: holding {}={} for {}s (expect armed->fired->wait)".format(
+            cycle, cycles, signal, low, hold_s))
+        n = _hold(link, signal, low, hold_s)
+        print("  held with {} frames at {}Hz".format(n, HOLD_REFRESH_HZ))
 
 
 def run_quiet(link, signal, seconds):

@@ -114,11 +114,13 @@ def main(argv=None):
     """
     args = _build_parser().parse_args(argv)
 
-    if args.mode == "scaled" and args.scale <= 0:
+    if args.scale <= 0:
+        # (WR-03) Pacer validates scale unconditionally regardless of mode (timing.py), so
+        # this guard must too — gating it on `--mode scaled` let `--mode realtime`/`--mode
+        # fast` with a non-positive scale reach Pacer.__init__ and raise an uncaught
+        # ValueError, contradicting main()'s own "never raises" contract.
         print(
-            "mics-link-replay: --scale must be > 0 for --mode scaled, got {}".format(
-                args.scale
-            ),
+            "mics-link-replay: --scale must be > 0, got {}".format(args.scale),
             file=sys.stderr,
         )
         return 2

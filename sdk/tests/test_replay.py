@@ -340,6 +340,23 @@ def test_main_rejects_non_positive_scale_with_clear_message_and_nonzero_exit(cap
     assert "scale" in capsys.readouterr().err.lower()
 
 
+@pytest.mark.parametrize("mode", ["realtime", "fast"])
+def test_main_rejects_non_positive_scale_outside_scaled_mode_too(mode, capsys):
+    """WR-03: main()'s docstring says "never raises", but the old guard only checked
+    `--scale` when `--mode scaled` — Pacer itself validates scale unconditionally, so
+    `--mode realtime`/`--mode fast` with a bad scale reached Pacer.__init__ and raised an
+    uncaught ValueError instead of the documented clean exit(2) + stderr message.
+    """
+    rc = main(
+        [
+            "--host", "h", "--port", "5599", "--source-id", "demo",
+            "--file", _fixture("replay_sample.csv"), "--mode", mode, "--scale", "-1",
+        ]
+    )
+    assert rc != 0
+    assert "scale" in capsys.readouterr().err.lower()
+
+
 def test_main_nonexistent_file_exits_nonzero_with_clear_message(tmp_path, capsys):
     rc = main(
         [

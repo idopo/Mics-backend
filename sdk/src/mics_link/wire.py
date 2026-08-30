@@ -6,9 +6,10 @@ deliberate: every byte this module emits for SIG/EVT/HB/ACK must be identical to
 Pi's own codec emits for the same fields (see `tests/test_wire_parity.py`, which pins this
 byte-for-byte against a frozen corpus and a live-interop check).
 
-No `zmq` import anywhere in this file, at module scope or nested (guarded by
-`tests/test_import_hygiene.py`'s AST walk) — this module must import cleanly on a machine
-with no pyzmq installed (SDK-11).
+No socket-library import anywhere in this file, at module scope or nested (guarded by
+`tests/test_import_hygiene.py`'s AST walk, which also forbids the literal substring this
+sentence is carefully avoiding) — this module must import cleanly on a machine with no
+socket library installed (SDK-11).
 
 `ts_src` is deliberately wall-clock, not monotonic. The Pi ignores it for FDA purposes
 (`ts_pi_recv`, stamped on arrival, is canonical) — do NOT "fix" this to a monotonic clock,

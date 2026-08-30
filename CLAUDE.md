@@ -161,13 +161,16 @@ Both `metadata.create_all()` called at startup. Use matching session type per ta
 
 **Always use GSD for planning** — never use built-in plan mode (EnterPlanMode) for feature work.
 
+GSD 1.42+ uses the `/gsd-<cmd>` namespace. The old `/gsd:<cmd>` form no longer exists.
+
 | Situation | GSD Skill |
 |---|---|
-| New ToolKit / FDA feature | `gsd-toolkit-fda` |
-| New phase / general feature | `gsd:plan-phase` |
-| Add phase to roadmap | `gsd:add-phase` |
-| Quick atomic task | `gsd:quick` |
-| Check progress | `gsd:progress` |
+| New phase / general feature | `/gsd-plan-phase` |
+| Add phase to roadmap | `/gsd-phase` (`--insert`/`--remove`/`--edit` for other CRUD) |
+| Gather phase context before planning | `/gsd-discuss-phase` |
+| Execute a planned phase | `/gsd-execute-phase` |
+| Quick atomic task | `/gsd-quick` (`/gsd-fast` for trivial, inline) |
+| Check progress / route to next action | `/gsd-progress` |
 
 ## Skills (Slash Commands)
 
@@ -183,5 +186,4 @@ Custom skills live in `.claude/skills/`. Invoke with `/skill-name`.
 | `new-pi-task` | auto | Scaffold a new behavioral task for the Pi |
 | `pi-deploy` | auto | Sync pi-mirror → Pi and stop/start the pilot process |
 | `protocol-debug` | auto | Debug protocol graduation issues |
-| `/gsd-toolkit-fda` | manual | Plan any ToolKit/FDA feature via GSD (requirements → roadmap → plan-phase) |
 | `optoblueberry` | auto | OptoBlueBerry BLE optogenetics integration: Pi-native BlueHub replacement, stimulation param encoding, BLE debugging, MICS task wiring |

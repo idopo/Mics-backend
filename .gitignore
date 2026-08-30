@@ -45,3 +45,6 @@ analysis/**
 # ...except real app assets, which the web UI ships
 !web_ui/**/*.png
 !web_ui/**/*.svg
+
+# Docker secrets - real credentials, never commit (see 2026-08-30 incident)
+secrets/

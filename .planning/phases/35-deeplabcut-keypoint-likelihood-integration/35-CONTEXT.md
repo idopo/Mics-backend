@@ -264,6 +264,38 @@ Verbatim from `C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21\confi
   the readiness gate in 2 of 4 rig runs"*. Removing it may re-expose that. **This is an
   investigation, not a checkbox** — plan it with room to debug.
 
+### The liveness defect is a Phase 31 BUG, not a sanctioned exemption (corrected 2026-08-31)
+
+- **D-49: CORRECTION to how D-23/D-24 were framed.** The claim that "Phase 31 Plan 10's F7 exempts
+  this site by name" — which appears both in `external_hardware_binding.py`'s own source comment and
+  in the first pass of plan 35-02 — is **FALSE**. Verified against the shipped guard,
+  `mics_core/tools/tree_integrity/final_checks.py`:
+  - `F7_CLOSURE` is nine files and **`external_hardware_binding.py` is NOT among them**
+    (`mics_task.py`, `task.py`, `gpio.py`, `i2c.py`, `timer.py`, `external_hardware_ingress.py`,
+    `logging_utils.py`, `common.py`, `Event_Dispatcher.py`).
+  - `F7_EXEMPTIONS` has exactly **one** entry, and it is the *ingress* `ClockNotReady` fallback —
+    not binding's `_now_ms()`.
+  Being outside the closure is not the same as being exempted by name. **The in-source comment
+  overstates its own authority and should not be trusted as a design rationale.**
+- **D-50: Phase 31 Plan 10 introduced the cross-clock subtraction itself.** Commit
+  `1f35782 feat(31-10): every remaining record timestamp onto the one clock (Task 2)` converted
+  **ingress** to the one clock. The same plan's Task 2 item 7 said of binding: *"change nothing...
+  it is liveness bookkeeping, not a record timestamp."* That reasoning is **true of the value in
+  isolation and false in composition** — binding's wall-clock `_now_ms()` is subtracted from
+  `_last_msg_ts_ms`, which that very plan had just moved onto the one clock. One plan converted one
+  side of a subtraction and deliberately left the other.
+- **D-51: F7 structurally cannot catch this class of defect.** `binding.py` is outside the closure,
+  AND F7 is an AST check on *call forms* — it has no notion of two values being differenced. A
+  guard that asks "does this file read the wall clock?" cannot see "these two clocks meet." Any
+  eventual substrate fix should note that adding `binding.py` to `F7_CLOSURE` would catch the
+  call but still not catch the composition.
+- **Consequence for Phase 35: none to the plan, but the FINDING's wording must change.** The
+  lib-level `liveness_hook` override in 35-02/35-09 remains the correct fix here (DLC-01 forbids a
+  substrate edit). But it must be recorded as a **workaround for a Phase 31 defect**, not as
+  conforming to a sanctioned exemption. The user's own challenge is what surfaced this: the
+  one-clock invariant WAS the intent, so a cross-clock subtraction is a violation of it, not a
+  carve-out from it.
+
 ### Rig checkpoint
 
 - **D-25: Pilot 3 / RecordingBox (.213) is the target.** Phase 34 runs 582/583/584 succeeded there,

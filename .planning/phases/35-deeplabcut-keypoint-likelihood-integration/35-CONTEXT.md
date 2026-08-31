@@ -149,6 +149,40 @@ Verbatim from `C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21\confi
   not by assumption. If unique parts are absent under `single_animal=True`, D-38's LED demo needs
   `single_animal=False` plus explicit detection selection, which changes the adapter's shape.
 
+### The user's DLC project directory is READ-ONLY (user requirement, 2026-08-31)
+
+- **D-44: NOTHING in this phase may write to, create in, or modify
+  `C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21`.** User requirement, stated
+  directly: *"important for it not to write anything in the project folder and dont make changes to
+  the project folder. same with the cli tool running in the project's dir."* This is a hard
+  constraint on plan tasks, not a preference.
+- **D-45: This CONFLICTS with `deeplabcut.export_model`, which has no output-path parameter.**
+  Verified signature: `export_model(cfg_path, iteration=None, shuffle=1, trainingsetindex=0,
+  snapshotindex=None, TFGPUinference=True, overwrite=False, make_tar=True)`. It writes into
+  `<project>/exported-models/`. DLC-Live requires that `.pt`. So export cannot be run against the
+  original project.
+  **Resolution — work on a COPY:**
+  1. Copy the project tree to a scratch location outside it (e.g. `C:\dlc-work\MultiMice-copy`).
+  2. **Edit `project_path:` in the COPY's `config.yaml`** to the copy's location. DLC resolves
+     relative paths from `project_path`; a copied project with a stale value looks in the original.
+     `check_dlc.py` already emits a `[WARN]` on exactly this mismatch — use it to confirm.
+  3. Run `export_model` against the COPY. The original is never opened for writing.
+  The copy is also where any `analyze_videos` run happens (it has a `destfolder` parameter, but the
+  copy makes the question moot).
+- **D-46: The CLI must refuse to write inside the project it read.** `dlc-link-generate` takes an
+  explicit `--out-dir` and must **hard-refuse**, with a message naming D-44, if the resolved output
+  directory is the directory containing the `config.yaml` it read, or any descendant of it. This
+  must hold when the CLI is invoked with the project directory as the current working directory —
+  which is exactly how the user runs commands (their shell prompt sits in the project dir), so a
+  cwd-relative default output would land inside it. A unit test must assert the refusal.
+- **D-47: The adapter writes nothing anywhere.** `dlc-link-live` reads video frames and sends over
+  the network. No log file, no stats file, no cache, no DLC-Live output artefacts inside the
+  project. Counts go to stdout. Any file output must be opt-in behind an explicit flag pointing
+  outside the project, and the plans must assert this.
+- **D-48: Every user-run task that touches the vision box must state its write footprint.**
+  `35-07`/`35-08` checkpoints must name, per command, exactly what it writes and where — or state
+  "writes nothing". A command whose write footprint is not stated may not be handed to the user.
+
 ### Declaration path — the core "generic way for anyone" deliverable (DLC-02, DLC-13)
 
 - **D-11: A CLI generator, `config.yaml` -> hardware-lib source.** Shape:

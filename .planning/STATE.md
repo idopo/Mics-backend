@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-31T07:59:06.359Z"
+last_updated: "2026-08-31T11:02:26.864Z"
 progress:
   total_phases: 31
   completed_phases: 8
-  total_plans: 118
+  total_plans: 127
   completed_plans: 92
   percent: 26
 ---
@@ -19,13 +19,13 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Core value:** Researchers can define, modify, and deploy behavioral task logic without writing Python or restarting the Pi.
-**Current focus:** Phase 34 — mics-link-sdk-client-package
+**Current focus:** Phase 35 — deeplabcut-keypoint-likelihood-integration
 
 ---
 
 ## Current Position
 
-Phase: 34 (mics-link-sdk-client-package) — EXECUTING
+Phase: 35 (deeplabcut-keypoint-likelihood-integration) — EXECUTING
 Plan: 1 of 9
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).

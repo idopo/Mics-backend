@@ -1,0 +1,134 @@
+"""D-42's `--probe-pose` implementation, split out of `dlc_link.live` to keep that module
+under the project's 300-line production-file limit (same split precedent as
+`dlc_link.generate`/`generate_cli`, plan 35-03). `compare_pose_order` and
+`check_corner_geometry` are imported FROM `dlc_link.live` rather than duplicated -- the
+pure verdict logic has exactly one home; this module is orchestration around it.
+
+Never imports `cv2` or `dlclive` at module scope: `dclive_cls` and `cap` are handed in
+by `dlc_link.live.main()`, which has already done those deferred imports.
+"""
+import statistics
+
+from dlc_link.live import _CORNERS, check_corner_geometry, compare_pose_order
+
+_POSE_ORDER_ATTR_CANDIDATES = ("cfg", "dlc_config", "pose_cfg")
+
+
+def _median_corner_measurements(samples):
+    """`samples`: `{corner: [(x, y, likelihood), ...]}` across N frames. Returns
+    `{corner: (median_x, median_y, median_likelihood)}` -- the per-axis MEDIAN, never the
+    mean (sensitive to one bad frame) nor the last frame (arbitrary). Pure."""
+    aggregated = {}
+    for corner, measurements in samples.items():
+        xs = [m[0] for m in measurements]
+        ys = [m[1] for m in measurements]
+        likelihoods = [m[2] for m in measurements]
+        aggregated[corner] = (
+            statistics.median(xs),
+            statistics.median(ys),
+            statistics.median(likelihoods),
+        )
+    return aggregated
+
+
+def _discover_pose_order(live):
+    """Search `live` for the bodypart-ordering attribute it exposes. Returns
+    `(attr_name, order)` or `(None, None)`. This is what DLC-Live SAYS it does, not what
+    it DID on this frame -- `check_corner_geometry` is the runtime proof for that gap."""
+    for attr_name in _POSE_ORDER_ATTR_CANDIDATES:
+        value = getattr(live, attr_name, None)
+        if value is None:
+            continue
+        if isinstance(value, dict) and "all_joints_names" in value:
+            return attr_name, list(value["all_joints_names"])
+        names = getattr(value, "all_joints_names", None)
+        if names:
+            return attr_name, list(names)
+    return None, None
+
+
+def run_probe_pose(args, smap, dclive_cls, cap, first_frame, width, height):
+    """D-42's probe: never connects to the Pi, sends nothing. Reads the first frame(s),
+    prints pose shape/ordering/POSE_ORDER, then runs the corner-geometry assertion."""
+    live = dclive_cls(
+        args.model_path, model_type="pytorch", single_animal=True, resize=args.resize,
+        display=False,  # D-47: pinned explicitly, never left to DLCLive's own default.
+    )
+    pose = live.init_inference(first_frame)
+    print("pose.shape: {!r}".format(getattr(pose, "shape", (len(pose),))))
+    print("pose row count: {}".format(len(pose)))
+
+    attr_name, discovered_order = _discover_pose_order(live)
+    if discovered_order is not None:
+        print("bodypart ordering found under attribute: {}".format(attr_name))
+        print("discovered order: {!r}".format(discovered_order))
+    else:
+        print(
+            "bodypart ordering: NOT FOUND (tried attributes: {})".format(
+                ", ".join(_POSE_ORDER_ATTR_CANDIDATES)
+            )
+        )
+
+    print("signal map POSE_ORDER: {!r}".format(list(smap.POSE_ORDER)))
+    print("signal map POSE_ORDER_SOURCE: {!r}".format(smap.POSE_ORDER_SOURCE))
+
+    for i in range(len(pose)):
+        label = discovered_order[i] if discovered_order and i < len(discovered_order) else "row_{}".format(i)
+        x, y, likelihood = pose[i][0], pose[i][1], pose[i][2]
+        print("  [{}] {}: x={:.4f} y={:.4f} likelihood={:.4f}".format(
+            i, label, x / width, y / height, likelihood
+        ))
+
+    verdict, message = compare_pose_order(list(smap.POSE_ORDER), discovered_order)
+    print("VERDICT: row_count_match={} ordering={} -- {}".format(
+        len(pose) == len(smap.POSE_ORDER), verdict, message
+    ))
+
+    parts = [p.strip() for p in args.geometry_parts.split(",") if p.strip()]
+    if discovered_order is None:
+        print("CORNER GEOMETRY: UNAVAILABLE -- bodypart ordering was not discovered")
+        return 0
+
+    samples = {part: [] for part in parts}
+
+    def _collect(one_pose):
+        for part in parts:
+            if part in discovered_order:
+                idx = discovered_order.index(part)
+                row = one_pose[idx]
+                samples[part].append((row[0] / width, row[1] / height, row[2]))
+
+    _collect(pose)
+    for _ in range(max(0, args.geometry_frames - 1)):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        _collect(live.get_pose(frame))
+
+    missing_parts = [p for p in parts if not samples[p]]
+    if missing_parts:
+        print("CORNER GEOMETRY: UNAVAILABLE -- {} not in the discovered pose order".format(missing_parts))
+        return 0
+
+    aggregated = _median_corner_measurements(samples)
+    positions = {corner: (vals[0], vals[1]) for corner, vals in aggregated.items()}
+    likelihoods = {corner: vals[2] for corner, vals in aggregated.items()}
+    for corner in parts:
+        print("  corner {}: x={:.4f} y={:.4f} likelihood={:.4f}".format(
+            corner, positions[corner][0], positions[corner][1], likelihoods[corner]
+        ))
+
+    if set(parts) >= set(_CORNERS):
+        verdict, message = check_corner_geometry(
+            positions, likelihoods, args.geometry_margin, args.geometry_min_likelihood
+        )
+        print("CORNER GEOMETRY: {} -- {}".format(verdict, message))
+        print(
+            "LIMIT: pins the ordering at four positions only; a permutation leaving all "
+            "four corners in place (e.g. swapping LED_on with LED_off) still passes it. "
+            "Plan 35-07 Task 3's temporal check against the operator's own LED actions "
+            "is the complement, not a superset."
+        )
+    else:
+        print("CORNER GEOMETRY: UNAVAILABLE -- --geometry-parts does not cover NW,NE,SE,SW")
+    return 0

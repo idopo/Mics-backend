@@ -154,6 +154,93 @@ structural content (states/transitions/toolkit) was never wrong, only the prose.
 
 ---
 
+## 5. Task 2 — the picker's data path, proven before a browser opens
+
+**`GET /api/toolkits/by-name/dlc_demo`** (the exact call `TaskEditor.tsx:176-183` makes) —
+`extlink_signals` block, recorded verbatim:
+
+```json
+[
+  {
+    "module_name": "dlc_cam1",
+    "source_ids": ["dlc_cam1"],
+    "signals": [
+      {"name": "led_off_likelihood", "dtype": "float"},
+      {"name": "led_on_likelihood", "dtype": "float"},
+      {"name": "led_on_x", "dtype": "float"},
+      {"name": "led_on_y", "dtype": "float"}
+    ],
+    "keys": [
+      "dlc_cam1.alive",
+      "dlc_cam1.led_off_likelihood",
+      "dlc_cam1.led_on_likelihood",
+      "dlc_cam1.led_on_x",
+      "dlc_cam1.led_on_y"
+    ],
+    "conflict": false,
+    "by_pilot": [
+      {"pilot_id": 3, "pilot_name": "RecordingBox", "source_id": "dlc_cam1",
+       "keys": ["dlc_cam1.alive", "dlc_cam1.led_off_likelihood", "dlc_cam1.led_on_likelihood",
+                "dlc_cam1.led_on_x", "dlc_cam1.led_on_y"]}
+    ]
+  }
+]
+```
+
+This is what `ConditionBuilder.tsx`/`ArgInput.tsx` render into the operand picker via
+`buildViewOptions(toolkit.extlink_signals)`. All five keys are present, pilot-3 provenance is
+attached, and `conflict` is `false`.
+
+**D-36's ordering constraint, demonstrated against the LIVE system** (read-only computation,
+no write; run inside the `mics_api` container so `derive_extlink_keys`'s real `sqlalchemy`
+import resolves, no stub, no vendored logic):
+
+```
+config WITH source_id="dlc_cam1"    -> ['dlc_cam1.alive', 'dlc_cam1.led_off_likelihood',
+                                         'dlc_cam1.led_on_likelihood', 'dlc_cam1.led_on_x',
+                                         'dlc_cam1.led_on_y']
+config WITHOUT the source_id key    -> []
+```
+
+Confirms in writing, against the real fetched config and the real function, that a researcher
+who uploads a lib and module but skips the `pilot_hardware_config` row gets a **silently empty
+picker with no error** — exactly D-36's finding.
+
+**Save-gate rejection, exercised for THIS module** — `PUT` of task definition 626 with an added
+transition `wait -> armed` on `{"view": "dlc_cam1.made_up_signal"} > 0.5`:
+
+```
+HTTP 422
+{"detail": {"errors": ["transitions[1].condition_tree.left: references unknown variable/flag
+  'dlc_cam1.made_up_signal'"]}}
+```
+
+The definition was then restored via a second `PUT` with the exact pre-test `fda_json`, and a
+subsequent `GET` confirmed the restored `fda_json` is Python-equality-identical to the
+pre-test capture (captured to a scratch file before the test, diffed after).
+
+**React bundle freshness** (D-08 stale-bundle hazard, ruled out without a rebuild):
+`web_ui/static/react/` is gitignored build output and does not exist in this worktree
+checkout, so a direct hash comparison against a fresh `npm run build` was not performed here
+(this plan does not install `node_modules`, per the package-manager-install exclusion in the
+deviation rules — installing `node_modules` fresh is not this plan's job and was not
+attempted). Instead: (1) `git log -1 -- web_ui/react-src/src` shows commit `3a41458` ("feat
+(18-14): wire extlink signals into condition builder", 2026-08-09) is the LAST commit touching
+any file under `web_ui/react-src/src` — nothing has changed there since, and nothing in this
+plan touches it either (`git status --porcelain web_ui/react-src/src/` is empty); (2) the
+LIVE `mics_web_ui` container's served bundle was grepped directly:
+`docker exec mics_web_ui grep -rl extlink_signals /app/static/react/` finds it in
+`TaskEditor-BQgUsRGT.js` — the feature the picker needs is demonstrably present in the
+currently-served bundle, not merely in source. The stale-bundle hazard is therefore ruled out
+by content, not by timestamp (the image's `Created` timestamp of 08:22:33 vs. the commit's
+08:23:11 is 38 seconds apart in the "wrong" direction, which would be a false-positive staleness
+signal by naive timestamp diffing alone — this is why the grep-for-content check, not a
+timestamp comparison, is the check actually relied on here).
+
+`git status --porcelain api/ web_ui/react-src/src/` — empty, confirmed after Task 2.
+
+---
+
 ## 6. Deliberately absent
 
 **The gated transition (`wait -> armed` on `dlc_cam1.led_on_likelihood`/`led_on_x`/`led_on_y`,

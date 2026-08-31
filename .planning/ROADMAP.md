@@ -1797,10 +1797,17 @@ model are USER-RUN: the agent supplies commands and the config rows, the user ru
 and the pilot and reports what happened. The agent does not run git on the Pi, does not start/stop
 the pilot process, and does not run Python on the Pi.
 
-**Plans:** 0 plans
+**Plans:** 8 plans in 6 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 35 to break down)
+- [ ] 35-01-PLAN.md — Wave 1 — dlc_link package foundation: the ONE bodypart-name transform and the deadband + Hz-cap decimator (DLC-02, DLC-04, DLC-13)
+- [ ] 35-02-PLAN.md — Wave 1 — **USER-RUN** liveness debt: the cross-clock analysis, lib 177 v3 with the hardcoded override removed, rig proof (DLC-06)
+- [ ] 35-03-PLAN.md — Wave 2 — `dlc-link-generate`: config.yaml → ExternalHardware lib source + the emitted signal map, with the D-15 validation gate (DLC-02, DLC-03, DLC-05, DLC-13)
+- [ ] 35-04-PLAN.md — Wave 3 — the adapter: a dlclive-compatible Processor plus the paced video-file loop (DLC-03, DLC-04, DLC-07, DLC-12, DLC-13)
+- [ ] 35-05-PLAN.md — Wave 4 — the `.h5` → wide replay converter and the no-GPU replay regression (DLC-09, DLC-03)
+- [ ] 35-06-PLAN.md — Wave 4 — the fixture rows on pilot 3 and the runbook that names the obstacle (DLC-01, DLC-08, DLC-13)
+- [ ] 35-07-PLAN.md — Wave 5 — **USER-RUN** vision-box bring-up and the first live proof, including the first human click through the FDA editor's picker (DLC-01, DLC-07, DLC-08, DLC-10)
+- [ ] 35-08-PLAN.md — Wave 6 — **USER-RUN** hardening: occlusion, liveness split, reconnect, soak, malformed frames, cross-talk, replay regression, final verdicts (DLC-04, DLC-05, DLC-06, DLC-09, DLC-10, DLC-11, DLC-12)
 
 ### Phase 36: Sender-side contract enforcement for mics-link
 

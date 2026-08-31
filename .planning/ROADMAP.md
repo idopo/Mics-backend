@@ -1830,6 +1830,62 @@ keypoint feed is exactly where a name typo or a too-slow publish rate goes unnot
 Plans:
 - [ ] TBD (run /gsd-plan-phase 36 to break down)
 
+### Phase 37: Extract researcher-facing client packages into a dedicated repo
+
+**Goal:** `mics-link` and the DLC tooling install on a researcher's Windows / DeepLabCut conda
+machine without that person needing any access to the mics-backend repo. Today both redistributable
+packages live inside the server repo, so "install our SDK" implicitly means "get read access to the
+backend" -- an access problem, not just a convenience one, now that the DLC users are genuinely
+third-party.
+
+**Shape (decided 2026-08-31, see `37-SEED.md`):** one new repo holding TWO ADJACENT packages, not
+one merged package -- `mics-link` (from `sdk/`) and the DLC tooling (from `dlc_link/`, dist name
+suggestion `mics-dlc-link`). They keep independent versioning. `dlc-link` depends on `mics-link`, so
+`pip install` of the DLC package pulls the SDK transitively and the researcher still types one line.
+
+Folding DLC into `mics-link` as a subpackage/extra was considered and REJECTED for two reasons:
+(a) version coupling -- `mics-link` is a wire codec whose stability is the point, and its dependency
+floors were deliberately chosen not to disturb a researcher's notebook stack (see 34-CONTEXT.md
+SDK-14); every DLC-side fix would bump the SDK. (b) entry-point leakage -- `dlc-link-generate` /
+`dlc-link-convert` are declared at package level, not per-extra, so a plain `pip install mics-link`
+would install CLIs that fail on missing torch/pandas.
+
+**The key move -- invert the dependency direction:** the AST contract test
+(`dlc_link/tests/test_generate_ast_contract.py`) moves INTO the backend test suite, taking
+`dlc-link` as a TEST-ONLY dependency. The third-party package then depends on nothing of the
+backend, and the validator (`api/extlink_ast.py`, `api/extlink_keys.py`) pins its own contract from
+its own side. This is strictly better than today, where a third-party tool reaches sideways into
+`api/` via a relative path.
+
+**Settle before moving:** PyPI vs private git URL. This is the actual reason to split -- a private
+git URL just relocates the access problem. Also check whether `mics_post_analysis/` (the third
+pyproject.toml in this repo) has the same redistributable profile, so the boundary is drawn once.
+
+**NOT in scope:**
+- Hardware libs do NOT move. They stay as `hardware_lib_versions.source_code` rows in the backend
+  DB, selected by the task definition's `hw_lib_versions` pin. A parallel repo store was considered
+  and rejected: it would be a second source of truth the runtime never reads, reproducing the
+  existing "a Pi git pull does not deploy them" trap. The generator is a client tool; its OUTPUT is
+  a backend artifact.
+- Pi-side code stays in `mics_core` (autopilot/pilot/deploy ship to the rig).
+
+**Requirements**: TBD -- needs `/gsd-discuss-phase 37` first (distribution channel is the open
+decision).
+
+**Depends on:** Phase 35 must VERIFY first -- plans 35-05 through 35-08 all declare `dlc_link/`
+paths in `files_modified`, so moving the tree earlier invalidates them. NOT Phase 36; 37 and 36 are
+independent and either order works.
+
+**Effort note:** the current on-disk layout is already the target layout -- `sdk/` and `dlc_link/`
+are independent `pyproject.toml` packages with a clean dependency edge, and Phase 35-01 proved
+`dlc_link` imports with dlclive/torch/cv2/pandas all absent. Closer to a `git mv` of two
+directories plus CI and release plumbing than a restructuring.
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 37 to break down)
+
 ---
 *Created: 2026-03-15*
 *Last updated: 2026-08-26 — Phases 34-35 added: the DeepLabCut arc (MICS-Link SDK client package, then DLC keypoint-likelihood integration), the second consumer of Phase 18's ExternalHardware substrate. Both were reserved in Phase 18's NOT-in-scope list.*

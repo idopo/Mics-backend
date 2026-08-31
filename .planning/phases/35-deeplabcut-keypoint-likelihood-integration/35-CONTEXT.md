@@ -91,6 +91,64 @@ transitions, multi-animal identity tracking, a React UI for lib generation.
   (delivered to the user 2026-08-31, read-only) reports exactly these fields plus the on-disk
   snapshots and each video's fps/resolution.
 
+### The actual model — `config.yaml` READ 2026-08-31 (supersedes D-10's "not yet in hand")
+
+Verbatim from `C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21\config.yaml`:
+
+| Key | Value |
+|---|---|
+| `Task` / `scorer` / `date` | MultiMice / Gili / Jun21 |
+| **`engine`** | **`pytorch`** — confirms D-02 from the project's own config |
+| **`multianimalproject`** | **`true`** |
+| **`identity`** | **`false`** |
+| `individuals` | `1,2,3,4,5` — **five mice** |
+| `multianimalbodyparts` (10) | nose, L_ear, L_eye, R_eye, R_ear, head_center, head_end, L_side, tail, R_side |
+| `uniquebodyparts` (22) | **NW, NE, SE, SW**, **LED_off, LED_on**, Mic1_middle..Mic8_end |
+| `bodyparts` | `MULTI!` (the maDLC sentinel — there is no flat list) |
+| `pcutoff` | **0.01** |
+| `default_net_type` / track method | resnet_50 / ellipse |
+| `iteration` / `snapshotindex` | 0 / -1 |
+| videos | 11 entries, 1280x960 and 1920x1080 |
+
+- **D-37: `identity: false` makes per-individual signals technically UNAVAILABLE live, not merely
+  deferred.** With `identity: false` and `default_track_method: ellipse`, individual identity is
+  assigned **post-hoc** by `convert_detections2tracklets` + `stitch_tracklets` — a batch step
+  DLC-Live does **not** run. So in live inference the detection index is unstable frame to frame.
+  This upgrades D-07 from a user preference ("I don't care") to a **hard technical fact**: a
+  `mouse3_nose_x` signal would silently change which animal it refers to between frames. Record
+  this in the runbook as the reason, so nobody "adds it later" without re-reading it.
+- **D-38: `uniquebodyparts` are the ideal v1 signals, and the demo should use them.** They are
+  single-instance by construction, so they carry **no identity ambiguity at all** — the exact
+  problem D-37 describes does not apply to them. Two are especially valuable:
+  **(a) `LED_on` / `LED_off`** — an operator-controllable, deterministic trigger. Gating the demo
+  FDA on `LED_on` likelihood gives a repeatable rig test that does not require an animal to
+  cooperate, which is a strictly better first proof than waiting for a mouse to move. It also
+  exercises D-19's `likelihood AND x/y` pattern honestly.
+  **(b) `NW` / `NE` / `SE` / `SW`** — the arena corners. These are a candidate normalisation
+  reference frame that is a property of the arena rather than of the frame buffer, which is what
+  D-18 is reaching for. **Not adopted in v1** — D-18's divide-by-frame-dimensions stands, because
+  corner-based normalisation needs the corners to be reliably detected and adds a failure mode.
+  Recorded as a deferred enhancement.
+- **D-39: 72 candidate keypoints exist** (10 multianimal x 5 individuals + 22 unique). Against
+  D-22's ~60 msg/s budget this makes selective declaration structural, not advisory. The generator
+  must therefore REQUIRE an explicit bodypart selection and refuse to emit all of them.
+- **D-40: The generator must read THREE sources, not one.** `config.yaml` may carry
+  `bodyparts` (single-animal flat list), `multianimalbodyparts` + `individuals`, and
+  `uniquebodyparts` — and in a maDLC project `bodyparts` is the literal string `MULTI!`, which is a
+  sentinel, **not a list**. A generator that reads `bodyparts` naively gets the string `"MULTI!"`
+  and emits garbage. D-13 previously named only the multianimal case; this corrects it.
+- **D-41: Do NOT assume a `> 0.9` likelihood threshold is meaningful.** The project sets
+  `pcutoff: 0.01`, two orders of magnitude below DeepLabCut's 0.6 default. The demo transition's
+  threshold must be chosen from the **measured** likelihood distribution of the declared bodyparts
+  on a real video, not picked a priori. Add measuring it as an explicit task.
+- **D-42: OPEN EMPIRICAL QUESTION — does `single_animal=True` return the unique bodyparts?**
+  DLC-Live's docs state only that the array becomes `(num_bodyparts, 3)`; they do **not** say
+  whether `num_bodyparts` is the 10 multianimal parts, or 32 (10 + 22 unique), nor the row order.
+  Row order is load-bearing — the adapter indexes `pose[i]` by position. **This must be settled by
+  running `init_inference` once and printing `pose.shape` before any signal mapping is written**,
+  not by assumption. If unique parts are absent under `single_animal=True`, D-38's LED demo needs
+  `single_animal=False` plus explicit detection selection, which changes the adapter's shape.
+
 ### Declaration path — the core "generic way for anyone" deliverable (DLC-02, DLC-13)
 
 - **D-11: A CLI generator, `config.yaml` -> hardware-lib source.** Shape:

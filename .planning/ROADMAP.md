@@ -39,7 +39,7 @@
 | 29 | FDA Builder Canvas UX | Edge readability (bowed arcs, per-edge labels, arrowheads, self-loops, back-edge routing), layered auto-layout, position persistence in a dedicated `ui_layout` column kept out of `fda_json`'s hash. **Zero Pi impact** | CANVAS-01–14 | ◐ 7/8 executed 2026-08-05 — only 29-08 (gate sweep + human proof) remains |
 | 30 | 8/9 | In Progress|  | ○ Exit gate green 2026-08-10 (`--final` 0, zero manifest drift); publication + rig proof are USER-RUN (plan 09) |
 | 34 | MICS-Link SDK Client Package | 8/9 | In Progress|  |
-| 35 | DeepLabCut Keypoint Likelihood Integration | 2/9 | In Progress|  |
+| 35 | DeepLabCut Keypoint Likelihood Integration | 3/9 | In Progress|  |
 
 **Execution order (amended 2026-08-03):** Phase 24 → **Phase 25** → Phase 23 → review → Phase 18 → **26 → 27 → 28** (the OpenEphys arc). Phase 25 moved ahead of 23 because phase 24 deliberately does not derive detector view keys for the editor. Phases 26–28 are the first consumer of Phase 18's `ExternalHardware` substrate, which was revised on 2026-08-03 to carry them. **Phases 34–35 (the DeepLabCut arc, added 2026-08-26) are the second consumer and run independently of 26–28** — both were reserved in Phase 18's own NOT-in-scope list, and neither changes the substrate. See `.planning/STABILIZATION_PLAN.md`.
 
@@ -1797,12 +1797,12 @@ model are USER-RUN: the agent supplies commands and the config rows, the user ru
 and the pilot and reports what happened. The agent does not run git on the Pi, does not start/stop
 the pilot process, and does not run Python on the Pi.
 
-**Plans:** 2/9 plans executed
+**Plans:** 3/9 plans executed
 
 Plans:
 - [x] 35-01-PLAN.md — Wave 1 — dlc_link package foundation: the ONE bodypart-name transform (indices from an explicit pose order) and the deadband + Hz-cap decimator (DLC-02, DLC-04, DLC-13)
 - [x] 35-02-PLAN.md — Wave 1 — liveness debt, OFFLINE half: the cross-clock analysis, the canonical liveness_hook, and a candidate lib 177 v3 (DLC-06)
-- [ ] 35-03-PLAN.md — Wave 2 — `dlc-link-generate`: config.yaml (three bodypart sources, `MULTI!` sentinel) → ExternalHardware lib source + signal map, with the D-15 validation gate and D-39's budget refusal (DLC-02, DLC-03, DLC-05, DLC-13)
+- [x] 35-03-PLAN.md — Wave 2 — `dlc-link-generate`: config.yaml (three bodypart sources, `MULTI!` sentinel) → ExternalHardware lib source + signal map, with the D-15 validation gate and D-39's budget refusal (DLC-02, DLC-03, DLC-05, DLC-13)
 - [ ] 35-04-PLAN.md — Wave 3 — the adapter: a dlclive-compatible Processor, the paced video-file loop, and `--probe-pose` for D-42 (DLC-03, DLC-04, DLC-07, DLC-12, DLC-13)
 - [ ] 35-05-PLAN.md — Wave 4 — the `.h5` → wide replay converter and the no-GPU replay regression (DLC-09, DLC-03)
 - [ ] 35-06-PLAN.md — Wave 4 — the LED_on/LED_off fixture on pilot 3 and the runbook that names the obstacle (DLC-01, DLC-08, DLC-13)

@@ -76,6 +76,16 @@ transitions, multi-animal identity tracking, a React UI for lib generation.
   dir. **Export is a prerequisite step in the runbook, not a design question.** Budget for friction:
   DeepLabCut-live issue #137 and image.sc report DLC 3.0 exports emitting a single `.pt` while
   DLC-Live still complains about a missing pose_cfg. Treat this as the likely first real obstacle.
+- **D-09b: GPU inference is PROVEN on the target, not assumed** (verified 2026-08-31 by an actual
+  512x512 CUDA matmul): RTX 3060, driver 531.18, torch cuDNN 9.1.0, sm_86, 12.9 GB. So real fps is
+  high and D-22's decimation is load-bearing. **Measure fps on this card before choosing a rate.**
+- **D-09c: `h5py` is ABSENT from the target env; `tables` 3.11.1 is present.** The `.h5` -> wide
+  replay converter (D-31) MUST read via `pandas.read_hdf` (PyTables backend), never `h5py`. Do not
+  add an h5py dependency to the vision box.
+- **D-09d: Something in the DeepLabCut 2.2.3 import chain patches `msgpack` globally** (verified
+  2026-08-31 with a probe that does NOT import `msgpack_numpy`). Any sender importing DLC 2.x would
+  have every frame silently numpy-extended and counted `malformed` on the Pi, invisibly. Does not
+  affect the DLC 3.0 target env, but it is why D-06's `selfcheck` step is non-negotiable.
 - **D-10: `config.yaml` has been requested and is not yet in hand.** It is an INPUT to the generator
   (bodypart list, `individuals`, `multianimalproject`), never a design blocker. `check_dlc.py`
   (delivered to the user 2026-08-31, read-only) reports exactly these fields plus the on-disk

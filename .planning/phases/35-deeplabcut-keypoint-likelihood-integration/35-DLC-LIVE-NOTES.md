@@ -613,3 +613,51 @@ indicates a **multi-animal** project.
   duration of a run, so stop-run -> start-new-run exercises the reconnect FSM identically without
   touching the pilot service.
 - Observation C (soak) PASSED at 60Hz/30s; Observation A (transition fires) PASSED on runs 582/583.
+
+## Vision-box hardware/env verification — RUN AND PASSED 2026-08-31
+
+Both envs checked with `check_env.py` (read-only). Results, verbatim-derived:
+
+**`DEEPLABCUT` (the target) — `FAILURES: none`.**
+
+| Check | Result |
+|---|---|
+| python / deeplabcut | 3.12.13 AMD64 / **3.0.0 -> pytorch** |
+| torch | 2.5.1, `cuda_built=11.8`, `available=True`, **RTX 3060** |
+| nvidia driver | 531.18, driver CUDA max **12.1**, 12288 MiB |
+| CUDA DLLs loadable | `cudart64_110` · `cublas64_11` · `cudnn64_9` · `cufft64_10` |
+| torch cuDNN / arch | 90100 / **sm_86** |
+| **real GPU kernel** | **512x512 matmul OK**, vram free 10.9/12.9 GB |
+| pyzmq / msgpack | **27.1.0 / 1.2.1** — both above SDK floors, install is a dep NO-OP |
+| msgpack-numpy | **absent** — no patch hazard |
+| dlclive | absent, **INSTALLABLE** (1.1.0 needs 3.10-3.12; env is 3.12) |
+| cv2 / numpy / pandas / tables | 4.11.0 / 1.26.4 / 2.3.3 / 3.11.1 |
+| **h5py** | **ABSENT** |
+
+**-> GPU inference is PROVEN, not inferred.** A kernel actually launched. This is the number that
+sizes DLC-04: measure real fps on this card before choosing a decimation rate.
+
+**-> ACTIONABLE: `h5py` is absent but `tables` 3.11.1 is present.** The DLC `.h5` -> wide-replay
+converter (D-31) must read via **`pandas.read_hdf`** (PyTables backend), **NOT `h5py`**. Adding an
+h5py dependency to the target env is avoidable and should be avoided.
+
+**`DEEPLABCUT223` (NOT the target) — 2 reported failures, only ONE is real.**
+
+1. **`tf GPU op KERNEL LAUNCH FAILED: TypeError("float() argument must be a string or a number,
+   not 'Tensor'")` — FALSE ALARM, a defect in the checker, not in the GPU.** DeepLabCut 2.x puts
+   TensorFlow in **TF1 graph mode**, so `tf.matmul` returns a symbolic tensor and the checker's
+   `float(...)` coercion raises before any kernel runs. Surrounding evidence shows the TF stack is
+   coherent: `gpus=1`, `tf build cuda=64_112 cudnn=64_8`, and the matching `cudart64_110` +
+   `cudnn64_8` DLLs both load. **`DEEPLABCUT223`'s TensorFlow GPU works.** This also finally
+   supersedes the earlier "CUDA 12.6 vs TF 2.7 -> probably CPU-only" guess, which was wrong.
+2. **`msgpack IS PATCHED` — REAL, and more general than first written.** The checker detects
+   `msgpack_numpy` via `find_spec` and never imports it, so the patch is not self-inflicted. But
+   `deeplabcut` and `tensorflow` are imported earlier in the same interpreter, so the accurate
+   statement is: **something in the DeepLabCut 2.2.3 import chain patches `msgpack` globally** —
+   not "this env is inherently patched". Consequence: **any `mics_link` sender process that imports
+   DLC 2.x would have every frame silently numpy-extended**, counted `malformed` on the Pi, with
+   nothing visible from the sender. Confirms D-06: `python -m mics_link.selfcheck` is mandatory.
+   **Not yet isolated to a specific import** — one line settles it:
+   `python -c "import msgpack; print('before:', msgpack.packb.__module__); import deeplabcut; print('after: ', msgpack.packb.__module__)"`
+
+Neither `DEEPLABCUT223` finding blocks Phase 35, which targets `DEEPLABCUT`.

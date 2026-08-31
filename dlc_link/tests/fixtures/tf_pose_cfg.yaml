@@ -1,0 +1,12 @@
+# Hand-written from the documented TensorFlow DeepLabCut 2.x exported pose_cfg.yaml
+# schema (not a real project file) -- exercises config_read.read_pose_cfg's
+# all_joints_names path.
+dataset: training-datasets/demo
+net_type: resnet_50
+all_joints_names:
+  - nose
+  - left_paw
+  - right_paw
+  - tail_tip
+num_joints: 4
+init_weights: resnet_v1_50.ckpt

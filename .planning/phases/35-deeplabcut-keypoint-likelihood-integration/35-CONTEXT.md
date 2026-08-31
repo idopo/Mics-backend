@@ -250,6 +250,27 @@ Verbatim from `C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21\confi
   browser. Either keep graduation off the demo's path or fix the counter first — deliberately,
   not by accident.
 
+### Cross-talk scope — a RECORDED DEVIATION from roadmap criterion 10 (user decision 2026-08-31)
+
+- **D-43: DLC-11's cross-talk proof runs TWO `source_id`s on ONE pilot (pilot 3), not on two
+  pilots.** Roadmap success criterion 10 says "a second DLC module on a **second pilot** does not
+  cross-talk." No plan provisions a second pilot, and the user chose this deviation deliberately
+  after it was surfaced by the plan checker — it is **not** an oversight and must not be recorded
+  as one.
+  **Rationale:** the isolation mechanism that could actually fail is the ROUTER identity check plus
+  tracker-prefix namespacing, and **neither is per-pilot** — both are per-`source_id` within one
+  pilot's module set. Two `source_id`s with two tracker prefixes and two disjoint view-key sets on
+  one pilot therefore exercises the real code path. A second pilot would add a second OS process
+  and a second network peer, which the substrate already isolates for unrelated reasons.
+  **Verification wording:** close DLC-11 as PROVEN for the same-pilot dual-`source_id` case and
+  state in the same sentence that the roadmap's literal "second pilot" wording was NOT exercised,
+  with this decision cited. Do not silently reword the criterion.
+  **Rejected alternative, recorded so it is not re-litigated:** provisioning pilot 1 (.72.28) would
+  satisfy the wording literally and would additionally be a cross-stack test (pilot 1 runs the
+  older `pi-mirror` ingress, which stamps `_last_msg_ts_ms` from `time.time()` rather than the
+  one-clock mapping — see D-23/D-24). It was declined for setup cost. If a cross-stack observation
+  is ever wanted, that is the cheapest route to it.
+
 ### Workflow shape and ordering
 
 - **D-29: Live-shaped first, converter second.** (A) video file -> `DLCLive` Processor -> `mics_link`,

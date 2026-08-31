@@ -1,10 +1,13 @@
-"""Tests for dlc_link.convert (plan 35-05, Task 1: the pure flatten-and-write core).
+"""Tests for dlc_link.convert / dlc_link.convert_cli (plan 35-05).
 
-These tests use hand-built column tuples and row tuples -- no pandas anywhere -- so they
-prove the flatten-and-write core on a machine with no pandas installed. Task 2 adds
-`read_h5` (pandas-dependent, guarded by `pytest.importorskip`) and the CLI to this file.
+Task 1's tests use hand-built column tuples and row tuples -- no pandas anywhere -- so
+they prove the flatten-and-write core on a machine with no pandas installed. Task 2 adds
+`read_h5` (pandas-dependent, guarded by `pytest.importorskip` -- these SKIP on this dev
+host, which is correct and expected, never mistake the skip for a broken test) and the
+`dlc-link-convert` CLI (`dlc_link.convert_cli`).
 """
 import csv
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -230,3 +233,207 @@ def test_write_wide_csv_sorts_header_names(tmp_path):
     with open(path, newline="", encoding="utf-8") as handle:
         header = next(csv.reader(handle))
     assert header == ["t", "nose_x", "nose_y"]
+
+
+# --- read_h5: pandas-dependent, expected to SKIP on this dev host -----------------------
+# pandas and tables are both absent from this dev host (verified: `import pandas` and
+# `import tables` both raise ModuleNotFoundError). The pytest.importorskip calls below make
+# these tests SKIP here, which is correct and expected -- do not mistake the skip for a
+# broken test. They exercise read_h5 for real wherever pandas/tables ARE installed (e.g.
+# the vision box's DEEPLABCUT env, per 35-DLC-LIVE-NOTES.md).
+
+
+def test_read_h5_round_trips_a_multiindex_dataframe(tmp_path):
+    pandas = pytest.importorskip("pandas")
+    pytest.importorskip("tables")
+    from dlc_link.convert import read_h5
+
+    columns = pandas.MultiIndex.from_tuples(
+        [("scorerA", "nose", "x"), ("scorerA", "nose", "likelihood")],
+        names=["scorer", "bodyparts", "coords"],
+    )
+    frame = pandas.DataFrame([[0.5, 0.9], [0.6, 0.8]], columns=columns)
+    path = tmp_path / "export.h5"
+    frame.to_hdf(path, key="df", mode="w")
+
+    columns_out, rows_out = read_h5(path)
+    assert columns_out == [("scorerA", "nose", "x"), ("scorerA", "nose", "likelihood")]
+    rows_list = list(rows_out)
+    assert rows_list == [(0.5, 0.9), (0.6, 0.8)]
+    assert all(type(v) is float for row in rows_list for v in row)
+
+
+def test_read_h5_multiple_keys_without_key_flag_raises_listing_keys(tmp_path):
+    pandas = pytest.importorskip("pandas")
+    pytest.importorskip("tables")
+    from dlc_link.convert import ConvertError, read_h5
+
+    path = tmp_path / "export.h5"
+    pandas.DataFrame({"a": [1]}).to_hdf(path, key="one", mode="w")
+    pandas.DataFrame({"a": [2]}).to_hdf(path, key="two", mode="a")
+
+    with pytest.raises(ConvertError) as excinfo:
+        read_h5(path)
+    assert "--key" in str(excinfo.value)
+
+
+def test_read_h5_with_key_selects_the_named_dataset(tmp_path):
+    pandas = pytest.importorskip("pandas")
+    pytest.importorskip("tables")
+    from dlc_link.convert import read_h5
+
+    path = tmp_path / "export.h5"
+    pandas.DataFrame({"a": [1]}).to_hdf(path, key="one", mode="w")
+    pandas.DataFrame({"a": [2]}).to_hdf(path, key="two", mode="a")
+
+    columns_out, rows_out = read_h5(path, key="two")
+    assert columns_out == [("a",)] or columns_out == ["a"]
+    assert list(rows_out) == [(2,)]
+
+
+def test_read_h5_absent_pandas_raises_naming_convert_extra(monkeypatch):
+    import builtins
+
+    from dlc_link.convert import ConvertError, read_h5
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "pandas":
+            raise ImportError("no module named pandas")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    with pytest.raises(ConvertError) as excinfo:
+        read_h5("/nonexistent.h5")
+    assert "convert" in str(excinfo.value)
+
+
+def test_convert_module_has_no_h5py_reference():
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    convert_py = os.path.join(here, "src", "dlc_link", "convert.py")
+    with open(convert_py) as handle:
+        text = handle.read()
+    assert "h5py" not in text
+
+
+# --- dlc-link-convert CLI: --help, argparse requiredness --------------------------------
+
+
+def test_cli_help_lists_every_required_flag(capsys):
+    from dlc_link.convert_cli import main as convert_main
+
+    with pytest.raises(SystemExit) as excinfo:
+        convert_main(["--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    for flag in (
+        "--h5", "--signal-map", "--fps", "--out", "--key",
+        "--likelihood-threshold", "--start-t", "--max-rows",
+    ):
+        assert flag in out
+
+
+def test_cli_help_names_pcutoff_and_no_default_for_likelihood_threshold(capsys):
+    from dlc_link.convert_cli import main as convert_main
+
+    with pytest.raises(SystemExit):
+        convert_main(["--help"])
+    out = capsys.readouterr().out
+    assert "pcutoff" in out
+    assert "no default" in out.lower()
+
+
+def test_cli_out_is_required_and_writes_nothing(tmp_path, monkeypatch):
+    from dlc_link.convert_cli import main as convert_main
+
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    monkeypatch.chdir(empty_dir)
+    with pytest.raises(SystemExit):
+        convert_main(["--h5", "whatever.h5", "--signal-map", "whatever_signals.py", "--fps", "30"])
+    assert list(empty_dir.iterdir()) == []
+
+
+def test_cli_summary_has_no_latency_jitter_drift_or_elapsed_wording():
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    convert_cli_py = os.path.join(here, "src", "dlc_link", "convert_cli.py")
+    with open(convert_cli_py) as handle:
+        text = handle.read().lower()
+    for banned in ("latency", "jitter", "drift", "elapsed"):
+        assert banned not in text
+
+
+# --- D-44: refuse to write inside the DLC project (or a project root above the .h5) -----
+
+
+def _snapshot(path):
+    """{relpath: size} for every file under `path`, for a before/after comparison."""
+    snap = {}
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            full = os.path.join(root, name)
+            snap[os.path.relpath(full, path)] = os.path.getsize(full)
+    return snap
+
+
+def test_out_inside_h5_own_directory_raises_d44(tmp_path):
+    from dlc_link.convert_cli import _check_out_not_in_dlc_project
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    before = _snapshot(project_dir)
+    h5_path = project_dir / "videos" / "export.h5"
+    h5_path.parent.mkdir(parents=True)
+    out_path = h5_path.parent / "out.csv"
+    with pytest.raises(ConvertError) as excinfo:
+        _check_out_not_in_dlc_project(str(out_path), str(h5_path))
+    assert "D-44" in str(excinfo.value)
+    assert _snapshot(project_dir) == before
+
+
+def test_out_inside_ancestor_project_root_detected_by_sibling_config_raises_d44(tmp_path):
+    from dlc_link.convert_cli import _check_out_not_in_dlc_project
+
+    project_dir = tmp_path / "MultiMice"
+    (project_dir / "videos").mkdir(parents=True)
+    (project_dir / "config.yaml").write_text("bodyparts: [nose]\n")
+    before = _snapshot(project_dir)
+    h5_path = project_dir / "videos" / "export.h5"
+    out_path = project_dir / "scratch" / "out.csv"  # under the project root, not the h5's own dir
+    with pytest.raises(ConvertError) as excinfo:
+        _check_out_not_in_dlc_project(str(out_path), str(h5_path))
+    assert "D-44" in str(excinfo.value)
+    assert _snapshot(project_dir) == before
+
+
+def test_out_outside_project_and_outside_h5_dir_succeeds(tmp_path):
+    from dlc_link.convert_cli import _check_out_not_in_dlc_project
+
+    project_dir = tmp_path / "MultiMice"
+    (project_dir / "videos").mkdir(parents=True)
+    (project_dir / "config.yaml").write_text("bodyparts: [nose]\n")
+    h5_path = project_dir / "videos" / "export.h5"
+    out_path = tmp_path / "scratch" / "out.csv"  # sibling of the project, not inside it
+    _check_out_not_in_dlc_project(str(out_path), str(h5_path))  # must not raise
+
+
+# --- Atomic write: temp file lives beside --out, never in cwd or the system temp root ----
+
+
+def test_write_atomically_never_touches_cwd(tmp_path, monkeypatch):
+    from dlc_link.convert_cli import _write_atomically
+
+    empty_cwd = tmp_path / "empty_cwd"
+    empty_cwd.mkdir()
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    out_path = out_dir / "out.csv"
+    monkeypatch.chdir(empty_cwd)
+
+    rows_written = _write_atomically(str(out_path), ["nose_x"], [(0.0, {"nose_x": 0.5})])
+
+    assert rows_written == 1
+    assert out_path.exists()
+    assert list(empty_cwd.iterdir()) == []
+    assert set(os.listdir(out_dir)) == {"out.csv"}

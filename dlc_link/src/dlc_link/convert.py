@@ -17,7 +17,13 @@ data -- no pandas import anywhere in this file yet.
 Column names come from the loaded signal map (`dlc_link.signal_map.load_signal_map`)
 exclusively -- this module never re-derives the bodypart-to-identifier transform that has
 its one declaration site in `dlc_link.names`.
+
+`main` is a thin re-export, same shape as `dlc_link.generate`/`dlc_link.generate_cli`: the
+argparse CLI and the D-44 write-location refusal live in `dlc_link.convert_cli`, split out
+to hold this file under the project's 300-line standard. `dlc-link-convert =
+dlc_link.convert:main` (pyproject.toml) is unaffected.
 """
+import sys
 
 _RECOGNISED_COORDS = ("x", "y", "likelihood")
 _LIKELIHOOD_SUFFIX = "_likelihood"
@@ -28,6 +34,15 @@ _Y_SUFFIX = "_y"
 class ConvertError(Exception):
     """Raised for every refusal in this module. Always names the input path or the
     offending column."""
+
+
+def _to_plain(value):
+    """numpy (or any array-scalar) -> the equivalent Python scalar, via `.item()` -- never
+    `float(...)`, which would flatten an int/bool/float distinction. Anything else is
+    returned unchanged. Mirrors `mics_link.values.as_scalar` without importing it (this
+    package depends on `mics-link` as an ordinary third party, never a private helper)."""
+    item = getattr(value, "item", None)
+    return item() if callable(item) and not isinstance(value, (bytes, str)) else value
 
 
 def flatten_columns(columns, signal_map):
@@ -219,3 +234,63 @@ def write_wide_csv(path, header_names, rows, newline_utf8=True):
             writer.writerow(row)
             rows_written += 1
     return rows_written
+
+
+def read_h5(path, key=None):
+    """Read a DeepLabCut `.h5` export via `pandas.read_hdf` (the PyTables/"tables" backend
+    -- the other common HDF5 binding is deliberately never imported, D-09c: it is absent
+    from the target env and adding it there is avoidable). Returns
+    `(list_of_column_tuples, iterator_of_row_tuples)` -- the column index and every row
+    value are converted to plain Python via `_to_plain` (`.item()`), so nothing pandas- or
+    numpy-typed crosses back into the pure core above.
+
+    Raises `ConvertError`, naming `path`: when `pandas` cannot be imported (naming the
+    `convert` extra to install); when the store holds more than one dataset and no `key`
+    was given (listing the available keys and naming `--key`); or for any other
+    `pandas.read_hdf` failure.
+    """
+    try:
+        import pandas
+    except ImportError as exc:
+        raise ConvertError(
+            "{}: pandas is required to read a DeepLabCut .h5 export; install the "
+            '"convert" extra (pip install "dlc-link[convert]") -- ({})'.format(path, exc)
+        )
+
+    try:
+        dataframe = pandas.read_hdf(path, key=key) if key else pandas.read_hdf(path)
+    except ValueError as exc:
+        message = str(exc)
+        if "key" in message.lower():
+            try:
+                with pandas.HDFStore(path, mode="r") as store:
+                    keys = list(store.keys())
+            except Exception:
+                keys = []
+            raise ConvertError(
+                "{}: the HDF5 store holds more than one dataset (keys: {!r}); pass --key "
+                "to select one".format(path, keys)
+            )
+        raise ConvertError("{}: pandas.read_hdf failed: {}".format(path, exc))
+    except Exception as exc:
+        raise ConvertError("{}: pandas.read_hdf failed: {}".format(path, exc))
+
+    columns = [tuple(_to_plain(level) for level in column) for column in dataframe.columns]
+    rows = (
+        tuple(_to_plain(value) for value in row)
+        for row in dataframe.itertuples(index=False, name=None)
+    )
+    return columns, rows
+
+
+def main(argv=None):
+    """Thin re-export so `dlc-link-convert = dlc_link.convert:main` (pyproject.toml) keeps
+    working; the real CLI lives in `dlc_link.convert_cli` (import deferred to avoid a
+    module-load-time circular import, since that module imports from here)."""
+    from dlc_link.convert_cli import main as _main
+
+    return _main(argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

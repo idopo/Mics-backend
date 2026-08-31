@@ -446,9 +446,24 @@ Verbatim from `C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21\confi
   per D-07. Inherits DLC's identity-tracking instability, where a swapped identity becomes a *wrong*
   FDA transition rather than merely a stale one — a different and worse failure mode than occlusion.
   Its own phase if ever wanted.
-- **A browser page for lib generation** — upload `config.yaml`, tick bodyparts, backend creates lib
-  + module + config row. Rejected for this phase (D-11) to keep frontend work out; the natural
-  follow-on once the CLI generator proves the shape.
+- **A GENERIC contract -> hardware-lib builder in the UI** (user, 2026-08-31, when offered a
+  DLC-specific browser generator and declining it): *"not sure if to do it in ui since this is very
+  specific for dlc hw libs maybe in the future we can build a tool that take any yml or contracts
+  and taylor a hw lib from it in the ui. for now lets stick with the cli."*
+  **This supersedes the earlier "a browser page for lib generation" entry and its reasoning.** The
+  original rejection was on effort ("keeps frontend work out of this phase"), which was partly
+  wrong — `CLAUDE.md` under-documents the UI and in fact ALL SIX runbook steps already have pages
+  (`/react/hardware-libs-ui`, `/react/hardware-libs/:id`, `/react/hardware-modules-ui`,
+  `/react/pilots/:pilotName/hardware-config`, `/react/toolkits-ui`, `/react/task-definitions-ui` +
+  `/react/task-editor/:id`), so the frontend surface is mature, not absent.
+  The correct rejection is on **shape**: a DLC-specific upload button is a narrow feature bolted
+  onto a general-purpose page, while the tool that belongs in the UI is the general one — any
+  YAML/contract -> an `ExternalHardware` lib. DLC would then be one input format among several.
+  **Design implication for `35-03`, which costs nothing now:** keep the DLC-specific *config
+  reader* separate from the generic *lib-source emitter*. A future generic builder reuses the
+  emitter unchanged and supplies its own reader. The planner already split `config_read` out, so
+  the seam exists — do not let the emitter grow DLC vocabulary.
+  Candidate for its own roadmap phase; not scoped here.
 - **`POST /api/dlc/register`** collapsing lib+module+config into one atomic call, or a generated
   `setup_<source_id>.py`. Rejected by D-35; revisit only after the runbook names which step is
   actually the obstacle.

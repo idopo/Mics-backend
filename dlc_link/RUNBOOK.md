@@ -174,6 +174,31 @@ Summarised, for the three CLI tools this package ships:
 
 ---
 
+## Ports: there is no default, and that is deliberate
+
+`--port` has no default value. Passing `--host` without `--port` is an immediate
+`exit 2`, before the model loads.
+
+That is not an oversight to be tidied up later. A single pilot binds one extlink socket
+**per `source_id`**, and pilot 3 currently binds two:
+
+| Port | `source_id` | Lib |
+|---|---|---|
+| 5599 | `demo` | `ExtlinkDemo` (lib 177) |
+| 5601 | `dlc_cam1` | the DLC lib (lib 243) |
+
+Both are real, bound, listening sockets. So sending DLC keypoints to 5599 does not fail —
+it succeeds, into the wrong fixture. The connection is accepted, the frames are consumed,
+and the lib you meant to feed stays empty while the model appears broken. A wrong-but-open
+port is far more expensive to debug than a closed one, which is why the tool refuses to
+guess.
+
+The port is a property of the `pilot_hardware_config` row for that `(pilot, source_id)`
+pair — not of this tool, and not of the lib. Read it from the pilot's hardware config
+before a run; the same lib attached to a second pilot, or a second camera on this one,
+gets a different number. `--dry-run` and `--probe-pose` connect to nothing and need no
+port at all.
+
 ## What `<source_id>.alive` actually means
 
 Short, and load-bearing — a researcher gating an FDA transition on `alive` will read it as "the

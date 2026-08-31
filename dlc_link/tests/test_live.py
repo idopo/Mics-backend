@@ -359,3 +359,48 @@ def test_dry_run_processes_frames_through_the_real_processor(tmp_path, monkeypat
         ]
     )
     assert exit_code == 0
+
+
+# --- connection-argument validation (port/host trap) -------------------------
+# Pilot 3 binds TWO extlink consumers: 5599 (ExtlinkDemo/"demo") and 5601
+# (dlc_cam1) -- 35-FIXTURE-INVENTORY.md:131. A silent --port default therefore
+# does not merely miss; it delivers to a DIFFERENT fixture that is genuinely
+# listening, so the send succeeds and the intended lib stays empty. The port
+# belongs to a (pilot, source_id) row in pilot_hardware_config, not to this
+# tool, so there is no correct default to pick -- it must be stated.
+
+
+def _parsed(*argv):
+    base = [
+        "--video", "clip.mp4",
+        "--model-path", "model.pt",
+        "--signal-map", "sig.py",
+    ]
+    return _build_parser().parse_args(base + list(argv))
+
+
+def test_port_has_no_silent_default():
+    assert _parsed().port is None
+
+
+def test_port_required_when_actually_connecting():
+    problem = live_module.validate_connection_args(_parsed("--host", "10.0.0.5"))
+    assert problem is not None
+    assert "--port" in problem
+
+
+def test_host_still_required_when_actually_connecting():
+    problem = live_module.validate_connection_args(_parsed("--port", "5601"))
+    assert problem is not None
+    assert "--host" in problem
+
+
+def test_host_and_port_together_are_accepted():
+    assert live_module.validate_connection_args(
+        _parsed("--host", "10.0.0.5", "--port", "5601")
+    ) is None
+
+
+@pytest.mark.parametrize("flag", ["--dry-run", "--probe-pose"])
+def test_offline_modes_need_neither_host_nor_port(flag):
+    assert live_module.validate_connection_args(_parsed(flag)) is None

@@ -152,7 +152,13 @@ def _build_parser():
     )
     parser.add_argument("--signal-map", required=True, help="path to the generated <source_id>_signals.py")
     parser.add_argument("--host", default=None, help="required unless --dry-run or --probe-pose")
-    parser.add_argument("--port", type=int, default=5599)
+    parser.add_argument(
+        "--port", type=int, default=None,
+        help="required unless --dry-run or --probe-pose. Deliberately has NO default: "
+             "the port belongs to a (pilot, source_id) row in pilot_hardware_config, not "
+             "to this tool. Pilot 3 binds 5599 (ExtlinkDemo) and 5601 (dlc_cam1), so a "
+             "wrong port reaches a DIFFERENT fixture that is listening rather than failing.",
+    )
     parser.add_argument("--source-id", default=None, help="defaults to the loaded signal map's SOURCE_ID")
     parser.add_argument("--resize", type=float, default=None, help="passed to DLCLive")
     parser.add_argument("--max-frames", type=int, default=None)
@@ -178,8 +184,30 @@ def _build_parser():
     return parser
 
 
+def validate_connection_args(args):
+    """Return a problem string when the run will connect but cannot address a socket.
+
+    Checked before the heavy cv2/dlclive imports so a missing flag reports in
+    milliseconds rather than after a model load -- and so it is testable on a host
+    with neither installed.
+    """
+    if args.dry_run or args.probe_pose:
+        return None
+    missing = [name for name in ("host", "port") if getattr(args, name) is None]
+    if not missing:
+        return None
+    return "{} required unless --dry-run or --probe-pose".format(
+        " and ".join("--" + name for name in missing)
+    )
+
+
 def main(argv=None):
     args = _build_parser().parse_args(argv)
+
+    problem = validate_connection_args(args)
+    if problem:
+        print("dlc-link-live: {}".format(problem), file=sys.stderr)
+        return 2
 
     try:
         smap = load_signal_map(args.signal_map)
@@ -223,9 +251,7 @@ def main(argv=None):
     if args.dry_run:
         link = _DiscardingLink()
     else:
-        if not args.host:
-            print("dlc-link-live: --host is required unless --dry-run or --probe-pose", file=sys.stderr)
-            return 2
+        # host/port already validated by validate_connection_args() before any import.
         try:
             link = connect(args.host, args.port, source_id)
         except MicsLinkError as exc:

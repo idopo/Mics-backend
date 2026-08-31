@@ -1,0 +1,62 @@
+# Transcribed from the real project's config.yaml, verbatim key table recorded in
+# 35-CONTEXT.md under "The actual model — config.yaml READ 2026-08-31":
+# C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21\config.yaml
+# Only the fields config_read.py reads (plus a few identifying ones) are transcribed;
+# irrelevant DeepLabCut bookkeeping fields are omitted.
+Task: MultiMice
+scorer: Gili
+date: Jun21
+engine: pytorch
+multianimalproject: true
+identity: false
+individuals:
+  - "1"
+  - "2"
+  - "3"
+  - "4"
+  - "5"
+multianimalbodyparts:
+  - nose
+  - L_ear
+  - L_eye
+  - R_eye
+  - R_ear
+  - head_center
+  - head_end
+  - L_side
+  - tail
+  - R_side
+uniquebodyparts:
+  - NW
+  - NE
+  - SE
+  - SW
+  - LED_off
+  - LED_on
+  - Mic1_middle
+  - Mic1_end
+  - Mic2_middle
+  - Mic2_end
+  - Mic3_middle
+  - Mic3_end
+  - Mic4_middle
+  - Mic4_end
+  - Mic5_middle
+  - Mic5_end
+  - Mic6_middle
+  - Mic6_end
+  - Mic7_middle
+  - Mic7_end
+  - Mic8_middle
+  - Mic8_end
+bodyparts: MULTI!
+pcutoff: 0.01
+default_net_type: resnet_50
+default_track_method: ellipse
+iteration: 0
+snapshotindex: -1
+video_sets:
+  video1.mp4:
+    crop: 0, 1280, 0, 960
+  video2.mp4:
+    crop: 0, 1920, 0, 1080

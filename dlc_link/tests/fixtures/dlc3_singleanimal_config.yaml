@@ -1,0 +1,20 @@
+# Hand-written from the documented DLC 3.0 single-animal config.yaml schema (not a real
+# project file) -- exercises the flat `bodyparts` list path of config_read.read_dlc_config,
+# as opposed to the maDLC fixture's MULTI! sentinel path.
+Task: SingleMouseDemo
+scorer: demo
+date: Aug31
+engine: pytorch
+multianimalproject: false
+identity: true
+bodyparts:
+  - nose
+  - left_ear
+  - right_ear
+  - tail_base
+uniquebodyparts:
+  - arena_center
+pcutoff: 0.6
+default_net_type: resnet_50
+iteration: 0
+snapshotindex: -1

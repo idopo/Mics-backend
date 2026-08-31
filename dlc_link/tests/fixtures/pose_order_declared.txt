@@ -1,0 +1,36 @@
+# CONFIG-DECLARED order (maDLC fixture's ten multianimal parts followed by its twenty-two
+# unique parts). This is NOT known to be the runner's actual pose row order -- D-42 is the
+# open empirical question, and plan 35-07's probe settles it. Exists only so the
+# generator's tests can exercise the --pose-order-file path deterministically.
+nose
+L_ear
+L_eye
+R_eye
+R_ear
+head_center
+head_end
+L_side
+tail
+R_side
+NW
+NE
+SE
+SW
+LED_off
+LED_on
+Mic1_middle
+Mic1_end
+Mic2_middle
+Mic2_end
+Mic3_middle
+Mic3_end
+Mic4_middle
+Mic4_end
+Mic5_middle
+Mic5_end
+Mic6_middle
+Mic6_end
+Mic7_middle
+Mic7_end
+Mic8_middle
+Mic8_end

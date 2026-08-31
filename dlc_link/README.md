@@ -36,6 +36,19 @@ typically sits inside it.
 
 ## Runbook
 
-The researcher-facing step-by-step runbook lives in `dlc_link/RUNBOOK.md` (written by a
-later plan in this phase — not present yet). This README documents the package itself,
+The researcher-facing step-by-step runbook lives in
+[`dlc_link/RUNBOOK.md`](RUNBOOK.md) — the numbered path from a working DeepLabCut model to an
+FDA transition authored in the browser, including the read-only-project-directory procedure
+and the named ordering obstacle in the backend half. This README documents the package itself,
 not the install/setup procedure for the vision box.
+
+One-line install of the PyPI-published half (inside a conda env cloned from your DeepLabCut
+training env, per `RUNBOOK.md` step 1):
+
+```bash
+python -m pip install "deeplabcut-live[pytorch]"
+```
+
+`mics-link` and `dlc-link` are not published on PyPI today — install them from the wheel/git
+paths `sdk/README.md` §2 documents (the same two paths apply to this package, built from
+`dlc_link/` instead of `sdk/`).

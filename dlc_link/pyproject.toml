@@ -1,0 +1,46 @@
+# This repo's other services use requirements.txt (see root CLAUDE.md). This is a
+# deliberate, narrow exception, mirroring sdk/pyproject.toml: dlc_link is meant to be
+# installed on machines OUTSIDE this repo entirely (the vision box, a researcher's
+# DeepLabCut conda env), so it needs real PEP 621 build metadata rather than a
+# service-local requirements file.
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dlc-link"
+version = "0.1.0"
+description = "DeepLabCut adapter and hardware-lib-source generator for mics-link, as an ordinary third-party consumer of its public API"
+readme = "README.md"
+requires-python = ">=3.10"
+# Core stays light so the generator and the converter install on a machine with no GPU.
+# DLC-Live's own metadata carries `requires-python >=3.10,<3.13` — that narrower cap is
+# enforced by pip automatically when the `live` extra is requested, and is deliberately
+# NOT restated here on the core project (D-03; the target env is Python 3.12.13).
+dependencies = ["mics-link>=0.1.0", "ruamel.yaml>=0.17"]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+live = ["deeplabcut-live[pytorch]>=1.1.0", "opencv-python-headless>=4.5"]
+convert = ["pandas>=1.0", "tables>=3.8"]
+# h5py is deliberately absent from every extra above: it is absent from the target env,
+# and pandas.read_hdf on the PyTables ("tables") backend is the supported reader (D-09c).
+
+[project.scripts]
+# All three declared now so no later plan needs to touch this file again. Like
+# sdk/pyproject.toml, setuptools does not verify entry-point targets at build time, so a
+# dangling target still installs cleanly.
+dlc-link-generate = "dlc_link.generate:main"
+dlc-link-convert = "dlc_link.convert:main"
+dlc-link-live = "dlc_link.live:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -506,3 +506,110 @@ bodyparts you will actually gate on, and decimate**. The deadband above helps mo
 precisely because coordinates jitter every frame while likelihood often does not. Remember each
 accepted `SIG` also emits one CONTINUOUS ES event, so these numbers are the ES load too.
 
+
+---
+
+# ⚠⚠ SUPERSEDING CORRECTION — 2026-08-31
+
+**Everything above that rests on "the lab runs DeepLabCut 2.2.3 / TensorFlow / Python 3.8" is
+WRONG for the model Phase 35 will actually integrate.** The 2.2.3 material is retained because
+`DEEPLABCUT223` still exists on the box and its hazards (msgpack-numpy, pyzmq 22) are real for
+*that* env — but it is NOT the target. Read this section first; where it conflicts with anything
+above, this wins.
+
+## The model Phase 35 targets
+
+`C:\Users\YizharGPU12\Desktop\Gili\MultiMice-Gili-2026-06-21` (user-supplied listing, 2026-08-31):
+`config.yaml`, `dlc-models/`, **`dlc-models-pytorch/`**, **`evaluation-results-pytorch/`**,
+`labeled-data/`, `training-datasets/`, `videos/`. **No `exported-models/`.**
+
+`dlc-models-pytorch/` and `evaluation-results-pytorch/` only exist for the **PyTorch engine**, so
+this project was trained by the `DEEPLABCUT` env, not `DEEPLABCUT223`. The name (`MultiMice`)
+indicates a **multi-animal** project.
+
+## There are TWO DLC envs on that box — the earlier inspection profiled the wrong one
+
+| | `DEEPLABCUT223` (inspected 2026-08-30) | **`DEEPLABCUT` (inspected 2026-08-31 — THE TARGET)** |
+|---|---|---|
+| Python | 3.8.19 | **3.12.13** |
+| deeplabcut | 2.2.3 | **3.0.0** |
+| engine | TensorFlow 2.7.0 | **PyTorch 2.5.1 (`py3.12_cuda11.8_cudnn9`)** |
+| GPU | CUDA 12.6 vs TF 2.7 -> likely CPU-only | torch cu118 + nvidia cu118 runtime -> **real GPU** |
+| numpy | 1.21.5 | 1.26.4 |
+| pyzmq | 22.3.0 | **27.1.0** |
+| msgpack | 1.0.3 | **1.2.1** |
+| msgpack-numpy | **0.4.7.1 INSTALLED (hazard)** | **absent** |
+| opencv | 4.5.5 / headless 4.10 | 4.11.0.86 (+headless) |
+| pandas / tables | 1.3.5 / 3.7.0 | 2.3.3 / 3.11.1 |
+| deeplabcut-live | not installed | **not installed** |
+| also present | jupyter/spyder stack on pyzmq | napari 0.6.6 + napari-deeplabcut, PySide6 6.11.1, timm 1.0.27, dlclibrary 0.0.12 |
+
+## What this changes
+
+1. **`model_type="pytorch"`, not `"base"`.** Legal values (verified in `dlclive.py` docstring):
+   PyTorch engine -> `["pytorch"]`; TensorFlow engine -> `["base", "tensorrt", "lite"]`.
+2. **`deeplabcut-live 1.1.0` IS installable** — `requires_python = ">=3.10,<3.13"` and the env is
+   3.12.13. The whole "you are stuck on 1.0.4" analysis above is VOID for this env.
+   Install line: `pip install "deeplabcut-live[pytorch]"`.
+   Dependency check against this env (PyPI metadata, verified 2026-08-31): `numpy<2,>=1.20` ✓1.26.4
+   · `pandas!=1.5.0,>=1.0.1` ✓2.3.3 · `tables>=3.8` ✓3.11.1 · `opencv-python-headless>=4.5` ✓4.11 ·
+   `scipy>=1.9` ✓1.17.1 · `einops>=0.6.1` ✓0.8.2 · `timm>=1.0.7` ✓1.0.27 · `dlclibrary>=0.0.6`
+   ✓0.0.12 · `ruamel.yaml>=0.17.20` ✓0.19.1 · `Pillow` ✓ · `py-cpuinfo` ✓9.0.0 · `tqdm` ✓ ·
+   `[pytorch]` extra: `torch>=2.0.0` ✓2.5.1, `torchvision>=0.15` ✓0.20.1.
+   **The only package it adds is `colorcet`.** Still install into a CLONED env — this one holds a
+   working DLC 3.0 training setup.
+3. **`model_path` for pytorch is the `.pt` FILE** produced by `deeplabcut.export_model(...)`, NOT a
+   directory and NOT the project dir (README, verified 2026-08-31). The project has **no
+   `exported-models/`**, so **export is a prerequisite step in the runbook**, not a design question.
+   Known upstream friction: DeepLabCut-live issue #137 / image.sc — a DLC 3.0 export emits a single
+   `.pt` and DLC-Live can still complain about a missing pose_cfg. **Budget for this being the
+   first real obstacle**; it is the DLC 3.0 analogue of the 2.2.3 `pose_cfg.yaml was not found`
+   trap, not a different problem.
+4. **Multi-animal is a ONE-FLAG problem, not a redesign.** README, verbatim: *"As multi-animal
+   models can be used with PyTorch, the shape of the `pose` array given to the processor may be
+   `(num_individuals, num_keypoints, 3)`. Just call `DLCLive(..., single_animal=True)` and it will
+   work."* So v1 sets `single_animal=True` and receives `(n_bodyparts, 3)`.
+   **The `assert pose.ndim == 2` guard recommended above is still right, but its rationale is
+   inverted**: it no longer means "3-D is impossible with this lab's models" (it is entirely
+   possible) — it means "the adapter requires `single_animal=True` and refuses loudly if someone
+   turns it off". The error message must say that, not blame the engine.
+5. **The SDK install is a dependency no-op here** — `pyzmq 27.1.0` and `msgpack 1.2.1` both exceed
+   the `>=22` / `>=1.0` floors. SDK-14's "no upgrade proposed" is satisfied by construction.
+6. **`msgpack-numpy` is NOT in this env**, so the silent wire-corruption vector is absent for the
+   target. `python -m mics_link.selfcheck` stays in the runbook anyway — it is the only thing that
+   makes that class of failure visible, and `DEEPLABCUT223` on the same box still carries it.
+7. **GPU inference is real**, unlike the 223 env's mismatched stack. That RAISES achievable fps,
+   which makes DLC-04's decimation MORE load-bearing, not less. Measure real fps before sizing.
+8. **The generator's bodypart source changes.** For a DLC 3.0 multi-animal project it is
+   `config.yaml`'s `multianimalbodyparts` (+ `individuals`), not a TF `pose_cfg.yaml`'s
+   `all_joints_names`. The generator must record which engine/format a lib version came from.
+   **`config.yaml` has been requested from the user and is not yet in hand** — it is an INPUT to
+   the generator, not a design blocker.
+
+## User decisions, 2026-08-31 session (add to the four already recorded at the top of this file)
+
+5. **The deliverable is a GENERIC path, not a Gili-specific one.** *"I only wish to test the dlc
+   connection with the pi and have this end result of a generic way for all lab members to link
+   their model to the pi."* Multi-animal identity is explicitly NOT wanted in v1 — *"so I don't
+   care. but some models are multianimal yes"* -> `single_animal=True`, refuse 3-D loudly, and
+   leave per-individual expansion as a named, non-blocking extension.
+6. **First proof = an FDA transition, not just signals arriving.** *"a model notifying a certain
+   x y and a high likelihood should fire a transition."* So the coordinates-ANDed-with-likelihood
+   pattern (DLC-03(c)) is exercised in the FIRST rig checkpoint, not deferred.
+7. **Camera is explicitly a non-blocker.** Prerecorded video from the project's `videos/` dir is
+   the v1 input; live camera is a later, non-blocking step. Confirms decision 2.
+
+## Phase 34 gaps Phase 35 inherits (from `34-HARDWARE-VALIDATION.md`, runs 582/583/584)
+
+- **Observation B — SDK-05 heartbeat/liveness is UNPROVEN on hardware.** Hardware lib 177 v2
+  hardcodes `liveness_hook -> True`, so `demo.alive` would read true with the sender switched off.
+  **DLC-06 ("liveness and tracking-loss are distinct and both gateable") cannot be satisfied until
+  this is fixed** — a v3 of the lib with the override removed. Note the override's own docstring
+  says the default path "reported not-alive while `on_recv` was demonstrably stamping
+  `_last_msg_ts_ms`", so removing it may resurface a real bug. **This is on Phase 35's critical
+  path and needs its own plan step.**
+- **Observation D — SDK-07 reconnect is NOT EXERCISED on hardware**, and `seq` is not in the ES
+  payload so it is not verifiable there. Cheaper equivalent found: `.213` binds 5599 only for the
+  duration of a run, so stop-run -> start-new-run exercises the reconnect FSM identically without
+  touching the pilot service.
+- Observation C (soak) PASSED at 60Hz/30s; Observation A (transition fires) PASSED on runs 582/583.

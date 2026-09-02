@@ -1893,7 +1893,7 @@ and watches the annotated video — keypoints and likelihoods drawn on live fram
 pilot's current FDA state, in a notebook. Works for **any** DLC 3.0 PyTorch export and any
 bodypart selection, not just the MultiMice ResNet-50 model Phase 35 used.
 
-**Requirements**: CAM-01 through CAM-09
+**Requirements**: CAM-01 through CAM-15
 **Depends on:** Phase 35
 **Sequencing note:** must land **before** Phase 37. Phase 37 extracts `sdk/` + `dlc_link/` into a
 dedicated client repo; this phase modifies `dlc_link/` substantially, and doing it after the
@@ -1933,7 +1933,7 @@ and any way to see what the model sees.
 unreachable live regardless of `single_animal`. Phase 35 §3 has the evidence. Fixing that is
 separate work and is NOT in this phase.
 
-**Plans:** 5 plans in 4 waves
+**Plans:** 6 plans in 5 waves
 
 **Planning decisions:** every open question in `38-CONTEXT.md` §9 is answered in
 `38-DECISIONS.md` (D-49 through D-64) — one `--source` flag with `--video` as an alias, the
@@ -1947,7 +1947,11 @@ the localhost MJPEG one existing so Jupyter need not be installed, and the `--pr
 
 **Sequencing rationale:** the camera is installed and the researcher expects to run this the week of
 **2026-09-08**, so a WORKING CAMERA + VIEWER lands first (waves 1-3) and the model-agnostic
-generalisation follows (wave 4). A plan set that delivers the general framework late is worse than
+generalisation follows (wave 4). Deployability follows last (wave 5): plan 38-06 is forced there
+by file ownership — it modifies `pyproject.toml` (38-04), the notebook and `README.md` (38-03) and
+`RUNBOOK.md` (38-05) — and belongs there on schedule, because the vision box already has an
+environment and installs wheels by hand, so nothing in 38-06 blocks the camera. Its cost of being
+last is one extra wheel (0.3.0) staged over SMB a second time. A plan set that delivers the general framework late is worse than
 one that delivers the specific thing on time and generalises after.
 
 Plans:
@@ -1956,6 +1960,7 @@ Plans:
 - [ ] 38-03-PLAN.md — Wave 2 — the Viewer runtime, the notebook and localhost-MJPEG sinks, the `--view` flags and the notebook itself (CAM-05, CAM-06, CAM-07)
 - [ ] 38-04-PLAN.md — Wave 3 — **USER-RUN** wheel 0.2.0, vision-box discovery, the live camera run with the view open, and the keep-up criterion derived from a measurement (CAM-01, CAM-03, CAM-05, CAM-07, CAM-08)
 - [ ] 38-05-PLAN.md — Wave 4 — the map-free pose probe with a paste-ready `--pose-order`, and a runbook about DeepLabCut rather than about one project (CAM-09)
+- [ ] 38-06-PLAN.md — Wave 5 — **USER-RUN** deployability: the notebook packaged into the wheel, `dlc-link-bootstrap` (config.yaml -> a complete kit), `dlc-link-doctor`, `INSTALL.md` for a fresh Windows runtime machine with no DeepLabCut, and the verified training-machine -> runtime-machine transfer manifest (CAM-10, CAM-11, CAM-12, CAM-13, CAM-14, CAM-15)
 
 ---
 *Created: 2026-03-15*

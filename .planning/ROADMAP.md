@@ -1886,6 +1886,77 @@ directories plus CI and release plumbing than a restructuring.
 Plans:
 - [ ] TBD (run /gsd-plan-phase 37 to break down)
 
+### Phase 38: Live camera source and annotated live view for DLC-driven MICS tasks
+
+**Goal:** A researcher points `dlc_link` at a camera filming the rig, starts a task on the pilot,
+and watches the annotated video — keypoints and likelihoods drawn on live frames — next to the
+pilot's current FDA state, in a notebook. Works for **any** DLC 3.0 PyTorch export and any
+bodypart selection, not just the MultiMice ResNet-50 model Phase 35 used.
+
+**Requirements**: CAM-01 through CAM-09
+**Depends on:** Phase 35
+**Sequencing note:** must land **before** Phase 37. Phase 37 extracts `sdk/` + `dlc_link/` into a
+dedicated client repo; this phase modifies `dlc_link/` substantially, and doing it after the
+extraction means doing it twice or in a repo the backend no longer owns.
+
+**Why this phase exists.** Phase 35 proved the whole chain on a **prerecorded file**
+(`35-HARDWARE-VALIDATION.md`, commit `8d724b0`, runs 587/588): DLC inference on the vision box →
+keypoints over ZMQ → pilot 3 → FDA transitions → ElasticSearch. Everything downstream of the frame
+source is already proven and unchanged by this phase. What is missing is the frame source itself
+and any way to see what the model sees.
+
+**Known scope, from the Phase 35 session:**
+
+1. **Camera capture is not supported.** `dlc_link/src/dlc_link/live.py:229` calls
+   `cv2.VideoCapture(args.video)` with `--video` declared as a plain string, so `--video 0` opens a
+   *file* named `0`. Needs integer-index coercion; RTSP/HTTP URLs already work as strings.
+2. **Pacing must invert.** `--fps` exists because a video FILE runs unpaced. A camera paces itself
+   via a blocking `cap.read()`, so passing `--fps` double-throttles. Cameras also frequently
+   misreport `CAP_PROP_FPS`, so the fallback cannot be trusted either.
+3. **Real-time keep-up becomes a hard constraint, not a convenience.** With a file, slow inference
+   just takes longer; with a camera it silently drops frames and signals go stale. `behind_count`
+   already exists in the run summary and must become a measured pass/fail criterion.
+4. **No way to see the frames.** The vision-box env has `opencv-python-headless`, which ships no
+   `imshow`, and it must NOT be swapped for `opencv-python` — both provide the same `cv2` module and
+   collide. So the viewer renders in-notebook (e.g. `IPython.display`), never a cv2 window.
+   `DLCLive(display=False)` is pinned deliberately (D-47) and should stay pinned.
+5. **The loop never ends on a camera.** `_frames()` stops when `cap.read()` fails, which for a
+   camera means never — so `--max-frames` and Ctrl-C are the only stops. Needs a deliberate answer.
+6. **Model-agnostic bring-up.** `RUNBOOK.md` is written around one project. The pose row order is
+   not discoverable from the DLC-Live runner (Phase 35 §4), so any new model needs the probe →
+   `--pose-order` → regenerate loop, and that has to be a documented path rather than tribal
+   knowledge.
+
+**Carried constraint (do not re-litigate):** DLC-Live's PyTorch runner reads only
+`get_predictions(outputs)["bodypart"]["poses"]` (`runner.py:211`) and discards the
+`"unique_bodyparts"` head, so `uniquebodyparts` — LEDs, arena corners, mic markers — are
+unreachable live regardless of `single_animal`. Phase 35 §3 has the evidence. Fixing that is
+separate work and is NOT in this phase.
+
+**Plans:** 5 plans in 4 waves
+
+**Planning decisions:** every open question in `38-CONTEXT.md` §9 is answered in
+`38-DECISIONS.md` (D-49 through D-64) — one `--source` flag with `--video` as an alias, the
+stream-URL shortcut tried first with the already-installed build, pacing derived from the source
+kind, a reader thread + drop-oldest slot whose overwrite count is the keep-up instrument, a
+`--min-rate` with no default derived from a measured baseline, a same-process viewer that can never
+backpressure the sender, run identity from the orchestrator with the FDA state name from
+ElasticSearch (the orchestrator's `state` is the pilot's coarse IDLE/RUNNING), two render sinks with
+the localhost MJPEG one existing so Jupyter need not be installed, and the `--probe-pose` /
+`--signal-map` chicken-and-egg fixed in code.
+
+**Sequencing rationale:** the camera is installed and the researcher expects to run this the week of
+**2026-09-08**, so a WORKING CAMERA + VIEWER lands first (waves 1-3) and the model-agnostic
+generalisation follows (wave 4). A plan set that delivers the general framework late is worse than
+one that delivers the specific thing on time and generalises after.
+
+Plans:
+- [ ] 38-01-PLAN.md — Wave 1 — camera source addressing, source-derived pacing, the newest-frame reader with a counted skip, and four deliberate stops (CAM-01, CAM-02, CAM-03, CAM-04)
+- [ ] 38-02-PLAN.md — Wave 1 — the viewer's pure core: draw-plan planning, the authored-threshold overlay, and the two honest sources of run identity and FDA state (CAM-05, CAM-08)
+- [ ] 38-03-PLAN.md — Wave 2 — the Viewer runtime, the notebook and localhost-MJPEG sinks, the `--view` flags and the notebook itself (CAM-05, CAM-06, CAM-07)
+- [ ] 38-04-PLAN.md — Wave 3 — **USER-RUN** wheel 0.2.0, vision-box discovery, the live camera run with the view open, and the keep-up criterion derived from a measurement (CAM-01, CAM-03, CAM-05, CAM-07, CAM-08)
+- [ ] 38-05-PLAN.md — Wave 4 — the map-free pose probe with a paste-ready `--pose-order`, and a runbook about DeepLabCut rather than about one project (CAM-09)
+
 ---
 *Created: 2026-03-15*
 *Last updated: 2026-08-26 — Phases 34-35 added: the DeepLabCut arc (MICS-Link SDK client package, then DLC keypoint-likelihood integration), the second consumer of Phase 18's ExternalHardware substrate. Both were reserved in Phase 18's NOT-in-scope list.*

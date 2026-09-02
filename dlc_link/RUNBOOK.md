@@ -30,7 +30,7 @@ bodypart list has done nothing wrong. A tool that writes a new file anywhere und
 tree — even a log file, even a cache — has.
 
 The conflict this creates: `deeplabcut.export_model(...)` has **no output-path parameter**. It
-always writes into `<project>/exported-models/`, and DLC-Live's `model_path` for the PyTorch
+always writes into `<project>/exported-models-pytorch/` (the PyTorch engine's directory; the TensorFlow engine used `exported-models/`), and DLC-Live's `model_path` for the PyTorch
 engine needs exactly that export's `.pt` file. Export cannot be run against the original
 project without writing into it. The resolution is to run the export — **and only the
 export** — against a **copy**:
@@ -58,8 +58,8 @@ export** — against a **copy**:
    `config.yaml`; the original `config.yaml` is untouched.**
 3. **Run `export_model` (and any other writing step) against the COPY, never the original.**
    With `project_path` corrected in step 2, everything DeepLabCut writes — the
-   `exported-models/` directory, any evaluation output — lands inside the copy. **Write
-   footprint: writes into `<copy>/exported-models/` and nowhere else; the original project
+   `exported-models-pytorch/` directory, any evaluation output — lands inside the copy. **Write
+   footprint: writes into `<copy>/exported-models-pytorch/` and nowhere else; the original project
    directory receives zero writes.**
 
 **Do not copy your videos.** Every video read in this workflow — `cv2.VideoCapture`,
@@ -72,7 +72,7 @@ writes nothing.**
 
 **`dlc-link-generate` needs no copy at all.** It reads `config.yaml` — a few kilobytes — and
 writes only into the directory you name with `--out-dir`. It never touches
-`exported-models/`, never touches your training data, and never needs the model export to have
+`exported-models-pytorch/`, never touches your training data, and never needs the model export to have
 happened yet. Point it at your REAL project's `config.yaml` and give it an `--out-dir` outside
 that project; requiring a copy to generate a lib would be a pointless obstacle invented for no
 reason — the copy above exists for the export step and nothing else.
@@ -125,11 +125,11 @@ Summarised, for the three CLI tools this package ships:
 4. **Export the model:** `deeplabcut.export_model(...)`, run against the COPY (see the section
    above). For the PyTorch engine, `model_path` (DLC-Live's constructor argument) is the
    resulting **`.pt` FILE** — not a directory, and not the project directory. A DLC 3.0 project
-   typically has no `exported-models/` directory until this step creates one. Budget time for
+   typically has no `exported-models-pytorch/` directory until this step creates one. **The directory is named `exported-models-pytorch`, NOT `exported-models`** — verified on the real project 2026-09-02; searching for `exported-models` alone finds nothing and makes a successful export look like a silent no-op. Budget time for
    this being the first real obstacle: DeepLabCut-Live issue #137 and an image.sc report both
    describe DLC 3.0 exports emitting a single `.pt` file while DLC-Live still complains about a
    missing `pose_cfg` — if you hit this, it is a known rough edge, not something you configured
-   wrong. **Write footprint: writes into `<copy>/exported-models/` only (see the copy section
+   wrong. **Write footprint: writes into `<copy>/exported-models-pytorch/` only (see the copy section
    above); nothing in the original project is touched.**
 5. **Measure the achieved frame rate before choosing a decimation rate.** Do not assume a rate
    from a spec sheet. GPU inference on the target card is proven fast, which makes decimation

@@ -126,3 +126,68 @@ The gate's last clause asserts the evidence log exists with an "after arm" secti
 to fill. It had never been created for this phase (phases 23 and 30 have theirs). Task 0 created
 it as a scaffold: every row reads **NOT RUN**, and §8 is a mandatory NOT PROVEN section, so an
 unfilled log states its own emptiness rather than implying completeness.
+
+---
+
+## From the run 580 soak / C6 forced step (2026-08-26)
+
+**C5's independence claim is false: its ground truth is the Pi's own wall clock, so C5 cannot
+detect a whole-machine clock error. Found by direct observation, not by inspection.**
+
+- **What C5 claims.** `es_clock_check.py:34-43` and the comment at
+  `clock_check_accumulator.py:203-207` both assert the window is independent of the value under
+  test: "Window ground truth is @timestamp (ES's own ingest-time clock), independent of the
+  pi_timestamp field under test -- this check never uses the value it validates as its own ground
+  truth." The bounds are deliberately taken from SOFTWARE documents only, because a hardware
+  document's `timestamp` IS the rendered `pi_timestamp` and would let a corrupt clock vouch for
+  itself.
+- **What actually happened.** During run 580's forced +1 h step (C6, 2026-08-26 11:55:07 UTC),
+  C5 reported `window_end: 2026-08-26T15:56:26.938728+03:00` — 12:56 UTC — while real UTC was
+  11:55. The window moved WITH the rig. Since only software documents set the bounds, software
+  `timestamp` is Pi-rendered, not ingest-assigned.
+- **Confirmed against the index.** A run 580 document carries exactly three time fields —
+  `timestamp`, `t_utc_ns`, `t_mono_ns` — and no `@timestamp`, no ingest-pipeline field. The first
+  two are both `t_mono_ns + _epoch_offset_ns()` renderings (`utils/clock.py:395-406`), so both
+  track CLOCK_REALTIME. **Nothing on the document originates off the Pi.** There is no independent
+  clock in this index for C5 to have used.
+- **What it costs.** For the full hour the rig ran +3599 s ahead, C5 reported `implausible: 0`
+  over 466 then 518 documents. A whole-machine wall-clock error — NTP stepping the rig, an RTC
+  restored wrong at boot, a manual `date -s` nobody logged — moves the value under test and its
+  ground truth together and C5 passes. The check is one-sided by construction.
+- **What it still catches, and this is not small.** C5 was rebuilt to catch run 576, where the
+  HARDWARE route was 38 h from the SOFTWARE route. That is a mapping defect: it moves one side
+  only, so the comparison stays meaningful and C5 correctly reported FAIL 253/253. The same holds
+  for the two per-value corruptions it names (monotonic-as-epoch, microsecond-as-nanosecond) —
+  both produce values wildly outside any window. **C5 is a cross-route check that has been
+  described as an absolute-time check.** Its coverage is real; only the claim is wrong.
+- **Why this is not the C6 result.** C6 PASSED on this same run, twice and in both directions
+  (+3599.515 s at 11:55:07 UTC, -3600.162 s at 12:58:52 rig-clock), `intervals_disturbed: 0`,
+  the 5 s pulse straddling each step measuring 4.998 s and 4.997 s. PLAT-25 holds. This entry is
+  about what C5 proves, not about the rig's timing.
+- **Fix options, cheapest first.**
+  1. **Restate the contract.** Correct the docstring and the comment to say cross-route, drop the
+     independence claim, and note in `PI_213_DEPLOY_CLOCK_FIX.txt`'s C5 row that a green C5 is not
+     evidence the rig's absolute time is right. Costs nothing, removes the false assurance.
+  2. **Bound against the verifier's own clock.** `es_clock_check.py` runs on an NTP-synced
+     workstation; compare the window against query time. Independent and free, but only valid
+     while the run is recent — it cannot check an archived run, so it must be a separate check
+     (C11) that skips loudly rather than a change to C5.
+  3. **Add a real ingest timestamp.** An ES ingest pipeline setting `ingest_time` from
+     `_ingest.timestamp` gives C5 the independent ground truth it was written to have, for every
+     future run. Index-side change, outside Phase 31's scope, and worthless for runs already
+     written.
+- **A related claim made in this session was WRONG and is retracted here.** `chronyc tracking` on
+  RecordingBox was read 30 s after a `systemctl start chrony` and reported `Reference ID
+  00000000` / `Ref time 1970` / `Not synchronised`; that was written up as "the rig has no NTP
+  source and free-runs at 9.656 ppm (~0.83 s/day)". **False.** `chronyc sources -v` on the same
+  rig shows four reachable servers, Reach 377, a selected `^*` il-central stratum-2 source at
+  **+19 us**, from the stock `pool 2.debian.pool.ntp.org iburst` line, with `makestep 1 3` set.
+  The tracking output was the normal post-restart transient before source selection, and the
+  `Frequency` line is the crystal error chrony CORRECTS, not drift suffered. RecordingBox's
+  absolute time is disciplined and accurate to microseconds.
+- **What that does to this entry: nothing.** C5's defect was established by direct observation —
+  `window_end` moved with the rig during the forced step, and the index carries no non-Pi time
+  field — not by any argument about NTP. What changes is only the *exposure*: a whole-machine
+  clock error is now an unlikely event on this rig rather than an ongoing one. The check still
+  cannot see that class, so fix option 1 (restate the contract) remains worth doing; options 2
+  and 3 are lower priority than they looked.

@@ -1,0 +1,232 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MICS vs MonkeyLogic — Bottom Lines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --ml:#A2543A; --ml-soft:#F3E7E1; --ml-line:#D9B9A9;
+  --mx:#2C6E7F; --mx-soft:#E0EDF0; --mx-line:#A9CBD4;
+  --ink:#1A1E20; --body:#333B3E; --mute:#66747A;
+  --bg:#F7F8F7; --card:#FFFFFF; --rule:#DCE1E0;
+  --good:#3F7D4F; --warn:#B07B18; --bad:#A33A32;
+  --good-s:#E6EFE8; --warn-s:#F6EEDD; --bad-s:#F5E5E3;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --sans:"IBM Plex Sans",-apple-system,Segoe UI,Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ml:#DB9271; --ml-soft:#3A2820; --ml-line:#6E4635;
+    --mx:#6FB6C7; --mx-soft:#12303A; --mx-line:#2E5F6D;
+    --ink:#EDF1F0; --body:#C6CFD1; --mute:#8D9BA0;
+    --bg:#14181A; --card:#1C2225; --rule:#2C3438;
+    --good:#7FBF8D; --warn:#DCB35F; --bad:#E08279;
+    --good-s:#1B2A1F; --warn-s:#2E2716; --bad-s:#2E1D1B;
+  }
+}
+:root[data-theme="dark"]{
+  --ml:#DB9271; --ml-soft:#3A2820; --ml-line:#6E4635;
+  --mx:#6FB6C7; --mx-soft:#12303A; --mx-line:#2E5F6D;
+  --ink:#EDF1F0; --body:#C6CFD1; --mute:#8D9BA0;
+  --bg:#14181A; --card:#1C2225; --rule:#2C3438;
+  --good:#7FBF8D; --warn:#DCB35F; --bad:#E08279;
+  --good-s:#1B2A1F; --warn-s:#2E2716; --bad-s:#2E1D1B;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--body);
+  font-family:var(--sans); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:53rem;margin:0 auto;padding:4rem 1.5rem 6rem}
+h1,h2,h3,h4{font-family:var(--serif);color:var(--ink);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:2.6rem;font-weight:600;letter-spacing:-.02em}
+h2{font-size:1.75rem;font-weight:600;margin:3.5rem 0 .5rem;padding-top:1.5rem;border-top:2px solid var(--rule)}
+h3{font-size:1.22rem;font-weight:600;margin:2.25rem 0 .4rem}
+h4{font-size:1.02rem;font-weight:600;margin:1.5rem 0 .3rem;font-family:var(--sans)}
+p{margin:.75rem 0}
+a{color:var(--mx)}
+ul,ol{margin:.6rem 0;padding-left:1.3rem}
+li{margin:.35rem 0}
+strong{color:var(--ink);font-weight:600}
+code{font-family:var(--mono);font-size:.87em;background:var(--card);border:1px solid var(--rule);border-radius:4px;padding:.06em .35em}
+
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:.6rem}
+.lede{font-size:1.2rem;color:var(--body);margin-top:1rem}
+.sec-n{font-family:var(--mono);font-size:.78rem;color:var(--mute);letter-spacing:.1em;display:block;margin-bottom:.2rem}
+
+/* plain-words box */
+.plain{
+  background:var(--card);border:1px solid var(--rule);border-left:4px solid var(--mx);
+  border-radius:6px;padding:1rem 1.15rem;margin:1.2rem 0;
+}
+.plain .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--mx);display:block;margin-bottom:.35rem}
+.plain p:first-of-type{margin-top:0}
+.plain p:last-child{margin-bottom:0}
+
+.key{
+  background:var(--card);border:1px solid var(--rule);border-radius:6px;
+  padding:1rem 1.15rem;margin:1.2rem 0;border-left:4px solid var(--warn);
+}
+.key .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--warn);display:block;margin-bottom:.35rem}
+.key p{margin:.3rem 0}
+
+/* system chips */
+.chip{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;padding:.14em .5em;border-radius:4px;white-space:nowrap;font-weight:500}
+.c-ml{background:var(--ml-soft);color:var(--ml);border:1px solid var(--ml-line)}
+.c-mx{background:var(--mx-soft);color:var(--mx);border:1px solid var(--mx-line)}
+.c-good{background:var(--good-s);color:var(--good);border:1px solid var(--good)}
+.c-warn{background:var(--warn-s);color:var(--warn);border:1px solid var(--warn)}
+.c-bad{background:var(--bad-s);color:var(--bad);border:1px solid var(--bad)}
+
+/* tables */
+.tw{overflow-x:auto;margin:1.3rem 0;border:1px solid var(--rule);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{padding:.62rem .8rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--rule)}
+th{font-family:var(--sans);font-weight:600;color:var(--ink);font-size:.8rem;letter-spacing:.03em;text-transform:uppercase;background:var(--bg)}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--ink);font-weight:500}
+th.ml,td.ml{border-left:3px solid var(--ml-line)}
+th.mx,td.mx{border-left:3px solid var(--mx-line)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* cost scale */
+.cost{display:inline-flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.72rem;color:var(--mute)}
+.bars{display:inline-flex;gap:2px}
+.bars i{width:7px;height:11px;border-radius:1px;background:var(--rule);display:block}
+.bars i.on{background:var(--mx)}
+.bars.ml i.on{background:var(--ml)}
+
+/* two-column compare */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.3rem 0}
+.duo>div{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:1rem 1.1rem}
+.duo .h{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem;font-weight:500}
+.duo .ml .h{color:var(--ml)} .duo .ml{border-top:3px solid var(--ml)}
+.duo .mx .h{color:var(--mx)} .duo .mx{border-top:3px solid var(--mx)}
+.duo p{margin:.4rem 0;font-size:.94rem}
+@media(max-width:640px){.duo{grid-template-columns:1fr}}
+
+/* Q&A */
+.qa{border-top:1px solid var(--rule);padding-top:1rem;margin-top:1.2rem}
+.qa .q{font-family:var(--serif);font-size:1.08rem;color:var(--ink);font-weight:600;margin-bottom:.3rem}
+.qa .a{font-size:.96rem}
+
+.foot{margin-top:4rem;padding-top:1.5rem;border-top:2px solid var(--rule);font-size:.86rem;color:var(--mute)}
+
+@media print{
+  body{background:#fff;font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  h2{page-break-after:avoid;break-after:avoid}
+  h3,h4{page-break-after:avoid}
+  .plain,.key,.duo,.tw,.qa{page-break-inside:avoid;break-inside:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+
+<div class="wrap">
+
+<div class="eyebrow">Bottom lines · one-page version</div>
+<h1>MICS vs MonkeyLogic</h1>
+<p class="lede">Everything that matters, stripped to the conclusions. The full version has the evidence.</p>
+
+<h2><span class="sec-n">01</span>The two systems in one line each</h2>
+<div class="duo">
+<div class="ml"><div class="h">MonkeyLogic</div>
+<p>One program, one PC, one rig, one scientist watching. Free, 18 years mature, and <strong>close to ideal for a frame-locked visual task aligned to neural recording</strong>.</p></div>
+<div class="mx"><div class="h">MICS</div>
+<p>Many rigs on a shared database, tasks built in a browser without code, running unattended for months — and <strong>built to plug other systems in</strong>.</p></div>
+</div>
+
+<h2><span class="sec-n">02</span>What Yoav actually does</h2>
+<p>A mouse held at <strong>80% body weight</strong> — being thirsty <em>is</em> the thing studied. Head fixed under a microscope photographing brain cells <strong>31 times a second</strong>. A screen shows <strong>moving stripes whose tilt is the message</strong>: one angle means water, another means salt. 2 s of stripes, 2 s to lick, first lick only. Trained means <strong>&gt;80% right on the good cue and &lt;50% on the bad one</strong>.</p>
+<div class="key"><span class="tag">Bottom line</span>
+<p>MonkeyLogic draws the stripes exactly on time, watches the licks, writes one page per trial, and sends pulses so the brain images line up. <strong>His experiment is close to the exact thing MonkeyLogic was built for. Don't try to beat it there.</strong></p></div>
+
+<h2><span class="sec-n">03</span>The differences that matter</h2>
+
+<div class="tw"><table>
+<tr><th>Topic</th><th>Bottom line</th></tr>
+
+<tr><td><strong>Clocks</strong></td>
+<td>A MonkeyLogic rig does not have one clock — it has <strong>four or five</strong>, and they disagree. Events are timed by the <strong>PC's clock</strong>. Analog signals are timed by the <strong>DAQ board's own crystal</strong>. Anything without a clock of its own — <strong>including all digital inputs</strong>, the parallel port, touchscreens and network eye trackers — is simply <em>checked on a repeating timer</em> at roughly <span class="num">1 ms, ± 0.22 ms</span>. The screen adds its own refresh cycle, and a second DAQ board adds a fifth.<br><br>
+NIMH states the consequence plainly: the PC clock and the board clock drift apart, <em>"which results in a missing/extra sample every few minutes"</em> — and ships an <strong>offline correction step</strong> to patch it up afterwards. Their own advice is to feed every signal into the neural recording system instead, so that at least <em>it</em> digitises everything on one clock.<br><br>
+<strong>What that means in practice:</strong> when he asks "when did the mouse lick, relative to this brain image?", the lick time and the image sync came from <em>different clocks</em>, and the answer has to be reconstructed after the session.<br><br>
+MICS has <strong>one</strong> clock. Every digital line on the rig — licks, beam breaks, sync pulses — is timestamped by dedicated hardware in <strong>microseconds</strong>, without waiting for the software to notice. There is nothing to line up afterwards because there was never a second clock.<br>
+<span class="chip c-good">use this</span> Licks are digital. Theirs are timed by a software timer at about a millisecond; ours in microseconds, on the same clock as everything else.<br>
+<span class="chip c-warn">but concede</span> Knowing <em>when</em> something happened is not the same as <em>reacting</em> quickly. Our measured response loop is <span class="num">5.2 ms on average and 46 ms at worst</span> — measured before the latency fixes and never repeated.</td></tr>
+
+<tr><td><strong>The CPU</strong></td>
+<td>Neither system trusts its own CPU; both push timing onto dedicated hardware — theirs a preloaded DAQ board, ours the GPIO chip and precompiled pulse scripts.<br>
+<span class="chip c-good">use this</span> <strong>"It's Python, therefore imprecise" is not a valid argument</strong> — our critical paths sit below Python exactly as theirs sit below MATLAB.</td></tr>
+
+<tr><td><strong>Writing to a file</strong></td>
+<td>MonkeyLogic writes <strong>one file per session, onto the hard disk of that rig's own PC</strong>. The file is excellent as far as it goes: one record per trial, the same guaranteed fields in every task ever written, and it is written <em>between</em> trials so saving can never disturb timing.<br><br>
+But being a file on one machine has four consequences:<br>
+• <strong>Nobody else can see it while it runs.</strong> The only live view is the screen on that rig.<br>
+• <strong>Comparing across sessions is manual.</strong> Their summary tool accepts <strong>exactly one filename</strong>. Nine mice over three months means opening ~200 files by hand, or writing your own MATLAB to do it.<br>
+• <strong>It is one copy, in one place.</strong> Backup is whatever the lab remembers to do.<br>
+• <strong>The task itself is not in it.</strong> The script is compiled when it loads and its text is never written down — so a file from 2022 does not tell you what the task actually did.<br><br>
+MICS writes every event and every state change into a <strong>shared database</strong>. Anyone in the lab can open a live dashboard from their own desk while the session is running, and questions spanning animals and months are a query rather than a project. The task is stored and content-hashed alongside the data.<br>
+<span class="chip c-warn">but concede</span> Their trial record is <strong>guaranteed by the format</strong>. Ours is recorded by convention — names and shapes vary between tasks. Fixing that is agreeing on names, not building new machinery.</td></tr>
+
+<tr><td><strong>Analog</strong></td>
+<td><strong>The one real gap.</strong> They sample 16 channels at 1 kHz always. We have none.<br>
+<span class="chip c-bad">concede flatly</span> Then note the fix is <strong>a board plus a driver, not a redesign</strong>.</td></tr>
+
+<tr><td><strong>Boundary</strong></td>
+<td>They do everything themselves — <em>"NIMH ML does not collect data automatically in the background. You should handle everything yourself."</em> We plug things in, and outside signals become ordinary named values usable in the task builder.<br>
+<span class="chip c-good">use this</span> Demonstrated: a Mac streamed live paw coordinates into a <strong>running task on a rig at 60 Hz for two minutes</strong>.<br>
+<span class="chip c-warn">but concede</span> Latency was never measured. Quote the 60 Hz, not milliseconds.</td></tr>
+</table></div>
+
+<h2><span class="sec-n">04</span>What MICS would need — shortest list</h2>
+<div class="tw"><table>
+<tr><th>Change</th><th>Bottom line</th></tr>
+<tr><td><strong>Accuracy-based graduation</strong></td><td>~50 lines. MICS can only say "do N trials". <strong>This is literally his training rule</strong> — the cheapest high-value fix we have.</td></tr>
+<tr><td><strong>Visual stimuli</strong></td><td>A working moving-grating implementation <strong>already sits in the codebase, unused</strong>. Install, calibrate, expose in the task builder. Days-to-weeks.</td></tr>
+<tr><td><strong>Analog in / out</strong></td><td>Buy an ADC board. Keep one clock by having the board <strong>signal each measurement on a wire we timestamp ourselves</strong>.</td></tr>
+<tr><td><strong>Microscope sync</strong></td><td>The pulse hardware exists; the wiring is switched off. One config change plus a demo run.</td></tr>
+<tr><td><strong>Consistent trial event names</strong></td><td>Turns data we already collect into a guarantee — and unlocks trial-shaped dashboards.</td></tr>
+</table></div>
+
+<h2><span class="sec-n">05</span>Weak spots in his current setup</h2>
+<ul>
+<li><strong>His task code is not in his data.</strong> The script is compiled at load and never stored — a 2022 file doesn't tell you what the task did. <em>The clearest place we are ahead.</em></li>
+<li><strong>Several clocks</strong> that must be reconciled after the fact.</li>
+<li><strong>Licks are timed by software</strong>, ~1 ms, not by hardware.</li>
+<li><strong>Screen delay is his to measure</strong> — one user found <span class="num">50.9 ms</span> where the published figure is ~0. If unmeasured, his cue onset may be tens of ms off relative to imaging.</li>
+<li><strong>Dropped frames — and his stimulus is the vulnerable case.</strong> The screen redraws 60 times a second, and the software must have the next picture ready <em>before</em> each redraw. If it is even slightly late the frame is skipped: the stripes stutter, the drift speed is briefly wrong, and the moment the mouse actually saw the cue shifts. This is a well-populated complaint on their own support forum — one user reported <strong>30 skipped frames in every trial</strong> on video stimuli — and the official troubleshooting goes as far as editing Windows graphics registry keys. Moving gratings are precisely the case that suffers.</li>
+<li><strong>No colony database.</strong> Weights and restriction schedules live in spreadsheets — for a lab whose variable <em>is</em> deprivation state.</li>
+<li><strong>One rig needs one whole PC.</strong> Two copies of MonkeyLogic will not run on one machine — the maintainer's words: <em>"Unfortunately it does not work in that way, mostly because of the graphics."</em> So <strong>eight rigs means eight Windows PCs</strong>, each with two monitors and its own DAQ board, each administered, updated and licensed separately. Scaling costs floor space and maintenance, not just money. And there is <strong>no remote control at all</strong> — the maintainer's suggestion for monitoring from elsewhere is <em>"long cables"</em>, or a notification to your phone.</li>
+
+<li><strong>Nothing restarts it if it falls over.</strong> There is no autostart, no watchdog and no crash recovery. If a session dies at 2 a.m., it stays dead until somebody walks in. The distribution ships a <strong>utility for repairing corrupted data files</strong>, which tells you corruption happens in practice. Searching their forum for "unattended" returns nothing, because running unattended was never a goal — the published home-cage study using MonkeyLogic ran about 90 minutes a day with staff moving the animals.</li>
+<li><strong>One maintainer, no public repository</strong> — the fairest reciprocal question he can ask us.</li>
+</ul>
+
+<h2><span class="sec-n">06</span>Never say these</h2>
+<div class="key"><span class="tag">Both are false and would cost you the room</span>
+<p><strong>"MATLAB licensing makes it expensive to scale."</strong> ~$550 academic, often free under a campus agreement — the DAQ board costs four times more.</p>
+<p><strong>"MonkeyLogic can't do closed loop."</strong> It has shipped a working example since November 2017.</p>
+</div>
+
+<h2><span class="sec-n">07</span>Four answers to have ready</h2>
+<div class="qa"><div class="q">"How would this help my science?"</div>
+<div class="a">Not by training his mice — he trains in MonkeyLogic too. By instrumenting <strong>the weeks around the rig</strong>: weight curves, surgeries, protocols, and questions across animals and days. Ask how they track restriction today.</div></div>
+
+<div class="qa"><div class="q">"Can you show my visual stimulus?"</div>
+<div class="a">Not today — but the code exists unused, and it's install-and-calibrate, not a redesign.</div></div>
+
+<div class="qa"><div class="q">"Do you handle analog?"</div>
+<div class="a">No. Then: board, driver, batching — and ask which of his signals genuinely need analog, since the frame clock, capacitive licking and a running wheel are all digital.</div></div>
+
+<div class="qa"><div class="q">"What's your lick-to-reward latency?"</div>
+<div class="a"><strong>Never measured.</strong> Say so, then say what you'd measure and how. That lands better than a number he can't check.</div></div>
+
+<div class="foot">
+<p><strong>The line that ties it together:</strong> they are ahead where two decades on one problem compound — the eye, the visual primitives, the installed base. We are ahead where the architecture is younger — one clock across every line, tasks as data rather than code, and everything above the single session. Most of our gap is a short list of known work; most of theirs is time.</p>
+</div>
+
+</div>

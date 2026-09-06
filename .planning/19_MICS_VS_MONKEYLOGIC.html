@@ -1,0 +1,428 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MICS vs MonkeyLogic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --ml:#A2543A; --ml-soft:#F3E7E1; --ml-line:#D9B9A9;
+  --mx:#2C6E7F; --mx-soft:#E0EDF0; --mx-line:#A9CBD4;
+  --ink:#1A1E20; --body:#333B3E; --mute:#66747A;
+  --bg:#F7F8F7; --card:#FFFFFF; --rule:#DCE1E0;
+  --good:#3F7D4F; --warn:#B07B18; --bad:#A33A32;
+  --good-s:#E6EFE8; --warn-s:#F6EEDD; --bad-s:#F5E5E3;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --sans:"IBM Plex Sans",-apple-system,Segoe UI,Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ml:#DB9271; --ml-soft:#3A2820; --ml-line:#6E4635;
+    --mx:#6FB6C7; --mx-soft:#12303A; --mx-line:#2E5F6D;
+    --ink:#EDF1F0; --body:#C6CFD1; --mute:#8D9BA0;
+    --bg:#14181A; --card:#1C2225; --rule:#2C3438;
+    --good:#7FBF8D; --warn:#DCB35F; --bad:#E08279;
+    --good-s:#1B2A1F; --warn-s:#2E2716; --bad-s:#2E1D1B;
+  }
+}
+:root[data-theme="dark"]{
+  --ml:#DB9271; --ml-soft:#3A2820; --ml-line:#6E4635;
+  --mx:#6FB6C7; --mx-soft:#12303A; --mx-line:#2E5F6D;
+  --ink:#EDF1F0; --body:#C6CFD1; --mute:#8D9BA0;
+  --bg:#14181A; --card:#1C2225; --rule:#2C3438;
+  --good:#7FBF8D; --warn:#DCB35F; --bad:#E08279;
+  --good-s:#1B2A1F; --warn-s:#2E2716; --bad-s:#2E1D1B;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--body);
+  font-family:var(--sans); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:53rem;margin:0 auto;padding:4rem 1.5rem 6rem}
+h1,h2,h3,h4{font-family:var(--serif);color:var(--ink);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:2.6rem;font-weight:600;letter-spacing:-.02em}
+h2{font-size:1.75rem;font-weight:600;margin:3.5rem 0 .5rem;padding-top:1.5rem;border-top:2px solid var(--rule)}
+h3{font-size:1.22rem;font-weight:600;margin:2.25rem 0 .4rem}
+h4{font-size:1.02rem;font-weight:600;margin:1.5rem 0 .3rem;font-family:var(--sans)}
+p{margin:.75rem 0}
+a{color:var(--mx)}
+ul,ol{margin:.6rem 0;padding-left:1.3rem}
+li{margin:.35rem 0}
+strong{color:var(--ink);font-weight:600}
+code{font-family:var(--mono);font-size:.87em;background:var(--card);border:1px solid var(--rule);border-radius:4px;padding:.06em .35em}
+
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:.6rem}
+.lede{font-size:1.2rem;color:var(--body);margin-top:1rem}
+.sec-n{font-family:var(--mono);font-size:.78rem;color:var(--mute);letter-spacing:.1em;display:block;margin-bottom:.2rem}
+
+/* plain-words box */
+.plain{
+  background:var(--card);border:1px solid var(--rule);border-left:4px solid var(--mx);
+  border-radius:6px;padding:1rem 1.15rem;margin:1.2rem 0;
+}
+.plain .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--mx);display:block;margin-bottom:.35rem}
+.plain p:first-of-type{margin-top:0}
+.plain p:last-child{margin-bottom:0}
+
+.key{
+  background:var(--card);border:1px solid var(--rule);border-radius:6px;
+  padding:1rem 1.15rem;margin:1.2rem 0;border-left:4px solid var(--warn);
+}
+.key .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--warn);display:block;margin-bottom:.35rem}
+.key p{margin:.3rem 0}
+
+/* system chips */
+.chip{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;padding:.14em .5em;border-radius:4px;white-space:nowrap;font-weight:500}
+.c-ml{background:var(--ml-soft);color:var(--ml);border:1px solid var(--ml-line)}
+.c-mx{background:var(--mx-soft);color:var(--mx);border:1px solid var(--mx-line)}
+.c-good{background:var(--good-s);color:var(--good);border:1px solid var(--good)}
+.c-warn{background:var(--warn-s);color:var(--warn);border:1px solid var(--warn)}
+.c-bad{background:var(--bad-s);color:var(--bad);border:1px solid var(--bad)}
+
+/* tables */
+.tw{overflow-x:auto;margin:1.3rem 0;border:1px solid var(--rule);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{padding:.62rem .8rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--rule)}
+th{font-family:var(--sans);font-weight:600;color:var(--ink);font-size:.8rem;letter-spacing:.03em;text-transform:uppercase;background:var(--bg)}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--ink);font-weight:500}
+th.ml,td.ml{border-left:3px solid var(--ml-line)}
+th.mx,td.mx{border-left:3px solid var(--mx-line)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* cost scale */
+.cost{display:inline-flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.72rem;color:var(--mute)}
+.bars{display:inline-flex;gap:2px}
+.bars i{width:7px;height:11px;border-radius:1px;background:var(--rule);display:block}
+.bars i.on{background:var(--mx)}
+.bars.ml i.on{background:var(--ml)}
+
+/* two-column compare */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.3rem 0}
+.duo>div{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:1rem 1.1rem}
+.duo .h{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem;font-weight:500}
+.duo .ml .h{color:var(--ml)} .duo .ml{border-top:3px solid var(--ml)}
+.duo .mx .h{color:var(--mx)} .duo .mx{border-top:3px solid var(--mx)}
+.duo p{margin:.4rem 0;font-size:.94rem}
+@media(max-width:640px){.duo{grid-template-columns:1fr}}
+
+/* Q&A */
+.qa{border-top:1px solid var(--rule);padding-top:1rem;margin-top:1.2rem}
+.qa .q{font-family:var(--serif);font-size:1.08rem;color:var(--ink);font-weight:600;margin-bottom:.3rem}
+.qa .a{font-size:.96rem}
+
+.foot{margin-top:4rem;padding-top:1.5rem;border-top:2px solid var(--rule);font-size:.86rem;color:var(--mute)}
+
+@media print{
+  body{background:#fff;font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  h2{page-break-after:avoid;break-after:avoid}
+  h3,h4{page-break-after:avoid}
+  .plain,.key,.duo,.tw,.qa{page-break-inside:avoid;break-inside:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+
+<div class="wrap">
+
+<div class="eyebrow">Talk preparation · August 2026</div>
+<h1>MICS vs MonkeyLogic</h1>
+<p class="lede">What NIMH MonkeyLogic is, how the Livneh lab uses it, where MICS genuinely differs — and what MICS would need to change to serve, or improve on, that setup.</p>
+
+<div class="key">
+<span class="tag">Read this first</span>
+<p><strong>MonkeyLogic is excellent at what it was built for.</strong> It is free, actively maintained, 18 years mature, and close to ideal for a frame-locked visual task aligned to neural recording. Say that first and mean it.</p>
+<p><strong>The two systems answer different questions.</strong> MonkeyLogic gives unlimited freedom <em>inside one session</em>, because a task is code. MICS gives unlimited memory <em>across sessions</em>, because a task is data — and it is built to plug other systems in. Each pays for the other's strength.</p>
+</div>
+
+<!-- ============ 1 ============ -->
+<h2><span class="sec-n">Section 01</span>What MonkeyLogic is</h2>
+
+<p>A free, MATLAB-based system for running behavioural experiments and collecting the data. You write your trial as a plain MATLAB script — in the same language you already use for analysis — and it runs with tightly controlled screen timing, 1 kHz sampling of analog inputs, and sub-millisecond event pulses to a neural recording system.</p>
+
+<div class="plain">
+<span class="tag">In plain words</span>
+<p>It is <strong>one program, on one Windows PC, driving one rig, with one scientist watching.</strong> It shows things on a screen exactly on time, watches what the animal does, gives rewards, and writes a diary with one page per trial.</p>
+</div>
+
+<h3>The shape of it</h3>
+<div class="tw"><table>
+<tr><th>Thing</th><th>What it is</th></tr>
+<tr><td>Runs on</td><td>Windows 10/11, x64 only. Needs a MATLAB licence (free itself; no extra toolboxes)</td></tr>
+<tr><td>Process</td><td><strong>One single-threaded MATLAB process, one PC.</strong> You cannot run two instances — <em>"mostly because of the graphics"</em></td></tr>
+<tr><td>Hardware</td><td><strong>National Instruments DAQ boards only.</strong> Plus sound card, parallel port, and an optional Arduino <em>for reward</em></td></tr>
+<tr><td>Screens</td><td>Two required — one for the animal, one for the experimenter</td></tr>
+<tr><td>Data</td><td>One local file per session on the rig PC, appended after every trial</td></tr>
+<tr><td>Maturity</td><td class="num">174 releases · v2.4.0 (Mar 2026) · 281 papers · one maintainer who answers every forum post</td></tr>
+</table></div>
+
+<h3>What it is genuinely best-in-class at</h3>
+<ul>
+<li><strong>Screen timing you can prove.</strong> It ships its own measurement kit — a latency test, a photodiode tuner, and 10 benchmark tasks. Very few systems do.</li>
+<li><strong>Eye tracking as a first-class citizen</strong> — five vendors, two calibration methods, drift correction, proper visual-angle coordinates.</li>
+<li><strong>Neural alignment</strong> via strobed event codes with a configurable strobe spec.</li>
+<li><strong>A deep vocabulary of primate-psychophysics building blocks</strong> — 50+ ready-made behavioural components accumulated over two decades.</li>
+<li><strong>Trial replay</strong> — it can reconstruct and re-play any trial as video.</li>
+</ul>
+
+<div class="key">
+<span class="tag">Their own honest caveat</span>
+<p>NIMH says it plainly: <em>"MonkeyLogic is not a true real-time system like DOS Cortex, it is fast enough for most behavioral work…"</em> — and the download page tells every user to measure timing on their own hardware, because it depends on the machine.</p>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2><span class="sec-n">Section 02</span>How the Livneh lab uses it — explained simply</h2>
+
+<p>Verified from their own published Methods (<em>Cell Rep</em> 2024): <em>"Behavioral training was performed using MonkeyLogic and MonkeyLogic2."</em> So it runs both the training and the experiment.</p>
+
+<div class="plain">
+<span class="tag">The experiment, in plain words</span>
+<p>A mouse is kept a little thirsty — held at about <strong>80% of its normal body weight</strong> — because being thirsty <em>is the thing being studied</em>.</p>
+<p>Its head is held still under a microscope that photographs living brain cells <strong>31 times a second</strong>, looking sideways into a deep brain area through a tiny glass prism.</p>
+<p>A screen in front of the mouse shows <strong>moving stripes</strong>. The <em>tilt</em> of the stripes is the message: one angle means <em>water is coming</em>, another means <em>something nasty is coming</em>, a third means <em>nothing</em>.</p>
+<p>The stripes show for <strong>2 seconds</strong>. Then the mouse has <strong>2 seconds</strong> to lick. Only the <em>first</em> lick counts. Lick after the good stripes and it gets a tiny drop of water; lick after the bad stripes and it gets salt water.</p>
+<p>The mouse counts as trained when it gets the good cue right <strong>more than 80% of the time</strong> <em>and</em> licks the bad cue <strong>less than half</strong> the time.</p>
+</div>
+
+<h4>MonkeyLogic's job in that experiment</h4>
+<ol>
+<li><strong>Draw the moving stripes exactly on the beat</strong> — the pattern is only correct if every single screen frame arrives on time.</li>
+<li><strong>Watch the licks</strong> and open the water valve on the first one.</li>
+<li><strong>Write one page per trial</strong> — which cue, did it lick, right or wrong, how fast.</li>
+<li><strong>Send pulses</strong> so the brain pictures and the behaviour line up afterwards.</li>
+</ol>
+
+<div class="plain">
+<span class="tag">Why this suits MonkeyLogic almost perfectly</span>
+<p>His cue is <em>a moving picture</em>, not a light. That needs a screen redrawn dozens of times a second, in <em>degrees of the animal's visual field</em> — which is MonkeyLogic's core competence, with ready-made grating objects and the visual-angle maths built in.</p>
+<p>His analysis is <em>trial-shaped</em>, and MonkeyLogic hands him trials already assembled. And it is MATLAB — the same language as the rest of his pipeline.</p>
+<p><strong>His experiment is close to the exact thing MonkeyLogic was designed for. Do not go looking for a way to beat it here.</strong></p>
+</div>
+
+<!-- ============ 3 ============ -->
+<h2><span class="sec-n">Section 03</span>Where the two systems really differ</h2>
+
+<p>Two things drive everything else. <strong>In MonkeyLogic a task is code you write; in MICS it is data you assemble.</strong> And <strong>MonkeyLogic is one program on one computer, while MICS is a network that plugs other systems in.</strong></p>
+
+<div class="tw"><table>
+<tr><th>Dimension</th><th class="ml">NIMH MonkeyLogic</th><th class="mx">MICS</th></tr>
+<tr><td>What a task is</td><td class="ml">A MATLAB script, compiled when it loads</td><td class="mx">A state machine stored as data, content-hashed</td></tr>
+<tr><td>How it runs</td><td class="ml">One process, one computer, one rig</td><td class="mx">A coordinator plus many rigs and shared databases</td></tr>
+<tr><td>Unit of data</td><td class="ml">The trial</td><td class="mx">The event, and every state the task passes through</td></tr>
+<tr><td>Sense of time</td><td class="ml">Periodic — locked to the screen, sampling at a fixed rate</td><td class="mx">Event-driven — polls every half-millisecond, acts on change</td></tr>
+<tr><td>Clocks</td><td class="ml">Several, reconciled afterwards</td><td class="mx">One, shared by every digital line</td></tr>
+<tr><td>Who can build a task</td><td class="ml">Someone who writes MATLAB</td><td class="mx">Anyone — it is assembled in a browser</td></tr>
+<tr><td>Hardware it speaks to</td><td class="ml">National Instruments boards</td><td class="mx">Anything you can wire, with versioned drivers</td></tr>
+<tr><td>Analog signals</td><td class="ml">16 channels at 1 kHz, always</td><td class="mx">None</td></tr>
+</table></div>
+
+<h3>3.1 · Clocks</h3>
+
+<p><em>A MonkeyLogic rig runs on several clocks that have to be lined up afterwards. A MICS rig runs on one.</em></p>
+
+<p>NIMH is candid about the first pair: <em>"ML2 uses the CPU clock to time events, while analog signals are digitized based on the NI board's clock… which results in a missing/extra sample every few minutes."</em> The fix is an offline correction step.</p>
+
+<p>There is a third clock that is easy to miss and matters most here. Anything without a clock of its own — <strong>digital inputs</strong>, the parallel port, touchscreens, USB joysticks, network eye trackers — is simply <em>checked on a timer</em>, at about <span class="num">1 ms, ± 0.22 ms</span>. Add the screen's own refresh, a second board if you need two stimulation channels, and an Arduino if reward runs through one.</p>
+
+<p>MICS puts every digital line on one clock. Signal changes are timestamped by dedicated hardware in <strong>microseconds</strong>, without waiting for the software to notice. Nothing needs lining up afterwards, because there is only one clock to begin with.</p>
+
+<div class="key">
+<span class="tag">The point — and the half that must go with it</span>
+<p>The famous 1 kHz is the <strong>analog</strong> path. Digital inputs — licks, beam breaks, levers, which is most behaviour — are checked by a software timer at roughly a millisecond. MICS timestamps those same events in hardware, a thousand times finer.</p>
+<p><strong>But knowing <em>when</em> is not the same as reacting <em>fast</em>.</strong> MICS's measured response loop is <span class="num">5.2 ms on average, 46 ms at worst</span> — and that was measured before the latency fixes and never repeated. MICS knows when things happened far better than it can promise how quickly it answers.</p>
+</div>
+
+<h3>3.2 · Why neither system trusts its own computer</h3>
+
+<p><em>Ordinary computers are bad at being punctual — the operating system does its own housekeeping whenever it likes. Both systems solve this the same way: move the timing-critical work off the CPU and onto dedicated hardware.</em></p>
+
+<div class="duo">
+<div class="ml"><div class="h">MonkeyLogic → the DAQ board</div>
+<p>Precise output works because the waveform is <strong>loaded into the board in advance</strong> and the board plays it; the PC only pulls the trigger. Screen timing works by waiting for the display's refresh, with missed frames counted.</p>
+<p><em>"As a general purpose machine, a Windows PC cannot provide that kind of timing accuracy that stimulation output requires."</em> — maintainer</p>
+<p><strong>Where the CPU still shows through:</strong> dropped frames are a recurring complaint — one user reported 30 per trial on video stimuli.</p>
+</div>
+<div class="mx"><div class="h">MICS → the GPIO chip</div>
+<p>Timestamps are taken by dedicated hardware, not by Python. Precise output pulses are <strong>compiled in advance into a small program the GPIO daemon runs</strong> — the same trick as loading a board buffer.</p>
+<p>So "it's Python, therefore imprecise" doesn't follow. The critical parts already sit below Python, just as MonkeyLogic's sit below MATLAB.</p>
+<p><strong>Where the CPU still shows through:</strong> the decide-and-respond path, with the latency tail above.</p>
+</div>
+</div>
+
+<h3>3.3 · One file per session vs. a shared database</h3>
+
+<p><em>MonkeyLogic writes a diary with one page per trial, into a file on that rig's computer. MICS writes every event into a database the whole lab can read, from anywhere, while the experiment is still running.</em></p>
+
+<p>Both approaches have a real advantage. MonkeyLogic's trial record is <strong>guaranteed</strong> — every task ever written produces the same fields in the same documented format — and it writes to disk <em>between</em> trials, so saving can never disturb trial timing. MICS records the whole trajectory instead: a live query returns <span class="num">2.9 million</span> events, <span class="num">930,000</span> of them state changes, alongside explicit hit, miss and false-alarm records. So the <em>route</em> through a trial is recoverable, not just how it ended.</p>
+
+<div class="tw"><table>
+<tr><th>Property</th><th class="ml">MonkeyLogic</th><th class="mx">MICS</th></tr>
+<tr><td>Where data lives</td><td class="ml">A file on the rig computer</td><td class="mx">Shared central databases</td></tr>
+<tr><td>Watch it during a session</td><td class="ml">On that rig's own screen</td><td class="mx"><strong>From anywhere — live dashboards over the live data</strong></td></tr>
+<tr><td>Plots</td><td class="ml">A fixed live panel plus your own MATLAB plot function</td><td class="mx">Kibana on the live index — dashboards built per cohort, reusable, shareable</td></tr>
+<tr><td>Ask across sessions and animals</td><td class="ml">Not built in — the summary tool takes <strong>one file</strong></td><td class="mx">A query</td></tr>
+<tr><td>Trial outcome</td><td class="ml"><strong>Guaranteed by the format</strong></td><td class="mx">Recorded, but <strong>by convention</strong> — names and shapes vary between tasks</td></tr>
+<tr><td>Is the task itself saved?</td><td class="ml"><strong>No.</strong> The script is compiled at load; its text is never written</td><td class="mx"><strong>Yes.</strong> The task is the stored, hashed artefact</td></tr>
+</table></div>
+
+<div class="key">
+<span class="tag">The trade</span>
+<p>MonkeyLogic guarantees the trial and loses the stream; MICS captures the stream and loses the guarantee. Our fix is <strong>agreeing on consistent names</strong>, not building a trial table.</p>
+<p>And note the reversal on provenance: the system with the looser data format keeps the <em>better record of what was actually run</em>.</p>
+</div>
+
+<h3>3.4 · Analog signals — the one real gap</h3>
+
+<p><em>Some signals aren't "something happened" — they're a value that's always there, wobbling: eye position, pupil size, force, a voltage from a neural rig. There's no moment to react to. You have to look at regular intervals, forever.</em></p>
+
+<p>MonkeyLogic does this on 16 channels, a thousand times a second, always. <strong>MICS cannot do it at all</strong> — there is no analog input anywhere in the system. Concede this flatly. Two things a regular grid gives you that an event stream cannot:</p>
+<ol>
+<li><strong>A continuously varying signal has no edge to trigger on.</strong> Without a grid it isn't in the record at all — not at poor resolution, at none.</li>
+<li><strong>A grid tells you when nothing happened.</strong> In an event stream, silence could mean nothing occurred, the detector missed it, or the record was dropped. A guaranteed sample per interval separates those.</li>
+</ol>
+
+<p>The gap is real but shallow: the fix is a board and a driver, not a redesign — see Section 4.</p>
+
+<h3>3.5 · MICS plugs things in; MonkeyLogic mostly doesn't</h3>
+
+<p><em>MonkeyLogic is one program that does everything itself. MICS is a switchboard — its answer to "can you do X?" is usually "we plug X in and keep it on our clock."</em></p>
+
+<p>MonkeyLogic marks the boundary explicitly: <em>"NIMH ML does not collect data automatically in the background. You should handle everything yourself."</em> MICS is built the other way round. Outside devices connect over a typed link that understands when a source has gone quiet, and — the important part — <strong>their signals become ordinary named values in the task builder</strong>, usable in a decision exactly like a lick.</p>
+
+<p>So capability questions turn into integration questions. The pattern is always the same two parts: <strong>a pulse sets the time, a link carries the values.</strong></p>
+
+<div class="key">
+<span class="tag">Already demonstrated</span>
+<p>A driver on a separate machine has streamed live values — <code>left_paw_x</code>, <code>right_paw_x</code>, and a structured <code>object_detected</code> event — into a <strong>running task on a rig</strong> over the network, sustained at <strong>60 Hz for two minutes</strong>, behaving correctly when the source went quiet: one signal decaying to a default, another holding its last value. That is a pose-tracking stream driving a live experiment.</p>
+<p><strong>Limits:</strong> the demonstrated direction is the device connecting inward; and round-trip latency was deliberately never measured. Quote the 60 Hz, not a millisecond figure.</p>
+</div>
+
+<!-- ============ 4 ============ -->
+<h2><span class="sec-n">Section 04</span>What MICS would need to change</h2>
+
+<p>Two lists: what it would take to <em>serve</em> a setup like his at all, and where MICS would then <em>improve</em> on it. Effort is shown on a five-point scale.</p>
+
+<p style="font-family:var(--mono);font-size:.78rem;color:var(--mute)">
+<span class="cost"><span class="bars"><i class="on"></i><i></i><i></i><i></i><i></i></span> built in</span> &nbsp;·&nbsp;
+<span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span> config</span> &nbsp;·&nbsp;
+<span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span> write a module</span> &nbsp;·&nbsp;
+<span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span> buy hardware</span> &nbsp;·&nbsp;
+<span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span> architectural</span>
+</p>
+
+<h3>4.1 · To serve his kind of experiment</h3>
+
+<div class="tw"><table>
+<tr><th>Change</th><th>Effort</th><th>Why it matters here</th></tr>
+<tr><td><strong>Accuracy-based graduation</strong></td>
+<td><span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></span></td>
+<td>His training rule is <em>">80% right on the good cue AND &lt;50% on the bad one"</em>. MICS today can only say <em>"do N trials"</em>. This is roughly 50 lines plus a form field — <strong>the cheapest high-value fix in the system, and it is literally his criterion.</strong></td></tr>
+
+<tr><td><strong>Visual stimuli</strong></td>
+<td><span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></span></td>
+<td>A complete moving-grating implementation <strong>already sits in the codebase, unused</strong> — right parameters, own thread, waits for the screen's beat. What is missing is installing the graphics stack, calibrating degrees-of-visual-angle, and giving it a vocabulary in the task builder. Days-to-weeks, not architecture.</td></tr>
+
+<tr><td><strong>Analog input</strong></td>
+<td><span class="cost"><span class="bars ml"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></span></td>
+<td>Add an ADC board. The clever part is keeping <em>one</em> clock — see below.</td></tr>
+
+<tr><td><strong>Analog output</strong></td>
+<td><span class="cost"><span class="bars ml"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></span></td>
+<td>For commanding laser intensity. MICS has no DAC; it does already have hardware-timed digital pulse trains, which is how much optogenetics is actually gated.</td></tr>
+
+<tr><td><strong>Microscope sync</strong></td>
+<td><span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></span></td>
+<td>Exchange pulses with the imaging frame clock. The pulse hardware exists; the wiring in the live toolkit is currently switched off. One config change plus one demo run.</td></tr>
+
+<tr><td><strong>Standardise trial &amp; outcome events</strong></td>
+<td><span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></span></td>
+<td>Turns data already being collected into a <em>guarantee</em>: one spelling, one payload shape, a trial number on every record.</td></tr>
+
+<tr><td><strong>Trial-shaped live plots</strong></td>
+<td><span class="cost"><span class="bars"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></span></td>
+<td>Not a gap — MICS already has live dashboards over the live data via Kibana, viewable remotely and built per cohort. What his control screen adds is plots bound to <em>trial structure</em> out of the box. Once trial events are standardised (above), the same dashboards give it.</td></tr>
+</table></div>
+
+<div class="plain">
+<span class="tag">Keeping one clock when you add an ADC — in plain words</span>
+<p>The measuring board has its own wristwatch, and it runs slightly fast. Instead of arguing with its watch, you make it <strong>tap you on the shoulder every time it takes a measurement</strong> — and <em>you</em> write down the time, on your clock.</p>
+<p>That tap is a real wire, into a pin, stamped in microseconds by the same clock that stamps every lick. So the board's drift stops being an <em>error</em> and becomes a <em>measurement</em>.</p>
+<p><strong>This is better than MonkeyLogic's position, not merely equal to it</strong> — they assume the board's clock is regular and discover the discrepancy afterwards. Nothing needs reconciling if you wrote down the time yourself.</p>
+</div>
+
+<h3>4.2 · Where MICS would then improve on his setup</h3>
+<ul>
+<li><strong>One clock instead of five.</strong> Every digital event on the rig timestamped in microseconds, on one timebase — against a ~1 ms software-timed digital input today.</li>
+<li><strong>The weeks before the rig become data.</strong> Body weight against a baseline, surgeries, projects, protocols, per animal, across months — instead of a spreadsheet. For a lab whose independent variable <em>is</em> deprivation state, this is the least instrumented part of the experiment.</li>
+<li><strong>The task is stored, checkable and changeable without code.</strong> Content-hashed, statically analysable — including a deadlock check that catches tasks that can never finish — and editable in a GUI. His current task script is not saved in his data at all.</li>
+<li><strong>Ask questions across animals and days, live.</strong> Instead of opening 200 files one at a time — with dashboards anyone in the lab can open from their own desk while a session runs, rather than a panel on the rig's own screen.</li>
+<li><strong>Many rigs, unattended.</strong> One animal per PC becomes many rigs from one place, running overnight.</li>
+<li><strong>Everything else he owns can plug in</strong> and land on the same clock — camera, tracker, ephys.</li>
+</ul>
+
+<!-- ============ 5 ============ -->
+<h2><span class="sec-n">Section 05</span>Weak spots in his current setup — because of MonkeyLogic</h2>
+
+<p>Offered as things worth <em>asking about</em>, not as attacks. Some will not bite him; the ones that do are worth knowing.</p>
+
+<div class="tw"><table>
+<tr><th>Weak spot</th><th>Why it happens</th></tr>
+<tr><td><strong>His task code is not in his data</strong></td><td>The timing script is compiled at run time and the text is <strong>never stored</strong>. A data file from 2022 does not tell you what the task actually did. This is a genuine reproducibility hole, and the one place MICS is unambiguously ahead on provenance.</td></tr>
+<tr><td><strong>Several clocks that must be reconciled</strong></td><td>CPU clock for events, board clock for analog, a ~1 ms software timer for digital inputs and peripherals — with documented drift of a sample every few minutes.</td></tr>
+<tr><td><strong>Licks are timed by software, not hardware</strong></td><td>Digital input has no sample clock; it is polled at about <span class="num">0.99 ± 0.22 ms</span>. His behavioural readout is licking.</td></tr>
+<tr><td><strong>Screen delay is his to measure — and can be large</strong></td><td>The published figure is a <em>software-side</em> measurement. A user measured <span class="num">50.9 ± 6.2 ms</span> from event code to actual photons, improved to 18.2 ms only after re-cabling. If he has not measured his own panel, his cue-onset time may be tens of milliseconds off relative to his imaging.</td></tr>
+<tr><td><strong>Dropped frames are a recurring real problem</strong></td><td>A well-populated complaint on their forum — one user reporting 30 skipped frames <em>per trial</em> on video stimuli. Drifting gratings are exactly the vulnerable case.</td></tr>
+<tr><td><strong>No colony database</strong></td><td>Per-subject settings are variables inside a single file next to the task. Weights, restriction schedules and training history live in spreadsheets — for a lab studying need states.</td></tr>
+<tr><td><strong>No cross-session analysis</strong></td><td>The built-in summary takes exactly one filename. Every multi-animal, multi-day question is custom MATLAB.</td></tr>
+<tr><td><strong>One animal per computer, nobody can watch remotely</strong></td><td>Structural — two instances will not run on one PC. Scaling means one more Windows PC, two monitors and a DAQ board each.</td></tr>
+<tr><td><strong>No unattended operation</strong></td><td>No autostart, no watchdog, no crash recovery. A file-repair tool ships with it, which tells you corruption happens.</td></tr>
+<tr><td><strong>A version treadmill</strong></td><td>The current release requires MATLAB R2025a or newer. His published work used R2015b/2019a. Upgrading one can force upgrading the other.</td></tr>
+<tr><td><strong>One maintainer, no public repository</strong></td><td>Excellently maintained today — but it is a single person, distributed as a zip, with no licence. Worth naming because it is the fairest reciprocal question he can ask us.</td></tr>
+</table></div>
+
+<!-- ============ 6 ============ -->
+<h2><span class="sec-n">Section 06</span>Questions to expect — and how to answer</h2>
+
+<div class="qa"><div class="q">"My science is about need states. How would this actually help me?"</div>
+<div class="a">Answer narrowly — he trains in MonkeyLogic too, so <strong>do not offer to train his mice</strong>. Offer the layer his rig has no concept of: weight curves against a baseline, surgery records, projects, protocols, and the ability to ask questions across animals and days. Then ask how his lab tracks restriction today rather than assuming it is a spreadsheet.</div></div>
+
+<div class="qa"><div class="q">"Can you show my visual stimulus?"</div>
+<div class="a">Not today — and it is the hardest case, because a drifting grating must be correct on every screen refresh. But the answer is <em>"here is what it would take"</em>, not <em>"we can't"</em>: a grating implementation with the right parameters already exists in the codebase, unused, already on its own thread and already waiting for the screen's beat.</div></div>
+
+<div class="qa"><div class="q">"Do you handle analog signals?"</div>
+<div class="a"><strong>No — it is the one capability MonkeyLogic has that we have no version of.</strong> Then show the plan in three beats: an ADC board; a driver that publishes derived values so a non-programmer can use them; and batching, because one record per sample at 1 kHz would dwarf the entire existing database. Then turn it round — ask which signals he genuinely needs analog for, since the frame clock, capacitive licking and a running wheel are all digital.</div></div>
+
+<div class="qa"><div class="q">"Can you sync to my two-photon frame clock?"</div>
+<div class="a">Yes in principle — the pulse hardware exists — but the wiring in the live toolkit is currently switched off, so it is one config change plus a demo run, and <strong>it has not been demonstrated</strong>. Do not bluff; he will ask for the jitter number and there isn't one yet.</div></div>
+
+<div class="qa"><div class="q">"What is your lick-to-reward latency?"</div>
+<div class="a"><strong>It has never been measured.</strong> The only instrumented number is a ~5 ms mean, 46 ms worst-case loop measured on an LED, before the latency fixes and never repeated. Say exactly that, then say what you would measure and how. That lands better than a number he cannot check.</div></div>
+
+<div class="qa"><div class="q">"How do you record a trial?"</div>
+<div class="a">Trial boundaries, hits, misses and false alarms are all logged as events, and every state the task passes through is logged too — so the whole route through a trial is recoverable, which is richer than a single outcome code. What is missing is the <em>guarantee</em>: consistent names and shapes, and a trial number on every record.</div></div>
+
+<div class="qa"><div class="q">"Can I do closed-loop stimulation based on neural activity?"</div>
+<div class="a">Not today. Be careful here — <strong>MonkeyLogic has shipped a working closed-loop stimulation example since 2017</strong>, and can take a neural signal in as an analog voltage or a live stream. Claiming otherwise would be wrong. Note that neither system does two-photon holographic closed loop; that lives in the microscope software.</div></div>
+
+<div class="qa"><div class="q">"How many animals per computer?"</div>
+<div class="a">Theirs: exactly one, structurally, in the maintainer's own words. Ours: many rigs from one place, with device locking and a web interface. <strong>This is the strongest structural contrast in the talk</strong> — state their number from their own documentation, not from an assumption.</div></div>
+
+<div class="qa"><div class="q">"Who maintains it, and what happens when the student leaves?"</div>
+<div class="a">The fairest reciprocal question, and it cuts both ways. Answer honestly about our bus factor, then point at what reduces it: tasks stored as data rather than code, drivers as versioned records, and automated checking.</div></div>
+
+<div class="key">
+<span class="tag">Two arguments that do NOT survive checking — avoid both</span>
+<p><strong>1. "MATLAB licensing makes it expensive to scale."</strong> False in an academic setting — about $550 a seat, often zero under a campus agreement, and the DAQ board costs four times more.</p>
+<p><strong>2. "MonkeyLogic can't do closed loop."</strong> False — it has shipped a working example since November 2017.</p>
+<p>The defensible structural claims are: <strong>one animal per PC · one screen frame of loop granularity · no data layer above the file · no unattended operation · several clocks</strong>.</p>
+</div>
+
+<div class="foot">
+<p><strong>Confidence.</strong> Claims about MonkeyLogic come from its own documentation, source distribution, maintainer forum posts and published papers. Claims about the Livneh lab come from their published Methods. Claims about MICS come from its source and a live query of the event database. Numbers with no source stated are not on this page.</p>
+<p><strong>Not for the talk, but urgent:</strong> the nightly backup of the live behavioural database points at the wrong machine. There is currently one un-backed-up copy of the lab's behavioural record.</p>
+</div>
+
+</div>

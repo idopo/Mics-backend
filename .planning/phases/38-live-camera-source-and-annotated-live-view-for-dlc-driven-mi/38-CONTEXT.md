@@ -49,7 +49,7 @@ Live DB objects, still current:
 
 ---
 
-## 3. The five concrete gaps, with file references
+## 3. The six concrete gaps, with file references
 
 ### 3a. Camera capture cannot be opened at all
 
@@ -150,6 +150,62 @@ needs to leave the ZMQ link and the capture device closed properly. Note that `l
 uses `try/finally` around the loop for `live.close()` / `cap.release()`, which helps.
 
 ---
+
+### 3f. WHERE the camera physically is has never been established
+
+Everything above assumes frames can be opened *on the vision box*. Nobody has established that they
+can. `YizharGPU12` is **not in the rig room**; the camera is being installed *in* the rig room, and
+the researcher's own description of the arrangement is "it connects to the lab computer and I reach
+it over the local network". Those two facts do not compose into a source the vision box can open,
+and the gap is not addressed anywhere in gaps 3a-3e.
+
+Two constraints, both stated by the researcher, narrow this further:
+
+- **Lab IT may refuse to admit the camera to the network as an unknown device.** So a camera holding
+  a routable address on the lab LAN is not something to design around; it may never be permitted.
+- **The vision box and the lab computer are on the same VLAN and segment.** So whatever the lab
+  computer can reach, it can re-offer to the vision box without crossing a routed boundary.
+
+The distinction that resolves this is between **topology** — where the camera physically sits and
+what has to happen for a frame to leave the room — and **source kind** (§3a: `device` / `stream` /
+`file`), which is only how OpenCV addresses whatever arrives. They are different questions and the
+plans currently only ask the second. The taxonomy and what each topology costs is D-65; the load-
+bearing observation is that **four of the five topologies resolve to a source kind the design
+already has, so the code is unaffected** — what is missing is discovery, and a runbook.
+
+The fifth is a genuine stop. **A vendor-SDK camera — GigE Vision or USB3 Vision, i.e. Basler, FLIR /
+Teledyne, Allied Vision — cannot be opened by `cv2.VideoCapture` at all**, locally or remotely.
+Those speak GVCP/GVSP, not RTSP, and need the vendor SDK or a GStreamer plugin; GVSP is UDP and
+frequently multicast, so it does not survive a router hop without IGMP configuration either. This
+class of camera is entirely plausible on a behaviour rig, and if it is what was installed then §3a's
+premise fails and this phase needs a capture shim it does not currently plan for. **The camera's
+make and model is therefore the single highest-value unknown in the phase**, and it costs one
+question to answer.
+
+Note also that a USB camera on the lab computer is usually **exclusive-access**: one process at a
+time. If the lab computer is recording the session from that camera, a relay cannot also hold it.
+That is an architecture-deciding fact, not a detail.
+
+> **RESOLVED 2026-09-06 — see D-75.** The highest-value unknown above is answered, and the answer is
+> the bad one: the camera is a **`DMK 33GP1300`** — The Imaging Source, **monochrome**, **GigE
+> Vision**, serial `5810436`, currently running at 30 fps under the vendor's own capture software.
+> That is topology **T5**. `cv2.VideoCapture` cannot open it by any `--source` value, and because
+> GigE Vision is UDP end to end (GVCP control + GVSP stream, broadcast discovery), the T3
+> TCP-port-forward escape hatch does not exist for it either.
+>
+> D-75 splits T5 rather than treating it as a single dead end. **T5a**: The Imaging Source ships a
+> Windows DirectShow wrapper, so the camera may already appear as an ordinary capture device — in
+> which case D-66's MJPEG relay works with **no new code**, and T5 collapses to T4. **T5b**: no
+> wrapper, and an aravis/PyGObject capture shim is required behind plan 38-01's injected-capture
+> seam. One unrun command discriminates them (`ffmpeg -list_devices true -f dshow -i dummy`), and it
+> is `pending` as of this note because the lab computer is not to hand.
+>
+> D-75 also adds **T6** — move the camera's Ethernet to the vision box — which GigE makes possible
+> and USB never did, and which removes the lab computer from the path entirely. Two facts this
+> section could not have known now bind the code: the frames are **Mono8** and need a 3-channel
+> expansion before DLC, and the exclusive-access problem raised in the paragraph above has a
+> standards-level escape hatch (GigE Vision **multicast monitor** clients) that a DirectShow device
+> does not.
 
 ## 4. Model-agnostic: what makes this hard
 
@@ -261,6 +317,12 @@ what was not (browser authoring, corner geometry, copy discipline).
    simpler to keep in sync but couples the notebook's liveness to the sender's. Alongside is more
    robust but needs a way to share frames.
 4. **Is Jupyter even installed** in `mics-dlc`? (§6.) If not, the install must be dry-run first.
-5. **What is the acceptance criterion for keep-up?** `behind_count == 0` is probably too strict
+5. **Where is the camera, physically, and what is its make and model?** (§3f.) Decides whether
+   the vision box can open it at all, whether a lab-computer hop is needed, and whether
+   `cv2.VideoCapture` is even the right API. Answered as a taxonomy in D-65; the rig supplies which
+   branch is real.
+6. **Is the lab computer also recording from that camera?** (§3f.) If it is, and the camera is USB,
+   exclusive access means a relay and the recording cannot coexist without a deliberate answer.
+7. **What is the acceptance criterion for keep-up?** `behind_count == 0` is probably too strict
    for a real camera; some non-zero rate is fine. The number should come off a measurement, not a
    guess — the same discipline Phase 35 applied to likelihood thresholds after guessing wrong.

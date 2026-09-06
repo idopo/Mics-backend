@@ -548,6 +548,26 @@ Plans:
 
 ### Phase 19: Per-Pilot Device Health Surface
 
+> ⚠ **SUPERSEDED 2026-09-06 by Phase 32 Slice 5 (user decision).** The `.alive` liveness case this
+> phase was written for is narrower and more speculative than the pilot-fault surface Phase 32 needs:
+> it only lights up on rigs that *have* an external device, whereas "this Pi has no `pigpiod`" or
+> "hardware failed to instantiate" affects every rig and has already gone unnoticed for weeks in
+> production (the `Left_LED`/`Mid_LED` case on pilot 3).
+>
+> **The design work is NOT discarded — the dependency is inverted.** HEALTH-01…04's transport
+> (`OrchestratorState.device_health` → `/pilots/live` → `WS /ws/pilots` → a warning affordance on
+> `PilotCard`) is exactly what Slice 5 needs, so **Slice 5 builds it, generalised**, and this phase's
+> `.alive` case becomes one consumer of it afterwards — nearly free, since HEALTH-02 rides existing
+> CONTINUOUS payloads with no new ZMQ key.
+>
+> HEALTH-05's clear rule is **amended, not adopted wholesale**: clearing on `active_run` teardown is
+> right for run-scoped liveness and wrong for a standing device fault. See Slice 5's two lifetime
+> classes.
+>
+> **Status:** its 3 written plans are not executed and should not be executed as-is. Re-scope to the
+> `.alive` consumer after Phase 32 lands, or retire it.
+
+
 **Goal:** An `ExternalHardware` device going unreachable mid-run becomes visible **while the session
 is running**, not at analysis time. Any `<source_id>.alive` tracker flip reaches the live pilot
 payload and lights a warning affordance on the pilot card, so a researcher can decide whether to
@@ -1386,172 +1406,190 @@ PLAT-16 (pigpio lifecycle removal). Old plans 31-10 through 31-16 are superseded
 substance moved into C1-C4.
 
 
-### Phase 32: Rig output fail-safe for unattended 24/7 operation
+### Phase 32: Unattended operation — fail-safe outputs, crash classification, and policy-driven resume
 
-**Goal:** When the pilot process dies, every animal-facing output de-energises. Today it does
-not: GPIO outputs keep their state after the process exits, so a valve, air puff, odor line or
-LED can stay energised indefinitely with nobody watching. This is the remaining blocker between
-"the clock/logging path survives unattended operation" (Phase 31, proven on soak run 580) and
-"we can run 24/7 experiments with animals".
+**Merged 2026-09-06** from the former Phase 32 (rig output fail-safe) and Phase 33 (crash detection
+and run recovery), at the user's direction. They are two halves of one problem and were being
+designed against each other. Phase 33's number is retired; its content is Slices 2-4 below.
 
-**The characterised defect:** `start_pigpiod()`'s `kill_proc` hook cannot reach `pigpiod` — the
-`Popen` uses `shell=True`, the daemon detaches, and it runs under `sudo`. Nothing de-energises
-the pins. PLAT-33 was withdrawn on a false premise and this has never been fixed. Prior analysis
-is in `.planning/phases/31-*/deferred-items.md` (plan C3 section) and the closing notes of
-`PI_TRIXIE_INSTALL.txt`.
+**Goal:** a 24/7 rig where a dying run leaves no output energised, the backend knows *why* it died
+and can tell that apart from a human pressing Stop, and the session resumes on its own where — and
+only where — resuming is correct.
 
-**Candidate approaches, to be chosen during planning:**
-- systemd `ExecStopPost` that de-energises `VALVE1-4` / `AIR_PUF` / `ODOR1-5`
-- hardware pull-downs on the output lines
-- repairing the `pigpiod` lifecycle so the kill hook actually works
+**The argument that binds the halves (user, 2026-09-06):** you must not resume onto a rig whose
+outputs are in an unknown state. `_set_initial_state()` only touches what the *new* run
+instantiates, so a pin energised by the crashed run that the resumed task does not declare stays
+energised straight through the resume. De-energising is a **precondition for a safe resume**, not
+cleanup after a crash.
 
-**Requirements**: TBD — likely a replacement for the withdrawn PLAT-33
-**Depends on:** Phase 31
-**Validation:** must be exercised on RecordingBox (132.77.73.213), including a killed pilot.
-**Plans:** 0 plans
+**Requirements:** **SAFE-01…11** (Slice 1), **RECOV-01…06** (Slices 2-4), **FAULT-01…09**
+(Slice 5). All defined 2026-09-06 — see `32-CONTEXT.md` for the Slice 1 analysis.
+
+---
+
+#### What already exists (verified 2026-09-06 — the old Phase 33 entry was stale)
+
+The old entry claimed *"`session_runs` today has only `RUNNING`"*. That is wrong; most of the
+recovery machinery is built. **Scope accordingly.**
+
+| Capability | Status |
+|---|---|
+| Run status vocabulary | **exists** — `SessionRunStatus` = `RUNNING / STOPPED / COMPLETED / ERROR / PENDING`, so a UI stop (`STOPPED`) is already distinct from a crash (`ERROR`) |
+| Crash reason recorded | **exists** — `session_runs.error_type` + `error_message`, carrying `TaskError`, `OrchGatewayError`, `WatchdogTimeout` |
+| Abrupt-end detection | **exists** — orchestrator watchdog marks `ERROR`/`WatchdogTimeout` after a run sits `RUNNING` >30 s (`orchestrator_station.py:1106`) |
+| In-band task error | **exists** — `TASK_ERROR` wired at `orchestrator/main.py:79` → `on_task_error` |
+| Trial/step progress | **exists** — `run_progress.current_trial`, `current_step_idx`, `session_progress_index` |
+| Resume + restart modes | **exists** — `start-on-pilot` takes `mode: "resume"` (reuse row, keep progress, clear error) or `"restart"` (new row, same `session_run_index`), `api/main.py:1250-1285` |
+| Pilot process relaunch | **exists** — `Restart=always`, `RestartSec=5` in `deploy/mics-pilot.service` |
+
+**The genuine gaps:** de-energise on death; nothing *triggers* the resume (the endpoint exists, a
+human calls it); the policy of which `error_type` values are auto-resumable; `save_prefs()`
+atomicity; and hardware pull-downs.
+
+---
+
+#### Slice 1 — Fail-safe outputs (SAFE-01…11)
+
+Carried intact from the former Phase 32. `ExecStopPost` on `mics-pilot.service`, external
+pull-downs, and the `save_prefs()` atomicity fix. Scope is every `Modules` entry carrying a numeric
+`pin`, read from the persisted `prefs.json` with a static fallback.
+
+**Non-negotiable, and the property most likely to be diluted by this merge:** the de-energise is
+**unconditional and outside the process**. An in-process graceful `release()` is best-effort and
+nice when it works; it is not the guarantee. If de-energising is optional it is not a fail-safe.
+
+**Includes the I2C motor shield (SAFE-10, user decision 2026-09-06).** `DOOR1`, `DOOR2` and
+`MOTORIZED_REWARD` are the highest-energy hazard on the rig: `Motor_Shield_Hat_extend.set()` calls
+`throttle(±1)` with **no timed stop**, so a pilot dying mid-door-move leaves a DC motor stalled at
+full throttle indefinitely. Neither the `ExecStopPost` nor a pull-down reaches an I2C device, so this
+is a third mechanism in the same hook — PCA9685 `SLEEP`, or zeroing the channel registers. Exact
+register and address are discovery items (`MotorKit(address=0x60)`, with `i2cdetect` reporting both
+`0x60` and `0x70`).
+
+**`ExternalHardware` is explicitly DEFERRED (SAFE-11, user decision 2026-09-06)** — network and BLE
+devices are reached by neither mechanism. The gap is recorded rather than silently left, and nothing
+in this phase may assume the actuator set is closed at the Pi's own pins.
+
+#### Slice 2 — Crash classification
+
+A task error and a service crash are different events with different correct responses, and neither
+is a user pressing Stop.
+
+| | Task error | Service crash | User stop |
+|---|---|---|---|
+| What died | the task; the process lives | the process or the Pi | nothing |
+| Who reports it | **the Pi, in-band** (`TASK_ERROR`) | **nobody on the Pi** — inferred from silence + reconnect | the UI |
+| Likely on restart | **recurs** (bad params, bad FDA, bad hardware) | **transient** | n/a |
+| Correct policy | do NOT auto-resume; surface it | resume per policy | leave stopped |
+
+Silence alone cannot separate "process crashed", "Pi powered off" and "network partition" — **only
+the reconnect distinguishes them**. Design principle: the Pi reports what it can; the orchestrator
+infers what the Pi cannot; the backend records the two distinctly.
+
+Includes reconciliation on reconnect, and closing the ordering gap that exists today: the pilot
+returns in **5 s** but the watchdog does not mark `ERROR` until **30 s**, so there is a window where
+the process is up and idle while the backend still believes the run is live.
+
+#### Slice 3 — Policy and trigger for resume
+
+The missing piece is not the resume endpoint but what fires it: pilot reconnects → backend finds an
+interrupted run → applies policy → dispatches `mode: "resume"` with the recorded `current_trial`.
+Policy is per `error_type`: `TaskError` never auto-resumes; `WatchdogTimeout` after a clean
+reconnect does. Slice 1 is a hard precondition — no resume onto unknown output state.
+
+#### Slice 4 — Surface
+
+The UI shows why a run ended, whether it was resumed, and how many times. A run that auto-resumed
+three times overnight is a finding, not a detail.
+
+#### Slice 5 — Pi fault reporting, split by scope
+
+Scan of `mics_core` (2026-09-06) found 49 swallowing exception handlers across the seven
+critical-path files. At several, **the run continues in a silently wrong state**. Emit at the big
+crossroads only.
+
+**Sites approved by the user 2026-09-06 — A1-A4 plus B1 (FAULT-01…05):**
+
+| | Site | Failure | Scope → destination |
+|---|---|---|---|
+| A1 | `tasks/task.py:198` | hardware failed to instantiate; loop continues to the next pin | run → **ES *and* badge** |
+| A2 | `core/pilot.py:797` | `pigpiod` unavailable; every GPIO device fails downstream | pilot → backend → `!` |
+| A3 | `tasks/mics_task.py:204` | `ExternalHardware` bind/lifecycle failed; FDA gates on stale values | run → ES |
+| A4 | `core/pilot.py:578` | task never started; backend already thinks the run is `RUNNING` | pilot → backend → `!` |
+| B1 | `core/pilot.py:982/1009/1017/1021` | task teardown — which handler fires *is* the crash reason | run → ES, feeds Slice 2 |
+
+**A1 is the one that belongs in both**, and it is the reason the badge exists: `Left_LED`/`Mid_LED`
+failed on **every run** on pilot 3 and a per-run ES event alone never surfaced it — an audit did,
+weeks later.
+
+**B2** (`external_hardware_runtime.py`, 9 handlers) and **B3** (`hardware/__init__.py:188`) are
+DEFERRED pending an overlap check against the `.alive` trackers and against A1. Excluded outright:
+`extract_task_metadata` (10), `discover_tasks_metadata` (2), `_coerce_hw_value` (2),
+`external/__init__.py:18,27`, `get_name`, `_report_trigger_error:359`.
+
+**The split (user, 2026-09-06): scope decides the destination.**
+
+| Scope | Example | Destination | Why |
+|---|---|---|---|
+| **Run-scoped** — a run exists, the failure is about *this experiment* | hardware failed to instantiate; extlink bind failed | `Event_Dispatcher.dispatch_event` → **ElasticSearch**, same path as `state_transition` | it is part of the experimental record; a post-hoc query must be able to say what the rig was actually doing |
+| **Pilot-scoped** — no run exists, the failure is about *the device* | `pigpiod` unavailable; task failed to start | `node.send(self.parentid, …)` → orchestrator → **backend → UI warning affordance** | this is device health, **not experiment data**. Putting it in ES pollutes the experimental index and makes it harder to query |
+
+`Event_Dispatcher` is **run-scoped** by construction (`subject`, `session`, `run_id`), so the second
+row physically cannot use it. The pilot-level path already exists as a pattern —
+`HARDWARE_LIB_TEST_RESULT` at `pilot.py:650` — and needs an orchestrator handler.
+
+**Slice 5 OWNS the health surface (user, 2026-09-06).** Phase 19 was going to build it for the
+narrower `.alive` liveness case; it is now superseded, because a pilot-level fault affects every rig
+while `.alive` only lights up on rigs that have an external device. Slice 5 builds HEALTH-01…04's
+transport — `OrchestratorState.device_health` → `/pilots/live` → `WS /ws/pilots` → a warning
+affordance on `PilotCard` — **generalised to carry pilot-scoped faults**, and Phase 19's `.alive`
+case becomes a later consumer of it. This phase does NOT wait on Phase 19.
+
+**But the lifetime rule differs, and that is the design point.** HEALTH-05 clears device health
+*wherever `active_run` is cleared*, on the reasoning that "a warning that persists after its run is
+worse than none — it trains researchers to ignore the indicator." That is right for **run-scoped
+liveness** and wrong for a **standing device fault**: a Pi with no `pigpiod` is still broken after
+the run ends. So two classes:
+
+- **Run-scoped liveness** — clears when the run ends (HEALTH-05 unchanged).
+- **Pilot-scoped fault** — persists across runs, clears when *the same operation next succeeds*
+  (`pigpiod_unavailable` clears when `init_pigpio()` next succeeds; `task_start_failed` clears when a
+  task next starts). Never cleared by time alone.
+
+**One site belongs in both.** `task.py:198` hardware-instantiation failure is emitted during a run
+(→ ES, experimental record) *and* is a standing fault worth a badge — the `Left_LED`/`Mid_LED` case
+fired on **every run** on pilot 3 and was caught only by an audit weeks later. That is exactly the
+failure a persistent `!` exists to catch.
+
+**Sequencing:** no dependency on Phase 19 — it is superseded and its 3 written plans should not be
+executed as-is. Slice 5 must not narrow the transport to `.alive`, so that re-scoping Phase 19 onto
+it later stays cheap.
+
+`Message` and `hardware_state` are excluded from this work.
+
+---
+
+**Depends on:** Phase 31.
+**Validation:** must be exercised on RecordingBox (132.77.73.213) for all failure modes — killed
+pilot, power cut, task error, user stop — including a proven auto-resume.
+**Touches:** Pi service files (`deploy/`), pilot code, orchestrator, API, React UI, and possibly
+`install.sh`.
+**Plans:** 13 plans in 7 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 32 to break down)
-
-### Phase 33: Crash detection and run recovery for unattended operation
-
-**Goal:** A run that dies unattended is *detected*, *correctly classified*, *recorded in the
-backend*, and recovered according to a policy — instead of sitting in the DB as `running`
-forever with nobody watching. Phase 32 makes failure harmless; this phase makes it temporary.
-
----
-
-**THE CENTRAL DISTINCTION (user, 2026-08-26).** A task error and a service crash are NOT the
-same event and must not be collapsed into one status. They differ in who can report them, and
-they differ in what recovery is correct:
-
-| | Task error | Service crash |
-|---|---|---|
-| What died | the task; the pilot process is alive | the pilot process itself (or the Pi) |
-| Who can report it | **the Pi, in-band** — it is alive and can speak | **nobody on the Pi** — it is gone |
-| How the backend learns | `TASK_ERROR` over ZMQ | inferred from heartbeat silence, plus systemd-level signal, plus reconciliation on reconnect |
-| Likely on restart | **recurs** (bad params, bad FDA, bad hardware) | **transient** — resume is usually safe |
-| Correct policy | do NOT blindly restart; surface it | resume or restart per the resume policy below |
-
-Silence alone cannot separate "process crashed", "Pi powered off" and "network partition" —
-only the reconnect distinguishes them. Design principle: **the Pi reports what it can; the
-orchestrator infers what the Pi cannot report; the backend records the two distinctly.**
-`session_runs` today has only `RUNNING` (`api/models.py:424`) — the status vocabulary needs to
-grow to carry cause, because cause determines policy.
-
----
-
-**WHAT ALREADY EXISTS — build on it, do not rebuild it:**
-- `on_task_error` (`orchestrator_station.py:497`) is a **complete** handler: hard-STOPs the
-  pilot, resolves the run by subject key. **But `grep` over `mics_core` and `pi-mirror` finds
-  ZERO sends of `TASK_ERROR` — the Pi never emits it.** The receiver is built and wired and has
-  never been connected at the source. This is the cheapest first plan in the phase and it is a
-  Pi-side change, not a backend one.
-- `OrchestratorState._last_seen` + `_redis_touch`, refreshed on **every** message from a live
-  pilot (`state.py:18-46`) — a genuine liveness signal.
-- `_lease_reconcile_loop` → `api.reconcile_device_leases(heartbeats)` every 15 s — a working
-  liveness→backend pipeline already in production.
-- systemd already restarts the pilot process forever by design (`PI_TRIXIE_INSTALL.txt` STEP 7:
-  "it restarts forever rather than latching into failed; that is the 24/7 requirement"). The
-  process returns; **the run does not**. The gap is reconciliation on reconnect, not restart.
-
-**LANDMINE — `_run_watchdog` is DEAD CODE AND MUST STAY DEAD.** It sits in the same file, looks
-exactly like what this phase wants, and its thread-start is deliberately commented out. It keys
-off `active_run["started_at"]`, set once at `start_run()` and never refreshed, with an
-`elapsed > 30` threshold — enabling it would error-out **every** behavioural session longer than
-30 seconds. Its own docstring says so. Whoever plans this will find it and be tempted.
-
----
-
-**OWNERSHIP SPLIT (decided in discussion, 2026-08-26):**
-- **Pi owns reporting** — what am I running, and did my task die.
-- **Orchestrator owns detection and actuation** — it already holds liveness and the ZMQ START
-  path. Building a second detector in the backend would duplicate this and be slower.
-- **Backend owns policy** — it holds the durable record (trials completed, graduation state, and
-  the future termination conditions), so only it can answer "should this resume, and from where".
-
-**IDEMPOTENCY IS REQUIRED, NOT OPTIONAL.** Under a network partition the pilot is alive while the
-orchestrator is blind. A naive re-START then double-starts a task that never stopped and corrupts
-trial counts. START must be keyed by `run_id` and the Pi must reject a START for a run it is
-already running.
-
----
-
-**OPEN DECISION — resume vs restart. This is a scientific call, not an engineering one, and it
-must be settled before planning tasks.** If a run dies 40 minutes into a session and returns 3
-minutes later, is that one session or two? `run_progress` holds the trial counters, so resuming
-mid-protocol is technically feasible; whether the resulting data is one session is a question
-about the experiment. It determines whether this phase builds "resume" or "abandon and restart
-clean".
-
-**ALSO REQUIRED BY UNATTENDED OPERATION:**
-- **Restart budget with backoff.** VERIFIED in `deploy/mics-pilot.service`: the process already
-  restarts automatically — `Restart=always`, `RestartSec=5`, and `StartLimitIntervalSec=0` in
-  `[Unit]` to defeat systemd's default 5-starts-in-10s limit, which would otherwise latch the
-  unit into `failed` permanently. That is correct and must not be changed. **But it restarts the
-  PROCESS, not the RUN** (systemd has no concept of a run), and disabling the rate limit removes
-  the only built-in signal that something is chronically broken: a pilot crashing at startup now
-  restarts every 5 s, forever, silently. This phase must replace that lost signal at the
-  application layer — count restarts, escalate when the count is absurd. Do not "fix" it by
-  re-enabling the systemd limit.
-- **An alerting path** — nobody is watching at 3 a.m.; a run that gives up must reach a human.
-
-**Requirements**: TBD
-**Depends on:** Phase 32 — outputs must de-energise reliably BEFORE anything auto-restarts.
-Safe first, then automatic. *(Note for Phase 32, found in the same unit file: `KillSignal=SIGINT`
-with `TimeoutStopSec=20` means any output-safing handler runs ONLY on a clean exit within 20 s —
-past that systemd sends SIGKILL and no handler runs at all. A software fail-safe therefore cannot
-cover the hard cases, which argues for hardware pull-downs alongside it, not instead of it.)*
-**Validation:** must be exercised on RecordingBox (132.77.73.213) for all four failure modes —
-task exception, killed pilot process, Pi reboot, and network partition.
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (run /gsd:plan-phase 33 to break down)
-
-## MICS-Link consumers: the DeepLabCut arc (Phases 34–35)
-
-Phases 34–35 are the **second consumer** of the Phase 18 `ExternalHardware` substrate, running
-parallel to and independent of the OpenEphys arc (26–28). Phase 18 completed 2026-08-09 and
-explicitly reserved both halves of this arc in its NOT-in-scope list: *"`mics-link` Python SDK
-package"* and *"DeepLabCut reference hw_lib + template + rig demo"*. Nothing in the substrate
-changes here — that is the point. If either phase finds itself editing
-`external_hardware_wire.py`'s envelope, the design has gone wrong.
-
-**Locked scope decisions (2026-08-26 session):**
-- **Transport is `router_bind` + our SDK.** The DLC machine dials INTO the Pi as a DEALER with
-  `identity = source_id`. This is the one role rig-proven end-to-end (runs 554/556, hand-driven
-  from a Mac). It keeps the DLC machine's address out of every `pilot_hardware_config` row, so a
-  DHCP or Wi-Fi change on the vision box cannot break a rig. **`sub_connect` was rejected for this
-  arc** despite matching the word "broadcast": it is the one Phase 18 role that remains
-  permanently UNPROVEN on hardware (unit-tested only), and adopting it here would make a new
-  feature carry an old risk.
-- **The wire carries declared per-keypoint scalars, not poses.** The envelope has no batched
-  frame — `SIG` is `{k, ts_src, seq, sig, v}`, one scalar per message
-  (`external_hardware_wire.py:26`). 12 keypoints × (x, y, likelihood) at 60 Hz is 2160 msg/s into
-  an ingress queue bounded at 256, against a proven soak of ~60 msg/s. **Adding a batched wire
-  kind was rejected** — it reopens the contract of a completed, rig-proven substrate. The sender
-  decimates instead, and the FDA reads ordinary view keys with zero substrate change.
-- **Keypoint signals are STATIC in the hardware lib's source, one lib version per trained model.**
-  They cannot come from per-pilot config: `ast_metadata.extlink` is extracted **statically** by the
-  backend AST extractor (EXTLINK-09), and EXTLINK-19's FDA-editor picker reads that metadata. A
-  config-driven signal set would be invisible to the picker, making the transitions unauthorable —
-  the exact authoring gap Phase 18 had to reopen itself to close on 2026-08-09. Versioning the
-  keypoint set alongside the model is also the honest mapping: the bodypart list *is* a property
-  of the trained model.
-- **Video stays outside the experimental system in v1.** No camera trigger, no frame-accurate
-  sync, no video capture by MICS. The vision box watches the cage and reports; nothing else.
-- **No latency claims anywhere in this arc.** `(ts_src, ts_pi_recv)` pairs are logged for later
-  co-registration and nothing is asserted about them. Clock-domain comparison belongs to Phase 28,
-  which measures both paths inside one recording — the same deferral Phase 18 made on 2026-08-09
-  when it dropped its "within 50 ms" criterion.
-
-**Open decision carried into planning — which Pi platform.** The extlink substrate exists in BOTH
-`~/pi-mirror` (old stack, Python 3.7.3, `msgpack==1.0.5` pinned by plan 18-04) and `~/mics_core`
-(Phase 31's Bookworm / Python 3.11 platform). Phase 18's rig proof ran on the old stack. These
-phases are written against **`mics_core`**; if the DLC rig turns out to be a pilot still on the old
-image, the `msgpack` pin and the Python-3.7 dialect constraints of `external_hardware_wire.py`
-apply and the SDK's minimum Python must be re-checked. **Settle this before planning Phase 35.**
+- [ ] 32-01-PLAN.md — Discovery: resolve the six open rig facts (user-run, no code)
+- [ ] 32-02-PLAN.md — save_prefs() atomic write (SAFE-04)
+- [ ] 32-03-PLAN.md — Fail-safe hook: GPIO half, ExecStopPost, installer
+- [ ] 32-04-PLAN.md — Fail-safe hook: I2C motor-shield half (SAFE-10)
+- [ ] 32-05-PLAN.md — Rig proof by killed pilot + pull-down spec (user-run)
+- [ ] 32-06-PLAN.md — Pilot-scoped fault transport in the orchestrator
+- [ ] 32-07-PLAN.md — Device-health badge on the pilot grid
+- [ ] 32-08-PLAN.md — Pi emitters A2/A4 (pilot-scoped)
+- [ ] 32-09-PLAN.md — Pi emitters A1/A3/B1 (run-scoped, to ES)
+- [ ] 32-10-PLAN.md — Crash classification + the 5 s / 30 s reconciliation
+- [ ] 32-11-PLAN.md — Resume policy and trigger, gated on the fail-safe stamp
+- [ ] 32-12-PLAN.md — Why a run ended, and how many times it resumed
+- [ ] 32-13-PLAN.md — Rig validation of Slices 2-5 (user-run)
 
 ---
 

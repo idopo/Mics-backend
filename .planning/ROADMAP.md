@@ -1574,7 +1574,16 @@ it later stays cheap.
 pilot, power cut, task error, user stop — including a proven auto-resume.
 **Touches:** Pi service files (`deploy/`), pilot code, orchestrator, API, React UI, and possibly
 `install.sh`.
-**Plans:** 13 plans in 7 waves
+**Plans:** 13 plans in 7 waves — plan-checker **PASSED** first iteration 2026-09-06 (26/26
+requirement IDs covered, dependency graph valid, no blockers).
+
+**SPLIT CONSIDERED AND REJECTED (user, 2026-09-06).** The planner recommended cutting between plans
+05 and 06 into Phase 32 (`SAFE-01…11`) and a Phase 32.1 (`RECOV-01…06` + `FAULT-01…09`), on the
+grounds that 13 plans is ~3x normal granularity and the halves have different validation postures.
+**The user chose to keep it as one phase.** Do not re-propose the split. The wave graph already
+enforces the only ordering that matters: 32-11 `depends_on` 32-05, so the resume trigger cannot land
+before the fail-safe is rig-proven.
+
 
 Plans:
 - [ ] 32-01-PLAN.md — Discovery: resolve the six open rig facts (user-run, no code)

@@ -307,17 +307,24 @@ Two things a plan must establish rather than assume:
 
 ## 8. Discovery items — UNVERIFIED
 
-### 8a. `PIGPIOMASK` may be malformed, and it governs whether a write lands
+### 8a. Confirm a write lands — the mask is one hypothesis, and a weak one
 
-`prefs.template.json` carries `PIGPIOMASK = 1111110000111111111111110000`, passed as `-x`. pigpio's
-`-x` expects **hex**; this reads as binary. Decoded both bit orderings this session and neither is
-self-consistent with the rig working — one reading masks off BCM 18–21, which would be a sensible
-way to protect I2S audio (audio is enabled by `configure_boot`) but would also block pins the rig
-uses.
+The fail-safe's whole job is "drive pin LOW". A write that returns success without changing the line
+makes the mechanism a silent no-op, so **the check that matters is `pigs w 17 0` then `pigs r 17`**.
 
-`-x` determines which GPIOs `pigpiod` may update, so **a write to a masked pin does nothing and
-reports success**. Resolve before choosing a mechanism. That the current mask may not be doing what
-its author intended would itself be a finding.
+If it fails, candidate causes are: the daemon is not running; the pin is claimed elsewhere;
+permissions; or `PIGPIOMASK`.
+
+**`PIGPIOMASK` is the weakest of these.** `prefs.template.json` carries
+`1111110000111111111111110000`, passed as `-x`, which is binary where pigpio expects hex — and
+neither bit ordering decodes self-consistently with the rig working. **The user reports changing the
+mask on the old OS with no observable effect (2026-09-06)**, which is direct evidence the argument is
+being ignored, and is exactly what a malformed `-x` would look like.
+
+**An earlier draft of this document ranked the mask as a load-bearing unknown that everything else
+was downstream of. That was wrong** — it over-weighted a textual reading against the user's direct
+experiment. Keep the write-and-read-back check, because it validates the *mechanism* cheaply and
+closes every hypothesis at once. Do not build a mask investigation.
 
 ### 8b. `-l` may make `pigs` unusable
 
@@ -375,8 +382,9 @@ pilot, and measure the pin low, for every GPIO-backed `Modules` entry that run i
 
 **Still open, all discovery items for plan 01:**
 
-4. **What does the live `PIGPIOMASK` actually permit?** (§8a.) Everything else is downstream — a
-   write to a masked pin silently does nothing.
+4. **Does a write actually land?** (§8a.) `pigs w 17 0` then `pigs r 17`. Closes the mask question
+   and every other silent-write cause in one check. The mask itself is a weak hypothesis — the user
+   reports changing it with no effect.
 5. **Socket or pipe interface?** (§8b.) Decides how the `ExecStopPost` writes.
 6. **Which PCA9685 register, at which address?** (§6a.) `0x60` vs `0x70`, MODE1 `SLEEP` vs zeroing
    channel registers.

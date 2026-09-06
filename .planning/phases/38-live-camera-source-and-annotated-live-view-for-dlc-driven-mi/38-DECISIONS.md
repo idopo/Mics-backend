@@ -27,6 +27,14 @@ rather than inferred from whether it worked.
 
 ## D-50 — The stream URL is tried FIRST, with the wheel already installed on the vision box
 
+> **SUPERSEDED IN PART, 2026-09-06 — see D-75.** The camera is a GigE Vision `DMK 33GP1300`, which
+> exposes **no stream URL at all**, so this decision's premise does not hold for this rig. Two
+> sentences below are now false and must not be acted on: plan 38-04's first checkpoint step is the
+> `-list_devices` dshow probe, **not** a URL test; and "a USB camera plugged into the vision box is
+> the likelier physical arrangement" is contradicted by the camera's own label. A URL becomes
+> relevant again only on the **T5a** branch, where it is the MJPEG relay's URL rather than the
+> camera's. The reasoning below remains correct as a general rule and is kept for the next camera.
+
 An RTSP/HTTP URL is a `str`, which is exactly what `cv2.VideoCapture` already receives, so **a
 stream URL works today with `dlc-link` 0.1.0, unchanged**. Plan 38-04's first checkpoint therefore
 asks the researcher to try the URL with the build already on the box, before any new wheel is
@@ -252,7 +260,8 @@ explicitly, and each topology **resolves to** a kind:
 | **T2** | Camera holds a routable IP on the lab LAN | `stream` | IT admits the device — may be refused |
 | **T3** | IP camera on a private segment behind the lab computer | `stream` | a TCP port-forward, or a subnet route, on the lab computer |
 | **T4** | Camera USB-attached to the lab computer | `stream` | an MJPEG relay process on the lab computer |
-| **T5** | Vendor-SDK camera (GigE Vision / USB3 Vision) | **none** | a capture shim; `cv2.VideoCapture` cannot open it |
+| **T5** | Vendor-SDK camera (GigE Vision / USB3 Vision) | **none** | a capture shim; `cv2.VideoCapture` cannot open it — **but see D-75: T5 splits into T5a/T5b** |
+| **T6** | Ethernet camera moved to the vision box (added by D-75) | shim, local | a NIC on the vision box on the camera's subnet |
 
 **T1-T4 require no code change in `dlc_link`.** A forward and a relay both terminate in a URL, and
 `classify_source` already routes a URL to `stream` on `<scheme>://` (plan 38-01), which already
@@ -261,7 +270,11 @@ is the whole reason topology can be discovered late without holding up plans 38-
 the code is topology-blind by construction, and that property is now deliberate rather than
 accidental.
 
-**T5 is a STOP**, not a branch. It is added to Task 2's stop conditions in plan 38-04. The honest
+**T5 is a STOP**, not a branch. It is added to Task 2's stop conditions in plan 38-04.
+**[REVISED 2026-09-06 — D-75.]** This is the rig's actual topology, and T5 turned out to have two
+outcomes, not one: **T5a** (a vendor DirectShow wrapper exists, the camera presents as an ordinary
+capture device, and the T4 relay works with no code change) and **T5b** (no wrapper; the shim below
+is required and the phase stops). Read "T5 is a STOP" as "T5b is a STOP". The honest
 next step is the vendor's own tooling and a `FrameReader`-shaped shim behind the injected-capture
 seam that plan 38-01 already builds — separate work, not this phase.
 
@@ -273,6 +286,12 @@ from a risk into a non-issue — the only host IT sees is the lab computer, whic
 ## D-66 — A lab-computer hop forwards before it relays, relays in MJPEG, and never runs on the Pi
 
 Given T3 or T4, three sub-decisions, in this order:
+
+> **INAPPLICABLE TO THIS RIG, 2026-09-06 — D-75.** Part 1 below assumes an RTSP endpoint reachable
+> over TCP. GigE Vision puts both GVCP (control, UDP 3956) and GVSP (stream) on **UDP**, with
+> broadcast discovery, and `netsh portproxy` carries TCP only — so there is nothing to forward and
+> the `rtsp_transport;tcp` gotcha cannot arise. Part 1 is kept for a future IP camera. **Part 2 (the
+> MJPEG relay) does still apply**, and is the T5a path.
 
 **1. T3 (the camera has an IP): forward one TCP port; do not route the subnet.** Both work. The
 forward is one command on the lab computer and changes nothing on the camera or the vision box:
@@ -331,8 +350,10 @@ plan previously pointed every discovery command.
 
 The three questions that resolve everything, in order:
 
-1. What is the camera's **make and model**? (Answers T5 vs everything else. An `arp -a` MAC prefix
-   will do if the label is not to hand.)
+1. ~~What is the camera's **make and model**?~~ **ANSWERED 2026-09-06 — D-75.** `DMK 33GP1300`,
+   The Imaging Source, monochrome, GigE Vision, serial `5810436`. The verdict is T5. Do not re-ask
+   this and do not run `arp -a`. The question that replaces it is D-75's dshow probe, which resolves
+   T5a against T5b.
 2. What does the camera physically plug into, and does the lab computer's `ipconfig /all` show one
    NIC or two? (One NIC + USB → T4. Two NICs with a private range on the second → T3.)
 3. Is the lab computer **also recording** from that camera? (`38-CONTEXT.md` §3f: DirectShow devices
@@ -475,3 +496,27 @@ recorder, not a rewrite, and not a fight over the device.
 
 Order of preference if recording must continue: **multicast monitor** → **one capture with two
 sinks** (D-66 part 2's single-`ffmpeg`-invocation rule) → a virtual-camera splitter, last resort.
+
+---
+
+## Reserved decision-ID ranges — read before appending
+
+This file is appended to by more than one plan, and the ranges have already collided once. Before
+adding a decision, take the next free ID from this table and update it.
+
+| Range | Owner | Status |
+|---|---|---|
+| D-27 … D-48 | Phase 35 | closed |
+| D-49 … D-64 | Phase 38 planning (2026-09-02) | closed |
+| D-65 … D-67 | Phase 38 topology (D-65 taxonomy, D-66 lab-computer hop, D-67 discovery order) | **in this file** |
+| D-68 … D-74 | *free* | — |
+| D-75 | Phase 38 camera identity / T5 split | **in this file** |
+| **D-76 … D-85** | **plan 38-06's decision set** | **reserved — 38-06 originally said D-65..D-74, which double-booked the topology decisions; it is renumbered to this range** |
+| D-86+ | *free* | — |
+
+**Threat IDs collide the same way.** `T-38-40` … `T-38-44` are used by plan 38-05 (pose row order,
+runbook attribution, keep-up number, `opencv-python`, project writes). Plan 38-06's threat block is
+renumbered to **T-38-60 … T-38-71**. Take new threat IDs from `T-38-72` onward.
+
+**Format, for anything appended here:** a level-2 heading, `## D-NN — <title>`. Not bold, not a
+list item. Any automated check that greps for these entries must match `^## D-`.

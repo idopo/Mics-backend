@@ -196,8 +196,11 @@ That is an architecture-deciding fact, not a detail.
 > D-75 splits T5 rather than treating it as a single dead end. **T5a**: The Imaging Source ships a
 > Windows DirectShow wrapper, so the camera may already appear as an ordinary capture device — in
 > which case D-66's MJPEG relay works with **no new code**, and T5 collapses to T4. **T5b**: no
-> wrapper, and an aravis/PyGObject capture shim is required behind plan 38-01's injected-capture
-> seam. One unrun command discriminates them (`ffmpeg -list_devices true -f dshow -i dummy`), and it
+> wrapper, and a vendor-SDK capture shim is required behind plan 38-01's injected-capture seam —
+> built on The Imaging Source's own Windows API (`imagingcontrol4`), since the vision box is
+> Windows; aravis is the Linux fallback only. And before any shim: T6 plus the vendor driver
+> installed on the vision box may make the camera enumerate as an ordinary device there, collapsing
+> T6 to T1 with no new code at all. One unrun command discriminates them (`ffmpeg -list_devices true -f dshow -i dummy`), and it
 > is `pending` as of this note because the lab computer is not to hand.
 >
 > D-75 also adds **T6** — move the camera's Ethernet to the vision box — which GigE makes possible

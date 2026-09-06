@@ -1940,7 +1940,17 @@ and watches the annotated video — keypoints and likelihoods drawn on live fram
 pilot's current FDA state, in a notebook. Works for **any** DLC 3.0 PyTorch export and any
 bodypart selection, not just the MultiMice ResNet-50 model Phase 35 used.
 
-**Requirements**: CAM-01 through CAM-15
+**Requirements**: CAM-01 through CAM-16 (CAM-17 is defined but **not scheduled in this phase** — it is where the T5b branch goes)
+
+> **⚠ CAMERA IDENTIFIED 2026-09-06 — this phase has a live termination branch.** The rig camera is a
+> `DMK 33GP1300` (The Imaging Source, monochrome, **GigE Vision**, serial `5810436`), which is
+> D-65's topology **T5** — the one the plans were written to treat as fatal. D-75 splits it:
+> **T5a** (a vendor DirectShow wrapper exists → the MJPEG relay works, no code change, phase
+> proceeds) or **T5b** (no wrapper → plan 38-04 stops at its own step 1a-0 and the phase delivers
+> only 38-06 plus CAM-16's discovery). **One unrun command decides which:**
+> `ffmpeg -list_devices true -f dshow -i dummy`, on the **lab computer**. Per D-67 and D-75 it
+> should be run **before wave 1**, not in wave 3 where 38-04 currently sits — running it early is
+> free and can save three waves of speculative work.
 **Depends on:** Phase 35
 **Sequencing note:** must land **before** Phase 37. Phase 37 extracts `sdk/` + `dlc_link/` into a
 dedicated client repo; this phase modifies `dlc_link/` substantially, and doing it after the
@@ -1983,8 +1993,10 @@ separate work and is NOT in this phase.
 **Plans:** 6 plans in 5 waves
 
 **Planning decisions:** every open question in `38-CONTEXT.md` §9 is answered in
-`38-DECISIONS.md` (D-49 through D-64) — one `--source` flag with `--video` as an alias, the
-stream-URL shortcut tried first with the already-installed build, pacing derived from the source
+`38-DECISIONS.md` (D-49 through D-67, plus D-75; plan 38-06's own set is reserved at D-76-D-85) —
+one `--source` flag with `--video` as an alias, the
+stream-URL shortcut tried first with the already-installed build (**D-50, superseded in part by
+D-75: this camera exposes no URL**), pacing derived from the source
 kind, a reader thread + drop-oldest slot whose overwrite count is the keep-up instrument, a
 `--min-rate` with no default derived from a measured baseline, a same-process viewer that can never
 backpressure the sender, run identity from the orchestrator with the FDA state name from
@@ -2005,9 +2017,9 @@ Plans:
 - [ ] 38-01-PLAN.md — Wave 1 — camera source addressing, source-derived pacing, the newest-frame reader with a counted skip, and four deliberate stops (CAM-01, CAM-02, CAM-03, CAM-04)
 - [ ] 38-02-PLAN.md — Wave 1 — the viewer's pure core: draw-plan planning, the authored-threshold overlay, and the two honest sources of run identity and FDA state (CAM-05, CAM-08)
 - [ ] 38-03-PLAN.md — Wave 2 — the Viewer runtime, the notebook and localhost-MJPEG sinks, the `--view` flags and the notebook itself (CAM-05, CAM-06, CAM-07)
-- [ ] 38-04-PLAN.md — Wave 3 — **USER-RUN** wheel 0.2.0, vision-box discovery, the live camera run with the view open, and the keep-up criterion derived from a measurement (CAM-01, CAM-03, CAM-05, CAM-07, CAM-08)
-- [ ] 38-05-PLAN.md — Wave 4 — the map-free pose probe with a paste-ready `--pose-order`, and a runbook about DeepLabCut rather than about one project (CAM-09)
-- [ ] 38-06-PLAN.md — Wave 5 — **USER-RUN** deployability: the notebook packaged into the wheel, `dlc-link-bootstrap` (config.yaml -> a complete kit), `dlc-link-doctor`, `INSTALL.md` for a fresh Windows runtime machine with no DeepLabCut, and the verified training-machine -> runtime-machine transfer manifest (CAM-10, CAM-11, CAM-12, CAM-13, CAM-14, CAM-15)
+- [ ] 38-04-PLAN.md — Wave 3 — **USER-RUN** wheel 0.2.0, **lab-computer** topology discovery (its step 1a-0 should be run before wave 1), the live camera run with the view open, and the keep-up criterion derived from a measurement (CAM-01, CAM-03, CAM-05, CAM-07, CAM-08, CAM-16). **On the T5b branch this plan delivers CAM-16 only**, and CAM-01/03/05/07/08 are recorded NOT EXERCISED.
+- [ ] 38-05-PLAN.md — Wave 4 — the map-free pose probe with a paste-ready `--pose-order`, and a runbook about DeepLabCut rather than about one project (CAM-09, CAM-16)
+- [ ] 38-06-PLAN.md — Wave 5 — **not blocked by a stopped 38-04** (its dependency is file ownership, not a runtime fact; on T5b this is the phase's only deliverable) — **USER-RUN** deployability: the notebook packaged into the wheel, `dlc-link-bootstrap` (config.yaml -> a complete kit), `dlc-link-doctor`, `INSTALL.md` for a fresh Windows runtime machine with no DeepLabCut, and the verified training-machine -> runtime-machine transfer manifest (CAM-10, CAM-11, CAM-12, CAM-13, CAM-14, CAM-15)
 
 ---
 *Created: 2026-03-15*

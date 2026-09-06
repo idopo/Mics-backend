@@ -395,7 +395,7 @@ Decoding the model string:
 | `DMK` | **Monochrome.** (`DFK` would be the colour variant.) |
 | `33G` | The Imaging Source 33-series, **GigE Vision** — GenICam over Ethernet. |
 | `P1300` | 1280×1024 global-shutter sensor. |
-| `5810436` | Serial number — this is the handle `tcam`/`aravis` select the device by. |
+| `5810436` | Serial number — this is the handle a GenICam library (the vendor's `imagingcontrol4`, or `tcam`/`aravis` on Linux) selects the device by. |
 | `BR2_UP` | Vendor firmware/variant tag; nothing depends on it. |
 | "Image Source" | The Imaging Source's own stack (IC Capture / tiscamera) is what currently holds the device. |
 
@@ -452,8 +452,20 @@ arrangement, and it is strictly better than every hop:
 
 T6 removes the lab computer from the path entirely, which kills D-66's carried hazard outright —
 no second always-on relay process on an unsupervised machine, no host that phase 32/33 would have
-to adopt. It still needs the T5b shim, but it needs nothing else. **If T5b is the answer, T6 is the
-arrangement to build; do not build a relay for a camera that can simply be plugged in elsewhere.**
+to adopt. **If T5b is the answer, T6 is the arrangement to build; do not build a relay for a camera
+that can simply be plugged in elsewhere.**
+
+**T6 may need no shim at all — run the probe a SECOND time.** The vision box is **Windows**
+(`38-CONTEXT.md` §6: `cmd.exe`, `set VAR=`, `ipconfig`, SMB UNC staging). If The Imaging Source's
+driver registers DirectShow devices on the lab computer, it will do the same on `YizharGPU12` once
+installed there. So after moving the cable and installing the vendor driver on the vision box, run
+
+    ffmpeg -list_devices true -f dshow -i dummy
+
+**on the vision box**. If the camera appears, T6 collapses to **T1** — `--source 0`, the device-index
+path plan 38-01 already builds — and no shim, no relay and no fourth source kind are needed at all.
+That is the cheapest possible outcome in the whole phase and it costs one command to check. Only if
+that probe fails does the T5b shim below become real work.
 
 Standard GigE Vision requirements apply and are cheap: a dedicated NIC, camera and NIC on the same
 L2 segment, and MTU 9000 (jumbo frames). Packet loss on a GigE Vision link presents as **dropped
@@ -461,11 +473,29 @@ frames, not as an error**, which is exactly what D-54's `--capture-only` baselin
 
 ### Four consequences for the code, if T5b
 
-1. **Do not route the shim through OpenCV.** `opencv-python-headless` from PyPI is built **without**
-   GStreamer, so `cv2.VideoCapture("tcambin serial=5810436 ! ... ! appsink", cv2.CAP_GSTREAMER)`
-   will fail; and installing a GStreamer-enabled OpenCV build beside it is exactly the second-`cv2`
-   clobber D-58 prohibits by name. Pull buffers from **aravis via PyGObject** straight into numpy
-   and hand those to the existing pipeline. The seam plan 38-01 builds is what receives them.
+1. **Use the VENDOR's own Windows SDK, not aravis, and never route the shim through OpenCV.**
+
+   **Corrected 2026-09-06.** An earlier draft of this decision named `aravis` via PyGObject as the
+   grabber. That is a Linux-first, GObject-centric stack, and **the vision box is Windows**
+   (`38-CONTEXT.md` §6). Aravis on Windows means MSYS2 and a GObject introspection stack dropped
+   next to a conda environment whose `torch` must not be disturbed — the wrong first choice by a
+   wide margin.
+
+   The order to try, cheapest first:
+
+   1. **The vendor's DirectShow wrapper on the vision box** — see T6 above. If the camera enumerates,
+      there is nothing to write: `--source 0` and the existing device-index path.
+   2. **The Imaging Source's IC Imaging Control 4 Python bindings** (`imagingcontrol4`), which is
+      the vendor's supported Windows API for their own GigE cameras and hands over frames as numpy
+      arrays. This is what the shim should be built on if one is needed.
+   3. **aravis** — kept **only** as the fallback if the vision box is ever moved to Linux. Not the
+      Windows answer.
+
+   Whichever supplies the frames, they arrive as numpy arrays and go straight through the seam plan
+   38-01 builds. **Never** via `cv2.VideoCapture(..., cv2.CAP_GSTREAMER)`: `opencv-python-headless`
+   from PyPI is built **without** GStreamer, so `"tcambin serial=5810436 ! ... ! appsink"` will
+   fail, and installing a GStreamer-enabled OpenCV build beside it is exactly the second-`cv2`
+   clobber D-58 prohibits by name.
 2. **The frames are Mono8.** DLC expects three channels. A gray→3-channel expansion is a **required**
    step before `Processor` sees the frame, not an optimisation. Separately and independently: if the
    exported model was trained on colour video from a different camera, live accuracy will differ for
@@ -490,7 +520,7 @@ for this camera. Recorded so nobody adds a resize that costs frames for no reaso
 GigE Vision permits **one primary (control) application** at a time — so D-67's question 3 is still
 architecture-deciding. But unlike DirectShow, the standard also defines **multicast**: the primary
 application streams to a multicast group and further clients attach **read-only as monitors**.
-Aravis supports opening a device in monitor mode. So if the existing capture software must keep
+Both the vendor SDK and aravis support attaching as a monitor. So if the existing capture software must keep
 recording during MICS runs, the answer is multicast monitoring — a configuration change on the
 recorder, not a rewrite, and not a fight over the device.
 

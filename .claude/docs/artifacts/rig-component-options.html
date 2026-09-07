@@ -1,0 +1,629 @@
+<title>MICS Rig Component Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+:root{
+  --paper:#FBFAF7;
+  --surface:#FFFFFF;
+  --surface-2:#F0EEE9;
+  --ink:#141C1B;
+  --ink-2:#48534F;
+  --ink-3:#7B837E;
+  --rule:#E1DED7;
+  --rule-2:#CBC7BE;
+  --accent:#1B5E55;
+  --accent-2:#12433C;
+  --accent-soft:#E4EEEB;
+  --ok:#2E6B4E;
+  --warn:#96681A;
+  --no:#93392F;
+  --tint:0.10;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#101514;
+    --surface:#171D1C;
+    --surface-2:#202726;
+    --ink:#E9EDEA;
+    --ink-2:#A9B3AF;
+    --ink-3:#79837F;
+    --rule:#2A3231;
+    --rule-2:#3A4341;
+    --accent:#5FBBA9;
+    --accent-2:#84D2C2;
+    --accent-soft:#16302C;
+    --ok:#63B487;
+    --warn:#D6A253;
+    --no:#DE7A6C;
+    --tint:0.17;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101514; --surface:#171D1C; --surface-2:#202726;
+  --ink:#E9EDEA; --ink-2:#A9B3AF; --ink-3:#79837F;
+  --rule:#2A3231; --rule-2:#3A4341;
+  --accent:#5FBBA9; --accent-2:#84D2C2; --accent-soft:#16302C;
+  --ok:#63B487; --warn:#D6A253; --no:#DE7A6C;
+  --tint:0.17;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper);color:var(--ink);
+  font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16.5px;line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:940px;margin:0 auto;padding:0 clamp(20px,5vw,48px) 90px}
+.prose{max-width:62ch}
+h1,h2,h3{font-family:"Instrument Serif",Georgia,serif;font-weight:400;text-wrap:balance}
+h1{font-size:clamp(2.6rem,6vw,4rem);line-height:1.02;letter-spacing:-.012em;margin:0}
+h2{font-size:clamp(1.7rem,3.2vw,2.3rem);line-height:1.12;letter-spacing:-.008em;margin:0}
+h3{font-size:1.3rem;line-height:1.2;margin:0}
+h4{font-family:"Source Sans 3",sans-serif;font-size:.95rem;font-weight:700;margin:0}
+p{margin:0}
+a{color:var(--accent)}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:.85em}
+code{background:var(--surface-2);padding:.08em .34em;border-radius:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:500;
+  letter-spacing:.17em;text-transform:uppercase;color:var(--accent);
+}
+
+/* masthead */
+.mast{padding:clamp(48px,8vw,92px) 0 0}
+.mast h1{margin-top:18px}
+.mast .sub{font-size:1.2rem;color:var(--ink-2);margin-top:20px;max-width:56ch}
+.mast .sub em{font-family:"Instrument Serif",serif;font-style:italic;color:var(--ink);font-size:1.15em}
+.byline{
+  display:flex;flex-wrap:wrap;gap:4px 24px;margin-top:28px;padding-top:18px;
+  border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);letter-spacing:.03em;
+}
+
+/* sections */
+section{margin-top:clamp(52px,7vw,80px)}
+.sec-head{margin-bottom:12px}
+.lede{color:var(--ink-2);font-size:1.06rem;margin-top:14px}
+.stack{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+
+/* capability list */
+.caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-top:24px}
+.cap{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:5px}
+.cap:last-child{grid-column:1 / -1}
+.cap .n{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--accent);letter-spacing:.12em}
+.cap p{font-size:.92rem;color:var(--ink-2)}
+
+/* component block */
+.comp{margin-top:42px;padding-top:26px;border-top:2px solid var(--ink)}
+.comp:first-of-type{border-top-width:2px}
+.comp-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.comp-head .tag{
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+.comp .what{margin-top:10px;color:var(--ink-2);max-width:62ch}
+.comp .today{
+  margin-top:14px;padding:12px 16px;background:var(--surface-2);border-radius:5px;
+  font-size:.94rem;color:var(--ink-2);max-width:70ch;
+}
+.comp .today b{color:var(--ink)}
+
+/* tables */
+.tw{overflow-x:auto;margin-top:18px;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:520px}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--rule);vertical-align:top;font-size:.93rem}
+th{
+  font-family:"IBM Plex Mono",monospace;font-size:.66rem;font-weight:600;text-transform:uppercase;
+  letter-spacing:.11em;color:var(--ink-3);background:var(--surface-2);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0}
+tr.rec{background:var(--accent-soft)}
+tr.rec td{border-bottom-color:var(--rule-2)}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .opt{font-weight:700;display:block}
+td .part{font-family:"IBM Plex Mono",monospace;font-size:.82em;color:var(--ink-3);display:block;margin-top:2px}
+.pill{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.pill.rec{background:var(--accent);color:var(--paper)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.no{background:color-mix(in srgb,var(--no) 18%,transparent);color:var(--no)}
+.pill.mid{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+
+/* note */
+.note{
+  margin-top:18px;padding:16px 18px;border-left:3px solid var(--accent);
+  background:var(--accent-soft);border-radius:0 5px 5px 0;font-size:.95rem;max-width:72ch;
+}
+.note b{font-weight:700}
+.note.warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,transparent)}
+
+/* decisions */
+.dec{margin-top:24px;border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.dec-row{display:grid;grid-template-columns:2.2rem 1fr;gap:0 16px;padding:18px 20px;border-bottom:1px solid var(--rule);background:var(--surface)}
+.dec-row:last-child{border-bottom:0}
+.dec-n{font-family:"IBM Plex Mono",monospace;font-size:.8rem;font-weight:600;color:var(--accent);padding-top:.15em}
+.dec-q{font-weight:700;font-size:1.02rem;line-height:1.35}
+.dec-w{color:var(--ink-2);font-size:.93rem;margin-top:5px}
+.dec-who{
+  display:inline-block;margin-top:8px;font-family:"IBM Plex Mono",monospace;
+  font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+}
+
+figure{margin:26px 0 0;padding:clamp(12px,2vw,22px);background:var(--surface);border:1px solid var(--rule);border-radius:6px;overflow-x:auto}
+figure svg{display:block;width:100%;min-width:820px;height:auto}
+figcaption{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3);margin-top:14px;line-height:1.7;letter-spacing:.02em}
+.svg-t{font-family:"Source Sans 3",sans-serif;font-weight:700}
+.svg-s{font-family:"Source Sans 3",sans-serif}
+.svg-m{font-family:"IBM Plex Mono",monospace}
+
+footer{margin-top:80px;padding-top:20px;border-top:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3);line-height:1.9}
+
+@media print{
+  :root{--paper:#fff;--surface:#fff;--surface-2:#f4f3f0;--ink:#000;--ink-2:#333;--ink-3:#666;--rule:#ccc;--rule-2:#aaa;--accent:#1B5E55;--accent-soft:#eef4f2;--tint:0.12}
+  body{font-size:10.5pt}
+  .wrap{max-width:none;padding:0}
+  section{margin-top:28px}
+  .comp{break-inside:avoid-page;margin-top:26px}
+  .tw,table,.note,.dec-row,.cap{break-inside:avoid}
+  h1,h2,h3{break-after:avoid}
+  .mast{padding-top:0}
+}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">Hardware planning · MICS behavioural rig</div>
+  <h1>Component options<br>for the next rig</h1>
+  <p class="sub">Every function the rig performs, the options for delivering it, and what each one costs in money and in <em>connector pins</em> — the resource we are genuinely short of.</p>
+  <div class="byline">
+    <span>Prepared 07 September 2026</span>
+    <span>For discussion — nothing ordered</span>
+    <span>Platform: Raspberry Pi 4B</span>
+  </div>
+</header>
+
+<section id="what">
+  <div class="sec-head"><div class="eyebrow">01 — Scope</div></div>
+  <h2>What the rig has to do</h2>
+  <p class="lede prose">Seven functions. Five exist today in some form; two are new.</p>
+  <div class="caps">
+    <div class="cap"><span class="n">01</span><h4>Play sounds</h4><p>Auditory cues to the animal. Exists, but the quality and the timing are both poor.</p></div>
+    <div class="cap"><span class="n">02</span><h4>Set light intensity</h4><p>Brightness control for optogenetic stimulation. <b>New</b> — no capability today.</p></div>
+    <div class="cap"><span class="n">03</span><h4>Read the treadmill</h4><p>Running speed, as a varying voltage. <b>New</b> — no capability today.</p></div>
+    <div class="cap"><span class="n">04</span><h4>Move doors</h4><p>Open and close compartments. Exists, on a stacked motor board.</p></div>
+    <div class="cap"><span class="n">05</span><h4>Detect licks</h4><p>Capacitive sensing on the spout electrodes. Exists and works.</p></div>
+    <div class="cap"><span class="n">06</span><h4>Trigger optogenetics</h4><p>Command the wearable stimulator. Exists, over a signal wire.</p></div>
+    <div class="cap"><span class="n">07</span><h4>Valves, LEDs, beam breaks</h4><p>The ordinary on/off and sensing lines a task needs. Exists.</p></div>
+  </div>
+</section>
+
+<section id="constraint">
+  <div class="sec-head"><div class="eyebrow">02 — The constraint</div></div>
+  <h2>Why we count pins</h2>
+  <div class="stack prose">
+    <p>The Raspberry Pi exposes a single 40-pin connector. After power and ground, <strong>28 of those pins can carry signals</strong>, and every one of them is currently spoken for. That is the budget this whole plan works within.</p>
+    <p>The good news is that most add-on hardware does <strong>not</strong> consume pins. Two of the 28 form a shared communication bus called <strong>I2C</strong>, and any number of small boards can hang off those same two wires — each one answering to its own address, like houses on a street. A board on the I2C bus is effectively free.</p>
+    <p>Only three kinds of thing genuinely cost pins: signals that must be timed to the microsecond, the audio connection (which the chip fixes to three specific pins), and interrupt lines — a single wire a sensor uses to say <em>&ldquo;something just happened, read me now.&rdquo;</em></p>
+  </div>
+  <div class="note">
+    <b>The rule of thumb for the rest of this document:</b> if a question is &ldquo;can we add another one of these?&rdquo;, the answer is usually yes and it costs no pins. If the question is &ldquo;does this need to be timed precisely?&rdquo;, that is when it costs a pin.
+  </div>
+</section>
+
+<section id="options">
+  <div class="sec-head"><div class="eyebrow">03 — Options</div></div>
+  <h2>Function by function</h2>
+  <p class="lede prose">Each block below gives what the function is for, what exists today, and the realistic options. The shaded row is our recommendation.</p>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Sound</h3><span class="tag">Function 01</span></div>
+    <p class="what">Auditory cues delivered to the animal during a task.</p>
+    <div class="today"><b>Today:</b> the Pi's built-in headphone socket. This is not a real sound chip — the processor approximates audio by switching a pin on and off very fast and smoothing the result with a filter. It is about 11 bits of accuracy against a normal 16 or 24, and audibly noisy.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr><td><span class="opt">Keep the built-in output</span></td><td class="num">&euro;0</td><td class="num">0</td><td>Quality and timing stay as they are. Adequate only if the sound is a simple reward beep.</td></tr>
+        <tr class="rec"><td><span class="opt">Add a dedicated audio chip <span class="pill rec">recommended</span></span><span class="part">PCM5102A — audio DAC</span></td><td class="num">&euro;5</td><td class="num">3</td><td>Proper 24-bit sound. Crucially the Pi generates the audio timing itself, so sound and behavioural events share one clock.</td></tr>
+        <tr><td><span class="opt">External USB audio interface</span><span class="part">e.g. Expert Sleepers ES-8</span></td><td class="num">&euro;50&ndash;500</td><td class="num">0</td><td>Good quality and no pins, but it runs on its own internal clock, which must then be reconciled with the rig's.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><b>Worth knowing:</b> a large part of the current sound delay is a software fault, not the hardware — the code re-decodes the audio file on every single trigger. That fix is free and already written. We should measure after it before deciding how much the chip is worth.</div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Light intensity</h3><span class="tag">Function 02 · new</span></div>
+    <p class="what">Setting how bright the optogenetic LED runs — a steady voltage the light driver reads as a brightness command.</p>
+    <div class="today"><b>Today:</b> nothing. The Pi cannot produce a variable voltage on any pin. This capability requires an add-on board whichever route we take.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr class="rec"><td><span class="opt">Voltage-output board on the shared bus <span class="pill rec">recommended</span></span><span class="part">MCP4728 — 4-channel analog voltage output</span></td><td class="num">&euro;5</td><td class="num">0</td><td>Four independent brightness channels, updated every ~0.2 ms. Ample for setting a level, a ramp, or the envelope of a pulse train.</td></tr>
+        <tr><td><span class="opt">Filtered switching from a pin</span><span class="part">hardware PWM + RC filter</span></td><td class="num">&euro;1</td><td class="num">1</td><td>No extra chip, but coarser (~8&ndash;10 bits) and slower to settle. Costs a pin we do not have spare.</td></tr>
+        <tr><td><span class="opt">Fast voltage output on a separate bus</span><span class="part">MCP4922 — 2-channel SPI DAC</span></td><td class="num">&euro;5</td><td class="num">4</td><td>~20&times; faster. Only needed for shaping a waveform <em>within</em> a single light pulse.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><b>Design point worth agreeing now:</b> the voltage board sets <b>how bright</b>; a separate signal pin sets <b>when</b>. Set the brightness during the inter-trial interval, then gate the light with a precisely-timed pulse. This is exactly how commercial optogenetic drivers are built, and it keeps stimulus onset accurate to microseconds.</div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Treadmill</h3><span class="tag">Function 03 · new</span></div>
+    <p class="what">Reading locomotion speed. The sensor sends a voltage that rises with speed, on a two-conductor connection.</p>
+    <div class="today"><b>Today:</b> nothing. The Pi cannot measure a voltage on any pin, so this also needs an add-on board.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr class="rec"><td><span class="opt">Voltage-reader board on the shared bus <span class="pill rec">recommended</span></span><span class="part">ADS1115 — 4-channel analog voltage reader</span></td><td class="num">&euro;5</td><td class="num">0</td><td>One reading every ~1.2 ms, against locomotion that changes over 10&ndash;100 ms. Four inputs, so three spare for future sensors.</td></tr>
+        <tr><td><span class="opt">Fast reader on a separate bus</span><span class="part">MCP3008 — 8-channel SPI ADC</span></td><td class="num">&euro;5</td><td class="num">4</td><td>~50&times; faster than we need for this, and costs four pins. Not justified.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note warn"><b>Two things to check before wiring, both cheap:</b> measure the sensor's voltage at full speed, so the protection circuit is sized correctly — these boards have hard limits and a treadmill can exceed them. And note that a two-conductor sensor reports <b>speed but not direction</b>. If forward-versus-backward ever matters scientifically, that is a different sensor, not a different board.</div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Doors and motors</h3><span class="tag">Function 04</span></div>
+    <p class="what">Opening and closing compartment doors, and the motorised reward mechanism.</p>
+    <div class="today"><b>Today:</b> an Adafruit motor board stacked on top of the Pi's connector. Internally it is two ordinary chips — a signal generator and the power stage that actually turns the motors. It uses the shared bus and <b>no pins at all</b>.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr><td><span class="opt">Keep the stacked motor board</span><span class="part">Adafruit DC/Stepper Motor HAT</span></td><td class="num">&euro;0</td><td class="num">0</td><td>Works, but it physically covers the connector we need to solder the audio chip to — and it may claim two pins the audio plan depends on.</td></tr>
+        <tr class="rec"><td><span class="opt">Same two chips, mounted on our own board <span class="pill rec">recommended</span></span><span class="part">PCA9685 signal generator + TB6612FNG motor driver</span></td><td class="num">&euro;18</td><td class="num">0</td><td>Connector stays accessible, no pins claimed, and it sits at a bus address that avoids a clash with the light-intensity board.</td></tr>
+        <tr><td><span class="opt">Servo doors instead of motors</span><span class="part">PCA9685 alone, no motor driver</span></td><td class="num">&euro;10</td><td class="num">0</td><td>One board drives <b>16</b> doors instead of five. Only viable if the mechanism can be redesigned around servos.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note warn"><b>An existing fault worth fixing in the rebuild:</b> the doors currently have no limit switches, so a motor that reaches the end of its travel keeps pushing. That draws maximum current indefinitely and will eventually destroy the motor or its driver. Two switches per door, on a shared expander board, cost <b>&euro;5 and no pins</b>.</div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Lick detection</h3><span class="tag">Function 05</span></div>
+    <p class="what">Capacitive sensing on the drinking-spout electrodes — the primary behavioural readout.</p>
+    <div class="today"><b>Today:</b> one sensor chip on the shared bus with 12 electrode channels, four in use. It costs <b>one pin</b> — not for data, but for the interrupt wire it uses to announce a lick the instant it happens.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr class="rec"><td><span class="opt">Keep one sensor chip <span class="pill rec">recommended</span></span><span class="part">MPR121 — 12-channel capacitive touch sensor</span></td><td class="num">&euro;0</td><td class="num">1</td><td>12 electrodes, four used. Substantial headroom already.</td></tr>
+        <tr><td><span class="opt">Add a second sensor chip</span><span class="part">MPR121 &times; 2</span></td><td class="num">&euro;8</td><td class="num">2</td><td>24 electrodes. The second chip needs its own interrupt wire, so it costs a second pin.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Optogenetic stimulator link</h3><span class="tag">Function 06</span></div>
+    <p class="what">Commanding the head-mounted wireless stimulator to deliver light.</p>
+    <div class="today"><b>Today:</b> a signal wire from the Pi to a separate control unit, which relays the command wirelessly. The wire costs one pin.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr><td><span class="opt">Keep the signal wire</span><span class="part">BNC trigger to the BlueHub</span></td><td class="num">&euro;0</td><td class="num">1</td><td>Stimulation starts within microseconds of the command. Required if onset must be locked to behaviour.</td></tr>
+        <tr><td><span class="opt">Pi talks to the stimulator directly over Bluetooth</span><span class="part">Bluetooth Low Energy, onboard</span></td><td class="num">&euro;0</td><td class="num">&minus;1</td><td>Frees a pin. But stimulation onset becomes uncertain by <b>7&ndash;30 ms</b>, because of how Bluetooth schedules messages.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><b>This is a scientific decision, not a technical one, and it changes the pin budget.</b> If your protocols tolerate tens of milliseconds of onset uncertainty, Bluetooth frees the pin the audio chip needs. If onset must be locked to a lick or a poke, the wire stays and the audio chip's third pin has to come from elsewhere. <br><br>Either way the rig still needs the existing control unit for <b>charging and programming</b> the wearables — Bluetooth cannot do either.</div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>Valves, LEDs and beam breaks</h3><span class="tag">Function 07</span></div>
+    <p class="what">The ordinary on/off outputs and sensing inputs a task needs — reward valves, odour valves, cue lights, infrared beam breaks.</p>
+    <div class="today"><b>Today:</b> 22 of these, each on its own pin. That is the bulk of the budget, and it is why nothing else fits.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Option</th><th>Cost</th><th>Pins</th><th>Trade-off</th></tr></thead>
+      <tbody>
+        <tr class="rec"><td><span class="opt">Keep the precise ones on pins <span class="pill rec">recommended</span></span></td><td class="num">&euro;0</td><td class="num">1 each</td><td>Anything whose exact timing appears in the analysis — reward delivery, beam breaks that gate a trial.</td></tr>
+        <tr class="rec"><td><span class="opt">Move the rest to an expander board <span class="pill rec">recommended</span></span><span class="part">MCP23017 — 16 on/off pins over I2C</span></td><td class="num">&euro;3</td><td class="num">0</td><td>16 extra lines for <b>no pins</b>, at ~0.1 ms per change. Right for odour valves and cue lights; wrong for anything timed.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><b>The question that sorts them:</b> <em>does this line's exact timing appear in your analysis?</em> If yes it stays on a pin. If no, it moves to the expander and costs nothing. This is a scientific judgement per line, and it is the single most useful thing to settle before the board is laid out.</div>
+  </div>
+</section>
+
+<section id="map">
+  <div class="sec-head"><div class="eyebrow">04 — How it all connects</div></div>
+  <h2>The whole rig on one page</h2>
+  <p class="lede prose">Three ways a device can reach the Pi: it takes its own pins, it shares the two-wire bus with everything else, or it needs no wires at all. The dashed lines are the subject of section 06.</p>
+
+  <figure>
+    <svg viewBox="0 0 1000 700" role="img" aria-label="System diagram: a Raspberry Pi connected to devices three ways — directly to pins for the audio chip, sync output and valves; over a shared two-wire I2C bus to five add-on boards; and wirelessly to the OptoBlueBerry stimulator and RFID readers. Dashed lines show timing witness wires from four of the bus boards back to individual pins.">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--ink-3)"/></marker>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+      </defs>
+
+      <!-- Pi -->
+      <rect x="24" y="52" width="152" height="566" rx="7" fill="var(--surface-2)" stroke="var(--ink)" stroke-width="2.5"/>
+      <text class="svg-t" x="40" y="82" font-size="16" fill="var(--ink)">Raspberry Pi</text>
+      <text class="svg-t" x="40" y="102" font-size="16" fill="var(--ink)">4B</text>
+      <line x1="40" y1="118" x2="160" y2="118" stroke="var(--rule-2)"/>
+      <text class="svg-m" x="40" y="140" font-size="10" fill="var(--ink-2)">28 signal pins</text>
+      <text class="svg-m" x="40" y="156" font-size="10" fill="var(--ink-2)">1 shared bus</text>
+      <text class="svg-m" x="40" y="172" font-size="10" fill="var(--ink-2)">Bluetooth + USB</text>
+      <text class="svg-s" x="40" y="206" font-size="11" fill="var(--accent)" font-style="italic">holds the master</text>
+      <text class="svg-s" x="40" y="220" font-size="11" fill="var(--accent)" font-style="italic">clock for the rig</text>
+
+      <!-- zone 1: direct pins -->
+      <text class="svg-m" x="196" y="42" font-size="10" fill="var(--ink-3)" letter-spacing="1.5">TAKES ITS OWN PINS &#183; PRECISE TIMING</text>
+      <rect x="196" y="52" width="216" height="86" rx="5" fill="color-mix(in srgb,var(--accent) 11%,transparent)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text class="svg-t" x="210" y="76" font-size="13" fill="var(--ink)">Audio chip</text>
+      <text class="svg-m" x="210" y="94" font-size="9.5" fill="var(--ink-2)">PCM5102A</text>
+      <text class="svg-s" x="210" y="112" font-size="11" fill="var(--ink-2)">sound to the animal</text>
+      <text class="svg-m" x="210" y="130" font-size="10" fill="var(--accent)">3 pins</text>
+
+      <rect x="426" y="52" width="164" height="86" rx="5" fill="color-mix(in srgb,var(--accent) 11%,transparent)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text class="svg-t" x="440" y="76" font-size="13" fill="var(--ink)">Sync output</text>
+      <text class="svg-m" x="440" y="94" font-size="9.5" fill="var(--ink-2)">BNC to ephys</text>
+      <text class="svg-s" x="440" y="112" font-size="11" fill="var(--ink-2)">shared time base</text>
+      <text class="svg-m" x="440" y="130" font-size="10" fill="var(--accent)">1 pin</text>
+
+      <rect x="604" y="52" width="360" height="86" rx="5" fill="color-mix(in srgb,var(--accent) 11%,transparent)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text class="svg-t" x="618" y="76" font-size="13" fill="var(--ink)">Valves, cue LEDs, beam breaks</text>
+      <text class="svg-s" x="618" y="96" font-size="11" fill="var(--ink-2)">every line whose exact timing appears in the analysis</text>
+      <text class="svg-m" x="618" y="130" font-size="10" fill="var(--accent)">16 pins &#183; the bulk of the budget</text>
+
+      <line x1="176" y1="95" x2="192" y2="95" stroke="var(--ink)" stroke-width="2"/>
+
+      <!-- zone 2: shared bus -->
+      <text class="svg-m" x="196" y="222" font-size="10" fill="var(--ink-3)" letter-spacing="1.5">SHARES THE TWO-WIRE BUS &#183; COSTS NO PINS</text>
+      <line x1="176" y1="248" x2="968" y2="248" stroke="var(--ink)" stroke-width="4"/>
+      <text class="svg-m" x="700" y="240" font-size="10" fill="var(--ink-2)">I2C bus &#183; 2 pins total, shared by all five</text>
+
+      <g>
+        <rect x="200" y="278" width="140" height="126" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6"/>
+        <text class="svg-t" x="212" y="300" font-size="12" fill="var(--ink)">MPR121</text>
+        <text class="svg-m" x="212" y="316" font-size="9.5" fill="var(--accent)">0x5A</text>
+        <text class="svg-s" x="212" y="338" font-size="11" fill="var(--ink-2)">lick detection</text>
+        <text class="svg-s" x="212" y="366" font-size="10" fill="var(--ink-3)">12 electrodes,</text>
+        <text class="svg-s" x="212" y="380" font-size="10" fill="var(--ink-3)">4 in use</text>
+        <line x1="270" y1="248" x2="270" y2="278" stroke="var(--ink)" stroke-width="1.6"/>
+      </g>
+      <g>
+        <rect x="356" y="278" width="140" height="126" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6"/>
+        <text class="svg-t" x="368" y="300" font-size="12" fill="var(--ink)">PCA9685</text>
+        <text class="svg-m" x="368" y="316" font-size="9.5" fill="var(--accent)">0x40</text>
+        <text class="svg-s" x="368" y="338" font-size="11" fill="var(--ink-2)">door + servo</text>
+        <text class="svg-s" x="368" y="352" font-size="11" fill="var(--ink-2)">signals</text>
+        <text class="svg-s" x="368" y="380" font-size="10" fill="var(--ink-3)">&rarr; TB6612FNG</text>
+        <text class="svg-s" x="368" y="393" font-size="10" fill="var(--ink-3)">motor drivers</text>
+        <line x1="426" y1="248" x2="426" y2="278" stroke="var(--ink)" stroke-width="1.6"/>
+      </g>
+      <g>
+        <rect x="512" y="278" width="140" height="126" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6"/>
+        <text class="svg-t" x="524" y="300" font-size="12" fill="var(--ink)">ADS1115</text>
+        <text class="svg-m" x="524" y="316" font-size="9.5" fill="var(--accent)">0x48</text>
+        <text class="svg-s" x="524" y="338" font-size="11" fill="var(--ink-2)">reads a voltage</text>
+        <text class="svg-s" x="524" y="366" font-size="10" fill="var(--ink-3)">&larr; treadmill</text>
+        <text class="svg-s" x="524" y="380" font-size="10" fill="var(--ink-3)">speed sensor</text>
+        <line x1="582" y1="248" x2="582" y2="278" stroke="var(--ink)" stroke-width="1.6"/>
+      </g>
+      <g>
+        <rect x="668" y="278" width="140" height="126" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6"/>
+        <text class="svg-t" x="680" y="300" font-size="12" fill="var(--ink)">MCP4728</text>
+        <text class="svg-m" x="680" y="316" font-size="9.5" fill="var(--accent)">0x60</text>
+        <text class="svg-s" x="680" y="338" font-size="11" fill="var(--ink-2)">sets a voltage</text>
+        <text class="svg-s" x="680" y="366" font-size="10" fill="var(--ink-3)">&rarr; optogenetic</text>
+        <text class="svg-s" x="680" y="380" font-size="10" fill="var(--ink-3)">light driver</text>
+        <line x1="738" y1="248" x2="738" y2="278" stroke="var(--ink)" stroke-width="1.6"/>
+      </g>
+      <g>
+        <rect x="824" y="278" width="140" height="126" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6"/>
+        <text class="svg-t" x="836" y="300" font-size="12" fill="var(--ink)">MCP23017</text>
+        <text class="svg-m" x="836" y="316" font-size="9.5" fill="var(--accent)">0x20</text>
+        <text class="svg-s" x="836" y="338" font-size="11" fill="var(--ink-2)">16 slow on/off</text>
+        <text class="svg-s" x="836" y="366" font-size="10" fill="var(--ink-3)">&rarr; odour valves,</text>
+        <text class="svg-s" x="836" y="380" font-size="10" fill="var(--ink-3)">limit switches</text>
+        <line x1="894" y1="248" x2="894" y2="278" stroke="var(--ink)" stroke-width="1.6"/>
+      </g>
+
+      <!-- witness band -->
+      <path d="M270 404 L270 440" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+      <path d="M582 404 L582 440" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+      <path d="M738 404 L738 440" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+      <path d="M894 404 L894 440" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+      <text class="svg-s" x="426" y="424" font-size="10" fill="var(--ink-3)" text-anchor="middle">no witness pin</text>
+
+      <rect x="196" y="440" width="768" height="62" rx="5" fill="color-mix(in srgb,var(--accent) 9%,transparent)" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="6 4"/>
+      <text class="svg-m" x="210" y="460" font-size="10" fill="var(--accent)" letter-spacing="1.4">TIMING WITNESS LINES &#183; 4 PINS</text>
+      <text class="svg-m" x="238" y="484" font-size="9.5" fill="var(--ink-2)">lick IRQ</text>
+      <text class="svg-m" x="530" y="484" font-size="9.5" fill="var(--ink-2)">conversion ready</text>
+      <text class="svg-m" x="706" y="484" font-size="9.5" fill="var(--ink-2)">LDAC latch</text>
+      <text class="svg-m" x="850" y="484" font-size="9.5" fill="var(--ink-2)">door arrived</text>
+      <line x1="176" y1="470" x2="192" y2="470" stroke="var(--accent)" stroke-width="2"/>
+
+      <!-- zone 3: wireless -->
+      <text class="svg-m" x="196" y="540" font-size="10" fill="var(--ink-3)" letter-spacing="1.5">NO WIRES TO THE PI AT ALL</text>
+      <rect x="196" y="552" width="368" height="66" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6" stroke-dasharray="3 3"/>
+      <text class="svg-t" x="210" y="576" font-size="13" fill="var(--ink)">OptoBlueBerry stimulator</text>
+      <text class="svg-s" x="210" y="596" font-size="11" fill="var(--ink-2)">Bluetooth &#183; head-mounted, wireless</text>
+      <text class="svg-m" x="210" y="611" font-size="9.5" fill="var(--ink-3)">still needs its charging + programming dock</text>
+
+      <rect x="580" y="552" width="384" height="66" rx="5" fill="var(--surface)" stroke="var(--rule-2)" stroke-width="1.6" stroke-dasharray="3 3"/>
+      <text class="svg-t" x="594" y="576" font-size="13" fill="var(--ink)">RFID readers &#183; future</text>
+      <text class="svg-s" x="594" y="596" font-size="11" fill="var(--ink-2)">USB hub, one reader per cage zone</text>
+      <text class="svg-m" x="594" y="611" font-size="9.5" fill="var(--ink-3)">check for interference with the lick electrodes first</text>
+
+      <line x1="176" y1="585" x2="192" y2="585" stroke="var(--ink-3)" stroke-width="2" stroke-dasharray="3 3"/>
+
+      <!-- legend -->
+      <line x1="200" y1="660" x2="230" y2="660" stroke="var(--ink)" stroke-width="2.5"/>
+      <text class="svg-s" x="238" y="664" font-size="10.5" fill="var(--ink-2)">wire that costs a pin, or the shared bus</text>
+      <line x1="500" y1="660" x2="530" y2="660" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 4"/>
+      <text class="svg-s" x="538" y="664" font-size="10.5" fill="var(--ink-2)">timing witness line</text>
+      <line x1="730" y1="660" x2="760" y2="660" stroke="var(--ink-3)" stroke-width="2" stroke-dasharray="3 3"/>
+      <text class="svg-s" x="768" y="664" font-size="10.5" fill="var(--ink-2)">wireless or USB &#183; no pins</text>
+    </svg>
+    <figcaption>Five add-on boards share one two-wire bus and cost no pins between them. Four of them also run a single dashed &ldquo;witness&rdquo; wire back to a pin, so the Pi can record exactly when something happened &mdash; see section 06. The odour valves are the one deliberate demotion: they move off individual pins onto the expander board, because odour arrival is limited by how fast gas travels, not by electronics.</figcaption>
+  </figure>
+</section>
+
+<section id="bus">
+  <div class="sec-head"><div class="eyebrow">05 — The shared bus</div></div>
+  <h2>One bus, one address per board</h2>
+  <p class="lede prose">Every add-on board above shares the same two wires. Each answers to its own address, so the only planning needed is to make sure no two want the same one.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Address</th><th>Board</th><th>Function</th><th>Max on the bus</th></tr></thead>
+    <tbody>
+      <tr><td class="num">0x20&ndash;0x27</td><td><strong>MCP23017</strong></td><td>16 extra on/off lines</td><td class="num">8</td></tr>
+      <tr><td class="num">0x40&ndash;0x47</td><td><strong>PCA9685</strong></td><td>motor and servo signals</td><td class="num">8</td></tr>
+      <tr><td class="num">0x48&ndash;0x4B</td><td><strong>ADS1115</strong></td><td>read a voltage — treadmill</td><td class="num">4</td></tr>
+      <tr><td class="num">0x5A&ndash;0x5D</td><td><strong>MPR121</strong></td><td>lick detection</td><td class="num">4</td></tr>
+      <tr><td class="num">0x60&ndash;0x67</td><td><strong>MCP4728</strong></td><td>set a voltage — light intensity</td><td class="num">8</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">
+    <b>One decision to record now:</b> the light-intensity board and the stacked motor board both default to address <code>0x60</code>. Buying the motor chips separately avoids this entirely, because a standalone signal generator sits at <code>0x40</code>. If we keep the stacked board instead, it needs one solder link to move it to <code>0x61</code>.
+    <br><br>A realistic rig is <b>five boards against a 112-address space</b>. Neither addresses nor bus speed are anywhere near a limit — the practical ceiling is wiring length, and the fix for that is a signal buffer, not a second bus.
+  </div>
+</section>
+
+<section id="timing">
+  <div class="sec-head"><div class="eyebrow">06 — Timing</div></div>
+  <h2>Knowing exactly <em>when</em> something happened</h2>
+  <div class="stack prose">
+    <p>A signal on its own pin is timestamped by the Pi's hardware to within a <strong>millionth of a second</strong>. A message arriving over the shared bus is not &#8212; there we only know when the software got round to reading it, which can be a <strong>thousandth of a second</strong> out, and varies.</p>
+    <p>For a brightness setting that does not matter. For &ldquo;when did the door actually open&rdquo; or &ldquo;when was the treadmill at this speed&rdquo;, it does.</p>
+    <p>The fix is one extra wire per board. Most of these chips have a spare pin that pulses at the exact moment something happens; run that to a Pi pin and the event gets the hardware timestamp, while the bus carries the detail. <strong>The rig already works this way for licks</strong> &#8212; the sensor's alert wire says <em>when</em>, and the bus read afterwards says <em>which electrode</em>.</p>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>Witness wire</th><th>Comes from</th><th>Records the moment&hellip;</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Lick</strong> <span class="pill ok">already fitted</span></td><td class="num">MPR121</td><td>an electrode is touched</td></tr>
+      <tr><td><strong>Door arrival</strong></td><td class="num">MCP23017</td><td>a limit switch closes &#8212; the door physically arriving</td></tr>
+      <tr><td><strong>Treadmill</strong></td><td class="num">ADS1115</td><td>a speed reading completes</td></tr>
+      <tr><td><strong>Light change</strong></td><td class="num">MCP4728</td><td>the brightness actually changes</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note">
+    <b>The door case is the clearest.</b> The command we send over the bus was never the door's arrival time &#8212; there is mechanical travel in between. The limit switch closing <em>is</em> the arrival. Recording both gives us the travel time, measured, on every trial.
+    <br><br>
+    <b>The treadmill does not need every sample timestamped.</b> We take one hardware-timed anchor every hundred readings and fill in between, which also measures the sensor board's own clock drifting against the rig's. Same technique, far less load.
+  </div>
+
+  <div class="note warn">
+    <b>These four wires cost four pins, and that is what forces one design change.</b> The budget balances at zero without them. Moving the five odour valves onto the expander board pays for all four &#8212; and odour is the right thing to move, because odour arrival is limited by how fast gas travels down a tube, not by electronics. <b>This is no longer an optional refinement; it is part of the plan.</b>
+  </div>
+</section>
+
+<section id="pins">
+  <div class="sec-head"><div class="eyebrow">07 — Allocation</div></div>
+  <h2>Where the 28 pins go</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Purpose</th><th>Pins</th><th>Fixed or flexible</th></tr></thead>
+    <tbody>
+      <tr><td>Shared I2C bus — every add-on board</td><td class="num">2</td><td><span class="pill no">fixed by the chip</span></td></tr>
+      <tr><td>Audio chip connection</td><td class="num">3</td><td><span class="pill no">fixed by the chip</span></td></tr>
+      <tr><td><strong>Timing witness wires</strong> — lick, doors, treadmill, light</td><td class="num"><strong>4</strong></td><td>any pins — see section 06</td></tr>
+      <tr><td>Audio onset measurement</td><td class="num">1</td><td>any pin</td></tr>
+      <tr><td>Sync output to recording equipment</td><td class="num">1</td><td>any pin — reserve it always</td></tr>
+      <tr class="rec"><td><strong>Remaining for valves, LEDs and beam breaks</strong></td><td class="num"><strong>17</strong></td><td>fully interchangeable</td></tr>
+      <tr><td><strong>Total signal pins available</strong></td><td class="num"><strong>28</strong></td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note warn">
+    <b>The rig needs 21 of those last 17.</b> Four short — resolved by moving the five odour valves onto the expander board, which leaves <b>16 needed against 17 available: one spare.</b> One line short, which is resolved by moving a single timing-tolerant output — an odour valve, say — onto the expander board. That is a &euro;3 part and no pins. <br><br>It is worth stating plainly because it is the whole shape of the problem: <b>the connector is full, and every new capability has to be paid for either by a board on the shared bus, or by moving something slow off a pin.</b>
+  </div>
+</section>
+
+<section id="scaling">
+  <div class="sec-head"><div class="eyebrow">08 — Scaling</div></div>
+  <h2>What happens when we want more</h2>
+  <p class="lede prose">Most things scale by adding a board to the shared bus, which costs money but no pins.</p>
+  <div class="tw"><table>
+    <thead><tr><th>More of…</th><th>What you add</th><th>Extra pins</th><th>Ceiling</th></tr></thead>
+    <tbody>
+      <tr><td>Light-intensity channels</td><td>nothing until 5, then a second voltage board</td><td class="num">0</td><td>32 channels</td></tr>
+      <tr><td>Analog sensors</td><td>nothing until 5, then a second reader board</td><td class="num">0</td><td>16 channels</td></tr>
+      <tr><td>Slow on/off lines</td><td>one expander per 16 lines</td><td class="num">0</td><td>128 lines</td></tr>
+      <tr><td>Lick electrodes</td><td>a second sensor chip per 12 electrodes</td><td class="num"><span class="pill mid">1 each</span></td><td>48 electrodes</td></tr>
+      <tr><td>Precisely-timed lines</td><td>nothing — these are the scarce resource</td><td class="num"><span class="pill no">1 each</span></td><td>20 total</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:34px;font-size:1.1rem">Doors specifically</h3>
+  <p class="lede prose" style="margin-top:8px">One signal-generator board has 16 channels. A DC motor uses three of them; a servo uses one.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Doors</th><th>PCA9685 signal generators</th><th>TB6612FNG motor drivers</th><th>Pins</th><th>~Cost</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">&euro;14</td></tr>
+      <tr><td class="num">4</td><td class="num">1</td><td class="num">2</td><td class="num">0</td><td class="num">&euro;18</td></tr>
+      <tr><td class="num">8</td><td class="num">2</td><td class="num">4</td><td class="num">0</td><td class="num">&euro;36</td></tr>
+      <tr><td class="num">16</td><td class="num">4</td><td class="num">8</td><td class="num">0</td><td class="num">&euro;72</td></tr>
+      <tr class="rec"><td class="num">16 <em>as servos</em></td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">&euro;10</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note warn"><b>The real limit on motors is the power supply, not the electronics.</b> A motor pushing against a closed door draws several times its running current, and if a task opens several doors at once they all do it together. The motor supply must be sized for that case and kept separate from the supply feeding the Pi and the sensitive boards.</div>
+</section>
+
+<section id="cost">
+  <div class="sec-head"><div class="eyebrow">09 — Cost</div></div>
+  <h2>What the recommended build comes to</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Item</th><th>Function</th><th>Pins</th><th>~Cost</th></tr></thead>
+    <tbody>
+      <tr><td><strong>PCM5102A</strong></td><td>audio output chip</td><td class="num">3</td><td class="num">&euro;5</td></tr>
+      <tr><td><strong>MCP4728</strong></td><td>light intensity — set a voltage</td><td class="num">0</td><td class="num">&euro;5</td></tr>
+      <tr><td><strong>ADS1115</strong></td><td>treadmill — read a voltage</td><td class="num">0</td><td class="num">&euro;5</td></tr>
+      <tr><td><strong>PCA9685</strong> + 2 &times; <strong>TB6612FNG</strong></td><td>door motors, off the stacked board</td><td class="num">0</td><td class="num">&euro;18</td></tr>
+      <tr><td><strong>MCP23017</strong></td><td>16 slow on/off lines, and the limit switches</td><td class="num">0&ndash;1</td><td class="num">&euro;3</td></tr>
+      <tr><td>Limit switches, protection components, connectors</td><td>&mdash;</td><td class="num">0</td><td class="num">&euro;20</td></tr>
+      <tr class="rec"><td><strong>Total</strong></td><td>&mdash;</td><td class="num"><strong>3&ndash;4</strong></td><td class="num"><strong>~&euro;56</strong></td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">
+    <b>Roughly half a day of assembly work</b> beyond the parts: five soldered wires for the audio chip, and small protection circuits on the treadmill input and the light-intensity output. Everything else plugs into existing connectors.
+    <br><br><b>The alternative, for comparison:</b> a single professional USB interface covers sound, light-intensity output and treadmill input in one unit for about <b>&euro;500</b>, with no soldering and no pins. It gives up the shared audio clock and its behaviour on this platform is unverified. Worth stating as the buy-instead-of-build option, but we do not recommend it at this stage.
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="sec-head"><div class="eyebrow">10 — Decisions</div></div>
+  <h2>What we need agreed</h2>
+  <p class="lede prose">Four of these are scientific judgements and cannot be made by the hardware side. The rest are bench checks.</p>
+  <div class="dec">
+    <div class="dec-row"><div class="dec-n">01</div><div>
+      <div class="dec-q">Can optogenetic stimulation tolerate 7&ndash;30 ms of onset uncertainty?</div>
+      <div class="dec-w">If yes, Bluetooth replaces the trigger wire and frees the pin the audio chip needs. If no, the wire stays and one slow output moves to an expander instead. This is the single decision that determines the pin layout.</div>
+      <span class="dec-who">Scientific — PI</span>
+    </div></div>
+    <div class="dec-row"><div class="dec-n">02</div><div>
+      <div class="dec-q">Which control lines must be timed precisely?</div>
+      <div class="dec-w">Line by line: does its exact timing appear in the analysis? Everything that does stays on a pin; everything that does not moves to an expander for free. This sets the whole layout.</div>
+      <span class="dec-who">Scientific — PI</span>
+    </div></div>
+    <div class="dec-row"><div class="dec-n">03</div><div>
+      <div class="dec-q">Is the current sound quality actually a problem, or only its timing?</div>
+      <div class="dec-w">The timing fault is a software bug and the fix is free. If the cue is a simple beep, the built-in output may be sufficient and we save three pins. If stimuli need calibrated intensity, the audio chip is required.</div>
+      <span class="dec-who">Scientific — PI</span>
+    </div></div>
+    <div class="dec-row"><div class="dec-n">04</div><div>
+      <div class="dec-q">Could the doors be servo-driven rather than motor-driven?</div>
+      <div class="dec-w">A four-fold reduction in board count and an eight-fold reduction in cost at scale. Depends entirely on whether the mechanism allows it.</div>
+      <span class="dec-who">Mechanical — engineering</span>
+    </div></div>
+    <div class="dec-row"><div class="dec-n">05</div><div>
+      <div class="dec-q">Measure the treadmill sensor's voltage at full speed.</div>
+      <div class="dec-w">Two minutes with a multimeter, and the protection circuit design follows from that one number.</div>
+      <span class="dec-who">Bench check</span>
+    </div></div>
+    <div class="dec-row"><div class="dec-n">06</div><div>
+      <div class="dec-q">Confirm the light driver's control-input specification.</div>
+      <div class="dec-w">If it accepts 0&ndash;3.3 V it connects directly with no additional circuitry at all. If it wants 0&ndash;5 V, a small amplifier stage is needed.</div>
+      <span class="dec-who">Bench check</span>
+    </div></div>
+    <div class="dec-row"><div class="dec-n">07</div><div>
+      <div class="dec-q">Confirm the stacked motor board is not claiming two pins.</div>
+      <div class="dec-w">A one-line check on the rig. If it is, the audio plan needs those pins back and the motor board has to come off the connector regardless.</div>
+      <span class="dec-who">Bench check</span>
+    </div></div>
+  </div>
+</section>
+
+<footer>
+  MICS behavioural rig · component options for planning · 07 September 2026<br>
+  Raspberry Pi 4B platform. Figures verified against the running rig at 132.77.73.213.<br>
+  Technical detail, sources and wiring specifics: .claude/docs/pi_rig_hardware_kb.md
+</footer>
+
+</div>

@@ -1,0 +1,1313 @@
+<title>MICS Rig Board Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+:root{
+  --paper:#EFEDE9;
+  --surface:#FAF9F7;
+  --surface-2:#E4E0DA;
+  --ink:#1B1613;
+  --ink-2:#4C443D;
+  --ink-3:#7C736B;
+  --rule:#D5CFC7;
+  --rule-2:#C2BAB1;
+  --accent:#A5511D;
+  --accent-2:#7E3D15;
+  --accent-soft:#F1DFD1;
+  --c-taken:#A6392C;
+  --c-move:#A87613;
+  --c-free:#37704A;
+  --c-audio:#2A6488;
+  --c-bus:#645392;
+  --c-sys:#8A6A2E;
+  --c-pwr:#8B8179;
+  --tint:0.10;
+  --shadow:0 1px 2px rgba(27,22,19,.06), 0 6px 18px rgba(27,22,19,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#131110;
+    --surface:#1B1817;
+    --surface-2:#252120;
+    --ink:#EDE6DE;
+    --ink-2:#B5ABA1;
+    --ink-3:#847A71;
+    --rule:#332D2A;
+    --rule-2:#453D39;
+    --accent:#DE8B4F;
+    --accent-2:#F0A96F;
+    --accent-soft:#3A2415;
+    --c-taken:#E0705E;
+    --c-move:#DFA83E;
+    --c-free:#5FB27C;
+    --c-audio:#5EA3CD;
+    --c-bus:#9E8ED3;
+    --c-sys:#D6A85C;
+    --c-pwr:#7E756D;
+    --tint:0.16;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.30);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#131110; --surface:#1B1817; --surface-2:#252120;
+  --ink:#EDE6DE; --ink-2:#B5ABA1; --ink-3:#847A71;
+  --rule:#332D2A; --rule-2:#453D39;
+  --accent:#DE8B4F; --accent-2:#F0A96F; --accent-soft:#3A2415;
+  --c-taken:#E0705E; --c-move:#DFA83E; --c-free:#5FB27C;
+  --c-audio:#5EA3CD; --c-bus:#9E8ED3; --c-sys:#D6A85C; --c-pwr:#7E756D;
+  --tint:0.16;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.30);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,44px) 96px}
+.prose{max-width:64ch}
+
+h1,h2,h3,h4,.disp{font-family:Archivo,"Helvetica Neue",Arial,sans-serif;text-wrap:balance}
+h1{font-size:clamp(2.5rem,6.4vw,4.4rem);font-weight:800;line-height:.98;letter-spacing:-.028em;margin:0}
+h2{font-size:clamp(1.5rem,3vw,2.05rem);font-weight:700;letter-spacing:-.018em;line-height:1.1;margin:0}
+h3{font-size:1.16rem;font-weight:700;letter-spacing:-.006em;margin:0}
+h4{font-size:.94rem;font-weight:700;letter-spacing:-.004em;margin:0}
+p{margin:0}
+a{color:var(--accent);text-underline-offset:2px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:.86em;font-variant-ligatures:none}
+code{background:color-mix(in srgb,var(--accent) 9%,transparent);padding:.09em .34em;border-radius:3px;color:var(--ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+}
+
+/* ---------- masthead ---------- */
+.mast{padding:clamp(52px,9vw,104px) 0 0}
+.mast-rule{height:3px;background:var(--ink);margin-bottom:22px}
+.mast-sub{font-size:1.18rem;color:var(--ink-2);margin-top:22px;max-width:56ch}
+.mast-sub strong{color:var(--ink);font-weight:600}
+.meta{
+  display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:26px;
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);
+  letter-spacing:.03em;
+}
+
+/* ---------- stat strip ---------- */
+.stats{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:0;margin-top:44px;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);
+}
+.stat{padding:18px 20px 20px;border-right:1px solid var(--rule)}
+.stat:last-child{border-right:0}
+.stat-n{
+  font-family:Archivo,sans-serif;font-weight:800;font-size:2.15rem;line-height:1;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+}
+.stat-n .u{font-size:.95rem;font-weight:600;letter-spacing:0;color:var(--ink-3);margin-left:.15em}
+.stat-l{font-size:.82rem;color:var(--ink-2);margin-top:8px;line-height:1.4;font-family:Archivo,sans-serif}
+.stat.hot .stat-n{color:var(--c-taken)}
+.stat.good .stat-n{color:var(--c-free)}
+
+/* ---------- sections ---------- */
+section{margin-top:clamp(56px,8vw,92px)}
+.sec-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.sec-head .eyebrow{padding-bottom:.18em}
+.lede{color:var(--ink-2);margin-top:14px;font-size:1.05rem}
+.body-stack{display:flex;flex-direction:column;gap:16px;margin-top:22px}
+
+/* ---------- bottom lines ---------- */
+.bl{display:flex;flex-direction:column;gap:0;margin-top:26px;border-top:1px solid var(--rule)}
+.bl-row{
+  display:grid;grid-template-columns:2.4rem 1fr;gap:0 18px;
+  padding:20px 0;border-bottom:1px solid var(--rule);align-items:start;
+}
+.bl-k{
+  font-family:"IBM Plex Mono",monospace;font-size:.74rem;font-weight:600;
+  color:var(--accent);letter-spacing:.05em;padding-top:.42em;
+}
+.bl-t{font-family:Archivo,sans-serif;font-weight:700;font-size:1.05rem;letter-spacing:-.01em;line-height:1.32}
+.bl-d{color:var(--ink-2);font-size:.98rem;margin-top:7px;max-width:62ch}
+
+/* ---------- header diagram ---------- */
+.toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin:26px 0 18px}
+.seg{display:inline-flex;border:1px solid var(--rule-2);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg button{
+  font-family:Archivo,sans-serif;font-size:.82rem;font-weight:600;
+  padding:9px 15px;border:0;border-right:1px solid var(--rule-2);
+  background:transparent;color:var(--ink-2);cursor:pointer;letter-spacing:-.005em;
+}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:hover:not([aria-pressed="true"]){background:var(--surface-2);color:var(--ink)}
+
+.legend{display:flex;flex-wrap:wrap;gap:5px 16px;font-family:Archivo,sans-serif;font-size:.76rem;color:var(--ink-2)}
+.lg{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:2px;flex:none}
+
+.hdr-shell{
+  background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:clamp(14px,2.4vw,26px);box-shadow:var(--shadow);overflow-x:auto;
+}
+.hdr-cap{
+  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3);
+  letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;
+}
+.hdr{display:grid;grid-template-columns:1fr 2.05rem 2.05rem 1fr;gap:3px 0;min-width:610px}
+.pn{
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;font-weight:600;
+  color:var(--ink-3);display:flex;align-items:center;justify-content:center;
+  background:var(--surface-2);font-variant-numeric:tabular-nums;
+}
+.pn.l{border-radius:3px 0 0 3px}
+.pn.r{border-radius:0 3px 3px 0}
+.cell{
+  padding:5px 9px;border-radius:3px;line-height:1.22;min-height:38px;
+  display:flex;flex-direction:column;justify-content:center;
+  background:color-mix(in srgb,var(--k) calc(var(--tint)*100%),transparent);
+}
+.cell.l{text-align:right;border-right:3px solid var(--k);margin-right:5px}
+.cell.r{text-align:left;border-left:3px solid var(--k);margin-left:5px}
+.cell-n{font-family:"IBM Plex Mono",monospace;font-size:.79rem;font-weight:600;color:var(--ink)}
+.cell-s{font-family:Archivo,sans-serif;font-size:.66rem;color:var(--ink-3);letter-spacing:.005em;margin-top:1px}
+.cell.chg{box-shadow:inset 0 0 0 1px var(--k)}
+.offhdr{
+  margin-top:16px;border-top:1px dashed var(--rule-2);padding-top:14px;
+  display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
+}
+.offhdr-l{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.chip{
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;padding:3px 8px;border-radius:3px;
+  background:color-mix(in srgb,var(--c-bus) calc(var(--tint)*100%),transparent);
+  border-left:2px solid var(--c-bus);color:var(--ink);
+}
+.plan-note{
+  margin-top:16px;padding:14px 16px;border-radius:6px;
+  background:var(--accent-soft);border-left:3px solid var(--accent);
+  font-size:.95rem;color:var(--ink);max-width:72ch;
+}
+.plan-note b{font-family:Archivo,sans-serif;font-weight:700}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;margin-top:22px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--rule);vertical-align:top;font-size:.92rem}
+th{
+  font-family:Archivo,sans-serif;font-size:.72rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--ink-3);background:var(--surface-2);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{font-family:Archivo,sans-serif;font-weight:700}
+.pill{
+  display:inline-block;font-family:Archivo,sans-serif;font-size:.7rem;font-weight:700;
+  padding:2px 7px;border-radius:3px;letter-spacing:.02em;white-space:nowrap;
+}
+.pill.ok{background:color-mix(in srgb,var(--c-free) 18%,transparent);color:var(--c-free)}
+.pill.no{background:color-mix(in srgb,var(--c-taken) 18%,transparent);color:var(--c-taken)}
+.pill.mid{background:color-mix(in srgb,var(--c-move) 20%,transparent);color:var(--c-move)}
+.pill.rec{background:var(--accent);color:var(--paper)}
+
+/* ---------- plan cards ---------- */
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:16px;margin-top:26px}
+.plan{
+  background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:20px;
+  display:flex;flex-direction:column;gap:12px;
+}
+.plan.pick{border-color:var(--accent);box-shadow:var(--shadow)}
+.plan-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.plan-id{font-family:"IBM Plex Mono",monospace;font-size:.74rem;letter-spacing:.12em;color:var(--accent);font-weight:600}
+.plan h3{margin-top:2px}
+.plan-d{font-size:.94rem;color:var(--ink-2)}
+.plan ul{margin:0;padding-left:1.05em;font-size:.9rem;color:var(--ink-2);display:flex;flex-direction:column;gap:5px}
+.plan ul li::marker{color:var(--accent)}
+.plan-foot{
+  margin-top:auto;padding-top:12px;border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-3);
+  display:flex;flex-direction:column;gap:3px;
+}
+
+/* ---------- explainer ---------- */
+.eli{
+  background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+  padding:clamp(20px,3.4vw,34px);margin-top:24px;box-shadow:var(--shadow);
+}
+.eli p{max-width:62ch;margin-top:14px;font-size:1.04rem}
+.eli p:first-of-type{margin-top:0}
+.eli .kick{font-size:1.2rem;font-weight:600;color:var(--ink)}
+.eli em{font-style:italic}
+.eli-hr{height:1px;background:var(--rule);margin:26px 0}
+.codeblock{
+  font-family:"IBM Plex Mono",monospace;font-size:.79rem;line-height:1.62;
+  background:var(--surface-2);border-left:3px solid var(--c-taken);
+  padding:14px 16px;border-radius:0 5px 5px 0;overflow-x:auto;margin-top:20px;color:var(--ink-2);
+  white-space:pre;
+}
+.codeblock b{color:var(--c-taken);font-weight:600}
+.codeblock i{color:var(--ink-3);font-style:normal}
+
+/* ---------- timeline chart ---------- */
+.chart{margin-top:26px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:clamp(16px,2.6vw,26px);overflow-x:auto}
+.tl{display:flex;flex-direction:column;gap:20px;min-width:520px}
+.tl-row{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center}
+.tl-lab{font-family:Archivo,sans-serif;font-size:.8rem;font-weight:700;line-height:1.25;text-align:right;color:var(--ink)}
+.tl-lab span{display:block;font-weight:500;color:var(--ink-3);font-size:.72rem;margin-top:2px}
+.tl-bar{display:flex;height:34px;border-radius:3px;overflow:hidden;background:var(--surface-2)}
+.tl-seg{display:flex;align-items:center;padding:0 9px;font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:#fff;white-space:nowrap;overflow:hidden}
+.tl-seg.hatch{
+  background:repeating-linear-gradient(135deg,var(--c-move),var(--c-move) 5px,color-mix(in srgb,var(--c-move) 62%,#000) 5px,color-mix(in srgb,var(--c-move) 62%,#000) 10px);
+}
+.tl-axis{display:grid;grid-template-columns:96px 1fr;gap:14px;margin-top:2px}
+.tl-ticks{position:relative;height:20px;border-top:1px solid var(--rule-2)}
+.tl-tick{position:absolute;top:0;font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--ink-3);transform:translateX(-50%);padding-top:3px}
+.tl-tick::before{content:"";position:absolute;top:0;left:50%;width:1px;height:4px;background:var(--rule-2)}
+.tl-mark{
+  position:relative;margin-left:96px;padding-left:14px;height:0;
+}
+.marker{
+  position:absolute;transform:translateX(-50%);font-family:"IBM Plex Mono",monospace;
+  font-size:.66rem;color:var(--ink-2);text-align:center;white-space:nowrap;
+}
+
+/* ---------- svg figure ---------- */
+figure{margin:26px 0 0;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:clamp(14px,2.4vw,24px);overflow-x:auto}
+figure svg{display:block;width:100%;min-width:600px;height:auto}
+figcaption{
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);
+  margin-top:14px;letter-spacing:.03em;line-height:1.55;
+}
+.svg-t{font-family:Archivo,sans-serif;font-weight:700}
+.svg-m{font-family:"IBM Plex Mono",monospace}
+
+/* ---------- rules list ---------- */
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:2px;margin-top:24px;background:var(--rule);border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.rule-i{background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:7px}
+.rule-i h4{color:var(--ink)}
+.rule-i p{font-size:.92rem;color:var(--ink-2)}
+.rule-i .tagl{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+
+/* ---------- gate ---------- */
+.gate{
+  margin-top:26px;border:2px solid var(--ink);border-radius:8px;background:var(--surface);
+  padding:clamp(20px,3.2vw,32px);
+}
+.gate ol{margin:20px 0 0;padding-left:0;list-style:none;counter-reset:g;display:flex;flex-direction:column;gap:0}
+.gate li{
+  counter-increment:g;display:grid;grid-template-columns:1.9rem 1fr;gap:16px;
+  padding:16px 0;border-top:1px solid var(--rule);
+}
+.gate li::before{
+  content:counter(g);font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:.86rem;
+  color:var(--paper);background:var(--ink);width:1.55rem;height:1.55rem;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;margin-top:.16em;
+}
+/* The ::before counter is grid item 1. A third direct child would wrap into the
+   1.9rem counter column -- one word per line. Pin both to column 2. */
+.gate li b, .gate li span{grid-column:2;min-width:0}
+.gate li b{font-family:Archivo,sans-serif;font-weight:700;font-size:1rem;line-height:1.35}
+.gate li span{color:var(--ink-2);font-size:.94rem;margin-top:5px}
+.gate li:first-of-type b{color:var(--accent)}
+
+footer{margin-top:88px;padding-top:22px;border-top:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);line-height:1.8}
+
+@media (max-width:640px){
+  body{font-size:16px}
+  .tl-row,.tl-axis{grid-template-columns:70px 1fr}
+  .tl-mark{margin-left:70px}
+  .stat{border-right:0;border-bottom:1px solid var(--rule)}
+}
+@media (prefers-reduced-motion:no-preference){
+  .seg button{transition:background .14s ease,color .14s ease}
+}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="mast-rule"></div>
+  <div class="eyebrow">MICS pilot rig · hardware review · 07 Sep 2026</div>
+  <h1>Count pins by<br>class, not by name.</h1>
+  <p class="mast-sub">All 26 general GPIO on a Pi 4B are allocated today. But VALVE1 and ODOR3 are not special &mdash; they are <strong>generic outputs</strong>. Budget the header as buses, reserved system lines, and generic I/O split by one question: <strong>does this edge appear in your analysis?</strong></p>
+  <div class="meta">
+    <span>SOURCE · mics_core @ 43f7b7b</span>
+    <span>live probes · RecordingBox 132.77.73.213</span>
+  </div>
+  <div class="stats">
+    <div class="stat hot"><div class="stat-n">26<span class="u">/ 26</span></div><div class="stat-l">general GPIO allocated today (BCM2&ndash;27)</div></div>
+    <div class="stat"><div class="stat-n">22<span class="u">generic</span></div><div class="stat-l">of those are interchangeable I/O &mdash; 15 out, 7 in</div></div>
+    <div class="stat good"><div class="stat-n">3<span class="u">pins</span></div><div class="stat-l">what audio costs &mdash; and it is exactly the slack you have</div></div>
+    <div class="stat good"><div class="stat-n">0<span class="u">pins</span></div><div class="stat-l">what analog costs &mdash; it rides the I2C bus already there</div></div>
+  </div>
+</header>
+
+<section id="bottom-line">
+  <div class="sec-head"><div class="eyebrow">01 — Bottom line</div></div>
+  <h2>Five things to take away</h2>
+  <div class="bl">
+    <div class="bl-row"><div class="bl-k">A</div><div>
+      <div class="bl-t">Only four pins on this header are genuinely special.</div>
+      <div class="bl-d">The two I2C lines, TOUCH_INT, and a TTL sync out. Everything else &mdash; every valve, every LED, every beam-break &mdash; is a generic line that can sit anywhere, or move off the header entirely.</div>
+    </div></div>
+    <div class="bl-row"><div class="bl-k">B</div><div>
+      <div class="bl-t">One question decides where a generic line lives.</div>
+      <div class="bl-d"><em>Does this edge&rsquo;s timestamp appear in your analysis?</em> Yes &rarr; it needs a real GPIO so pigpio can DMA-sample the edge. No &rarr; it belongs on an I2C expander, which costs zero header pins and gives you sixteen at a time.</div>
+    </div></div>
+    <div class="bl-row"><div class="bl-k">C</div><div>
+      <div class="bl-t">A real DAC needs three pins, not four, and the Pi becomes the audio clock.</div>
+      <div class="bl-d">A bare PCM5102A wants BCK, LRCK and DOUT &mdash; no I2C, no HAT EEPROM. As I2S master the Pi generates the sample clock from the same crystal as the pigpio tick. USB cannot give you that; only a sync channel buys it back.</div>
+    </div></div>
+    <div class="bl-row"><div class="bl-k">D</div><div>
+      <div class="bl-t">The audio latency is a bug in <code>mixer.py</code>, and you have never measured onset.</div>
+      <div class="bl-d">Every trigger re-decodes the WAV on the calling thread, which is why preloading to RAM changed nothing. And the event is timestamped when <code>play()</code> returns &mdash; before a single sample leaves the buffer.</div>
+    </div></div>
+    <div class="bl-row"><div class="bl-k">E</div><div>
+      <div class="bl-t">Never &ldquo;fix the format&rdquo; of <code>PIGPIOMASK</code>.</div>
+      <div class="bl-d">Correcting the stock binary string to its literal hex would disable four generic outputs with no error the pilot surfaces. Found on the rig; now set to <code>0x0FFFFFFC</code>. See section 07.</div>
+    </div></div>
+  </div>
+</section>
+
+<section id="ledger">
+  <div class="sec-head"><div class="eyebrow">02 — Budget</div></div>
+  <h2>The header as classes of pin</h2>
+  <p class="lede prose">Design a rig from this table, not from a list of valve names. The only pins whose <em>identity</em> matters are the ones the silicon fixes.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Class</th><th>Cost</th><th>Where it can live</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><strong>I2C bus</strong></td><td class="num">2</td><td>BCM2 / BCM3 only</td><td>Fixed by silicon. Carries the lick sensors, the motor HAT, and every expander you add.</td></tr>
+        <tr><td><strong>TOUCH_INT</strong></td><td class="num">1 in</td><td>any header pin</td><td>The lick IRQ is level-held; its falling edge must be DMA-sampled or the line latches and the detector dies.</td></tr>
+        <tr><td><strong>TTL sync out</strong></td><td class="num">1 out</td><td>any header pin</td><td>Required on essentially every rig that talks to ephys or imaging. Treat it as reserved from the start.</td></tr>
+        <tr><td><strong>I2S audio out</strong></td><td class="num">3</td><td>BCM18, 19, 21 only</td><td>Fixed by silicon &mdash; and not brought out anywhere else on a Pi 4B. Add BCM20 only if you want audio <em>in</em>.</td></tr>
+        <tr><td><strong>Audio sync in</strong></td><td class="num">1 in</td><td>any header pin</td><td>A DAC channel fed back through a comparator. The only way this rig ever learns its true acoustic onset.</td></tr>
+        <tr><td><strong>Analog out and in</strong></td><td class="num"><span class="pill ok">0</span></td><td>the I2C bus you already have</td><td>A DAC and an ADC as breakouts on BCM2/3. This is how light intensity and the treadmill get done. <b>No header pin at all.</b></td></tr>
+        <tr><td><strong>Analog out, alternative</strong></td><td class="num">1</td><td>BCM12 or 13</td><td>Hardware PWM into an RC filter. No chip needed, but ~8&ndash;10 effective bits and millisecond settling. Only if you would rather not add a DAC.</td></tr>
+        <tr><td><strong>Analog, fast (SPI)</strong></td><td class="num">4</td><td>BCM7&ndash;11 only</td><td>Optional. For sub-millisecond waveform shaping or kHz analog in &mdash; and only if you first free those five pins.</td></tr>
+        <tr><td><strong>Generic, hard-timed</strong></td><td class="num">as needed</td><td>header</td><td>Any line whose edge timestamp is data: reward delivery, beam breaks that gate trials, stimulus onsets.</td></tr>
+        <tr><td><strong>Generic, soft-timed</strong></td><td class="num"><span class="pill ok">free</span></td><td>I2C expander</td><td>Anything with an animal-scale time constant. ~80&ndash;120&nbsp;µs per write, 16 lines per chip, up to 8 chips on the same two wires.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="plan-note">
+    <b>The classification rule, in one question:</b> does this line&rsquo;s edge time appear in your analysis? If yes it belongs on the header, because only a real GPIO edge gets DMA-sampled onto the pigpio tick. If no, it belongs on an expander. Nothing else about the signal matters &mdash; not what it drives, not what it is called. Note that this is a <em>scientific</em> judgement, not an engineering one: an air puff is soft-timed in one protocol and a hard-timed unconditioned stimulus in the next.
+  </div>
+
+  <h3 style="margin-top:38px">Capacity, worked through</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Step</th><th>Pins</th><th>Running total</th></tr></thead>
+      <tbody>
+        <tr><td>Pi 4B header, general GPIO (BCM2&ndash;27)</td><td class="num">26</td><td class="num">26</td></tr>
+        <tr><td>&hellip; plus BCM0/BCM1, the HAT&nbsp;EEPROM pair <span class="pill mid">needs a mask change</span></td><td class="num">+2</td><td class="num">28</td></tr>
+        <tr><td>&minus; I2C bus</td><td class="num">&minus;2</td><td class="num">26</td></tr>
+        <tr><td>&minus; I2S audio out</td><td class="num">&minus;3</td><td class="num">23</td></tr>
+        <tr><td>&minus; TOUCH_INT and TTL sync</td><td class="num">&minus;2</td><td class="num">21</td></tr>
+        <tr><td>&minus; audio sync return, if you want measured onset</td><td class="num">&minus;1</td><td class="num">20</td></tr>
+        <tr><td>&minus; analog out and in, over I2C</td><td class="num"><span class="pill ok">&minus;0</span></td><td class="num">20</td></tr>
+        <tr><td>&minus; SPI, only if you need kHz analog</td><td class="num">&minus;4</td><td class="num"><strong>16</strong></td></tr>
+        <tr><td><strong>Generic hard-timed pins available</strong></td><td class="num">&mdash;</td><td class="num"><strong>16 &ndash; 21</strong></td></tr>
+        <tr><td><strong>Generic soft-timed pins available</strong></td><td class="num">&mdash;</td><td class="num"><strong>16 per expander</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="body-stack prose">
+    <p><b>Against today&rsquo;s rig:</b> 22 generic lines in use &mdash; 15 out, 7 in &mdash; and one of those retires when the OptoBlueBerry trigger moves to BLE, so 21 are genuinely needed. Fit the DAC and the header offers 21. <b>It fits exactly.</b></p>
+    <p>Add the audio sync return and you are one short, so a single soft-timed output moves to an expander. Move five instead &mdash; the odour bank is the obvious candidate, since odour arrival is diffusion-limited at tens to hundreds of milliseconds &mdash; and you also recover the whole SPI bus, because those five happen to sit on it. That is only worth doing if you need kHz analog.</p>
+    <p>That is the entire design problem, and it has nothing to do with which valve is which.</p>
+  </div>
+</section>
+
+<section id="header">
+  <div class="sec-head"><div class="eyebrow">03 — The physical header</div></div>
+  <h2>Where the classes land</h2>
+  <p class="lede prose">Same budget, laid out as the connector. Class first, current occupant underneath &mdash; that second line is for whoever is holding the soldering iron. Changed pins carry an outline.</p>
+
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Header layout">
+      <button type="button" data-plan="today" aria-pressed="true">Today</button>
+      <button type="button" data-plan="A" aria-pressed="false">Plan A · sound only</button>
+      <button type="button" data-plan="B" aria-pressed="false">Plan B · recommended</button>
+    </div>
+    <div class="legend">
+      <span class="lg"><span class="sw" style="background:var(--c-audio)"></span>I2S audio</span>
+      <span class="lg"><span class="sw" style="background:var(--c-bus)"></span>bus</span>
+      <span class="lg"><span class="sw" style="background:var(--c-move)"></span>relocated</span>
+      <span class="lg"><span class="sw" style="background:var(--c-free)"></span>spare / new</span>
+      <span class="lg"><span class="sw" style="background:var(--c-taken)"></span>generic I/O</span>
+      <span class="lg"><span class="sw" style="background:var(--c-sys)"></span>reserved system</span>
+      <span class="lg"><span class="sw" style="background:var(--c-pwr)"></span>power</span>
+    </div>
+  </div>
+
+  <div class="hdr-shell">
+    <div class="hdr-cap"><span>Raspberry Pi 4B · J8</span><span id="capR">as wired today</span></div>
+    <div class="hdr" id="hdr"></div>
+    <div class="offhdr" id="offhdr"></div>
+  </div>
+  <div class="plan-note" id="planNote"></div>
+</section>
+
+<section id="plans">
+  <div class="sec-head"><div class="eyebrow">04 — The three routes</div></div>
+  <h2>What each plan buys, and what it costs</h2>
+  <div class="plans">
+    <article class="plan">
+      <div class="plan-top"><span class="plan-id">PLAN A</span><span class="pill mid">minimum move</span></div>
+      <h3>Three pins, sound only</h3>
+      <p class="plan-d">Relocate three generic outputs onto the two spare pins and the one the BlueHub trigger vacates. Drop a PCM5102A on the I2S lines.</p>
+      <ul>
+        <li>A real 24-bit DAC replacing an 11-bit PWM jack</li>
+        <li>Audio clock is the pigpio crystal</li>
+        <li>No expander, no new bus, no HAT</li>
+        <li><b>Nothing else fits</b> &mdash; no analog out, no analog in, no sync return</li>
+        <li>Needs <code>PIGPIOMASK</code> widened to <code>0x0FFFFFFF</code> in the same change</li>
+      </ul>
+      <div class="plan-foot"><span>Generic pins · unchanged</span><span>New parts · 1</span><span>Blocked by · the BLE decision</span></div>
+    </article>
+    <article class="plan pick">
+      <div class="plan-top"><span class="plan-id">PLAN B</span><span class="pill rec">recommended</span></div>
+      <h3>Move five soft-timed lines, get SPI back</h3>
+      <p class="plan-d">Five soft-timed generic outputs happen to occupy the entire SPI0 bus. Move them to an expander and the bus comes back with them.</p>
+      <ul>
+        <li>Everything Plan A gives you</li>
+        <li>SPI0 returns &rarr; 12-bit DAC for opto intensity, ADC for analog in</li>
+        <li>A spare pin for the audio sync return, DMA-timestamped on the one counter</li>
+        <li>11 unused expander lines left over, and 7 more chips available on the same wires</li>
+      </ul>
+      <div class="plan-foot"><span>Generic pins · +11 soft</span><span>New parts · 4</span><span>Caveat · those five become I2C-timed</span></div>
+    </article>
+    <article class="plan">
+      <div class="plan-top"><span class="plan-id">PLAN C</span><span class="pill">alternative</span></div>
+      <h3>Push it all onto USB</h3>
+      <p class="plan-d">A DC-coupled class-compliant interface (Expert Sleepers ES-8/ES-9) carries speaker audio, analog out and analog in on one USB cable. The header is never touched.</p>
+      <ul>
+        <li>Zero GPIO cost &mdash; nothing moves</li>
+        <li>Waveform-accurate analog out at 48&ndash;96&nbsp;kHz, not a filtered PWM level</li>
+        <li>Second clock: must be reconciled by the sync channel</li>
+        <li>Eurorack format, &plusmn;10&nbsp;V, needs a modular PSU and a scaler; Linux support is implied by class compliance but unverified</li>
+      </ul>
+      <div class="plan-foot"><span>Generic pins · unchanged</span><span>New parts · 1 (expensive)</span><span>Verify · enumeration on a Pi 4B</span></div>
+    </article>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Capability</th><th>Today</th><th>Plan A</th><th>Plan B</th><th>Plan C</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Clean audio out</strong></td><td><span class="pill no">11-bit PWM</span></td><td><span class="pill ok">I2S DAC</span></td><td><span class="pill ok">I2S DAC</span></td><td><span class="pill ok">USB, 24-bit</span></td></tr>
+        <tr><td><strong>Same crystal as pigpio</strong></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td><span class="pill no">no &mdash; sync ch.</span></td></tr>
+        <tr><td><strong>Analog out</strong></td><td><span class="pill no">none</span></td><td><span class="pill no">none</span></td><td><span class="pill ok">12-bit SPI DAC</span></td><td><span class="pill ok">DC-coupled, fast</span></td></tr>
+        <tr><td><strong>Analog in</strong></td><td><span class="pill no">none</span></td><td><span class="pill no">none</span></td><td><span class="pill mid">10-bit, ~50 kSPS</span></td><td><span class="pill ok">4 ch, 96 kHz</span></td></tr>
+        <tr><td><strong>Acoustic onset logged</strong></td><td><span class="pill no">never</span></td><td><span class="pill no">no pin</span></td><td><span class="pill ok">hardware tick</span></td><td><span class="pill ok">hardware tick</span></td></tr>
+        <tr><td><strong>Generic hard-timed pins left</strong></td><td class="num">0</td><td class="num">0</td><td class="num">1 + 11 soft</td><td class="num">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="audio">
+  <div class="sec-head"><div class="eyebrow">05 — The audio bug</div></div>
+  <h2>Why preloading to RAM changed nothing</h2>
+
+  <div class="eli">
+    <p class="kick">Imagine a DJ who has to press the vinyl before every drop.</p>
+    <p>You want a beep the instant the mouse licks. Your code&rsquo;s job at that moment should be one thing: hit play. Instead, on <em>every single trigger</em>, it goes back to the record shop, buys a blank, cuts the groove, and only then puts the needle down.</p>
+    <p>That is literally what <code>mixer.Sound(path)</code> does inside the trigger call. It opens the file, decodes it, allocates memory for the samples, and resamples 192&nbsp;kHz down to the 44.1&nbsp;kHz that SDL quietly opened the device at &mdash; because <code>mixer.init(buffer=1024)</code> was never told a frequency.</p>
+    <p><strong>So when you preloaded the files into RAM, you moved the record shop next door.</strong> Helpful, if the walk had been the problem. It wasn&rsquo;t. The slow part was pressing the vinyl, and you still do that every time. Worse: how long it takes depends on how big the file is and what mood the memory allocator is in &mdash; which is exactly the random, won&rsquo;t-go-away jitter you described.</p>
+
+    <div class="codeblock">autopilot/hardware/mixer.py
+
+def __init__(self, **kwargs):
+    mixer.init(buffer=1024)          <i># no frequency= &rarr; SDL opens at 44100 Hz</i>
+    self.sound_list = [...]          <i># only FILENAMES are cached, not audio</i>
+
+@log_action
+def set(self, sound_file_index, volume=0.5):
+    sound = mixer.Sound(...)         <b># &larr; open + decode + resample, EVERY trigger</b>
+    mixer.Channel(0).play(sound)     <i># the timestamp is taken when THIS returns</i></div>
+
+    <div class="eli-hr"></div>
+
+    <p class="kick">Then the second half: the clock you write down is the wrong one.</p>
+    <p>Hitting play does not make sound. It puts samples in a queue. At 1024 frames and 44.1&nbsp;kHz that queue is <strong>23.2 milliseconds long</strong>, and <code>ALSA_NPERIODS=3</code> sits behind it.</p>
+    <p>But <code>@log_action</code> stamps the event the moment <code>play()</code> <em>returns</em> &mdash; before a single sample has left the buffer. So the number in your data includes all of the variable decode cost and none of the fixed buffer delay. It is wrong in one direction by an unknown amount and in the other by a constant you have never measured.</p>
+    <p><strong>That is the real finding.</strong> You have been trying to remove jitter from a number that was never measuring the thing you cared about. Fix the decode, fix the buffer &mdash; then wire one DAC channel back into a GPIO input through a comparator, let pigpio&rsquo;s DMA sampler timestamp its edge, and for the first time the event log will contain the moment the speaker actually moved.</p>
+  </div>
+
+  <div class="chart">
+    <div class="tl">
+      <div class="tl-row">
+        <div class="tl-lab">Today<span>pygame, 1024 fr</span></div>
+        <div class="tl-bar">
+          <div class="tl-seg hatch" style="width:33.3%">decode + resample · 5&ndash;20 ms, varies</div>
+          <div class="tl-seg" style="width:64.4%;background:var(--c-taken)">SDL queue + ALSA buffer · 23.2 ms</div>
+          <div class="tl-seg" style="width:2.3%;background:var(--c-pwr)"></div>
+        </div>
+      </div>
+      <div class="tl-mark">
+        <div class="marker" style="left:calc(33.3% + 14px);top:-14px">&#9650; logged onset</div>
+      </div>
+      <div class="tl-row" style="margin-top:14px">
+        <div class="tl-lab">Fixed<span>preloaded, 64 fr</span></div>
+        <div class="tl-bar">
+          <div class="tl-seg" style="width:0.6%;background:var(--c-free)"></div>
+          <div class="tl-seg" style="width:11.1%;background:var(--c-audio)">4 ms</div>
+          <div class="tl-seg" style="width:88.3%;background:transparent;color:var(--ink-3)">&nbsp;&nbsp;deterministic, quantised to one 1.33 ms period</div>
+        </div>
+      </div>
+      <div class="tl-mark">
+        <div class="marker" style="left:calc(11.7% + 14px);top:-14px">&#9650; true onset, sync-measured</div>
+      </div>
+      <div class="tl-axis">
+        <div></div>
+        <div class="tl-ticks">
+          <span class="tl-tick" style="left:0%">0</span>
+          <span class="tl-tick" style="left:27.8%">10</span>
+          <span class="tl-tick" style="left:55.6%">20</span>
+          <span class="tl-tick" style="left:83.3%">30</span>
+          <span class="tl-tick" style="left:100%">36 ms</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Fix 01</span><h4>Preload every Sound at init</h4><p>Build the dict in <code>__init__</code>. <code>set()</code> should only call <code>.play()</code> on an object that already exists.</p></div>
+    <div class="rule-i"><span class="tagl">Fix 02</span><h4>Match rates end to end</h4><p><code>mixer.pre_init(frequency=48000, size=-16, channels=2, buffer=256)</code>, and store the assets at that rate so nothing resamples.</p></div>
+    <div class="rule-i"><span class="tagl">Fix 03</span><h4>Drop pygame for a held stream</h4><p><code>sounddevice</code>/PortAudio with a persistent open stream and a pre-armed buffer. Onset then quantises to one period instead of drifting with allocator state.</p></div>
+    <div class="rule-i"><span class="tagl">Fix 04</span><h4>Bypass plughw and dmix</h4><p><code>SDL_AUDIODRIVER=alsa</code>, <code>AUDIODEV=hw:X,0</code>. <code>SCHED_FIFO</code> is already in place on the rig.</p></div>
+  </div>
+</section>
+
+<section id="two">
+  <div class="sec-head"><div class="eyebrow">06 — Audio vs analog</div></div>
+  <h2>Two subsystems that share nothing</h2>
+  <p class="lede prose">These keep getting conflated. Plainly: <strong>audio is a fast AC waveform on three dedicated pins. Analog is a slow DC level on the I2C bus you already have.</strong> Different chips, different buses, different wiring, different clocks. Adding one does not get you the other.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th></th><th>Audio</th><th>Analog</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Job</strong></td><td>make sound</td><td>make or read a voltage</td></tr>
+        <tr><td><strong>Chip</strong></td><td>PCM5102A &mdash; audio DAC</td><td>MCP4728 &mdash; voltage out · ADS1115 &mdash; voltage in</td></tr>
+        <tr><td><strong>Bus</strong></td><td>I2S &mdash; 3 dedicated GPIO</td><td>I2C &mdash; the two wires already there</td></tr>
+        <tr><td><strong>Header cost</strong></td><td><span class="pill mid">3 pins</span></td><td><span class="pill ok">0 pins</span></td></tr>
+        <tr><td><strong>Coupling</strong></td><td><b>AC</b> &mdash; cannot hold a DC level</td><td><b>DC</b> &mdash; that is the entire point</td></tr>
+        <tr><td><strong>Rate</strong></td><td>48 000 samples/s</td><td>860&ndash;5 000 samples/s</td></tr>
+        <tr><td><strong>Clock</strong></td><td>the Pi&rsquo;s own crystal &mdash; Pi is I2S master</td><td>none; sampled when the CPU gets to it</td></tr>
+        <tr><td><strong>Timestamp</strong></td><td>µs, via sync channel &rarr; GPIO edge &rarr; pigpio tick</td><td>software, ~1 ms jitter</td></tr>
+        <tr><td><strong>Config</strong></td><td><code>dtoverlay=hifiberry-dac</code></td><td>none &mdash; userspace I2C</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="plan-note">
+    <b>The consequence people miss:</b> an I2S audio DAC is AC-coupled, so it <em>cannot</em> drive a light-intensity setpoint no matter how fast it samples. Audio hardware only passes change. It <em>can</em> drive the sync pulse &mdash; because an edge is change &mdash; which is exactly why that trick works.
+  </div>
+
+  <h3 style="margin-top:38px">How each part physically attaches</h3>
+  <p class="lede prose" style="margin-top:10px">None of these is a HAT, deliberately.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Part</th><th>Attaches by</th><th>Wires</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PCM5102A</strong><br><span class="cell-s">audio DAC &mdash; digital sound to an analog audio signal</span></td><td><b>Soldered</b> to the carrier board, or a header socket</td><td class="num">5</td><td>3V3, GND, BCK&rarr;BCM18, LRCK&rarr;BCM19, DIN&rarr;BCM21. No I2C, no address. Sound leaves on the module&rsquo;s own L/R pads.</td></tr>
+        <tr><td><strong>MCP4728</strong><br><span class="cell-s">analog voltage out &mdash; LED brightness</span></td><td><b>Taps the existing I2C bus</b></td><td class="num">4</td><td>3V3, GND, SDA&rarr;BCM2, SCL&rarr;BCM3. Four 12-bit DC outputs. Needs a buffer op-amp to drive a real load.</td></tr>
+        <tr><td><strong>ADS1115</strong><br><span class="cell-s">analog voltage in &mdash; the treadmill</span></td><td>Same two I2C wires</td><td class="num">4</td><td>Four single-ended or two differential inputs. Every input that leaves the box needs a divider and a clamp.</td></tr>
+        <tr><td><strong>MCP23017</strong><br><span class="cell-s">16 slow on/off pins over I2C</span></td><td>Same two I2C wires</td><td class="num">4 + 3</td><td>Only if you run short of header pins. Its outputs drive the <em>inputs</em> of the solenoid driver board, never a solenoid.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Gotcha</span><h4>PCM5102A stays silent by default</h4><p><b>XSMT</b> (soft-mute) must be pulled high, and <b>SCK</b> tied to GND so the module uses its internal PLL &mdash; the Pi supplies no master clock. Both fail silently, with no error anywhere.</p></div>
+    <div class="rule-i"><span class="tagl">Addresses</span><h4>0x60 is free on this rig &mdash; but plan for it</h4><p><code>i2cdetect</code> shows nothing at 0x60, so the MCP4728 keeps its default address with no rework here. Any rig that also carries a PCA9685 motor shield hits the clash &mdash; move the shield to 0x61 with its A0 jumper, never the DAC.</p></div>
+    <div class="rule-i"><span class="tagl">Not a HAT</span><h4>Why everything is a breakout</h4><p>A HAT covers the whole header and carries an ID EEPROM on BCM0/BCM1 &mdash; the two spare pins this plan depends on. Check with <code>ls /proc/device-tree/hat/</code>: absent or empty means no EEPROM, and the pins are genuinely free.</p></div>
+    <div class="rule-i"><span class="tagl">Mandatory</span><h4>Measure the treadmill before wiring it</h4><p>A tachogenerator&rsquo;s output rises with speed and swings <b>negative</b> on reversal; the ADS1115 tolerates ±6.144&nbsp;V and never more than VDD+0.3&nbsp;V. Spin the belt at full speed, read the open-circuit voltage, size the divider from <em>that</em>, and feed it differentially.</p></div>
+  </div>
+
+  <h3 style="margin-top:38px">One bus, one address space</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Address</th><th>Device</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0x5A</td><td><strong>MPR121</strong> &mdash; capacitive touch sensor, lick detection (the only device on the bus)</td><td><span class="pill">in use</span></td></tr>
+        <tr><td class="num">0x48</td><td><strong>ADS1115</strong> &mdash; analog voltage reader, the treadmill</td><td><span class="pill ok">free</span></td></tr>
+        <tr><td class="num">0x20</td><td><strong>MCP23017</strong> &mdash; 16 slow on/off pins, if needed</td><td><span class="pill ok">free</span></td></tr>
+        <tr><td class="num">0x60</td><td><strong>MCP4728</strong> &mdash; analog voltage output, default address</td><td><span class="pill ok">free here</span></td></tr>
+        <tr><td class="num">0x60 / 0x70</td><td><strong>PCA9685</strong> &mdash; PWM generator on the motor shield, declared in prefs</td><td><span class="pill no">not present</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:38px">The build you actually asked for</h3>
+  <div class="body-stack prose">
+    <p>Audio out, light-intensity analog out, treadmill analog in. No ultrasonic, so <code>AUDIO_FS = 48000</code> and any ordinary amplifier and speaker will do &mdash; <code>prefs.FS = 192000</code> was an aspiration, not a requirement.</p>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Item</th><th>Header pins</th><th>~Cost</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PCM5102A</strong> &mdash; audio DAC, Pi-clocked, 48 kHz</td><td class="num"><strong>3</strong></td><td class="num">&euro;5</td></tr>
+        <tr><td><strong>MCP4728</strong> &mdash; analog voltage out, light intensity</td><td class="num">0</td><td class="num">&euro;5</td></tr>
+        <tr><td><strong>ADS1115</strong> &mdash; analog voltage in, treadmill</td><td class="num">0</td><td class="num">&euro;5</td></tr>
+        <tr><td>Divider + clamp on the treadmill input</td><td class="num">0</td><td class="num">&euro;1</td></tr>
+        <tr><td><strong>Total</strong></td><td class="num"><strong>3</strong></td><td class="num"><strong>under &euro;20</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="plan-note">
+    <b>It fits exactly.</b> The three spare pins &mdash; BCM0, BCM1, and BCM13 once OptoBlueBerry moves to BLE &mdash; cover the DAC, and nothing else needs a pin. No expander, no SPI bus, no valve migration.<br><br>
+    <b>Two things it still does not buy</b>, one pin each: the <b>audio sync return</b>, without which acoustic onset stays unmeasured; and any <b>hard-timed</b> treadmill timestamp &mdash; an ADC reading is software-stamped with ~1 ms of jitter, unlike a GPIO edge. The treadmill&rsquo;s two-pin connector also means it reports <b>speed but not direction</b>; a quadrature encoder needs four to six conductors, so that would be a different sensor, not a different chip.
+  </div>
+</section>
+
+<section id="i2c">
+  <div class="sec-head"><div class="eyebrow">07 — I2C bus design</div></div>
+  <h2>Design the bus before anything is soldered</h2>
+  <p class="lede prose">I2C is the one subsystem where a casual decision now is expensive later: the address space and the pull-up network are properties of the <em>whole bus</em>, not of any one board. You cannot fix them a board at a time.</p>
+
+  <div class="plan-note">
+    <b>Measured on RecordingBox, 7 Sep 2026.</b> <code>i2cdetect -y 1</code> returns exactly one device: <code>0x5a</code>. One MPR121, nothing else. And <code>i2cdetect -l</code> shows only <code>i2c-1</code> is usable &mdash; <code>i2c-20</code>/<code>i2c-21</code> are the HDMI DDC buses. So what look like two I2C buses are <b>two sockets daisy-chained on one bus</b>: same wires, same address space, same bandwidth.
+  </div>
+
+  <h3 style="margin-top:34px">Reserve the whole address space, once</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Range</th><th>Device</th><th>Max on one bus</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0x20&ndash;0x27</td><td><strong>MCP23017</strong> &mdash; 16 extra on/off pins over I2C, for slow switches and LEDs</td><td class="num">8</td></tr>
+        <tr><td class="num">0x48&ndash;0x4B</td><td><strong>ADS1115</strong> &mdash; analog voltage reader (treadmill, sensors)</td><td class="num">4</td></tr>
+        <tr><td class="num">0x5A&ndash;0x5D</td><td><strong>MPR121</strong> &mdash; 12-channel capacitive touch sensor (the lick detector)</td><td class="num">4</td></tr>
+        <tr><td class="num">0x60&ndash;0x67</td><td><strong>MCP4728</strong> &mdash; analog voltage output (light intensity)</td><td class="num">8</td></tr>
+        <tr><td class="num">0x60&ndash;0x7F</td><td><strong>PCA9685</strong> &mdash; 16-channel PWM generator, as fitted on the motor shield</td><td><span class="pill no">overlaps &uarr;</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="body-stack prose">
+    <p><code>0x60</code> is the only contested address. Settle it now and write it down: <b>the DAC keeps <code>0x60</code>, any PCA9685 starts at <code>0x61</code></b> &mdash; one solder jumper on the shield. A PCA9685 also answers on its all-call address <code>0x70</code>; that is the same chip appearing twice in a scan, not a second device.</p>
+  </div>
+
+  <h3 style="margin-top:38px">The pin cost scales with IRQ lines, not chips</h3>
+  <div class="body-stack prose">
+    <p>An MPR121 costs nothing on the bus &mdash; it is address-selected. But <b>each one needs its own GPIO for its IRQ</b>, and that is the part that eats the budget.</p>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Lick chips</th><th>Electrodes</th><th>Header pins</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td class="num">12</td><td class="num">1</td></tr>
+        <tr><td class="num">2</td><td class="num">24</td><td class="num"><strong>2</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="body-stack prose">
+    <p><b>Do not wire-OR two IRQs onto one pin to save it.</b> <code>i2c.py</code> already fights a level-held latch on a single chip; two chips sharing a line makes a missed deassertion far harder to reason about and to recover from. The generic pin count drops from 20 to 19 with a second lick chip &mdash; twelve electrodes is already a lot of lickers, so decide before the board is laid out.</p>
+  </div>
+
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Gotcha</span><h4>Pull-ups stack, and that is what kills long buses</h4><p>The Pi has <b>fixed 1.8&nbsp;k&#937;</b> pull-ups on BCM2/3. Nearly every breakout adds its own 10&nbsp;k&#937;. Five in parallel gives ~1.5&nbsp;k&#937;, past the 3&nbsp;mA sink limit &mdash; the bus stops reaching a valid low and you get intermittent errors that look like anything but a resistor. <b>De-populate the pull-ups on every board except the one at the far end.</b></p></div>
+    <div class="rule-i"><span class="tagl">Sockets</span><h4>Identical and interchangeable</h4><p>SDA, SCL, 3V3, GND, plus a dedicated IRQ line back to its own GPIO. Then any socket takes an MPR121 or an analog board with no rework. Reserve IRQ pins for two sockets; DACs, ADCs and expanders need none.</p></div>
+    <div class="rule-i"><span class="tagl">Length</span><h4>Under a metre at 400 kHz</h4><p>The spec limit is 400&nbsp;pF of bus capacitance and ribbon cable eats it quickly. Twisted pair with a ground return. Past that, add a buffer such as a TCA9517.</p></div>
+    <div class="rule-i"><span class="tagl">Speed</span><h4>Set it explicitly &mdash; the default is 100 kHz</h4><p><code>dtparam=i2c_arm_baudrate=400000</code>. At 100&nbsp;kHz an ADS1115 read costs ~400&nbsp;µs, so continuous sampling at 860&nbsp;SPS burns <b>~34% of the bus</b>; at 400&nbsp;kHz it is ~9%. Test once after changing it &mdash; a daisy-chain of sockets is exactly the geometry that makes 400&nbsp;kHz marginal.</p></div>
+  </div>
+
+  <h3 style="margin-top:38px">One bus or two?</h3>
+  <div class="body-stack prose">
+    <p><b>One.</b> Enabling <code>i2c3</code>&ndash;<code>i2c6</code> costs 2 GPIO each and the budget has none to give. The case for a second bus is isolating lick reads from bulk ADC traffic &mdash; but MPR121 reads are IRQ-driven and rare, and an ADS1115 running flat out at 400&nbsp;kHz uses about 9% of the bus. Not worth two pins.</p>
+    <p><b>What faster I2C does not fix:</b> lick <em>timing</em>. The TOUCH_INT edge is DMA-timestamped by pigpio before any I2C happens; the bus read only reports <em>which</em> electrode. Speed buys quicker closed-loop response and room for the ADC, not better lick timestamps.</p>
+  </div>
+
+  <div class="plan-note">
+    <b>One live mismatch worth resolving.</b> <code>prefs.json</code> declares <code>MOTOR_SHIELD_HAT</code>, <code>DOOR1</code>, <code>DOOR2</code> and <code>MOTORIZED_REWARD</code> at <code>0x60</code>, and <b>nothing answers there</b>. A missing motor HAT fails <em>silently</em>, so a task definition pulling in those modules on this box would give no error and no motion. Either the shield belongs on RecordingBox, or those entries are stale copy from the door-test rig.
+  </div>
+</section>
+
+<section id="board">
+  <div class="sec-head"><div class="eyebrow">08 — Assembly</div></div>
+  <h2>Building the box</h2>
+  <p class="lede prose">Plan B, drawn as it would be built. Everything that switches current lives on its own rail with its own return; everything that leaves the box crosses an isolator.</p>
+
+  <figure>
+    <svg viewBox="0 0 940 486" role="img" aria-label="Signal flow block diagram: two isolated power rails feeding a Raspberry Pi 4B and a carrier board carrying an I2S DAC, an I2C expander, an SPI DAC and ADC, and a solenoid driver bank, out to a front panel of BNC and audio connectors.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" fill="var(--ink-3)"/>
+        </marker>
+        <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+
+      <text class="svg-m" x="14" y="20" font-size="10" fill="var(--ink-3)" letter-spacing="1.4">POWER · SEPARATE RAILS</text>
+      <rect x="14" y="32" width="150" height="52" rx="4" fill="color-mix(in srgb,var(--c-free) 12%,transparent)" stroke="var(--c-free)" stroke-width="1.5"/>
+      <text class="svg-t" x="26" y="53" font-size="13" fill="var(--ink)">PSU&#8209;A · 5 V 3 A</text>
+      <text class="svg-m" x="26" y="70" font-size="10" fill="var(--ink-2)">Pi + logic + DAC</text>
+
+      <rect x="14" y="98" width="150" height="52" rx="4" fill="color-mix(in srgb,var(--c-taken) 12%,transparent)" stroke="var(--c-taken)" stroke-width="1.5"/>
+      <text class="svg-t" x="26" y="119" font-size="13" fill="var(--ink)">PSU&#8209;B · 24 V</text>
+      <text class="svg-m" x="26" y="136" font-size="10" fill="var(--ink-2)">solenoids only</text>
+
+      <rect x="14" y="164" width="150" height="44" rx="4" fill="var(--surface-2)" stroke="var(--rule-2)" stroke-width="1.5"/>
+      <text class="svg-t" x="26" y="184" font-size="12" fill="var(--ink)">Star ground</text>
+      <text class="svg-m" x="26" y="199" font-size="10" fill="var(--ink-3)">one point, chassis tied</text>
+
+      <rect x="216" y="32" width="176" height="118" rx="5" fill="var(--surface-2)" stroke="var(--ink)" stroke-width="2"/>
+      <text class="svg-t" x="232" y="56" font-size="15" fill="var(--ink)">Raspberry Pi 4B</text>
+      <text class="svg-m" x="232" y="74" font-size="10" fill="var(--ink-2)">pigpiod · the one counter</text>
+      <rect x="232" y="88" width="144" height="20" rx="2" fill="var(--paper)" stroke="var(--rule-2)"/>
+      <text class="svg-m" x="240" y="102" font-size="9.5" fill="var(--ink-3)">40-pin header J8</text>
+      <text class="svg-m" x="232" y="126" font-size="10" fill="var(--ink-2)">USB &rarr; RFID hub · SD edge exposed</text>
+      <text class="svg-m" x="232" y="142" font-size="10" fill="var(--ink-2)">onboard BLE &rarr; BlueBerry</text>
+
+      <line x1="164" y1="58" x2="212" y2="70" stroke="var(--c-free)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="164" y1="124" x2="212" y2="230" stroke="var(--c-taken)" stroke-width="1.6" marker-end="url(#ar)"/>
+
+      <rect x="216" y="172" width="360" height="286" rx="6" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4"/>
+      <text class="svg-m" x="228" y="192" font-size="10" fill="var(--accent)" letter-spacing="1.4">CARRIER BOARD</text>
+
+      <rect x="232" y="204" width="150" height="50" rx="4" fill="color-mix(in srgb,var(--c-audio) 13%,transparent)" stroke="var(--c-audio)" stroke-width="1.5"/>
+      <text class="svg-t" x="244" y="224" font-size="12" fill="var(--ink)">PCM5102A I2S DAC</text>
+      <text class="svg-m" x="244" y="241" font-size="9.5" fill="var(--ink-2)">BCM18 BCK · 19 LRCK · 21 DOUT</text>
+
+      <rect x="232" y="266" width="150" height="50" rx="4" fill="color-mix(in srgb,var(--c-bus) 13%,transparent)" stroke="var(--c-bus)" stroke-width="1.5"/>
+      <text class="svg-t" x="244" y="286" font-size="12" fill="var(--ink)">MCP23017</text>
+      <text class="svg-m" x="244" y="303" font-size="9.5" fill="var(--ink-2)">I2C · 5 soft-timed out + 11 spare</text>
+
+      <rect x="232" y="328" width="150" height="50" rx="4" fill="color-mix(in srgb,var(--c-bus) 13%,transparent)" stroke="var(--c-bus)" stroke-width="1.5"/>
+      <text class="svg-t" x="244" y="348" font-size="12" fill="var(--ink)">MCP4922 + MCP3008</text>
+      <text class="svg-m" x="244" y="365" font-size="9.5" fill="var(--ink-2)">SPI0 · analog out / in</text>
+
+      <rect x="232" y="390" width="150" height="52" rx="4" fill="color-mix(in srgb,var(--c-taken) 13%,transparent)" stroke="var(--c-taken)" stroke-width="1.5"/>
+      <text class="svg-t" x="244" y="410" font-size="12" fill="var(--ink)">Solenoid driver bank</text>
+      <text class="svg-m" x="244" y="427" font-size="9.5" fill="var(--ink-2)">flyback diodes · 24 V rail</text>
+
+      <rect x="404" y="204" width="156" height="50" rx="4" fill="color-mix(in srgb,var(--c-free) 13%,transparent)" stroke="var(--c-free)" stroke-width="1.5"/>
+      <text class="svg-t" x="416" y="224" font-size="12" fill="var(--ink)">Sync comparator</text>
+      <text class="svg-m" x="416" y="241" font-size="9.5" fill="var(--ink-2)">DAC ch.2 &rarr; 3V3 TTL &rarr; GPIO in</text>
+
+      <rect x="404" y="266" width="156" height="50" rx="4" fill="var(--surface-2)" stroke="var(--rule-2)" stroke-width="1.5"/>
+      <text class="svg-t" x="416" y="286" font-size="12" fill="var(--ink)">Opto-isolators</text>
+      <text class="svg-m" x="416" y="303" font-size="9.5" fill="var(--ink-2)">every panel TTL, both ways</text>
+
+      <rect x="404" y="328" width="156" height="50" rx="4" fill="var(--surface-2)" stroke="var(--rule-2)" stroke-width="1.5"/>
+      <text class="svg-t" x="416" y="348" font-size="12" fill="var(--ink)">LED driver scaler</text>
+      <text class="svg-m" x="416" y="365" font-size="9.5" fill="var(--ink-2)">DAC 0&ndash;3.3 V &rarr; 0&ndash;5 V</text>
+
+      <line x1="304" y1="150" x2="304" y2="200" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#ar)"/>
+      <line x1="382" y1="229" x2="400" y2="229" stroke="var(--c-audio)" stroke-width="1.5" marker-end="url(#ar)"/>
+      <line x1="382" y1="353" x2="400" y2="353" stroke="var(--c-bus)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+      <rect x="612" y="32" width="314" height="426" rx="6" fill="var(--surface-2)" stroke="var(--ink)" stroke-width="2"/>
+      <text class="svg-m" x="626" y="54" font-size="10" fill="var(--ink-3)" letter-spacing="1.4">FRONT PANEL</text>
+
+      <circle cx="654" cy="92" r="15" fill="var(--paper)" stroke="var(--c-sys)" stroke-width="2.5"/>
+      <text class="svg-t" x="682" y="90" font-size="12" fill="var(--ink)">TTL sync out</text>
+      <text class="svg-m" x="682" y="104" font-size="9.5" fill="var(--ink-3)">BNC · isolated · reserved</text>
+
+      <circle cx="654" cy="142" r="15" fill="var(--paper)" stroke="var(--c-free)" stroke-width="2.5"/>
+      <text class="svg-t" x="682" y="140" font-size="12" fill="var(--ink)">Audio sync in</text>
+      <text class="svg-m" x="682" y="154" font-size="9.5" fill="var(--ink-3)">BNC · comparator return</text>
+
+      <circle cx="654" cy="192" r="15" fill="var(--paper)" stroke="var(--c-bus)" stroke-width="2.5"/>
+      <text class="svg-t" x="682" y="190" font-size="12" fill="var(--ink)">Analog out</text>
+      <text class="svg-m" x="682" y="204" font-size="9.5" fill="var(--ink-3)">BNC · 0&ndash;5 V · own return</text>
+
+      <circle cx="654" cy="242" r="15" fill="var(--paper)" stroke="var(--rule-2)" stroke-width="2.5"/>
+      <circle cx="700" cy="242" r="15" fill="var(--paper)" stroke="var(--rule-2)" stroke-width="2.5"/>
+      <text class="svg-t" x="728" y="240" font-size="12" fill="var(--ink)">2 &times; spare BNC</text>
+      <text class="svg-m" x="728" y="254" font-size="9.5" fill="var(--ink-3)">wired to expander lines</text>
+
+      <rect x="639" y="284" width="60" height="26" rx="3" fill="var(--paper)" stroke="var(--c-audio)" stroke-width="2.5"/>
+      <text class="svg-t" x="716" y="296" font-size="12" fill="var(--ink)">Speaker out</text>
+      <text class="svg-m" x="716" y="310" font-size="9.5" fill="var(--ink-3)">from the DAC, AC-coupled</text>
+
+      <rect x="639" y="336" width="76" height="20" rx="2" fill="var(--paper)" stroke="var(--accent)" stroke-width="2.5"/>
+      <text class="svg-t" x="731" y="344" font-size="12" fill="var(--ink)">SD card slot</text>
+      <text class="svg-m" x="731" y="358" font-size="9.5" fill="var(--ink-3)">aligned to the Pi edge, no ribbon</text>
+
+      <rect x="639" y="382" width="34" height="16" rx="2" fill="var(--paper)" stroke="var(--rule-2)" stroke-width="2"/>
+      <rect x="683" y="382" width="34" height="16" rx="2" fill="var(--paper)" stroke="var(--rule-2)" stroke-width="2"/>
+      <text class="svg-t" x="733" y="390" font-size="12" fill="var(--ink)">2 &times; USB panel</text>
+      <text class="svg-m" x="733" y="404" font-size="9.5" fill="var(--ink-3)">RFID hub · service</text>
+
+      <rect x="639" y="424" width="76" height="20" rx="2" fill="var(--paper)" stroke="var(--c-move)" stroke-width="2.5"/>
+      <text class="svg-t" x="731" y="432" font-size="12" fill="var(--ink)">BlueBerry dock</text>
+      <text class="svg-m" x="731" y="446" font-size="9.5" fill="var(--ink-3)">charge + program, own feed</text>
+
+      <line x1="560" y1="229" x2="608" y2="292" stroke="var(--c-audio)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="560" y1="229" x2="608" y2="146" stroke="var(--c-free)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="560" y1="353" x2="608" y2="196" stroke="var(--c-bus)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="560" y1="291" x2="608" y2="96" stroke="var(--ink-3)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="392" y1="120" x2="608" y2="434" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#arA)"/>
+    </svg>
+    <figcaption>Signal flow, Plan B. Dashed copper = BLE, no wire. The 24&nbsp;V solenoid rail never touches the DAC&rsquo;s supply; both meet only at the star ground. Every panel TTL crosses an opto-isolator so BNC shells cannot tie the Pi&rsquo;s ground to a stimulator&rsquo;s.</figcaption>
+  </figure>
+
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Wiring</span><h4>Two rails, one ground point</h4><p>Valve switching sags a shared 5&nbsp;V rail &mdash; that lands as an audible click on the DAC and as noise on the analog out. Separate supplies, flyback diodes at every solenoid, star ground.</p></div>
+    <div class="rule-i"><span class="tagl">Panel</span><h4>BNC is not 50&nbsp;&#937; here</h4><p>Pi GPIO is 3.3&nbsp;V CMOS. Buffer every output, series-resist and ESD-clamp every input, and opto-isolate both directions &mdash; BNC shells create ground loops the moment a second instrument joins.</p></div>
+    <div class="rule-i"><span class="tagl">Breakout</span><h4>Label by class, wire by class</h4><p>Bring the generic lines to identical, numbered panel positions rather than to &ldquo;VALVE1&rdquo; and &ldquo;ODOR3&rdquo;. A rig that is rewired for a new protocol should need no new panel, and no relabelling.</p></div>
+    <div class="rule-i"><span class="tagl">Expander</span><h4>Keep one bank soft</h4><p>Reserve a contiguous block of panel positions for the expander outputs and mark them as such. They are the pins you can always add more of; the header ones are not.</p></div>
+    <div class="rule-i"><span class="tagl">Mechanical</span><h4>SD slot, not an extender</h4><p>The Pi 4B card is a friction fit with no eject spring. Align a slot in the wall with the board edge and leave finger clearance. Extender ribbons corrupt cards at speed &mdash; don&rsquo;t.</p></div>
+    <div class="rule-i"><span class="tagl">Layout</span><h4>Keep RFID away from the lickers</h4><p>134.2&nbsp;kHz excitation couples straight into MPR121 electrodes. Shield and separate the antenna from the electrode leads, or duty-cycle the reader so it never energises inside a lick window.</p></div>
+  </div>
+
+  <h3 style="margin-top:38px">Parts list &mdash; one of each per rig, not per channel</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Board</th><th>One gives you</th><th>Enough for</th><th>~Cost</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PCM5102A</strong><br><span class="cell-s">audio DAC &mdash; turns digital sound into a real analog audio signal</span></td><td>1 stereo audio out</td><td>the whole rig</td><td class="num">&euro;5</td></tr>
+        <tr><td><strong>MCP4728</strong><br><span class="cell-s">analog voltage output &mdash; holds a steady DC level, e.g. LED brightness</span></td><td><strong>4</strong> independent analog outs</td><td>4 light channels</td><td class="num">&euro;5</td></tr>
+        <tr><td><strong>ADS1115</strong><br><span class="cell-s">analog voltage reader &mdash; measures a DC voltage, e.g. the treadmill</span></td><td>4 single-ended <em>or</em> 2 differential ins</td><td>4 sensors, or 2 like the treadmill</td><td class="num">&euro;5</td></tr>
+        <tr><td>Passives &mdash; divider, clamp, op-amp</td><td>input and output conditioning</td><td>&mdash;</td><td class="num">&euro;3</td></tr>
+        <tr><td>Connectors, cable, panel BNCs</td><td>&mdash;</td><td>&mdash;</td><td class="num">&euro;10</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="body-stack prose">
+    <p>These are ~2 &times; 3 cm breakouts, not &ldquo;cards&rdquo; in the sound-card sense. Buy a second of anything only when you exceed those channel counts &mdash; the bus holds up to 8 MCP4728s and 4 ADS1115s.</p>
+  </div>
+
+  <h3 style="margin-top:38px">What plugs in, what gets soldered, what gets built</h3>
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Plugs in</span><h4>MCP4728 and ADS1115</h4><p>Straight into the free I2C socket. If socket and breakout share a 4-pin JST/Qwiic it is a cable and nothing else; otherwise a 4-wire pigtail. <b>The one fiddly part:</b> de-populate the onboard pull-ups on all but one board.</p></div>
+    <div class="rule-i"><span class="tagl">Soldered</span><h4>PCM5102A only</h4><p>Five wires to the header &mdash; 3V3, GND, BCK&rarr;pin&nbsp;12, LRCK&rarr;pin&nbsp;35, DIN&rarr;pin&nbsp;40 &mdash; plus the two config connections that fail silently if skipped: <b>XSMT pulled high</b>, <b>SCK tied to GND</b>. Output pads to the amplifier.</p></div>
+    <div class="rule-i"><span class="tagl">Built</span><h4>The analog conditioning</h4><p>Treadmill in: divider + clamp + series resistor into a differential input. Light onset: GPIO &rarr; buffer/opto &rarr; the driver&rsquo;s TTL gate. Analog out: possibly nothing &mdash; see the check below. Half a day of veroboard, or one small PCB.</p></div>
+    <div class="rule-i"><span class="tagl">Check first</span><h4>Your LED driver&rsquo;s input spec</h4><p>The MCP4728 has a rail-to-rail buffer and drives ~1&nbsp;k&#937; directly. If the driver takes <b>0&ndash;3.3&nbsp;V into a high-impedance input, wire it straight &mdash; no conditioning at all.</b> If it wants 0&ndash;5&nbsp;V you lose a third of the range; a &times;1.5 op-amp stage recovers it.</p></div>
+    <div class="rule-i"><span class="tagl">Don&rsquo;t</span><h4>Power the DAC from 5 V to get 5 V out</h4><p>The MCP4728&rsquo;s I2C logic-high threshold is 0.7 &times; VDD = 3.5&nbsp;V at a 5&nbsp;V supply, and the Pi drives only 3.3&nbsp;V. It would work intermittently and be miserable to diagnose. Run it at 3.3&nbsp;V and add the gain stage.</p></div>
+    <div class="rule-i"><span class="tagl">Pattern</span><h4>The DAC sets how bright, a GPIO sets when</h4><p>A DAC write is software-timestamped, ~150&nbsp;µs at 400&nbsp;kHz &mdash; fine for a level, not a hardware edge. Set intensity during the ITI, gate the light with a TTL at onset. That is why commercial optogenetic drivers have separate analog and TTL inputs.</p></div>
+  </div>
+
+  <h3 style="margin-top:38px">Build or buy</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th></th><th>Build</th><th>Buy</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Parts</strong></td><td>3 breakouts + passives</td><td>Expert Sleepers ES-8</td></tr>
+        <tr><td><strong>Cost</strong></td><td class="num"><strong>~&euro;20</strong></td><td class="num"><strong>~&euro;500</strong></td></tr>
+        <tr><td><strong>Header pins</strong></td><td class="num">3 &mdash; audio only</td><td class="num"><span class="pill ok">0</span></td></tr>
+        <tr><td><strong>Bench time</strong></td><td>~half a day of conditioning circuitry</td><td>one USB cable</td></tr>
+        <tr><td><strong>Audio clock</strong></td><td><span class="pill ok">the Pi&rsquo;s own crystal</span></td><td>independent &mdash; needs the sync channel</td></tr>
+        <tr><td><strong>Conditioning</strong></td><td>you build it</td><td>already inside, DC-coupled, 24-bit / 96 kHz</td></tr>
+        <tr><td><strong>Risk</strong></td><td>known parts, patterns proven in <code>i2c.py</code></td><td>class compliance implies Linux support &mdash; <b>unverified on a Pi</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="plan-note">
+    The ES-8 costs 25&times; more and gives up the shared-crystal audio clock, which is the one property USB can never provide. But it is genuinely one cable, and everything that would otherwise be breadboarded is inside it. <b>If bench time is scarcer than budget, that is the trade.</b>
+  </div>
+
+  <h3 style="margin-top:38px">Software, end to end</h3>
+  <div class="body-stack prose">
+    <p><code>i2c.py</code> already contains both integration patterns, so none of this is new ground: the MPR121 goes through Adafruit Blinka (<code>busio.I2C</code>), while <code>I2C_9DOF</code> uses pigpio&rsquo;s own <code>i2c_open</code>. <b>Follow the MPR121 pattern</b> &mdash; Adafruit ships drivers for both the MCP4728 and the ADS1115, Blinka is already a dependency, and it is proven on this rig. Share one <code>busio.I2C</code> object across devices rather than constructing one per class.</p>
+  </div>
+  <div class="codeblock">import adafruit_mcp4728
+
+class Analog_Out(Hardware):
+    <i>&quot;&quot;&quot;4-channel 12-bit DAC on I2C. Light intensity.&quot;&quot;&quot;</i>
+
+    def __init__(self, channel=0, **kwargs):
+        super(Analog_Out, self).__init__(**kwargs)
+        self.i2c = busio.I2C(board.SCL, board.SDA)
+        dac = adafruit_mcp4728.MCP4728(self.i2c)
+        self.channel = [dac.channel_a, dac.channel_b,
+                        dac.channel_c, dac.channel_d][channel]
+
+    @log_action
+    def set(self, percent):
+        <i>&quot;&quot;&quot;0-100 -&gt; 0 V to VDD on this channel.&quot;&quot;&quot;</i>
+        self.channel.raw_value = int(4095 * max(0, min(100, percent)) / 100)
+        self.hardware_state = HardwareState.OPENED</div>
+  <div class="body-stack prose">
+    <p>Registered in <code>HARDWARE.I2C</code> exactly like the MPR121 &mdash; <code>{"group": "ANALOG_OUT", "name": "LIGHT1", "channel": 0, "type": "i2c.Analog_Out"}</code> &mdash; and called from an FDA entry action as <code>LIGHT1.set(40)</code>. <code>@log_action</code> dispatches the event for free, same as every other hardware call.</p>
+  </div>
+</section>
+
+<section id="doors">
+  <div class="sec-head"><div class="eyebrow">09 — Doors and motors</div></div>
+  <h2>They cost an address, not a pin</h2>
+
+  <div class="plan-note">
+    <b>No, doors do not need another bus.</b> The Adafruit motor HAT is a <b>PCA9685</b> &mdash; a 16-channel PWM generator &mdash; driving <b>TB6612FNG</b> H-bridges, the power stage that actually turns a DC motor. It talks I2C at <code>0x60</code> on the bus you already have, and <code>prefs.json</code> runs three motors through it: <code>DOOR1</code>, <code>DOOR2</code> and <code>MOTORIZED_REWARD</code>. Header cost: <b>zero</b>.
+  </div>
+
+  <h3 style="margin-top:34px">But the HAT form factor fights the audio plan</h3>
+  <div class="body-stack prose">
+    <p>Two problems, and the second is decisive. <b>It covers the 40-pin header</b>, so the audio DAC&rsquo;s five soldered wires become a pass-through exercise. And <b>if its ID EEPROM is populated it claims BCM0/BCM1</b> &mdash; exactly the two spare pins the audio DAC depends on. That would break Plan A outright.</p>
+    <p><b>Still outstanding:</b> <code>ls /proc/device-tree/hat/</code>. Absent or empty means no EEPROM was detected at boot and the pins are genuinely free.</p>
+  </div>
+
+  <h3 style="margin-top:38px">For the new rig: use the chips, not the shield</h3>
+  <div class="body-stack prose">
+    <p>A motor HAT is not a special device &mdash; it is two ordinary chips in a shield-shaped package. Buy them as breakouts and put them on the carrier board instead.</p>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Part</th><th>What it does</th><th>Bus</th><th>Address</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PCA9685</strong></td><td>16-channel PWM generator &mdash; makes the speed and direction signals</td><td>I2C</td><td class="num"><strong>0x40</strong> on a plain breakout</td></tr>
+        <tr><td><strong>TB6612FNG</strong> or <strong>DRV8833</strong></td><td>dual H-bridge &mdash; the power stage that actually turns a motor</td><td>wired from the PCA9685</td><td>none</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Buys you</span><h4>The header stays accessible</h4><p>No shield stacked over the connector, and BCM0/BCM1 stay free for the audio DAC&rsquo;s relocated outputs.</p></div>
+    <div class="rule-i"><span class="tagl">Buys you</span><h4>0x40 instead of 0x60</h4><p>The address clash with the analog voltage output disappears entirely. Nothing has to move, no solder jumper, no decision to remember.</p></div>
+    <div class="rule-i"><span class="tagl">Buys you</span><h4>Headroom</h4><p>One PCA9685 drives up to 8 motors through 4 H-bridges &mdash; well past the three in use. If the doors are <b>servos</b> rather than DC motors, the PCA9685 alone is enough; servos take a PWM pulse directly and need no H-bridge.</p></div>
+    <div class="rule-i"><span class="tagl">Fix</span><h4>Motors are being left stalled</h4><p>A recorded defect. Stalling a DC motor against an end stop draws locked-rotor current indefinitely &mdash; it cooks the motor and the driver, and fails months later. <b>Add two limit switches per door</b> so it stops on arrival.</p></div>
+  </div>
+
+  <div class="plan-note">
+    <b>Where the limit switches go.</b> They are not timing-critical, so they belong on an <b>MCP23017</b> &mdash; its interrupt-on-change gives you all 16 inputs for <b>one</b> GPIO pin. That is the cheapest available fix for a real hardware-damage risk. The other recorded defect, a missing motor shield failing <em>silently</em>, is separate and lives in software: instantiating a motor module should fail loudly when nothing answers at its address.
+  </div>
+
+  <h3 style="margin-top:38px">Scaling</h3>
+  <div class="body-stack prose">
+    <p><b>Addresses are nowhere near the limit</b> &mdash; a realistic rig is five devices against a 112-address space. <b>Bandwidth is not the limit either:</b> at 400&nbsp;kHz an ADS1115 running flat out is ~8.6% of the bus, and everything else writes only on change. The real ceiling is physical &mdash; the 400&nbsp;pF capacitance limit and the stacking pull-ups. Fifteen devices down a metre of ribbon is trouble; the fix is a TCA9517 bus buffer, not a second bus.</p>
+    <p><b>Motors scale by adding boards, not buses or pins.</b> One PCA9685 has 16 PWM channels and a DC motor eats 3 of them &mdash; speed plus two direction lines.</p>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Doors</th><th>PCA9685<br><span class="cell-s">PWM generator</span></th><th>TB6612FNG<br><span class="cell-s">dual H-bridge</span></th><th>Header pins</th></tr></thead>
+      <tbody>
+        <tr><td class="num">2</td><td class="num">1</td><td class="num">1</td><td class="num"><span class="pill ok">0</span></td></tr>
+        <tr><td class="num">4</td><td class="num">1</td><td class="num">2</td><td class="num"><span class="pill ok">0</span></td></tr>
+        <tr><td class="num">8</td><td class="num">2</td><td class="num">4</td><td class="num"><span class="pill ok">0</span></td></tr>
+        <tr><td class="num">16</td><td class="num">4</td><td class="num">8</td><td class="num"><span class="pill ok">0</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Ask first</span><h4>Could the doors be servos?</h4><p>A servo takes <b>one</b> PWM channel and no H-bridge, so a single PCA9685 drives <b>16 doors</b> for &euro;10. That is a 4&times; difference in board count and 8&times; in cost &mdash; worth establishing whether the mechanism genuinely needs a DC motor.</p></div>
+    <div class="rule-i"><span class="tagl">Scales in pins</span><h4>Limit switches, and only those</h4><p>An MCP23017 gives 16 inputs, so <b>8 doors per chip</b>, each wanting one GPIO for its interrupt. Past that you may wire-OR two interrupt outputs onto one pin &mdash; safe here, unlike the MPR121, because the MCP23017&rsquo;s interrupt clears on an ordinary read and a missed limit edge is recoverable by a poll.</p></div>
+    <div class="rule-i"><span class="tagl">Power</span><h4>Size for stall, not running current</h4><p>A DC motor at its end stop draws several times its running draw, and a sequence commanding several doors stalls them together. TB6612FNG is 1.2&nbsp;A continuous / 3.2&nbsp;A peak per channel &mdash; four doors is ~2&nbsp;A on a rail that must stay separate from the logic supply.</p></div>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Full door subsystem</th><th>Header pins</th><th>~Cost</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PCA9685</strong> &mdash; PWM generator</td><td class="num">0</td><td class="num">&euro;10</td></tr>
+        <tr><td>2 &times; <strong>TB6612FNG</strong> &mdash; H-bridges</td><td class="num">0</td><td class="num">&euro;8</td></tr>
+        <tr><td>Limit switches, 2 per door</td><td class="num">0 &mdash; via MCP23017</td><td class="num">&euro;5</td></tr>
+        <tr><td><strong>MCP23017</strong> &mdash; if not already fitted</td><td class="num">0</td><td class="num">&euro;3</td></tr>
+        <tr><td><strong>Total</strong></td><td class="num"><strong>0</strong>, or 1 for the interrupt line</td><td class="num"><strong>&euro;26</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="periph">
+  <div class="sec-head"><div class="eyebrow">10 — Peripherals</div></div>
+  <h2>OptoBlueBerry and RFID</h2>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Question</th><th>Answer</th><th>What it costs you</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Can the Pi replace the BlueHub?</strong></td>
+          <td>The <em>control unit</em>, yes. Pi 4B is BT 5.0 / BLE and speaks to the RN4871 through <code>bleak</code>. This frees one generic output &mdash; the third pin the DAC needs.</td>
+          <td>BLE onset jitter is one connection interval: <strong>7.5&ndash;30 ms</strong>. Fine for reward-contingent blocks; not for lick-locked stimulation.</td>
+        </tr>
+        <tr>
+          <td><strong>Does the rig still need BlueHub hardware?</strong></td>
+          <td><span class="pill mid">yes</span> Charging and the ATtiny85 base-program upload happen at the hub&rsquo;s three docking stations. BLE cannot charge a wearable or flash its MCU.</td>
+          <td>Panel space and a power feed for a charging dock, plus an accessible programming path.</td>
+        </tr>
+        <tr>
+          <td><strong>Is Bluetooth even on?</strong></td>
+          <td><span class="pill no">no</span> <code>rfkill</code> reports <code>hci0</code> soft-blocked and <code>hciconfig</code> reports DOWN on RecordingBox today. WiFi too.</td>
+          <td>Unblocking puts a 2.4&nbsp;GHz transmitter inside the recording box. On an Ethernet-wired rig that block is often deliberate &mdash; a decision, not a command.</td>
+        </tr>
+        <tr>
+          <td><strong>Does Bluetooth cost a header pin?</strong></td>
+          <td><span class="pill ok">no</span> <code>pinctrl</code> confirms the controller is on the internal PL011 &mdash; GPIO30&ndash;33, in alt3.</td>
+          <td>Nothing. This closes an open question from the first draft.</td>
+        </tr>
+        <tr>
+          <td><strong>How many BlueBerries at once?</strong></td>
+          <td>7&ndash;10 concurrent BLE links on a CYW43455. Run <em>one</em> connection-manager process &mdash; multi-process <code>bleak</code> aborts connections on a Pi.</td>
+          <td>Onboard BT shares the antenna with 2.4&nbsp;GHz WiFi. Put rigs on Ethernet or 5&nbsp;GHz.</td>
+        </tr>
+        <tr>
+          <td><strong>Does RFID cost GPIO?</strong></td>
+          <td><span class="pill ok">no</span> FDX-B 134.2&nbsp;kHz readers go to a powered USB hub, one per zone. The header UART is unavailable anyway &mdash; two of its pins are already generic I/O.</td>
+          <td>Arrival times are userspace, not pigpio ticks. Log them as software-timestamped and say so.</td>
+        </tr>
+        <tr>
+          <td><strong>Use the MPR121 as an expander?</strong></td>
+          <td><span class="pill no">no</span> ELE4&ndash;11 can be GPIO, but <code>i2c.py</code> deliberately manipulates the ECR register to keep the level-held TOUCH_INT line recoverable.</td>
+          <td>Adding writes to that register space invites exactly the latched-IRQ failure the code was hardened against. Use a dedicated MCP23017.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="stamp">
+  <div class="sec-head"><div class="eyebrow">11 — Timestamping</div></div>
+  <h2>Getting I2C events onto the one counter</h2>
+  <p class="lede prose">An I2C transaction cannot be timestamped on the pigpio tick &mdash; <code>@log_action</code> stamps it <code>ts_source="software"</code> when the call returns. But almost every I2C chip has a spare pin that can witness the event on a real GPIO, where pigpio DMA-samples the edge to microseconds.</p>
+
+  <div class="plan-note">
+    <b>Inputs are timestamped by their interrupt or ready line. Outputs are timestamped by a GPIO that gates them.</b><br><br>
+    The rig already does this without naming it: the MPR121&rsquo;s IRQ on BCM14 says <em>when</em> a lick happened; the I2C read afterwards says <em>which</em> electrode. <b>Edge = when, bus = what.</b>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Witness pin</th><th>Chip pin</th><th>What it timestamps</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Lick IRQ</strong> <span class="pill ok">exists</span></td><td class="num">MPR121 IRQ</td><td>the instant an electrode is touched</td></tr>
+        <tr><td><strong>Door arrival</strong></td><td class="num">MCP23017 INTA</td><td>a limit switch closing &mdash; the door physically arriving</td></tr>
+        <tr><td><strong>Treadmill anchor</strong></td><td class="num">ADS1115 ALERT/RDY</td><td>end of an ADC conversion</td></tr>
+        <tr><td><strong>Light change</strong></td><td class="num">MCP4728 LDAC</td><td>the instant all four DAC outputs update</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Doors</span><h4>The limit switch <em>is</em> the timestamp</h4><p>The I2C command was never the door&rsquo;s arrival time &mdash; mechanical travel sits in between. Command = when we asked; switch edge = when it arrived; the difference is measured travel time per trial. <b>One pin covers any number of doors:</b> wire-OR every switch for the edge, read the expander to learn which closed.</p></div>
+    <div class="rule-i"><span class="tagl">Treadmill</span><h4>Anchor and interpolate</h4><p>Configure ALERT/RDY to pulse per conversion (Hi_thresh MSB 1, Lo_thresh MSB 0). Timestamping all 860/s is heavy and unnecessary &mdash; take one anchor every Nth conversion and interpolate between. The anchors also measure the ADC oscillator drifting against the tick, free.</p></div>
+    <div class="rule-i"><span class="tagl">Light</span><h4>Use LDAC, one pin does both jobs</h4><p>Write values over I2C whenever; pulse <b>LDAC</b> from a GPIO and all four channels update at that instant. The pin both <em>causes</em> and <em>timestamps</em> the change. <b>Specify the MCP4728 over the MCP4725 even for one channel</b> &mdash; the 4725 has no LDAC and can never be hardware-timestamped.</p></div>
+    <div class="rule-i"><span class="tagl">Cannot</span><h4>The PCA9685 has no witness output</h4><p>A motor command cannot self-witness, which is exactly why the limit switch matters. Same for any output whose chip offers no ready or latch pin &mdash; gate it with a GPIO or accept a software stamp.</p></div>
+  </div>
+
+  <h3 style="margin-top:38px">The budget consequence &mdash; and it settles Plan A vs Plan B</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Purpose</th><th>Pins</th></tr></thead>
+      <tbody>
+        <tr><td>Shared I2C bus</td><td class="num">2</td></tr>
+        <tr><td>Audio chip (I2S)</td><td class="num">3</td></tr>
+        <tr><td><strong>Timing witness lines</strong> &mdash; lick, doors, treadmill, light</td><td class="num"><strong>4</strong></td></tr>
+        <tr><td>Audio sync return</td><td class="num">1</td></tr>
+        <tr><td>TTL sync out to recording equipment</td><td class="num">1</td></tr>
+        <tr><td><strong>Remaining generic</strong></td><td class="num"><strong>17</strong></td></tr>
+        <tr><td><strong>Total signal pins</strong></td><td class="num"><strong>28</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="plan-note">
+    The rig needs <b>21</b> generic lines once the OptoBlueBerry trigger retires to BLE. Against <b>17</b> available it is four short &mdash; resolved by moving the five odour valves to the MCP23017, leaving <b>16 needed against 17 available, one spare</b>, and returning the SPI bus as a bonus.<br><br>
+    <b>So Plan B is no longer the optional upgrade.</b> If you want hardware timestamps on the doors, the treadmill and the light, the odour-bank migration <em>is</em> the plan.
+  </div>
+</section>
+
+<section id="rig">
+  <div class="sec-head"><div class="eyebrow">12 — Verified on the rig</div></div>
+  <h2>What RecordingBox actually says</h2>
+  <p class="lede prose">Read-only probes against 132.77.73.213 on 7 Sep 2026. Pi 4B Rev 1.5, Debian 13 trixie, kernel 6.18.39, <code>/opt/mics</code> at <code>43f7b7b</code>, 52&nbsp;°C, not throttled.</p>
+
+  <div class="plan-note">
+    <b>Two corrections to the first draft.</b> BCM27 sitting as an output is not a fault &mdash; <code>clock_soak.py</code> takes <code>--out-pin</code>/<code>--in-pin</code> and nothing restores pin modes on exit, so BCM26/27 are soak residue. And <code>dtoverlay=nospi10</code> is a real stock overlay whose help reads <i>&ldquo;Disable the spi10 device on Pi5&rdquo;</i> &mdash; on a BCM2711 it does nothing at all.
+  </div>
+
+  <h3 style="margin-top:34px">The landmine: PIGPIOMASK</h3>
+  <p class="lede prose" style="margin-top:10px">pigpiod parses <code>-x</code> as a <em>number</em>, not as bits:</p>
+
+  <div class="codeblock">case 'x':
+   mask = getNum(optarg, &amp;err);          <i>// strtol family, base 0</i>
+   if (!err) { updateMask = mask; updateMaskSet = 1; }
+   else fatal("invalid -x option (%s)", optarg);</div>
+
+  <div class="body-stack prose">
+    <p>The shipped value <code>1111110000111111111111110000</code> has no <code>0x</code> prefix, so it is read as <b>decimal</b> &mdash; about 1.1&times;10<sup>27</sup>, which overflows a 64-bit integer. pigpiod is running, so it never hit <code>fatal()</code>; it simply took whatever the overflow produced. The mask has never done anything, which is exactly what you saw when changing it on the old OS.</p>
+    <p><b>Now read it as bits.</b> MSB&nbsp;=&nbsp;GPIO27, it means <code>0x0FC3FFF0</code>: exclude GPIO0&ndash;3, and exclude <b>GPIO18, 19, 20, 21</b> &mdash; four generic outputs, one of which is also an I2S line. And it was never a MICS decision: the string is Autopilot&rsquo;s stock default, verbatim from <code>prefs.py</code> and repeated in <code>pilot.py</code>&rsquo;s docstring. It has ridden along inert since the fork.</p>
+    <p>So the danger is not the broken mask. It is that the mask <em>looks</em> deliberate. The day someone tidies it to <code>-x 0x0FC3FFF0</code>, four outputs stop responding &mdash; silently, because pigpio just declines the mode change.</p>
+  </div>
+
+  <div class="rules">
+    <div class="rule-i"><span class="tagl">Fixed</span><h4>Mask is now <code>0x0FFFFFFC</code></h4><p>BCM2&ndash;27. Changed in <code>prefs.template.json</code>, in <code>prefs.py</code>&rsquo;s default so a fresh prefs cannot regenerate it, and in the docstring example.</p></div>
+    <div class="rule-i"><span class="tagl">Pinned</span><h4><code>test_pigpio_mask.py</code></h4><p>Asserts the mask parses as a number and permits every BCM pin the <code>HARDWARE</code> dict declares. All four assertions failed against the old value.</p></div>
+    <div class="rule-i"><span class="tagl">Deploy</span><h4><code>prefs.json</code> is untracked</h4><p>A <code>git pull</code> does <b>not</b> update the live file. Edit <code>/opt/mics/pilot/prefs.json</code> by hand and restart the pilot &mdash; <code>start_pigpiod()</code> reads it at launch.</p></div>
+    <div class="rule-i"><span class="tagl">Watch</span><h4>The two spare pins stay outside</h4><p>Both the new value and pigpiod&rsquo;s own default stop at BCM2. Any plan that lands hardware on BCM0/BCM1 must widen it to <code>0x0FFFFFFF</code> at the same time.</p></div>
+  </div>
+
+  <h3 style="margin-top:38px">What the pin captures could and could not settle</h3>
+  <div class="body-stack prose">
+    <p>Two <code>pinctrl get</code> captures &mdash; one idle, one during a <code>clockSoak</code> run &mdash; are identical: every GPIO 4&ndash;25 an input at its power-on pull. That is <em>not</em> evidence about the pin map. The running task&rsquo;s hardware set held only the <code>Modules</code> entries from the backend, so <code>init_hardware()</code> did run but the set has no GPIO, no I2C and no Mixer members. Nothing ever asked pigpio for an output, and nothing opened the audio device.</p>
+    <p><b>Still outstanding:</b> one <code>pinctrl get</code> plus an <code>hw_params</code> capture during a task whose toolkit includes GPIO hardware <em>and</em> <code>AUDIO1</code>. That is the only measurement that shows the real pin state and the rate, format and period size the device actually runs at.</p>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Probe</th><th>Result</th><th>Consequence</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Audio device</strong></td><td><code>card 0: bcm2835 Headphones</code>, 8 subdevices, <code>dtparam=audio=on</code>. <code>snd_soc_bcm2835_i2s</code> <b>not loaded</b>.</td><td>The I2S peripheral is not even instantiated. Adding a DAC is a config change, not a driver problem.</td></tr>
+        <tr><td><strong>Scheduling</strong></td><td>pilot and <code>pigpiod</code> both <code>SCHED_FIFO</code>, <code>rtprio 10</code>.</td><td>One of the four audio fixes is already done &mdash; but they sit at <em>equal</em> RT priority, so pigpio&rsquo;s DMA work and the audio callback compete evenly.</td></tr>
+        <tr><td><strong><code>pigs</code> over the local socket</strong></td><td><span class="pill ok">works</span> despite <code>PIGPIOARGS = -t 0 -l</code>.</td><td><code>-l</code> blocks remote connections only. <code>pigs mg &lt;n&gt;</code> is a permanent read-only probe.</td></tr>
+        <tr><td><strong><code>enable_uart=0</code></strong></td><td>but <code>cmdline.txt</code> still carries <code>console=serial0,115200</code>.</td><td>Inert today. Flip <code>enable_uart=1</code> &mdash; raspi-config&rsquo;s serial-console toggle does &mdash; and the kernel claims BCM14, killing TOUCH_INT with no error. Strip the token.</td></tr>
+        <tr><td><strong>DLC ingress</strong></td><td><code>ValueError: cannot convert float NaN to integer</code>, ~once a minute since 02 Sep.</td><td>The <code>for … in results</code> loop is inside the <code>try</code>, so one NaN discards every remaining signal <em>and event</em> from that frame. Needs a guard in <code>coerce_for_event</code>; ships via git, not the backend.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="gate">
+  <div class="sec-head"><div class="eyebrow">13 — Before anyone orders parts</div></div>
+  <h2>Answer these in order</h2>
+  <div class="gate">
+    <p class="prose" style="color:var(--ink-2)">The first two are decisions. The rest are bench work, and none of them needs a purchase order.</p>
+    <ol>
+      <li><b>Which generic lines are hard-timed?</b><span>Go through the rig one line at a time and ask whether its edge timestamp appears in your analysis. That count, not the valve names, is what the header has to hold. Everything else moves to an expander.</span></li>
+      <li><b>Is 7.5&ndash;30 ms of BLE onset jitter acceptable for your stimulation protocols?</b><span>If yes, the BlueHub trigger line is free and the DAC fits. If no, that line stays wired and the third pin has to come off an expander instead.</span></li>
+      <li><b>Build the sync-channel fixture on the current rig, before buying anything.</b><span>It turns &ldquo;we couldn&rsquo;t get rid of the latency&rdquo; into a measured distribution &mdash; and will almost certainly show the decode-per-trigger bug accounts for most of it, which is a free fix.</span></li>
+      <li><b>Bench-test a 134.2 kHz reader against the MPR121 electrodes.</b><span>If they interfere, RFID moves to HF 13.56&nbsp;MHz and the mechanical layout changes with it. Cheaper to find out before the box is cut.</span></li>
+      <li><b>Measure the treadmill&rsquo;s open-circuit voltage at full speed.</b><span>Everything about the input divider and clamp follows from that one number, and the ADS1115 has hard absolute limits. Two minutes with a multimeter.</span></li>
+      <li><b>Decide whether the motor shield belongs on this rig at all.</b><span><code>prefs.json</code> declares it and three door/reward modules at 0x60; nothing answers there, and a missing HAT fails silently. Either fit it &mdash; and move it to 0x61 &mdash; or delete the stale entries.</span></li>
+      <li><b>Set <code>dtparam=i2c_arm_baudrate=400000</code>.</b><span>You are on the 100 kHz default, where a continuously sampling ADS1115 would take a third of the bus. Test the daisy-chain once after changing it.</span></li>
+      <li><b>Decide whether Bluetooth may be on inside the recording box.</b><span>Soft-blocked today. Gates the whole OptoBlueBerry section, and it is an RF-hygiene call rather than a technical one.</span></li>
+      <li><b>Never &ldquo;fix the format&rdquo; of PIGPIOMASK.</b><span>Correcting it to its literal hex would disable four generic outputs. It is now <code>0x0FFFFFFC</code>; widen to <code>0x0FFFFFFF</code> the day anything lands on the two spare pins.</span></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  MICS pilot rig · hardware review · 07 Sep 2026<br>
+  Verified against mics_core @ 43f7b7b and read-only probes of RecordingBox (132.77.73.213)<br>
+  Full sourced write-up with references: .claude/docs/pi_rig_hardware_kb.md
+</footer>
+
+</div>
+
+<script>
+var K = {
+  pwr:'var(--c-pwr)', gout:'var(--c-taken)', gin:'var(--c-taken)',
+  bus:'var(--c-bus)', sys:'var(--c-sys)', aud:'var(--c-audio)',
+  mv:'var(--c-move)', fr:'var(--c-free)'
+};
+
+// [physical pin, class label, kind, subtitle]
+var BASE = [
+  [1,'3V3','pwr','power'],                      [2,'5V','pwr','power'],
+  [3,'I2C SDA','bus','BCM2 · lick sensors, HAT'],[4,'5V','pwr','power'],
+  [5,'I2C SCL','bus','BCM3 · lick sensors, HAT'],[6,'GND','pwr','ground'],
+  [7,'OUT 01','gout','BCM4 · LED1'],            [8,'TOUCH_INT','sys','BCM14 · edge in · on UART TXD'],
+  [9,'GND','pwr','ground'],                     [10,'OUT 02','gout','BCM15 · AIR_PUF · on UART RXD'],
+  [11,'OUT 03','gout','BCM17 · LED2'],          [12,'OUT 04','gout','BCM18 · LED3 · I2S BCK / PWM0'],
+  [13,'IN 01','gin','BCM27 · IR5'],             [14,'GND','pwr','ground'],
+  [15,'IN 02','gin','BCM22 · IR1'],             [16,'IN 03','gin','BCM23 · IR2'],
+  [17,'3V3','pwr','power'],                     [18,'IN 04','gin','BCM24 · IR3'],
+  [19,'OUT 05','gout','BCM10 · ODOR3 · SPI0 MOSI'],[20,'GND','pwr','ground'],
+  [21,'OUT 06','gout','BCM9 · ODOR2 · SPI0 MISO'],[22,'IN 05','gin','BCM25 · IR4'],
+  [23,'OUT 07','gout','BCM11 · ODOR1 · SPI0 SCLK'],[24,'OUT 08','gout','BCM8 · ODOR4 · SPI0 CE0'],
+  [25,'GND','pwr','ground'],                    [26,'OUT 09','gout','BCM7 · ODOR5 · SPI0 CE1'],
+  [27,'SPARE 1','fr','BCM0 · ID_SD · needs mask bit 0'],[28,'SPARE 2','fr','BCM1 · ID_SC · needs mask bit 1'],
+  [29,'IN 06','gin','BCM5 · IR6'],              [30,'GND','pwr','ground'],
+  [31,'IN 07','gin','BCM6 · IR7'],              [32,'TTL SYNC','sys','BCM12 · reserved out · PWM0'],
+  [33,'OUT 10','gout','BCM13 · BlueHub trigger · PWM1'],[34,'GND','pwr','ground'],
+  [35,'OUT 11','gout','BCM19 · VALVE1 · I2S LRCK / PWM1'],[36,'OUT 12','gout','BCM16 · AIR_PUF_S'],
+  [37,'OUT 13','gout','BCM26 · VALVE4'],        [38,'OUT 14','gout','BCM20 · VALVE2 · I2S DIN'],
+  [39,'GND','pwr','ground'],                    [40,'OUT 15','gout','BCM21 · VALVE3 · I2S DOUT']
+];
+
+var A_OVR = {
+  12:['I2S BCK','aud','BCM18 · to PCM5102A'],
+  35:['I2S LRCK','aud','BCM19 · to PCM5102A'],
+  40:['I2S DOUT','aud','BCM21 · to PCM5102A'],
+  27:['OUT 04','mv','BCM0 · relocated from pin 12'],
+  28:['OUT 11','mv','BCM1 · relocated from pin 35'],
+  33:['OUT 15','mv','BCM13 · relocated from pin 40 · trigger retired to BLE']
+};
+
+var B_OVR = {
+  19:['SPI0 MOSI','bus','BCM10 · recovered · to the DAC'],
+  21:['SPI0 MISO','bus','BCM9 · recovered · from the ADC'],
+  23:['SPI0 SCLK','bus','BCM11 · recovered · shared clock'],
+  24:['SPI0 CE0','bus','BCM8 · recovered · DAC select'],
+  26:['SYNC IN','fr','BCM7 · recovered · comparator, DMA-timestamped'],
+  3:['I2C SDA','bus','BCM2 · lick sensors, HAT, expander'],
+  5:['I2C SCL','bus','BCM3 · lick sensors, HAT, expander']
+};
+
+var OVR = { today:{}, A:A_OVR, B:Object.assign({}, A_OVR, B_OVR) };
+
+var OFF = {
+  today: [],
+  A: [],
+  B: ['MCP23017 · OUT 05','OUT 06','OUT 07','OUT 08','OUT 09','+ 11 spare soft-timed lines']
+};
+
+var NOTE = {
+  today: '<b>Zero free pins, and 22 of the 26 are generic.</b> Two go to the I2C bus, one to TOUCH_INT, one to the TTL sync out. The remaining 22 &mdash; 15 outputs and 7 inputs &mdash; are interchangeable lines that happen to be wired to valves, LEDs and beam-breaks today.',
+  A: '<b>Three generic outputs move; nothing is gained.</b> They go to the two spare pins and the one the BlueHub trigger vacates, and the DAC takes BCM18/19/21. The budget lands at exactly zero &mdash; no pin left for analog out, analog in, or the sync return. Sound only, and <code>PIGPIOMASK</code> must widen to <code>0x0FFFFFFF</code> in the same change.',
+  B: '<b>Five soft-timed outputs move to an expander, and the SPI bus comes back with them.</b> Those five happen to sit on SPI0, so relocating them buys a 12-bit DAC for opto intensity, an ADC for analog in, and one pin left over for the audio sync return &mdash; the first hardware-timestamped acoustic onset this rig has ever had. Eleven expander lines stay spare.'
+};
+
+var CAP = { today:'as wired today', A:'Plan A — sound only', B:'Plan B — recommended' };
+
+function cell(p, o, side){
+  var d = document.createElement('div');
+  var label = o ? o[0] : p[1];
+  var kind  = o ? o[1] : p[2];
+  var sub   = o ? o[2] : p[3];
+  d.className = 'cell ' + side + (o ? ' chg' : '');
+  d.style.setProperty('--k', K[kind]);
+  var n = document.createElement('div'); n.className = 'cell-n'; n.textContent = label;
+  var t = document.createElement('div'); t.className = 'cell-s'; t.textContent = sub;
+  d.appendChild(n); d.appendChild(t);
+  return d;
+}
+
+function pin(n, side){
+  var d = document.createElement('div');
+  d.className = 'pn ' + side;
+  d.textContent = n;
+  return d;
+}
+
+function render(plan){
+  var ovr = OVR[plan] || {};
+  var grid = document.getElementById('hdr');
+  grid.innerHTML = '';
+  for (var i = 0; i < 40; i += 2){
+    var L = BASE[i], R = BASE[i + 1];
+    grid.appendChild(cell(L, ovr[L[0]], 'l'));
+    grid.appendChild(pin(L[0], 'l'));
+    grid.appendChild(pin(R[0], 'r'));
+    grid.appendChild(cell(R, ovr[R[0]], 'r'));
+  }
+  var off = document.getElementById('offhdr');
+  off.innerHTML = '';
+  if (OFF[plan].length){
+    var lab = document.createElement('span');
+    lab.className = 'offhdr-l';
+    lab.textContent = 'off-header';
+    off.appendChild(lab);
+    OFF[plan].forEach(function(t){
+      var c = document.createElement('span');
+      c.className = 'chip';
+      c.textContent = t;
+      off.appendChild(c);
+    });
+    off.style.display = 'flex';
+  } else {
+    off.style.display = 'none';
+  }
+  document.getElementById('planNote').innerHTML = NOTE[plan];
+  document.getElementById('capR').textContent = CAP[plan];
+}
+
+var btns = document.querySelectorAll('.seg button');
+btns.forEach(function(b){
+  b.addEventListener('click', function(){
+    btns.forEach(function(x){ x.setAttribute('aria-pressed', String(x === b)); });
+    render(b.dataset.plan);
+  });
+});
+render('today');
+</script>

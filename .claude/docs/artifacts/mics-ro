@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# mics-ro — forced-command read-only probe for the MICS pilot.
+#
+# Installed as the ONLY thing a specific SSH key may run:
+#   restrict,command="/home/pi/mics-ro" ssh-ed25519 AAAA... claude-ro-213
+#
+# The key gets no shell, no pty, no forwarding, and no arbitrary command.
+# Everything below is a pure read. Nothing here writes a register, a file,
+# a service state, or a git ref.
+#
+# DELIBERATELY EXCLUDED — do not add these:
+#   i2cdetect / i2cget / i2cset  — bus traffic perturbs the MPR121 ECR and can
+#                                  latch TOUCH_INT; not safe while a run is live
+#   pinctrl set / raspi-gpio set — writes GPIO registers behind the drivers
+#   systemctl start|stop|restart, git, python, pip, apt, rsync
+
+set -u
+PILOT_UNIT=mics-pilot
+MICS_ROOT=/opt/mics
+
+cmd="${SSH_ORIGINAL_COMMAND:-help}"
+verb="${cmd%% *}"
+arg="${cmd#* }"; [ "$arg" = "$cmd" ] && arg=""
+
+h() { printf '\n===== %s =====\n' "$1"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+case "$verb" in
+
+ident)
+  h "host";      uname -a; cat /etc/os-release 2>/dev/null | head -3
+  h "model";     tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
+  h "revision";  grep -E '^(Revision|Hardware|Model)' /proc/cpuinfo
+  h "uptime";    uptime
+  h "mics root"; ls -ld "$MICS_ROOT" 2>/dev/null; readlink -f "$MICS_ROOT" 2>/dev/null
+  ;;
+
+prefs)
+  h "prefs.json"; cat "$MICS_ROOT/pilot/prefs.json" 2>/dev/null || echo "not found at $MICS_ROOT/pilot/prefs.json"
+  ;;
+
+gpio)
+  h "pin function / level / pull (READ ONLY)"
+  if have pinctrl; then pinctrl get
+  elif have raspi-gpio; then raspi-gpio get
+  else echo "neither pinctrl nor raspi-gpio installed"; fi
+  ;;
+
+config)
+  h "config.txt";  cat /boot/firmware/config.txt 2>/dev/null || cat /boot/config.txt 2>/dev/null
+  h "cmdline.txt"; cat /boot/firmware/cmdline.txt 2>/dev/null || cat /boot/cmdline.txt 2>/dev/null
+  ;;
+
+overlays)
+  h "active overlays in config";  grep -nE '^\s*(dtoverlay|dtparam|device_tree)' /boot/firmware/config.txt 2>/dev/null || grep -nE '^\s*(dtoverlay|dtparam)' /boot/config.txt 2>/dev/null
+  h "device-tree soc nodes";      ls /proc/device-tree/soc 2>/dev/null | head -60
+  ;;
+
+i2cbus)
+  h "i2c adapters (sysfs enumeration only — no bus traffic)"
+  for d in /sys/bus/i2c/devices/i2c-*; do
+    [ -e "$d" ] || continue
+    printf '%s : %s\n' "${d##*/}" "$(cat "$d/name" 2>/dev/null)"
+  done
+  h "bound i2c clients"; ls -l /sys/bus/i2c/devices/ 2>/dev/null | grep -v 'i2c-[0-9]*$'
+  h "note"; echo "i2cdetect is intentionally NOT available here — it perturbs the MPR121."
+  ;;
+
+audio)
+  h "playback devices";  aplay -l 2>&1
+  h "pcm names";         aplay -L 2>&1 | head -40
+  h "asound cards";      cat /proc/asound/cards 2>/dev/null
+  h "modules";           cat /proc/asound/modules 2>/dev/null
+  h "open stream hw_params"
+  for f in /proc/asound/card*/pcm*p/sub*/hw_params; do
+    [ -e "$f" ] || continue; echo "--- $f"; cat "$f" 2>/dev/null
+  done
+  h "snd modules loaded"; lsmod 2>/dev/null | grep -E '^snd|i2s|bcm2835' 
+  ;;
+
+usb)   h "lsusb"; lsusb 2>&1; h "usb tree"; lsusb -t 2>&1 ;;
+
+bt)
+  h "controllers"; hciconfig -a 2>&1 | head -30
+  h "rfkill";      rfkill list 2>&1
+  ;;
+
+irq)   h "/proc/interrupts"; cat /proc/interrupts ;;
+
+service)
+  h "$PILOT_UNIT status"; systemctl status "$PILOT_UNIT" --no-pager 2>&1 | head -30
+  h "pigpiod";            systemctl status pigpiod --no-pager 2>&1 | head -12
+  ;;
+
+log)
+  n="${arg:-120}"
+  case "$n" in ''|*[!0-9]*) n=120 ;; esac
+  [ "$n" -gt 2000 ] && n=2000
+  h "last $n lines of $PILOT_UNIT"; journalctl -u "$PILOT_UNIT" -n "$n" --no-pager 2>&1
+  ;;
+
+temp)
+  h "thermal";   vcgencmd measure_temp 2>&1; vcgencmd measure_clock arm 2>&1
+  h "throttled"; vcgencmd get_throttled 2>&1
+  ;;
+
+procs)
+  h "relevant processes"; ps -eo pid,ppid,pri,ni,rtprio,policy,pcpu,comm,args 2>/dev/null \
+    | grep -E 'pigpiod|pilot|python|jackd|PID' | grep -v grep
+  ;;
+
+help|*)
+  cat <<'H'
+mics-ro — read-only probes. Usage:  ssh mics-213 <verb>
+
+  ident      host, model, OS, /opt/mics target
+  prefs      pilot/prefs.json verbatim
+  gpio       pinctrl get — every pin's function, level and pull (read only)
+  config     /boot/firmware/config.txt and cmdline.txt
+  overlays   active dtoverlay/dtparam lines + device-tree soc nodes
+  i2cbus     I2C adapters and bound clients from sysfs (NO bus traffic)
+  audio      aplay -l/-L, /proc/asound, live hw_params, snd modules
+  usb        lsusb, lsusb -t
+  bt         hciconfig -a, rfkill
+  irq        /proc/interrupts
+  service    systemctl status for the pilot and pigpiod
+  log [N]    last N journal lines for the pilot (default 120, max 2000)
+  temp       vcgencmd temp / clock / throttled
+  procs      pigpiod + pilot process table with scheduling policy
+
+Anything else is refused. This key has no shell.
+H
+  ;;
+esac

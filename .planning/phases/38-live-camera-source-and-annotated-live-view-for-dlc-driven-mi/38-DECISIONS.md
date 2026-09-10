@@ -800,3 +800,44 @@ Simultaneous IC Capture and MICS acquisition. That remains D-75's multicast-moni
 needs the vendor GigE stack (`imagingcontrol4`) and therefore the CAM-17 / T5b build this phase
 avoided — plus lab IT admitting the camera and the switch doing IGMP sanely. Recording at the source
 makes IC Capture *less* necessary (the footage exists without it) but does not make it concurrent.
+
+### Amendment, 2026-09-10 — three corrections found while planning 38-07
+
+Written into D-88 rather than left inside the plan, because two of them are errors in the text
+above and a decision record that is wrong gets rediscovered the expensive way.
+
+**1. `tee` performs ONE encode and hands the same packets to every slave.** The paragraph above
+says the delivery leg binds MJPEG while the file leg "may use H.264". With the `tee` muxer that is
+not reachable by writing two codecs: `tee` fans out already-encoded packets. Differing codecs per
+leg requires mapping the video stream twice, encoding it twice, and giving each slave a `select=`
+option. **Default is therefore ONE encode, MJPEG on both legs**, and the two-stream `select=` form
+is an escalation, not the baseline.
+
+It is also needed in a direction this decision did not anticipate: MPEG-TS carries a restricted
+codec set and may refuse MJPEG outright, which would force H.264 on the **delivery** leg rather
+than the file leg. 38-07 answers this with a two-second probe before anything else is built.
+
+**2. `onfail=ignore` covers a FAILED sink, not a SLOW one.** A consumer that connects and then
+stops reading applies TCP backpressure, and a blocking write is not a failure — `onfail` never
+fires, and the file leg stalls behind it. So "the network leg is droppable by construction" is only
+true for an *absent* consumer.
+
+The consequence is that the transport choice, not `onfail`, is what actually protects the
+recording: **UDP cannot block by construction; TCP can.** D-88's stated criterion ("which one
+cannot stall the file leg") therefore cannot be decided by a dead-consumer test — a stalling
+transport passes that. 38-07 decides it with a deliberately slow consumer (a PowerShell
+`TcpListener` that accepts, then sleeps), and rejects any candidate that stalls the file leg.
+
+**3. The `tee` slave spec uses `\` as an escape character and `:` as an option separator**, so a
+Windows absolute path placed inside one is silently mangled. The builder **refuses** a segment
+pattern that is absolute or contains a backslash and requires a relative pattern plus a working
+directory — which removes the drive letter, the backslashes and the colon from the spec entirely.
+Asserted by a test rather than discovered on the rig.
+
+**Also:** the recorder must emit **no verbosity flag**. `-v error` would suppress the
+`frame dropped` lines, which would make the completeness test's third witness pass *vacuously* —
+the worst kind of green.
+
+**Cross-plan conflict this creates:** plan 38-05 (`38-05-PLAN.md:360`) instructs the runbook to
+document `ffmpeg ... -f mpjpeg -listen 1`, which D-88 postdates and forbids. 38-07 corrects that
+text and keeps `-listen` in the runbook in exactly one place: as the named trap.

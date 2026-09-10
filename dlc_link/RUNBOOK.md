@@ -478,37 +478,26 @@ Two facts about this class of camera specifically, because nothing else will sur
   (Per this rig's own worked example above, this is T3's case and does not apply to a GigE Vision
   camera — kept here for the IP-camera case it does apply to.)
 - **Relay in MJPEG, never H.264/RTSP — per-frame coding means no GOP buffering to wait on.** The
-  documented command, and its one named trap (`set DEV=`/`%DEV%` so the device name never sits
-  inside a long wrapped line):
+  relay PUSHES the feed to whatever is listening for it, rather than waiting to be asked —
+  `set DEV=`/`%DEV%` keeps the device name out of a long wrapped line:
 
   ```
   set DEV=<device>
-  ffmpeg -f dshow -i video="%DEV%" -c:v mjpeg -q:v 5 -f mpjpeg -listen 1 http://0.0.0.0:8080/
+  ffmpeg -f dshow -i video="%DEV%" -c:v mjpeg -q:v 5 -f mpjpeg tcp://<listener-ip>:<port>
   ```
 
-  **The trap: `-listen 1` serves exactly one client and blocks ALL of this process's outputs —
-  including a file you might add later — until that one client connects.** If this same `ffmpeg`
-  invocation is ever asked to also write an archival file (recording, not merely viewing), `-listen`
-  means the file does not start growing until somebody opens the stream, with no error saying so.
-  `D-88`/plan 38-07 replace `-listen` with a design that pushes the feed instead of waiting to be
-  asked, for exactly this reason — consult that decision before wiring this relay into anything
-  that must record unattended. For live viewing only, as documented here, `-listen` works; know
-  what it costs before reaching for it anywhere else. Downscaling at the relay to the model's input
+  **Why pushed, not a blocking wait for a client:** see the ACQUISITION section below for the named
+  trap this avoids and the full reasoning (D-88). Downscaling at the relay to the model's input
   size is free bandwidth saved, not a quality compromise worth avoiding.
 - **A USB/DirectShow camera is usually exclusive-access: the relay and any other recorder cannot
   both hold it.** If the lab computer is also recording from the camera with separate software, a
   relay started alongside it fails with a message indistinguishable from an unsupported capture
-  mode — a one-second `ffmpeg ... -t 1 -f null -` probe tells the two apart. The fix is one
-  capture with two sinks in the SAME `ffmpeg` process, never two processes:
-
-  ```
-  set DEV=<device>
-  set OUT=<archival-output>
-  ffmpeg -f dshow -i video="%DEV%" -c:v mjpeg -q:v 5 -f mpjpeg -listen 1 http://0.0.0.0:8080/ -c:v mjpeg -q:v 5 %OUT%
-  ```
-
-  (two `-map`/output pairs sharing the one input). A GigE Vision camera has the extra
-  multicast-monitor escape hatch a DirectShow device does not (above).
+  mode — a one-second `ffmpeg ... -t 1 -f null -` probe tells the two apart. **When this machine
+  must both record an archival file AND relay live — which is this runbook's NORMAL case now, not
+  an edge case — see the ACQUISITION section below: one `ffmpeg` process, a `tee` fan-out to a
+  segmented file and a pushed delivery leg, and a generated PowerShell supervisor. Never two
+  processes, and never a flag that blocks the file from growing.** A GigE Vision camera has the
+  extra multicast-monitor escape hatch a DirectShow device does not (above).
 - **Never install a GStreamer-enabled OpenCV to reach a machine-vision camera.** This is the same
   second-`cv2` clobber the live-view section below forbids for a different reason — `cv2.VideoCapture`
   does not need it, because a GenICam library hands frames over as plain numpy arrays, and the
@@ -523,6 +512,175 @@ prohibition `D-66` states for the sender itself.
 No latency figure appears in this section, and none should be added to it: everything above is
 about where buffering comes from, not a measurement of how long it takes. The only numbers this
 runbook ever reports are the measured rates in the CAMERA section above.
+
+---
+
+## ACQUISITION — recording the footage, not just relaying it (D-88)
+
+Every Windows command in this section is short `$var=` assignments plus an argument array
+(`$a=@(...)` then `Start-Process -FilePath $ff -ArgumentList $a`), never one long line. Long
+single lines wrap on paste in a Windows terminal, and that wrapping caused two real failures in
+the 2026-09-10 rig session (`38-HARDWARE-VALIDATION.md` rule 3, defect 8.3). `dlc-link-relay`
+(below) generates exactly this shape for you — you are not expected to hand-write it.
+
+**The trap, named once here and nowhere else in this document:** a listening output blocks
+ffmpeg's output initialisation until a client connects, and ffmpeg does not finish opening ANY
+of its outputs until initialisation completes. So a combined record-and-relay invocation that
+listens for its delivery leg **does not begin recording until somebody is watching** — with no
+error, and a file that simply never grows. For an archival record that is the worst available
+failure mode, and it is the reason this section's recorder always PUSHES its delivery leg instead.
+
+### 1. Why the relay now records
+
+Acquisition is MICS's own deliverable now, not IC Capture's by-product. One consequence: the
+footage survives a dead network, a powered-off vision box, a crashed DLC run, and a closed
+notebook — all four of which cost the session under the old relay-only arrangement, because none
+of them is allowed to touch the file leg.
+
+### 2. The precondition — read this before running anything
+
+DirectShow access is **exclusive** (`38-HARDWARE-VALIDATION.md` §8.4): IC Capture and this
+recorder cannot both hold the camera. Before starting:
+
+- **Close IC Capture.** The error it leaves behind if you do not (`Could not run graph ...`) is
+  the same one an unsupported capture mode produces — a one-second `ffmpeg ... -t 1 -f null -`
+  probe is how you tell the two apart.
+- **Set exposure, gain and the ROI in IC Capture FIRST, then close it.** Camera properties are
+  vendor-only; a fresh ffmpeg inherits whatever IC Capture left in the driver (§2.4). Adjusting
+  any of them mid-session means stopping the recorder, reopening IC Capture, changing the value,
+  closing IC Capture again, and restarting the recorder — never editing them while ffmpeg holds
+  the device.
+- **Ask before taking the camera if it is already recording someone else's data.** On this rig,
+  IC Capture is configured to record to `D:\Inbar\Data\MethodsCourse\...` for a different
+  researcher's work. Starting this recorder takes that instrument. Confirm with the owner first;
+  this is a social precondition, not a technical one, and it is first on purpose.
+
+### 3. The shape of the command
+
+One `ffmpeg` invocation, fanned out through the **`tee` muxer** — never two plain `-map` outputs,
+because two plain outputs would share ffmpeg's muxing loop and a blocked delivery sink would
+backpressure the file sink too, stalling the recording for the same reason a listening output
+does. The file leg (`-f segment`, a relative, strftime-templated filename pattern) is PRIMARY and
+carries **no** `onfail` — if the recording fails, the run should stop being believed. The
+delivery leg carries **`onfail=ignore`**, so a dead network, a powered-off vision box or a
+crashed DLC run costs the live view and nothing else:
+
+```
+dlc-link-relay --device "<DirectShow friendly name>" --segment-pattern "rig-%Y%m%d-%H%M%S.mkv" ^
+  --segment-time 20 --delivery "tcp://<vision-box-ip>:<port>" --transport mpjpeg-tcp
+```
+
+`dlc-link-relay` writes NOTHING by default — it prints the ffmpeg argv and a paste-ready
+PowerShell array block, for you to run on the lab computer. `--transport` has **no default** on
+purpose: the measured answer (which candidate cannot stall the file leg under a slow consumer,
+not merely a dead one — `onfail=ignore` only covers a FAILED sink) lives in
+`38-ACQUISITION-VALIDATION.md` §3. Do not assume one.
+
+### 4. `-fps_mode passthrough` is mandatory, not tuning
+
+ffmpeg's default frame-rate handling may duplicate or drop frames to fit a constant output rate.
+With that in play, "were all frames saved?" has no answerable form — the file's frame count would
+no longer correspond to what the camera delivered. `dlc-link-relay` always emits `-fps_mode
+passthrough` (per-stream in the two-stream escalation below); there is no flag that removes it.
+
+### 5. Segmented output, and the MJPEG/training-footage quality choice
+
+The file leg is **segmented** (`-f segment`), so a restart opens a NEW file instead of leaving
+one truncated file of ambiguous length. Matroska, because every MJPEG frame is a keyframe, so a
+segment cut is exact and a truncated segment is still readable — a truncated MP4 can be missing
+its index instead.
+
+**The footage this recorder writes IS the DeepLabCut training set for this camera** — there is no
+trained model for it yet, and the file leg's quality is therefore a first-class requirement, not
+a tuning knob to leave at the cheap default. `tee` performs only ONE encode per mapped stream, so
+the delivery leg's cheap MJPEG quality and the file leg's archival quality are the SAME encode
+unless you ask for otherwise: pass `--delivery-codec` (different from `--file-codec`) to escalate
+to the two-stream `select=` form, which maps the video stream twice and encodes it twice — one
+stream per leg, each independently tunable via `--file-extra`/`--delivery-extra`. Leave
+`--delivery-codec` unset for the cheap single-encode form; never let the archival file silently
+inherit the delivery leg's quality just because that was the path of least resistance.
+
+### 6. The supervisor — PowerShell, never an interpreted-language runtime
+
+The lab computer has no Python environment and D-66 chose ffmpeg specifically so it would never
+need one. The restart supervisor is therefore **PowerShell text**, and `dlc_link` GENERATES it on
+a different machine — it never runs there:
+
+```
+dlc-link-relay --device "<name>" --segment-pattern "rig-%Y%m%d-%H%M%S.mkv" --segment-time 20 ^
+  --delivery "tcp://<vision-box-ip>:<port>" --transport mpjpeg-tcp --max-restarts 3 ^
+  --print supervisor --out .\mics-acquire-rig.ps1
+```
+
+*Writes: one file, at the path this command echoes.* Run the generated `.ps1` on the lab
+computer. Every restart attempt gets its OWN `-RedirectStandardError` log file (named with a
+timestamp and the attempt number) because that log is witness 3 of the completeness procedure
+below and `-RedirectStandardError` truncates on each new run — reusing one path would lose every
+attempt but the last. The restart loop is bounded (`--max-restarts`) and prints the exit code and
+the log path when it gives up, rather than spinning on a camera that is permanently gone.
+`scripts/mics-acquire.ps1` in this repository is a checked-in reference copy, held
+byte-identical to the generator's own output by a test — never hand-edit it.
+
+### 7. The completeness procedure
+
+Run after any session, or while reviewing one. Four independent witnesses, two of them from a
+DIFFERENT machine than the other two:
+
+| Witness | What it is | Where it comes from | Machine |
+|---|---|---|---|
+| W1 | ffmpeg's final `frame=` total | the captured log's last `^frame=` line | lab computer |
+| W2 | summed `nb_read_frames` over every segment | `ffprobe -count_frames` | lab computer |
+| W3 | count of `frame dropped` lines | the same captured log | lab computer |
+| W4 | `frames_read` from `dlc-link-live`'s own summary | its printed output | vision box |
+
+**Capture the log at ffmpeg's DEFAULT verbosity.** Never pass `-v error` to the recorder — that
+would suppress `frame dropped` entirely and make W3 pass vacuously, which is the worst kind of
+green. `dlc-link-relay`'s builder never emits `-v`/`-loglevel` for exactly this reason.
+
+Apply this decision table as written — do not widen any tolerance after the fact:
+
+| Observation | Verdict |
+|---|---|
+| `W1 != W2` | DEFECT — the muxer or the disk lost frames ffmpeg believed it had written. |
+| `W3 > 0` | DEFECT — frames were delivered by the camera and lost at the capture buffer; the encoder or the disk cannot keep up. |
+| `W3 == 0` and `W1 == W2` and `W2 < 30 × duration` | The camera delivered fewer frames than nominal. Under auto-exposure this is NOT a loss — record the delivered rate (`W2 / duration_s`) together with the exposure state. |
+| `W4 > W1` | DEFECT, and an impossible one — the consumer cannot have read more frames than the recorder muxed. Re-check both numbers come from the same interval. |
+| `W4 < W1` | EXPECTED, not a defect — the delivery leg is droppable by design (`LatestSlot` keeps only the newest frame). This is the simultaneity witness, not an equality. |
+
+The measured transport, encoder, and both completeness runs (auto-exposure as found, and with
+exposure pinned) are recorded in `38-ACQUISITION-VALIDATION.md` §3–§5, attributed there rather
+than guessed here.
+
+### 8. The auto-exposure caveat
+
+Auto-exposure and auto-gain are **ON** on this rig (`Auto Reference 173`, from the `.iccf`). Once
+exposure passes roughly 33 ms the camera cannot sustain 30 fps, so the expected frame count for a
+run is "the rate actually delivered over that interval", never a constant `30 × duration` — a
+shortfall under auto-exposure is not automatically a dropped frame (see the decision table
+above). Pinning exposure before a session is how the nominal comparison becomes sharp; that is a
+rig decision made in IC Capture, never a code change. Exposure cannot be read DURING a run without
+the vendor SDK — record it before the run and after, and say so rather than implying live
+visibility you do not have.
+
+### 9. What this does not deliver
+
+**Simultaneous IC Capture and MICS acquisition.** That remains D-75's multicast-monitor hatch — it
+needs the vendor GenICam stack (`imagingcontrol4`) and the CAM-17 / T5b build this phase avoided.
+Recording at the source makes IC Capture *less* necessary (the footage exists without it) but does
+not make it concurrent. Stated once, here.
+
+### 10. Write footprints, and rollback
+
+Every `dlc-link-relay` invocation above writes nothing unless `--out` is given; the commands you
+paste into PowerShell are what actually writes segments and logs, and `38-ACQUISITION-VALIDATION.md`
+§0a records one row per command issued on the rig with its write footprint. To roll back: stop
+ffmpeg, reopen IC Capture and confirm it reacquires the camera, delete the segment and log
+directories, remove any firewall rule the chosen transport needed, restore the camera's original
+auto-exposure/auto-gain settings if you changed them for a pinned-exposure run, and delete the
+generated supervisor script.
+
+No latency, jitter or drift figure appears anywhere in this section, and none should be added:
+everything above is counts, sums and counts-per-second, never a timing measurement.
 
 ---
 

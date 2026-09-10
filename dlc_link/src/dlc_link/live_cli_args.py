@@ -26,12 +26,20 @@ def build_parser():
         help="deprecated alias for --source, kept working because it appears in "
              "RUNBOOK.md and researcher shell history (D-49). Giving both is an error.",
     )
+    # Not argparse-required: --capture-only loads no model and builds no processor
+    # (live_cli.py's _build_processor_and_infer returns live=None), so demanding either
+    # path would force two values that are never read just to measure D-54's baseline.
+    # validate_connection_args enforces them for every mode that DOES read them.
     parser.add_argument(
-        "--model-path", required=True,
+        "--model-path", default=None,
         help="the .pt FILE produced by deeplabcut.export_model(...) -- NOT a directory "
-             "and NOT the project directory (D-09)",
+             "and NOT the project directory (D-09). Required unless --capture-only",
     )
-    parser.add_argument("--signal-map", required=True, help="path to the generated <source_id>_signals.py")
+    parser.add_argument(
+        "--signal-map", default=None,
+        help="path to the generated <source_id>_signals.py. Required unless "
+             "--capture-only or --probe-pose",
+    )
     parser.add_argument("--host", default=None, help="required unless --dry-run, --probe-pose or --capture-only")
     parser.add_argument(
         "--port", type=int, default=None,
@@ -150,6 +158,15 @@ def validate_connection_args(args):
     milliseconds rather than after a model load -- and so it is testable on a host
     with neither installed.
     """
+    # --capture-only reads neither path; --probe-pose loads the model but needs no map.
+    if not args.capture_only:
+        needed = ["model_path"] if args.probe_pose else ["model_path", "signal_map"]
+        absent = [n for n in needed if getattr(args, n) is None]
+        if absent:
+            return "{} required unless --capture-only".format(
+                " and ".join("--" + n.replace("_", "-") for n in absent)
+            )
+
     if args.dry_run or args.probe_pose or args.capture_only:
         return None
     missing = [name for name in ("host", "port") if getattr(args, name) is None]

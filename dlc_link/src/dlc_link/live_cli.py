@@ -153,11 +153,25 @@ def main(argv=None, on_viewer_ready=None):
         print("dlc-link-live: {}".format(fps_problem), file=sys.stderr)
         return 2
 
-    try:
-        smap = load_signal_map(args.signal_map)
-    except SignalMapError as exc:
-        print("dlc-link-live: {}".format(exc), file=sys.stderr)
-        return 1
+    # --capture-only declares no signals: it counts frames off the camera with nothing
+    # loaded (D-54). A map may still be supplied -- it just is not needed to measure.
+    if args.signal_map is None:
+        smap = None
+    else:
+        try:
+            smap = load_signal_map(args.signal_map)
+        except SignalMapError as exc:
+            print("dlc-link-live: {}".format(exc), file=sys.stderr)
+            return 1
+
+    if smap is None and (args.view or args.overlay):
+        print(
+            "dlc-link-live: --view and --overlay need --signal-map: there is nothing to "
+            "draw or threshold without declared signals. Measure with --capture-only "
+            "alone, or pass --signal-map to see the keypoints.",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.verify_lib:
         with open(args.verify_lib) as handle:

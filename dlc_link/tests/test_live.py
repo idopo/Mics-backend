@@ -748,3 +748,45 @@ def test_view_absent_constructs_no_viewer(tmp_path_factory, monkeypatch):
         ]
     )
     assert exit_code == 0
+
+
+# --- D-54's baseline must be runnable with no model and no signal map -------------
+#
+# `--capture-only` exists to measure what the CAMERA delivers with nothing loaded, and
+# it already returns `live=None` and a `_NoOpProcessor` (live_cli.py:55). But argparse
+# still demanded `--model-path` and `--signal-map`, and `load_signal_map` ran
+# unconditionally -- so measuring the baseline required inventing two paths that are
+# never read. Found 2026-09-10 while preparing the rig's baseline run; same class as the
+# `--probe-pose` chicken-and-egg plan 38-05 fixes.
+
+
+def test_capture_only_parses_without_model_path_or_signal_map():
+    args = build_parser().parse_args(["--capture-only", "--source", "0"])
+    assert args.capture_only is True
+    assert args.model_path is None
+    assert args.signal_map is None
+
+
+def test_model_path_and_signal_map_still_required_without_capture_only():
+    problem = validate_connection_args(
+        build_parser().parse_args(["--source", "0", "--host", "h", "--port", "1"])
+    )
+    assert problem is not None
+    assert "--model-path" in problem and "--signal-map" in problem
+
+
+def test_capture_only_does_not_require_them_in_validation():
+    assert (
+        validate_connection_args(
+            build_parser().parse_args(["--capture-only", "--source", "0"])
+        )
+        is None
+    )
+
+
+def test_probe_pose_still_requires_a_model_path():
+    problem = validate_connection_args(
+        build_parser().parse_args(["--probe-pose", "--source", "0"])
+    )
+    assert problem is not None
+    assert "--model-path" in problem

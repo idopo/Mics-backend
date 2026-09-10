@@ -587,11 +587,12 @@ adding a decision, take the next free ID from this table and update it.
 | D-68 … D-74 | *free* | — |
 | D-75 | Phase 38 camera identity / T5 split | **in this file** |
 | **D-76 … D-85** | **plan 38-06's decision set** | **reserved — 38-06 originally said D-65..D-74, which double-booked the topology decisions; it is renumbered to this range** |
-| D-86+ | *free* | — |
+| D-86 … D-88 | Phase 38 execution (D-86 PyPI, D-87 T6 impossible, D-88 acquisition at source) | **in this file** |
+| D-89+ | *free* | — |
 
 **Threat IDs collide the same way.** `T-38-40` … `T-38-44` are used by plan 38-05 (pose row order,
 runbook attribution, keep-up number, `opencv-python`, project writes). Plan 38-06's threat block is
-renumbered to **T-38-60 … T-38-71**. Take new threat IDs from `T-38-72` onward.
+renumbered to **T-38-60 … T-38-71**. Plan 38-07's threat block is `T-38-72` … `T-38-76`. Take new threat IDs from `T-38-77` onward.
 
 **Format, for anything appended here:** a level-2 heading, `## D-NN — <title>`. Not bold, not a
 list item. Any automated check that greps for these entries must match `^## D-`.
@@ -691,3 +692,111 @@ as an unknown device (which the researcher has said may be refused) AND the `ima
 shim — i.e. the whole T5b build that T5a just made unnecessary. Its only advantage is removing the
 relay. Revisit it only if the relay's unsupervised-host problem proves worse in practice than
 writing the shim.
+
+---
+
+## D-88 — Acquisition is recorded at the SOURCE, and delivery stops being a listener
+
+**Decided 2026-09-10 by the user, after the T4 transport was proven working:** the rig must "be ready
+for acquisition" — i.e. the footage must be saved, not merely streamed. That turns out to be
+incompatible with the relay as built, for a reason that is easy to miss and silent when it bites.
+
+### The trap
+
+`-listen 1` blocks output initialisation until a client connects. ffmpeg does not finish opening
+**any** output until initialisation completes, so a single invocation with both an HTTP-listen output
+and a file output **does not begin recording until somebody is watching**. There is no error; the
+file simply does not grow. For an archival record that is the worst available failure mode.
+
+Two ffmpeg processes are not an escape: DirectShow access is exclusive (2026-09-10, §8.4 of
+`38-HARDWARE-VALIDATION.md`), so the recorder and the relay MUST be the same process. D-66 part 2's
+one-capture-two-sinks rule was right; what it did not anticipate is that `-listen` makes that
+arrangement unusable.
+
+### The decision
+
+The lab computer's single `ffmpeg` invocation takes **the file as its primary output** and **pushes**
+the live feed to the vision box rather than waiting to be asked for it.
+
+This decouples acquisition from delivery, which is the substantive win: a dead network, a powered-off
+vision box, a crashed DLC run or a closed notebook no longer costs footage. Under the current
+arrangement every one of those loses the session.
+
+### The fan-out primitive, and why it is not two `-map` outputs
+
+Two plain outputs share ffmpeg's muxing loop, so a blocked or dead delivery sink backpressures the
+FILE sink as well — the recording stalls because nobody is watching, which is the same class of
+silent failure `-listen` produces. The fan-out is therefore the **`tee` muxer with `onfail=ignore`**
+on the network leg only:
+
+    -fps_mode passthrough -f tee "[f=segment:...]<file>|[f=mpegts:onfail=ignore]<url>"
+
+`onfail=ignore` makes the network leg droppable by construction: a powered-off vision box, a crashed
+DLC run or a pulled cable costs the live view and nothing else. The file leg has no `onfail` and must
+never get one — if the recording fails, the run should stop being believed.
+
+**`-fps_mode passthrough` is mandatory, not tuning.** ffmpeg's default frame-rate handling may
+duplicate or drop frames to fit a constant output rate. With that in play, "were all frames saved?"
+has no answerable form, because the file's frame count no longer corresponds to what the camera
+delivered.
+
+**Transport is decided by measurement in plan 38-07 Task 1, not here.** Two candidates:
+
+| Candidate | Blocks on a consumer? | Under congestion |
+|---|---|---|
+| `-f mpegts udp://<vision-box>:<port>` | never | lossy — drops become broken frames |
+| `-f mpjpeg tcp://<vision-box>:<port>` (vision box listens) | no, but needs a listener and an inbound rule on the GPU box instead | TCP degrades gracefully |
+
+D-66's reason for MJPEG over H.264 — per-frame coding, no GOP buffering — is unchanged and binds
+whichever transport wins for the DELIVERY leg. What changes is only who initiates the connection.
+It does not bind the FILE leg, which is an archival artifact rather than a live one and may use
+H.264 — the format IC Capture's own recorder is configured for (`MediaFoundation h.264`, MP4).
+
+**The encoder is chosen by measurement.** If the file leg's encoder cannot keep up on that machine it
+backpressures the capture and frames are dropped at the source — the exact failure this decision
+exists to prevent. MJPEG is the safe fallback (cheap, larger files); the Gyan build also carries
+`h264_nvenc`, `h264_qsv` and `h264_amf` if a hardware encoder is present.
+
+### Supervision
+
+The recorder gets a restart wrapper. **Restarting is safe**, and this is a measured fact rather than
+an assumption: exposure, gain and the 704x680 ROI persist in the vendor driver, and ffmpeg inherited
+them without being told (`38-HARDWARE-VALIDATION.md` §2.4). A restarted recorder comes back
+configured.
+
+Two constraints on how:
+
+1. **The lab computer must stay Python-free.** D-66 chose `ffmpeg` over a Python relay precisely so
+   that machine would not acquire an environment to maintain, and it has none today. The supervisor
+   is therefore **PowerShell**, and `dlc_link` *generates* it rather than running on that host.
+2. **Segmented output** (`-f segment`), so a restart opens a new file instead of leaving one
+   truncated file of ambiguous length.
+
+### Completeness is a test, not a claim
+
+Replacing IC Capture moves the footage from being someone else's by-product to being this system's
+deliverable, so "all frames were saved" has to be checkable. For a run of known duration, **while the
+model is running**:
+
+1. ffmpeg's own final `frame=` total,
+2. `ffprobe -count_frames`'s `nb_read_frames` over the written segments,
+3. zero `frame dropped` lines in the captured ffmpeg log,
+4. and agreement with the configured rate over that duration,
+
+must all line up, and the consumer's own `frames_read` is the fourth independent witness. Any
+disagreement is a defect, not a rounding artifact. This is why the ffmpeg log must be captured to a
+file rather than left in a console buffer.
+
+**One standing caveat on (4):** the camera's auto-exposure and auto-gain are ON (`Auto Reference
+173`, `Auto Functions ROI` preset 2, from the rig's `.iccf`). Auto-exposure lengthens exposure time
+in dim light, and once it passes ~33 ms the camera cannot sustain 30 fps. So the expected count is
+"the rate actually delivered over this interval", not a constant 30 x duration, and a shortfall is
+not automatically a dropped frame. Pinning exposure for runs is the way to make (4) sharp; that is a
+rig decision for the researcher, not a code change.
+
+### What this does NOT solve
+
+Simultaneous IC Capture and MICS acquisition. That remains D-75's multicast-monitor hatch, which
+needs the vendor GigE stack (`imagingcontrol4`) and therefore the CAM-17 / T5b build this phase
+avoided — plus lab IT admitting the camera and the switch doing IGMP sanely. Recording at the source
+makes IC Capture *less* necessary (the footage exists without it) but does not make it concurrent.

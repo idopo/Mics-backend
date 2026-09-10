@@ -133,6 +133,10 @@ class Viewer:
 
         self._frames = LatestSlot()
         self._jpeg = LatestSlot()
+        # Public alias: dlc_link.view_sinks reads the newest JPEG through this name
+        # rather than reaching into a private attribute (D-58's "render core is
+        # sink-agnostic" -- a sink needs no other access to this class at all).
+        self.jpeg_slot = self._jpeg
         self.status = StatusBlock(source_description)
 
         self.push_errors = 0

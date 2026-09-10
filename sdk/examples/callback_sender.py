@@ -28,7 +28,7 @@ def run_my_acquisition(callback):
     return [callback(sample) for sample in ()]
 
 
-with connect("132.77.72.28", 5599, "demo") as link:
+with connect("192.0.2.10", 5599, "demo") as link:
 
     def on_sample(value):  # your library calls this, on its own thread
         link.send_signal("left_paw_x", as_scalar(value))

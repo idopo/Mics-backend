@@ -74,7 +74,7 @@ hardware-module / task-definition documentation for that workflow):
 
 | Thing | Value |
 |---|---|
-| Pilot | pilot 1 (`pilot_raspberry_lior`), host `132.77.72.28` |
+| Pilot | pilot 1 (`pilot_raspberry_lior`), host `192.0.2.10` |
 | Toolkit | 100 |
 | Hardware module | 62 (`ExtlinkDemo`) |
 | Hardware lib | 177 |
@@ -85,13 +85,19 @@ A NEW integration -- a different rig, a different module -- needs a researcher t
 the equivalent four things first. This README documents what the sender needs from
 them once they exist, not how to author them.
 
+**Every address in this document is a placeholder**, drawn from the ranges RFC 5737
+reserves for documentation (`192.0.2.x`, `198.51.100.x`). They are not reachable and are
+not anyone's rig. Substitute your own pilot's address, which you read from that pilot's
+record in the MICS web UI -- see the load-bearing warning in section 4 about which
+address that is.
+
 ## 4. The exact `pilot_hardware_config.config` shape
 
 The worked example's row (21), verbatim:
 
 ```json
 {"class_name":"ExtlinkDemo","role":"router_bind","listen_port":5599,
- "host":"132.77.73.125","source_id":"demo","stale_ms":3000,
+ "host":"198.51.100.20","source_id":"demo","stale_ms":3000,
  "required":true,"wait_timeout_s":30,"egress_fail_threshold":3}
 ```
 
@@ -105,7 +111,7 @@ The worked example's row (21), verbatim:
 | `required` / `wait_timeout_s` | The readiness gate: a run on this pilot blocks up to `wait_timeout_s` and FAILS if this source never connects. | No -- but know it exists, since a typo'd `source_id` will silently trip it. |
 | `host` / `egress_fail_threshold` | This module's own OUTBOUND probe target and failure threshold -- nothing to do with your sender. | No. |
 
-**Warning, load-bearing:** `host` in this JSON (`132.77.73.125` above) is the module's
+**Warning, load-bearing:** `host` in this JSON (`198.51.100.20` above) is the module's
 own *egress* probe target -- a completely different address from the pilot you actually
 connect to. Pointing your client at `host` instead of the pilot's own IP is the single
 most common way to misread this config.
@@ -128,7 +134,7 @@ not know or does not care what it is; that is the point.
 from mics_link import connect
 
 # my_existing_loop() is a stand-in for your own acquisition loop -- not part of mics_link.
-with connect("132.77.72.28", 5599, "demo") as link:
+with connect("192.0.2.10", 5599, "demo") as link:
     for x in my_existing_loop():
         link.send_signal("left_paw_x", x)
 ```
@@ -143,7 +149,7 @@ which only applies to the pull-loop example above):
 from mics_link import connect
 from mics_link.values import as_scalar
 
-with connect("132.77.72.28", 5599, "demo") as link:
+with connect("192.0.2.10", 5599, "demo") as link:
 
     def on_sample(value):  # your library calls this, on its own thread
         link.send_signal("left_paw_x", as_scalar(value))
@@ -222,7 +228,8 @@ socket. It is idempotent and never raises -- a researcher's loop that outlives t
 terminal state. Send values that cross those thresholds and watch the pilot's live
 state in the MICS web UI.
 
-**In Elasticsearch:** live rig data lives on `132.77.73.217`, index `event_log_v2`.
+**In Elasticsearch:** live rig data lives on your lab's ES host (ask whoever runs the
+backend; it is not the pilot and not the MICS API), index `event_log_v2`.
 Isolate one run with `subject: bp_s<session>_r<run_id>` (the session and run id come
 from the MICS web UI's session view). Every `send_signal`/`send_event` call your sender
 makes is logged there once the Pi has processed it.
@@ -235,7 +242,7 @@ vehicle, and the way to re-run a recorded acquisition deterministically, without
 original hardware or software that produced it.
 
 ```bash
-mics-link-replay --host 132.77.72.28 --port 5599 --source-id demo --file recording.csv \
+mics-link-replay --host 192.0.2.10 --port 5599 --source-id demo --file recording.csv \
                   [--mode realtime|scaled|fast] [--scale 2.0] \
                   [--heartbeat-s 1.0] [--queue-size 256]
 ```
@@ -245,7 +252,7 @@ scripts land in `<env>\Scripts\`, which is not always on `PATH`), the guaranteed
 equivalent is:
 
 ```bash
-python -m mics_link.replay --host 132.77.72.28 --port 5599 --source-id demo --file recording.csv
+python -m mics_link.replay --host 192.0.2.10 --port 5599 --source-id demo --file recording.csv
 ```
 
 **Two file shapes**, detected from the header/keys -- never a flag:

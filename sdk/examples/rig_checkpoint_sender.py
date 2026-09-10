@@ -7,14 +7,14 @@ that is a finding about the API, not a reason to import a private name.
 No number printed by this script could be read as latency (decision 2): only counts,
 states and a plain wall-clock duration are ever printed. Phase 28 owns timing.
 
-Defaults match the standing `ExtlinkDemo` fixture (sdk/README.md section 3): host
-`132.77.72.28`, port `5599`, source_id `demo`, signal `left_paw_x` -- all overridable by
-flag, never hardcoded past the default.
+`--host` is REQUIRED and has no default -- see the note above DEFAULT_PORT. Port,
+source_id and signal default to the standing `ExtlinkDemo` fixture (sdk/README.md
+section 3): `5599`, `demo`, `left_paw_x`, all overridable by flag.
 
-    python3 sdk/examples/rig_checkpoint_sender.py --mode transition
-    python3 sdk/examples/rig_checkpoint_sender.py --mode quiet --seconds 20
-    python3 sdk/examples/rig_checkpoint_sender.py --mode soak --rate 60 --seconds 30
-    python3 sdk/examples/rig_checkpoint_sender.py --mode reconnect --seconds 120
+    python3 sdk/examples/rig_checkpoint_sender.py --host <pilot-address> --mode transition
+    python3 sdk/examples/rig_checkpoint_sender.py --host <pilot-address> --mode quiet --seconds 20
+    python3 sdk/examples/rig_checkpoint_sender.py --host <pilot-address> --mode soak --rate 60 --seconds 30
+    python3 sdk/examples/rig_checkpoint_sender.py --host <pilot-address> --mode reconnect --seconds 120
 
 All four modes exit cleanly on Ctrl-C (a `KeyboardInterrupt` around the mode's own loop,
 never a bare `except:`) and print a final `stats.snapshot()` before exiting.
@@ -25,17 +25,21 @@ import time
 
 from mics_link import connect
 
-# Default target is pilot 3, "RecordingBox" (132.77.73.213), NOT pilot 1 as plan 34-09
-# originally specified. Deviation is deliberate, user direction 2026-08-30:
-#   - .213 runs mics_core, and the frozen golden corpus is pinned to mics_core's
-#     external_hardware_wire.py -- so .213 exercises the exact runtime the byte-parity
-#     corpus came from. Pilot 1 is still on pi-mirror and would need a caveat recorded.
-#   - Its pilot_hardware_config row 33 already carries ExtlinkDemo / router_bind / 5599 /
-#     source_id "demo", so port and source_id below match it with no backend change.
-# Note row 33 has `required: false` (pilot 1's row 21 has `true`): there is NO readiness
-# gate here, so a run proceeds even if this sender never connects -- you get silence, not
-# an error. Pass --host 132.77.72.28 to target pilot 1 instead.
-DEFAULT_HOST = "132.77.73.213"
+# `--host` deliberately has NO default. A placeholder default would be worse than none:
+# a ZMQ DEALER connecting to an address nobody answers does not raise -- it queues, and
+# this script would print clean stats while nothing ever reached a Pi. That is the exact
+# "you get silence, not an error" failure described below, and the same reasoning that
+# removed the default port from this project's other client CLI (commit 8191d4b).
+#
+# WHICH pilot to point it at, and why it matters (user direction 2026-08-30): prefer the
+# pilot running mics_core, because the frozen golden corpus is pinned to mics_core's
+# external_hardware_wire.py -- that pilot exercises the exact runtime the byte-parity
+# corpus came from. A pilot still on pi-mirror works but needs a caveat recorded.
+#
+# Read the address, port and source_id from that pilot's own `pilot_hardware_config`
+# row rather than assuming these defaults match it. Note that some rows carry
+# `required: false`: with no readiness gate a run proceeds even if this sender never
+# connects, so a wrong address yields silence rather than an error.
 DEFAULT_PORT = 5599
 DEFAULT_SOURCE_ID = "demo"
 DEFAULT_SIGNAL = "left_paw_x"
@@ -156,7 +160,7 @@ def _build_parser():
         description="USER-RUN rig checkpoint sender for MICS-Link phase 34-09.",
     )
     parser.add_argument("--mode", required=True, choices=("transition", "quiet", "soak", "reconnect"))
-    parser.add_argument("--host", default=DEFAULT_HOST)
+    parser.add_argument("--host", required=True, help="target pilot address; no default, see module docstring")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--source-id", default=DEFAULT_SOURCE_ID)
     parser.add_argument("--signal", default=DEFAULT_SIGNAL)

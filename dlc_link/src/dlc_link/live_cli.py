@@ -24,8 +24,14 @@ import time
 from mics_link import Pacer, connect
 from mics_link.errors import MicsLinkError
 
+from dlc_link import viewer_cli
 from dlc_link.live import run_video_loop
-from dlc_link.live_cli_args import build_parser, resolve_source, validate_connection_args
+from dlc_link.live_cli_args import (
+    build_parser,
+    resolve_source,
+    validate_connection_args,
+    validate_view_args,
+)
 from dlc_link.live_sources import (
     _DiscardingLink,
     _NoOpProcessor,
@@ -37,6 +43,7 @@ from dlc_link.live_sources import (
 from dlc_link.processor import DLCProcessor
 from dlc_link.signal_map import SignalMapError, assert_pairs_with, load_signal_map
 from dlc_link.source import SourceError, classify_source, fps_refusal
+from dlc_link.view_sinks import SinkError
 
 __all__ = ["main", "build_parser", "validate_connection_args"]
 
@@ -66,17 +73,17 @@ def _build_processor_and_infer(args, spec, smap, width, height, first_frame, DLC
     return link, processor, live, live.get_pose
 
 
-def _run_and_close(link, frames, infer, processor, pacer, fps, args, cap, reader, live):
-    """Runs the loop, then ALWAYS stops the reader, closes `live` and releases `cap` --
-    in that order, before a capture a thread is still reading is released (T-38-05) --
-    even on a `KeyboardInterrupt` (D-55)."""
+def _run_and_close(link, frames, infer, processor, pacer, fps, args, cap, reader, live, viewer=None, sink=None):
+    """Runs the loop, then ALWAYS stops the viewer and sink, the reader, `live`, and
+    releases `cap` -- in that order, before a capture a thread is still reading is
+    released (T-38-05) -- even on a `KeyboardInterrupt` (D-55)."""
     interrupted = False
     start = time.monotonic()
     try:
         try:
             result = run_video_loop(
                 link, frames, infer, processor, pacer, fps, max_frames=args.max_frames,
-                max_seconds=args.max_seconds,
+                max_seconds=args.max_seconds, observer=viewer.push if viewer is not None else None,
             )
         except KeyboardInterrupt:
             interrupted = True
@@ -86,6 +93,12 @@ def _run_and_close(link, frames, infer, processor, pacer, fps, args, cap, reader
                 "observer_errors": 0, "processor_snapshot": processor.snapshot(),
             }
     finally:
+        # D-56: the viewer and its sink never backpressure the sender, but they are
+        # still stopped FIRST -- before the reader thread that feeds them.
+        if viewer is not None:
+            viewer.stop()
+        if sink is not None:
+            sink.stop()
         if reader is not None:
             reader.stop()
         if live is not None:
@@ -102,7 +115,15 @@ def _run_and_close(link, frames, infer, processor, pacer, fps, args, cap, reader
     return result, duration_s, stopped_reason
 
 
-def main(argv=None):
+def main(argv=None, on_viewer_ready=None):
+    """`on_viewer_ready(viewer, sink)`, when given, is called once both are
+    constructed and started (only reached when `--view` is given). This is the one
+    hook `dlc_link.notebooks.live_view`'s background-thread `main()` call needs: the
+    notebook's own foreground cell captures `viewer`/`sink` through it, because
+    IPython's `display()`/`clear_output()` are meant to be driven from the kernel's
+    own execution thread, never from this function's background thread. A raising
+    callback is caught and ignored -- the sender must never depend on a notebook
+    cell's own correctness."""
     args = build_parser().parse_args(argv)
 
     source_problem, source_value = resolve_source(args)
@@ -113,6 +134,11 @@ def main(argv=None):
     problem = validate_connection_args(args)
     if problem:
         print("dlc-link-live: {}".format(problem), file=sys.stderr)
+        return 2
+
+    view_problem = validate_view_args(args)
+    if view_problem:
+        print("dlc-link-live: {}".format(view_problem), file=sys.stderr)
         return 2
 
     try:
@@ -141,6 +167,14 @@ def main(argv=None):
         except SignalMapError as exc:
             print("dlc-link-live: --verify-lib failed: {}".format(exc), file=sys.stderr)
             return 1
+
+    # D-60: parsed before any heavy import, so a typo'd signal name fails in
+    # milliseconds and lists the declared names -- regardless of --view, because a
+    # malformed --overlay is a mistake worth catching immediately either way.
+    overlay_problem, overlay_clauses = viewer_cli.parse_overlay_clauses(args, smap)
+    if overlay_problem:
+        print("dlc-link-live: --overlay: {}".format(overlay_problem), file=sys.stderr)
+        return 1
 
     import cv2  # deferred: main() must import with no camera library installed
     from dlclive import DLCLive
@@ -175,11 +209,34 @@ def main(argv=None):
         cap.release()
         return 1
 
+    viewer, sink = None, None
+    if args.view:
+        viewer = viewer_cli.build_viewer(args, smap, overlay_clauses, width, height, spec.describe())
+        try:
+            sink = viewer_cli.build_sink(args, viewer)
+        except SinkError as exc:
+            print("dlc-link-live: {}".format(exc), file=sys.stderr)
+            if reader is not None:
+                reader.stop()
+            if live is not None:
+                live.close()
+            cap.release()
+            return 1
+        print("dlc-link-live: {}".format(viewer_cli.describe_sink(args, sink)))
+        viewer.start()
+        if on_viewer_ready is not None:
+            try:
+                on_viewer_ready(viewer, sink)
+            except Exception:
+                pass  # a notebook cell's own bug must never affect the sender
+
     result, duration_s, stopped_reason = _run_and_close(
-        link, frames, infer, processor, pacer, fps, args, cap, reader, live
+        link, frames, infer, processor, pacer, fps, args, cap, reader, live, viewer=viewer, sink=sink
     )
 
     print_summary(result, spec, duration_s, slot, reader, stopped_reason)
+    if viewer is not None:
+        print("  viewer:          {}".format(viewer.snapshot()))
     if not args.dry_run and not args.capture_only and link is not None:
         print("  link.stats:      {}".format(link.stats.snapshot()))
         link.close()

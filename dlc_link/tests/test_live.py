@@ -690,3 +690,61 @@ def test_host_and_port_together_are_accepted():
 @pytest.mark.parametrize("flag", ["--dry-run", "--probe-pose", "--capture-only"])
 def test_offline_modes_need_neither_host_nor_port(flag):
     assert validate_connection_args(_parsed(flag)) is None
+
+
+# --- --view wiring (Task 3, plan 38-03) ----------------------------------------------
+
+
+def test_view_sink_mjpeg_without_view_port_exits_2():
+    exit_code = main(
+        [
+            "--video", "clip.mp4", "--model-path", "m", "--signal-map", "s.py",
+            "--dry-run", "--view-sink", "mjpeg",
+        ]
+    )
+    assert exit_code == 2
+
+
+def test_view_without_view_min_likelihood_exits_2():
+    exit_code = main(
+        ["--video", "clip.mp4", "--model-path", "m", "--signal-map", "s.py", "--dry-run", "--view"]
+    )
+    assert exit_code == 2
+
+
+def test_overlay_naming_an_undeclared_signal_exits_non_zero_before_any_cv2_import(
+    tmp_path_factory,
+):
+    assets = tmp_path_factory.mktemp("assets_overlay_refusal")
+    smap_path = _write_signal_map(assets)
+    assert "cv2" not in sys.modules
+
+    exit_code = main(
+        [
+            "--video", "clip.mp4", "--model-path", "m", "--signal-map", str(smap_path),
+            "--dry-run", "--overlay", "nose_zz>0.5",
+        ]
+    )
+    assert exit_code != 0
+    assert "cv2" not in sys.modules
+
+
+def test_view_absent_constructs_no_viewer(tmp_path_factory, monkeypatch):
+    assets = tmp_path_factory.mktemp("assets_no_view")
+    smap_path = _write_signal_map(assets)
+    _install_fake_cv2_dlclive(monkeypatch, frames=["f1", "f2"])
+
+    from dlc_link import viewer as viewer_module
+
+    def _must_not_be_constructed(*_args, **_kwargs):
+        raise AssertionError("Viewer must not be constructed when --view is absent")
+
+    monkeypatch.setattr(viewer_module.Viewer, "__init__", _must_not_be_constructed)
+
+    exit_code = main(
+        [
+            "--video", "clip.mp4", "--model-path", "m", "--signal-map", str(smap_path),
+            "--dry-run", "--max-frames", "2",
+        ]
+    )
+    assert exit_code == 0

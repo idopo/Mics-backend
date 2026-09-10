@@ -2037,7 +2037,7 @@ plans, `38-CONTEXT.md` and `38-DECISIONS.md` were amended in place; note the dis
 `dlc-link` -> `mics-dlc-link` (import package and console scripts unchanged). 38-06's gap 1 is
 NOT closed by this — the notebook still has to be inside the wheel.
 
-**Plans:** 3/6 plans executed
+**Plans:** 4/7 plans executed
 
 **Planning decisions:** every open question in `38-CONTEXT.md` §9 is answered in
 `38-DECISIONS.md` (D-49 through D-67, plus D-75; plan 38-06's own set is reserved at D-76-D-85) —
@@ -2066,7 +2066,7 @@ Plans:
 - [x] 38-02-PLAN.md — Wave 1 — the viewer's pure core: draw-plan planning, the authored-threshold overlay, and the two honest sources of run identity and FDA state (CAM-05, CAM-08)
 - [x] 38-03-PLAN.md — Wave 2 — the Viewer runtime, the notebook and localhost-MJPEG sinks, the `--view` flags and the notebook itself (CAM-05, CAM-06, CAM-07)
 - [ ] 38-04-PLAN.md — Wave 3 — **USER-RUN** wheel 0.2.0, **lab-computer** topology discovery (its step 1a-0 should be run before wave 1), the live camera run with the view open, and the keep-up criterion derived from a measurement (CAM-01, CAM-03, CAM-05, CAM-07, CAM-08, CAM-16). **On the T5b branch this plan delivers CAM-16 only**, and CAM-01/03/05/07/08 are recorded NOT EXERCISED.
-- [ ] 38-05-PLAN.md — Wave 4 — the map-free pose probe with a paste-ready `--pose-order`, and a runbook about DeepLabCut rather than about one project (CAM-09, CAM-16)
+- [x] 38-05-PLAN.md — Wave 4 — the map-free pose probe with a paste-ready `--pose-order`, and a runbook about DeepLabCut rather than about one project (CAM-09, CAM-16)
 - [ ] 38-06-PLAN.md — Wave 5 — **not blocked by a stopped 38-04** (its dependency is file ownership, not a runtime fact; on T5b this is the phase's only deliverable) — **USER-RUN** deployability: the notebook packaged into the wheel, `dlc-link-bootstrap` (config.yaml -> a complete kit), `dlc-link-doctor`, `INSTALL.md` for a fresh Windows runtime machine with no DeepLabCut, and the verified training-machine -> runtime-machine transfer manifest (CAM-10, CAM-11, CAM-12, CAM-13, CAM-14, CAM-15)
 
 ---

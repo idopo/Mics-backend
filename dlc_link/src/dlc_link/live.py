@@ -1,61 +1,91 @@
-"""The paced video-file loop and the dlc-link-live CLI (D-29, D-30, D-42, D-47).
+"""The paced video-loop core and its pure verdict helpers (D-29, D-30, D-42, D-47,
+D-51, D-53, D-55).
 
-`run_video_loop` IS the live pipeline with a file substituted for a camera: pacing at the
-video's native fps is what makes `stale_after_ms` exercised on the same timebase a real
-camera will produce later. `cv2` and `dlclive` are imported ONLY inside `main()` (and
-`--probe-pose`'s helper), never at module scope, so this module and its pure functions
-(`run_video_loop`, `compare_pose_order`, `check_corner_geometry`) stay importable and
-testable with neither library installed.
+`run_video_loop` IS the live pipeline with a file OR a camera substituted for the frame
+source: pacing at the video's native fps (file) or running unpaced against a camera's
+own delivery rate is what makes `stale_after_ms` exercised on the same timebase a real
+camera will produce. `cv2` and `dlclive` are NEVER imported here -- the CLI that does
+those deferred imports and all the source-specific wiring lives in `dlc_link.live_cli`
+(split out, same precedent as `dlc_link.generate`/`generate_cli`, so this module and its
+pure functions (`run_video_loop`, `compare_pose_order`, `check_corner_geometry`) stay
+importable and testable with neither library installed.
 
-**D-47: this tool writes NOTHING, anywhere, by default.** No log file, no stats file, no
-cache, no DLC-Live output artefact, no temporary file beside the video or the model.
-Every count goes to stdout. `DLCLive(..., display=False)` is pinned explicitly at the
-call site (never left to its own default) because the researcher's shell sits INSIDE
-their read-only DeepLabCut project directory (D-44) -- anything this tool wrote
-relative to the current working directory would land there. Of the documented
-`DLCLive.__init__` arguments, `display` is the only one capable of showing, saving,
-caching or exporting anything; `display_radius`/`display_cmap` are cosmetic and inert
-once `display=False`. No `--write-*` flag ships; if one is ever added, its target must be
-refused inside the model's or the video's directory, the same way `dlc_link.generate`
-refuses `--out-dir` (D-46).
+`_CORNERS`, `check_corner_geometry` and `compare_pose_order` stay in THIS module rather
+than moving to `live_cli` because `dlc_link.live_probe` imports all three FROM here --
+moving them would break that import.
+
+**D-47: this tool writes NOTHING, anywhere, by default.** No log file, no stats file,
+no cache, no DLC-Live output artefact, no temporary file beside the video or the model.
+Every count goes to stdout. See `dlc_link.live_cli` for the `display=False` pin and the
+full rationale -- this module has no knowledge of `DLCLive` at all.
 """
-import argparse
 import sys
 import time
-
-from mics_link import Pacer, connect
-from mics_link.errors import MicsLinkError
-
-from dlc_link.processor import DLCProcessor
-from dlc_link.signal_map import SignalMapError, assert_pairs_with, load_signal_map
 
 __all__ = ["run_video_loop", "main", "compare_pose_order", "check_corner_geometry"]
 
 _CORNERS = ("NW", "NE", "SE", "SW")
 
 
-def run_video_loop(link, frames, infer, processor, pacer, fps, max_frames=None):
-    """Drive `infer(frame)` once per frame from `frames`, paced at `fps`. `link` is
-    accepted for lifecycle parity with the caller's `with connect(...)` block but is
-    NEVER touched here -- `processor` (which already owns `link`) is what actually sends.
-    Returns a counts-only record: `frames_read`, `frames_inferred`, `behind_count` (from
-    `pacer`), and `processor.snapshot()`. Never creates or closes `link`.
+def run_video_loop(
+    link, frames, infer, processor, pacer, fps, max_frames=None, should_stop=None,
+    observer=None, max_seconds=None, clock=time.monotonic,
+):
+    """Drive `infer(frame)` once per frame from `frames`. `link` is accepted for
+    lifecycle parity with the caller's `with connect(...)` block but is NEVER touched
+    here -- `processor` (which already owns `link`) is what actually sends.
+
+    `pacer=None` means UNPACED: no `wait_until` call is made at all, and the returned
+    `behind_count` is `None`, never `0` (D-53) -- a camera source paces itself and a
+    second pacer on top would double-throttle it (D-51).
+
+    `should_stop` (checked once per frame, before inference; `None` means never stop)
+    and `max_seconds` (measured against `clock()` from this call's own start) are the
+    two additional deliberate-stop mechanisms beyond `max_frames` and the iterable's own
+    end (D-55) -- together with a `KeyboardInterrupt`, handled by the caller.
+
+    `observer(frame, pose)`, when given, is called once per inferred frame with
+    whatever `infer(frame)` returned, inside a `try/except Exception` that increments
+    `observer_errors` in the result. **The observer may never break the run** -- that is
+    the rule that lets a viewer hang off this hook without risking the experiment.
+
+    Returns a counts-only record: `frames_read`, `frames_inferred`, `behind_count`,
+    `observer_errors`, and `processor.snapshot()`. Never creates or closes `link`.
     """
     frames_read = 0
     frames_inferred = 0
+    observer_errors = 0
+    loop_start = clock() if max_seconds is not None else None
+
     for frame in frames:
         if max_frames is not None and frames_read >= max_frames:
             break
+        if max_seconds is not None and (clock() - loop_start) >= max_seconds:
+            break
+        if should_stop is not None and should_stop():
+            break
+
         frames_read += 1
-        # D-29: dropping this ONE line is the entire change required to swap in a
-        # live camera later -- everything else in this loop is identical either way.
-        pacer.wait_until(frames_read / fps)
-        infer(frame)
+        # D-29: dropping this ONE line is very nearly the entire change required to
+        # swap in a live camera -- `pacer is None` (D-51) is how a camera tells this
+        # loop it paces itself, so the line below simply never runs for one.
+        if pacer is not None:
+            pacer.wait_until(frames_read / fps)
+
+        pose = infer(frame)
         frames_inferred += 1
+
+        if observer is not None:
+            try:
+                observer(frame, pose)
+            except Exception:
+                observer_errors += 1
+
     return {
         "frames_read": frames_read,
         "frames_inferred": frames_inferred,
-        "behind_count": pacer.behind_count(),
+        "behind_count": pacer.behind_count() if pacer is not None else None,
+        "observer_errors": observer_errors,
         "processor_snapshot": processor.snapshot(),
     }
 
@@ -128,187 +158,14 @@ def check_corner_geometry(positions, likelihoods, margin, min_likelihood):
     return "PASS", "all four corner inequalities hold with margin >= {}".format(margin)
 
 
-class _DiscardingLink:
-    """--dry-run stand-in: counts and discards every send, connects to nothing."""
-
-    def send_signal(self, name, value):
-        return True
-
-
-def _build_parser():
-    parser = argparse.ArgumentParser(
-        prog="dlc-link-live",
-        description=(
-            "USER-RUN paced video-file loop through a trained DeepLabCut model, pushing "
-            "declared signals into a mics-link client. Writes NOTHING anywhere by "
-            "default (D-47)."
-        ),
-    )
-    parser.add_argument("--video", required=True, help="path to the prerecorded video (D-29 workflow A)")
-    parser.add_argument(
-        "--model-path", required=True,
-        help="the .pt FILE produced by deeplabcut.export_model(...) -- NOT a directory "
-             "and NOT the project directory (D-09)",
-    )
-    parser.add_argument("--signal-map", required=True, help="path to the generated <source_id>_signals.py")
-    parser.add_argument("--host", default=None, help="required unless --dry-run or --probe-pose")
-    parser.add_argument(
-        "--port", type=int, default=None,
-        help="required unless --dry-run or --probe-pose. Deliberately has NO default: "
-             "the port belongs to a (pilot, source_id) row in pilot_hardware_config, not "
-             "to this tool. Pilot 3 binds 5599 (ExtlinkDemo) and 5601 (dlc_cam1), so a "
-             "wrong port reaches a DIFFERENT fixture that is listening rather than failing.",
-    )
-    parser.add_argument("--source-id", default=None, help="defaults to the loaded signal map's SOURCE_ID")
-    parser.add_argument("--resize", type=float, default=None, help="passed to DLCLive")
-    parser.add_argument("--max-frames", type=int, default=None)
-    parser.add_argument("--fps", type=float, default=None, help="override the video's reported fps")
-    parser.add_argument(
-        "--verify-lib", default=None, metavar="PATH",
-        help="assert the signal map pairs with this lib source before connecting",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="run the loop with a link that counts and discards; connects to nothing",
-    )
-    parser.add_argument(
-        "--probe-pose", action="store_true",
-        help="D-42's probe: read the first frame, run inference once, print pose.shape "
-             "and bodypart ordering, run the corner-geometry check, then exit. Never "
-             "connects to the Pi and sends nothing -- needs no --host.",
-    )
-    parser.add_argument("--geometry-parts", default="NW,NE,SE,SW")
-    parser.add_argument("--geometry-frames", type=int, default=1, help="use 30 when a corner is marginal")
-    parser.add_argument("--geometry-margin", type=float, default=0.05)
-    parser.add_argument("--geometry-min-likelihood", type=float, default=0.5)
-    return parser
-
-
-def validate_connection_args(args):
-    """Return a problem string when the run will connect but cannot address a socket.
-
-    Checked before the heavy cv2/dlclive imports so a missing flag reports in
-    milliseconds rather than after a model load -- and so it is testable on a host
-    with neither installed.
-    """
-    if args.dry_run or args.probe_pose:
-        return None
-    missing = [name for name in ("host", "port") if getattr(args, name) is None]
-    if not missing:
-        return None
-    return "{} required unless --dry-run or --probe-pose".format(
-        " and ".join("--" + name for name in missing)
-    )
-
-
 def main(argv=None):
-    args = _build_parser().parse_args(argv)
+    """Thin re-export so `dlc-link-live = dlc_link.live:main` (pyproject.toml) keeps
+    working; the real CLI lives in `dlc_link.live_cli` (import deferred to avoid a
+    module-load-time circular import, since `dlc_link.live_probe` imports FROM this
+    module and `live_cli` imports `live_probe`)."""
+    from dlc_link.live_cli import main as _main
 
-    problem = validate_connection_args(args)
-    if problem:
-        print("dlc-link-live: {}".format(problem), file=sys.stderr)
-        return 2
-
-    try:
-        smap = load_signal_map(args.signal_map)
-    except SignalMapError as exc:
-        print("dlc-link-live: {}".format(exc), file=sys.stderr)
-        return 1
-
-    if args.verify_lib:
-        with open(args.verify_lib) as handle:
-            lib_source = handle.read()
-        try:
-            assert_pairs_with(smap, lib_source)
-        except SignalMapError as exc:
-            print("dlc-link-live: --verify-lib failed: {}".format(exc), file=sys.stderr)
-            return 1
-
-    import cv2  # deferred: dlc_link.live must import with no camera library installed
-    from dlclive import DLCLive
-
-    cap = cv2.VideoCapture(args.video)
-    ok, first_frame = cap.read()
-    if not ok:
-        print("dlc-link-live: could not read the first frame of {}".format(args.video), file=sys.stderr)
-        return 1
-
-    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    fps = args.fps or cap.get(cv2.CAP_PROP_FPS)
-    if args.resize:
-        width *= args.resize
-        height *= args.resize
-
-    if args.probe_pose:
-        # Lazy import: dlc_link.live_probe imports compare_pose_order/check_corner_geometry
-        # FROM this module, so importing it at module scope here would be circular.
-        from dlc_link.live_probe import run_probe_pose
-
-        return run_probe_pose(args, smap, DLCLive, cap, first_frame, width, height)
-
-    source_id = args.source_id or smap.SOURCE_ID
-    if args.dry_run:
-        link = _DiscardingLink()
-    else:
-        # host/port already validated by validate_connection_args() before any import.
-        try:
-            link = connect(args.host, args.port, source_id)
-        except MicsLinkError as exc:
-            print("dlc-link-live: {}".format(exc), file=sys.stderr)
-            return 1
-
-    processor = DLCProcessor(link, smap, frame_width=width, frame_height=height)
-    live = DLCLive(
-        args.model_path,
-        model_type="pytorch",  # D-01/D-02: this project is a PyTorch export.
-        single_animal=True,  # D-07: refused-3-D is enforced downstream by DLCProcessor.
-        processor=processor,
-        resize=args.resize,
-        display=False,  # D-47: pinned explicitly, never left to DLCLive's own default.
-    )
-    live.init_inference(first_frame)
-
-    pacer = Pacer("realtime")
-    pacer.start()
-    remaining_frames = [first_frame]
-
-    def _frames():
-        while remaining_frames:
-            yield remaining_frames.pop()
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                return
-            yield frame
-
-    start = time.monotonic()
-    try:
-        result = run_video_loop(
-            link, _frames(), lambda frame: live.get_pose(frame), processor, pacer, fps,
-            max_frames=args.max_frames,
-        )
-    finally:
-        live.close()
-        cap.release()
-    duration_s = time.monotonic() - start
-
-    print("dlc-link-live summary:")
-    print("  frames_read:     {}".format(result["frames_read"]))
-    print("  frames_inferred: {}".format(result["frames_inferred"]))
-    print("  behind_count:    {}".format(result["behind_count"]))
-    print("  processor:       {}".format(result["processor_snapshot"]))
-    if not args.dry_run:
-        print("  link.stats:      {}".format(link.stats.snapshot()))
-        link.close()
-    print("  duration_s:      {:.3f}".format(duration_s))
-    print(
-        "  reminder: start this sender BEFORE the run when the pilot's config row has "
-        "required: true, and AFTER the run when it has required: false (D-27) -- pilot "
-        "3's row is required: false, so the correct order there is run first, then "
-        "sender."
-    )
-    return 0
+    return _main(argv)
 
 
 if __name__ == "__main__":

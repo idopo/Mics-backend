@@ -42,13 +42,39 @@ FDA transition authored in the browser, including the read-only-project-director
 and the named ordering obstacle in the backend half. This README documents the package itself,
 not the install/setup procedure for the vision box.
 
-One-line install of the PyPI-published half (inside a conda env cloned from your DeepLabCut
-training env, per `RUNBOOK.md` step 1):
+## Install
+
+Inside a conda env cloned from your DeepLabCut training env (`RUNBOOK.md` step 1), one line:
 
 ```bash
-python -m pip install "deeplabcut-live[pytorch]"
+python -m pip install "mics-dlc-link[live]"
 ```
 
-`mics-link` and `dlc-link` are not published on PyPI today — install them from the wheel/git
-paths `sdk/README.md` §2 documents (the same two paths apply to this package, built from
-`dlc_link/` instead of `sdk/`).
+That is the whole install. You do not need git, a GitHub account, access to any lab
+repository, or a file from a network share. `mics-link` arrives automatically as a
+dependency — you never install it separately.
+
+Three names, and they are deliberately not identical:
+
+| You type | What it is |
+|---|---|
+| `pip install mics-dlc-link` | the **distribution** name on PyPI |
+| `import dlc_link` | the **import** package |
+| `dlc-link-generate`, `dlc-link-convert`, `dlc-link-live` | the **console scripts** |
+
+Drop the `[live]` extra if you only need `dlc-link-generate` or `dlc-link-convert` — the
+core install pulls no torch, no OpenCV and no DeepLabCut, so it runs on a machine with no
+GPU. `[live]` adds `deeplabcut-live[pytorch]` and `opencv-python-headless`; pip enforces
+DLC-Live's own `>=3.10,<3.13` Python cap only when that extra is requested.
+
+**Always invoke with `python -m pip`, never bare `pip`.** On a Windows box with a `py`
+launcher and several Pythons installed, bare `pip` can install into the wrong interpreter
+— you then get a `ModuleNotFoundError` in the environment you actually meant to use, with
+no clue why.
+
+**If pip proposes to UPGRADE `pyzmq`, stop** and read `RUNBOOK.md` step 2 before
+continuing: Jupyter, IPython, Spyder and napari all depend on it.
+
+**Offline** (an isolated vision box): `python -m pip download "mics-dlc-link[live]" --dest
+./kit` on a connected machine with the same interpreter version and platform, copy `./kit`
+across, then `python -m pip install --no-index --find-links ./kit "mics-dlc-link[live]"`.

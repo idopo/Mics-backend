@@ -1,0 +1,95 @@
+# Publishes the two researcher-facing client packages to PyPI.
+#
+# These are the ONLY redistributable packages in this repo: they install on machines that
+# have no access to it (a researcher's laptop, a Windows/DeepLabCut box). Everything else
+# here is a service that ships by docker compose and must never be published.
+#
+# Trusted Publishing (OIDC) is used deliberately instead of a stored API token: this repo
+# is public and has leaked credentials from its history once already. No secret exists to
+# leak here — PyPI verifies the workflow identity directly. See RELEASING.md for the
+# one-time PyPI-side setup each package needs before its first release.
+name: publish clients
+
+on:
+  push:
+    tags:
+      - "mics-link-v*"
+      - "mics-dlc-link-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Named environment so PyPI's trusted publisher can be pinned to it, and so a release
+    # can be gated on a manual approval in repo settings if that is ever wanted.
+    environment: pypi
+    permissions:
+      id-token: write   # required by Trusted Publishing; nothing else needs write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The tag chooses the package. `mics-dlc-link-v*` is matched FIRST because
+      # `mics-link-v*` is not a prefix of it, but a future name might be — an ordered,
+      # explicit test is cheaper than discovering that the hard way.
+      - name: Resolve package from tag
+        id: pkg
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            mics-dlc-link-v*) dir=dlc_link; name=mics-dlc-link; version="${tag#mics-dlc-link-v}" ;;
+            mics-link-v*)     dir=sdk;      name=mics-link;     version="${tag#mics-link-v}" ;;
+            *) echo "::error::tag '$tag' matches no known package"; exit 1 ;;
+          esac
+          echo "dir=$dir"         >> "$GITHUB_OUTPUT"
+          echo "name=$name"       >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing $name $version from $dir/"
+
+      # A tag saying 0.2.0 against a pyproject still saying 0.1.0 would publish 0.1.0 —
+      # and PyPI is immutable, so that mistake cannot be taken back, only yanked. Fail
+      # before the build instead.
+      - name: Tag version must match pyproject version
+        run: |
+          python - <<'EOF'
+          import os, sys, tomllib, pathlib
+          d, name, tag_version = os.environ["DIR"], os.environ["NAME"], os.environ["VERSION"]
+          meta = tomllib.loads(pathlib.Path(d, "pyproject.toml").read_text())["project"]
+          if meta["name"] != name:
+              sys.exit(f"::error::{d}/pyproject.toml declares name {meta['name']!r}, tag says {name!r}")
+          if meta["version"] != tag_version:
+              sys.exit(f"::error::{d}/pyproject.toml is version {meta['version']}, tag says {tag_version}")
+          print(f"{name} {tag_version} OK")
+          EOF
+        env:
+          DIR: ${{ steps.pkg.outputs.dir }}
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build --outdir dist "${{ steps.pkg.outputs.dir }}"
+
+      # `twine check` catches a README that renders broken on pypi.org. That page is the
+      # first thing an outside researcher sees, and it cannot be fixed in place afterwards.
+      - name: Check metadata renders
+        run: python -m twine check dist/*
+
+      # The sdist carries whatever is not excluded from the source tree. Both packages'
+      # docs and examples are scrubbed of lab addresses; this refuses to upload if one
+      # ever comes back.
+      - name: Refuse to publish lab addresses
+        run: |
+          if grep -rIn "132\.77\." dist/ ; then
+            echo "::error::a lab address is present in the built artifacts — scrub it before releasing"
+            exit 1
+          fi
+          echo "no lab addresses in dist/"
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

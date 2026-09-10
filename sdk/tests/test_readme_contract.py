@@ -213,8 +213,13 @@ def test_windows_smoke_deliberately_uses_internal_submodules_not_just_all():
 # --- README's mandatory markers ---
 
 _REQUIRED_MARKERS = [
-    "git+https://github.com/idopo/Mics-backend.git#subdirectory=sdk",
-    "python -m build",
+    # The one-line install IS the contract as of 2026-09-10: `mics-link` is published on
+    # PyPI and resolves by name, so the README must not send a researcher to a repo, a
+    # release URL or a file share. The two markers that used to live here -- the
+    # `git+https://...#subdirectory=sdk` line and `python -m build` -- were the old
+    # repo-dependent story and are now forbidden rather than required; see
+    # test_readme_does_not_route_the_install_through_this_repo below.
+    "python -m pip install mics-link",
     "router_bind",
     "source_id",
     "listen_port",
@@ -236,22 +241,41 @@ def test_readme_contains_required_marker(marker):
     )
 
 
-def test_readme_states_the_public_repo_dependency_risk():
-    """Decision 2: the public-repo dependency is stated, not left implicit. Located by an
-    explicit marker sentence containing both "private" and "token" (Task 1's own choice).
+# Phase 34 decision 2 ("state the public-repo dependency risk") and decision 4 ("no bare
+# `pip install mics-link` line, as if it worked") are both RETIRED, superseded by the
+# 2026-09-10 decision to publish on PyPI. The risk they guarded -- that the install breaks
+# for every outside machine if `idopo/Mics-backend` is made private -- no longer exists,
+# because the install no longer touches the repo at all. The guards are INVERTED rather
+# than deleted, so the repo-dependent story cannot quietly come back.
+
+
+def test_readme_does_not_route_the_install_through_this_repo():
+    """The install must not depend on repo access in any form: no `git+` requirement, no
+    release-asset URL, no instruction to build a wheel from the source tree. A researcher
+    on a Windows/DeepLabCut box has none of those things and should not need them.
     """
-    readme = _README.read_text(encoding="utf-8").lower()
-    assert "private" in readme
-    assert "token" in readme
-
-
-def test_readme_has_no_bare_pypi_install_line():
-    """Decision 4: no `pip install mics-link` line anywhere, as if it worked."""
     readme = _README.read_text(encoding="utf-8")
-    for line in readme.splitlines():
-        assert not re.match(r"^\s*pip install mics-link\s*$", line, re.IGNORECASE), (
-            "sdk/README.md has a bare 'pip install mics-link' line -- "
-            "that install does not work (decision 4)"
+    forbidden = ("git+http", "github.com/idopo", "python -m build")
+    present = [f for f in forbidden if f in readme]
+    assert present == [], (
+        "sdk/README.md routes the install through this repository via {!r} -- the package "
+        "is on PyPI and installs by name; repo-dependent install paths are retired".format(
+            present
+        )
+    )
+
+
+def test_readme_recommends_python_m_pip_not_bare_pip():
+    """Still enforced, and for the ORIGINAL reason, which PyPI does not change: on a
+    Windows box with a `py` launcher and several Pythons, bare `pip` can install into an
+    interpreter the researcher did not mean, producing a `ModuleNotFoundError` with no
+    visible cause. Every install line in the README must carry the `python -m` prefix.
+    """
+    readme = _README.read_text(encoding="utf-8")
+    for number, line in enumerate(readme.splitlines(), start=1):
+        assert not re.match(r"^\s*pip install\b", line, re.IGNORECASE), (
+            "sdk/README.md line {} starts an install with bare 'pip' -- use "
+            "'python -m pip install' so the interpreter is unambiguous".format(number)
         )
 
 

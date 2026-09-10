@@ -27,7 +27,7 @@ from mics_link.transport import (
 
 
 def test_endpoint_formats_tcp_url():
-    assert endpoint("132.77.72.28", 5599) == "tcp://132.77.72.28:5599"
+    assert endpoint("192.0.2.10", 5599) == "tcp://192.0.2.10:5599"
 
 
 # --- validate_target ---
@@ -52,7 +52,7 @@ def test_validate_target_rejects_bad_input(host, port, source_id):
 
 
 def test_validate_target_accepts_valid_triple():
-    assert validate_target("132.77.72.28", 5599, "demo") is None
+    assert validate_target("192.0.2.10", 5599, "demo") is None
 
 
 # --- ZmqTransport construction order + identity lock ---
@@ -61,19 +61,19 @@ def test_validate_target_accepts_valid_triple():
 def test_zmq_transport_calls_socket_setsockopt_connect_in_order():
     fake_socket = FakeSocket()
     factory = fake_socket_factory(fake_socket)
-    ZmqTransport("132.77.72.28", 5599, "demo", socket_factory=factory)
+    ZmqTransport("192.0.2.10", 5599, "demo", socket_factory=factory)
 
     assert fake_socket.calls == [
         ("socket", "DEALER"),
         ("setsockopt", "IDENTITY", b"demo"),
-        ("connect", "tcp://132.77.72.28:5599"),
+        ("connect", "tcp://192.0.2.10:5599"),
     ]
 
 
 def test_zmq_transport_source_id_property_matches_construction():
     fake_socket = FakeSocket()
     factory = fake_socket_factory(fake_socket)
-    transport = ZmqTransport("132.77.72.28", 5599, "demo", socket_factory=factory)
+    transport = ZmqTransport("192.0.2.10", 5599, "demo", socket_factory=factory)
 
     assert transport.source_id == "demo"
 
@@ -81,7 +81,7 @@ def test_zmq_transport_source_id_property_matches_construction():
 def test_zmq_transport_source_id_has_no_public_setter():
     fake_socket = FakeSocket()
     factory = fake_socket_factory(fake_socket)
-    transport = ZmqTransport("132.77.72.28", 5599, "demo", socket_factory=factory)
+    transport = ZmqTransport("192.0.2.10", 5599, "demo", socket_factory=factory)
 
     with pytest.raises(AttributeError):
         transport.source_id = "other"
@@ -104,7 +104,7 @@ def test_zmq_transport_send_uses_noblock_so_it_never_blocks_the_io_thread():
 
     fake_socket = _RecordingSocket()
     factory = fake_socket_factory(fake_socket)
-    transport = ZmqTransport("132.77.72.28", 5599, "demo", socket_factory=factory)
+    transport = ZmqTransport("192.0.2.10", 5599, "demo", socket_factory=factory)
 
     transport.send(b"frame")
 
@@ -116,7 +116,7 @@ def test_zmq_transport_does_not_expose_raw_socket_publicly():
     attribute holding it would re-invite `setsockopt(IDENTITY, ...)` from outside."""
     fake_socket = FakeSocket()
     factory = fake_socket_factory(fake_socket)
-    transport = ZmqTransport("132.77.72.28", 5599, "demo", socket_factory=factory)
+    transport = ZmqTransport("192.0.2.10", 5599, "demo", socket_factory=factory)
 
     public_attrs = [name for name in vars(transport) if not name.startswith("_")]
     for name in public_attrs:

@@ -254,7 +254,9 @@ def read_h5(path, key=None):
     except ImportError as exc:
         raise ConvertError(
             "{}: pandas is required to read a DeepLabCut .h5 export; install the "
-            '"convert" extra (pip install "dlc-link[convert]") -- ({})'.format(path, exc)
+            '"convert" extra (python -m pip install "mics-dlc-link[convert]") -- ({})'.format(
+                path, exc
+            )
         )
 
     try:

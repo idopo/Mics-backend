@@ -48,3 +48,13 @@ analysis/**
 
 # Docker secrets - real credentials, never commit (see 2026-08-30 incident)
 secrets/
+
+# Python build artifacts from the two redistributable client packages (sdk/, dlc_link/).
+# `python -m build` regenerates all of these; none belong in the repo. Named here because
+# renaming a distribution renames its egg-info directory, which is how an untracked
+# artifact quietly became a staged file once.
+*.egg-info/
+sdk/build/
+sdk/dist/
+dlc_link/build/
+dlc_link/dist/

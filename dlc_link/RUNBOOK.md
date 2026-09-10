@@ -108,7 +108,10 @@ Summarised, for the three CLI tools this package ships:
    that working setup on a dependency conflict you cannot predict in advance. **Write footprint:
    writes into the new cloned conda environment only; the source `DEEPLABCUT` environment is
    read, never modified.**
-2. **Install `deeplabcut-live[pytorch]`, `mics-link`, and `dlc-link` into the clone.** On the
+2. **Install everything into the clone with one command:**
+   `python -m pip install "mics-dlc-link[live]"`. That single line pulls `mics-link` and
+   `deeplabcut-live[pytorch]` in as dependencies — there is nothing to download by hand, no
+   wheel to fetch off a share, and no lab repository to get access to. On the
    verified target environment, the `mics-link` install is a dependency **no-op** — its
    `pyzmq`/`msgpack` floors are already exceeded by what DeepLabCut 3.0 itself requires — and the
    only package `deeplabcut-live` adds on top is `colorcet`. **If `pip` proposes to UPGRADE

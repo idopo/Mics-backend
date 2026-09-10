@@ -27,35 +27,34 @@ launcher and two or three Pythons installed, bare `pip` can silently install int
 wrong interpreter -- you then get a `ModuleNotFoundError` inside the environment you
 actually meant to use, with no clue why.
 
-Two supported install paths, in this order:
-
 ```bash
-# 1. No git required. Works on Windows, macOS and Linux, inside a conda env.
-python -m pip install https://github.com/idopo/Mics-backend/releases/download/sdk-v0.1.0/mics_link-0.1.0-py3-none-any.whl
-
-# 2. If git is available and you want the tip of main:
-python -m pip install "git+https://github.com/idopo/Mics-backend.git#subdirectory=sdk"
+python -m pip install mics-link
 ```
 
-`idopo/Mics-backend` is a **public** GitHub repository (verified 2026-08-26). If it is
-ever made private, both lines above break for every outside machine, and whoever hits
-that needs a GitHub token before either one works again -- a standing risk worth writing
-down once, here, rather than being rediscovered later as a mysterious install failure.
+That is the whole install. You do not need git, a GitHub account, access to any lab
+repository, or a file from a network share -- `mics-link` is published on PyPI and
+resolves by name from anywhere with an internet connection.
 
-**Offline fallback** (no internet -- e.g. an isolated vision-box subnet): build a wheel
-from `sdk/` with `python -m build --wheel`, copy the resulting `.whl` onto the target
-machine by any means (USB drive, internal file share), then install it locally:
+Note the hyphen: you `pip install mics-link`, and you `import mics_link`. That split is
+normal Python packaging, not a typo.
+
+**Offline fallback** (no internet at all -- e.g. an isolated vision-box subnet): download
+the wheel on a machine that does have internet, using the SAME interpreter version and
+platform you will install onto...
 
 ```bash
-python -m pip install C:\path\to\mics_link-0.1.0-py3-none-any.whl
+python -m pip download mics-link --dest ./mics-link-offline
 ```
 
-This is the same artifact path 1 above downloads over the network -- only how it gets
-onto the machine differs.
+...copy that folder across by any means (USB drive, internal file share), then install
+from it without touching the network:
 
-**Not supported today:** installing `mics_link` by name from PyPI. Publishing this
-package under a public PyPI name is a separate, deferred decision -- the two paths above
-are the only ones that work right now.
+```bash
+python -m pip install --no-index --find-links ./mics-link-offline mics-link
+```
+
+This installs the identical artifact the online path resolves -- only how it reaches the
+machine differs.
 
 ## 3. What must already exist on the rig
 

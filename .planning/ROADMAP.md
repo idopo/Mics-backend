@@ -1963,7 +1963,17 @@ bodypart selection, not just the MultiMice ResNet-50 model Phase 35 used.
 
 **Requirements**: CAM-01 through CAM-16 (CAM-17 is defined but **not scheduled in this phase** — it is where the T5b branch goes)
 
-> **⚠ CAMERA IDENTIFIED 2026-09-06 — this phase has a live termination branch.** The rig camera is a
+> **✅ RESOLVED 2026-09-10 — the termination branch did NOT fire. The verdict is T5a.** The dshow
+> probe was run on the lab computer (via the DirectShow registry category, since `ffmpeg` is not
+> installed there) and returned `DMK 33GP1300 [BR2_UP]`: the vendor's Windows DirectShow wrapper is
+> present, so `cv2.VideoCapture` can open this camera, T5 collapses to T4, **no capture shim is
+> needed and no plan stops early**. 38-04 delivers its full scope. The paragraph below is the
+> superseded 2026-09-06 framing, kept because it explains why the probe mattered.
+> **Still worth doing, and cheaper still:** run the same probe on the vision box after moving the
+> camera's Ethernet cable there (D-75 T6) — if it enumerates, T6 collapses to T1 and the lab
+> computer leaves the frame path entirely.
+>
+> **⚠ CAMERA IDENTIFIED 2026-09-06 — this phase had a live termination branch.** The rig camera is a
 > `DMK 33GP1300` (The Imaging Source, monochrome, **GigE Vision**, serial `5810436`), which is
 > D-65's topology **T5** — the one the plans were written to treat as fatal. D-75 splits it:
 > **T5a** (a vendor DirectShow wrapper exists → the MJPEG relay works, no code change, phase

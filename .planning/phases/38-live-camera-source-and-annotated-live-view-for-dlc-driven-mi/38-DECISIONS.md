@@ -441,13 +441,30 @@ and D-66 part 2's MJPEG relay works **with no new code in `dlc_link` at all**. T
 38-01's injected-capture seam. This is the STOP for the phase as currently planned, and it is
 separate work.
 
-**The discriminator, to be run on the lab computer when it is available:**
+**The discriminator, run on the lab computer 2026-09-10. ANSWER: T5a.** No longer `pending`.
 
-    ffmpeg -list_devices true -f dshow -i dummy
+`ffmpeg` turned out not to be installed on that machine, so the probe went at the same source
+ffmpeg's own dshow enumerator walks — the DirectShow *Video Capture Sources* registry category,
+64-bit view — which needs no install and writes nothing:
 
-If a device resembling `DMK 33GP1300` appears in the video list → **T5a**. If only unrelated devices
-(or none) appear → **T5b**. This costs one command, writes nothing, and decides whether any new code
-is needed. It is the first thing to run and it is recorded as `pending` until then.
+    Get-ChildItem 'HKLM:\SOFTWARE\Classes\CLSID\{860BB310-5D01-11d0-BD3B-00A0C911CE86}\Instance' | Get-ItemProperty | Select-Object -ExpandProperty FriendlyName
+
+Returned verbatim:
+
+    DMK 33GP1300 [BR2_UP]
+
+**The vendor's DirectShow wrapper IS installed. T5a. T5 collapses to T4, `cv2.VideoCapture` can open
+this camera, and no capture shim is needed.** The four "consequences for the code, if T5b" below are
+therefore NOT triggered for this camera — keep them for a future rig with a different one.
+
+The device name to use is `DMK 33GP1300 [BR2_UP]`, square brackets included. Caveat worth carrying:
+ffmpeg prints its own device names and may differ from the registry FriendlyName in whitespace, so
+if `-i video="..."` fails, get ffmpeg's exact spelling (`winget install Gyan.FFmpeg`) before
+suspecting the camera.
+
+The 32-bit (`WOW6432Node`) view was never cleanly read — not a blocker, since the 64-bit
+registration is what a 64-bit Python needs, but check it before assuming a 32-bit tool can open the
+device.
 
 ### T6 — the topology that did not exist before we knew the model
 

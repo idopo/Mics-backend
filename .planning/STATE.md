@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-09-10T08:19:06.168Z"
+status: executing
+last_updated: "2026-09-10T13:55:00.000Z"
 progress:
   total_phases: 32
   completed_phases: 8
-  total_plans: 146
-  completed_plans: 98
+  total_plans: 147
+  completed_plans: 102
   percent: 25
 ---
 
@@ -26,7 +26,10 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 ## Current Position
 
 Phase: 38 (live-camera-source-and-annotated-live-view-for-dlc-driven-mi) — EXECUTING
-Plan: 1 of 6
+Plans: 4 of 7 executed (38-01, 38-02, 38-03, 38-05). 38-07 Tasks 1-2 done, its Task 3
+awaiting the researcher. Open: 38-04 (Tasks 2-3), 38-06 (not started), 38-07 Task 3.
+Test suite: 552 passed, 3 skipped. Last commit 6ceed90 on branch `claude`.
+**Handoff:** `~/.claude/continuations/2026-09-10_13-53_phase38-camera-acquisition-and-live-view.md`
 
 **Phase 35 is PARKED at 7/9 by user decision 2026-09-10, not abandoned.** 35-07 ran on
 2026-09-02 and PROVED the core chain (DLC on the vision box -> keypoints -> pilot 3 -> FDA ->
@@ -38,6 +41,38 @@ everything downstream is what 587/588 proved. 35-09's `.alive` defect is confine
 (`35-FIXTURE-INVENTORY.md`, `_NO_EGRESS_MARKERS`). Worth closing eventually — a hardcoded
 `.alive` means a dead sender is indistinguishable from a live one, which is exactly the relay
 failure D-87 flags.
+
+> **⚠ TRAP: `/gsd-execute-phase 38` will SKIP 38-07.** `gsd-sdk query phase-plan-index 38` reports
+> `incomplete: ['38-04', '38-06']` only, because 38-07 HAS a SUMMARY — it was written to record
+> Tasks 1-2 done and Task 3 awaiting the researcher. The wave runner treats any plan with a SUMMARY
+> as finished, so 38-07's Task 3 (the acquisition rig session) will be silently passed over. Drive it
+> by hand from `38-07-PLAN.md` Task 3, or remove/rename the SUMMARY first. The same is true of the
+> `4 of 7` count: 38-07 is neither complete nor counted as outstanding.
+
+**Execution session 2026-09-10 (afternoon) — what changed and what to do first.**
+
+- **The T4 transport is PROVEN**, not just designed: camera -> DirectShow -> ffmpeg MJPEG -> LAN ->
+  vision box, confirmed by `ffprobe` seeing `mjpeg 704x680` at `132.77.73.214:8080`.
+- **`mics-dlc-link 0.2.0` is on PyPI** (run 34467941561). The vision box still needs
+  `pip install -U mics-dlc-link` — use `--no-deps` if pip proposes touching numpy/torch/opencv.
+- **D-88 + CAM-18 + plan 38-07** added mid-execution: acquisition becomes ours. D-88 was then
+  AMENDED with three corrections found while planning (tee does ONE encode; `onfail=ignore` covers a
+  FAILED not a SLOW sink, so the transport is what protects the recording; tee escapes with `\`).
+- **USER REPRIORITISED: recording BEFORE exposure pinning and before the rate baseline.** The reason
+  is sound and should be respected — the recorded file IS the DeepLabCut training data, no model
+  exists yet, and the sequence is capture -> train -> run live. Do NOT "fix" the unpinned
+  auto-exposure as an oversight; it is a deliberate deferral.
+- **Four defects of ONE family were found today**, all the tool refusing what its own docs said,
+  all because code paths were unit-tested but never executed: `--capture-only` and `--probe-pose`
+  demanding inputs they never read; `--file-extra -g 1` (the help text's own example) failing
+  argparse; and the `tee` form being unrunnable for two separate reasons (missing `-map`, and
+  H.264+matroska needing `-flags +global_header` plus `bsfs/v=h264_mp4toannexb`). Two pre-existing
+  tests asserted the broken form was correct. **Run the real command before trusting a green suite**
+  — `docker run linuxserver/ffmpeg` reproduces ffmpeg behaviour on this host, which has no ffmpeg.
+- **FIRST THING TOMORROW:** ask the researcher whether the recording command worked — did
+  `rig-<ts>.mkv` appear in `D:\MICS\recordings` and grow, did `ffplay udp://127.0.0.1:5000` show
+  the picture, and did closing ffplay leave the recording running. The exact command is in the
+  continuation file. No result had been reported when the session ended.
 
 **Phase 38 is unblocked as of 2026-09-10.** Four decisions landed today, all committed:
 
@@ -52,8 +87,13 @@ failure D-87 flags.
 - **D-86 — distribution is PyPI.** `mics-link` and `mics-dlc-link` are published; 38-04 and 38-06
   release by tag, not by SMB wheel. See `RELEASING.md`.
 
-- **BLOCKER now covered in 38-04:** `ffmpeg` is NOT installed on the lab computer and the relay
-  IS ffmpeg. `winget install Gyan.FFmpeg` is now a prerequisite step in that plan.
+- **RESOLVED 2026-09-10 — ffmpeg is now installed on BOTH machines.** The plan's
+  `winget install Gyan.FFmpeg` step is INVALID: the lab computer runs Windows 10 Enterprise
+  LTSC, which ships no App Installer, so `winget` does not exist. Installed instead by
+  unpacking `ffmpeg-release-essentials.zip` under `%USERPROFILE%\ffmpeg` — no installer, no
+  admin, no PATH change. Gyan's **full** build is `.7z`-only and LTSC has no archiver, so the
+  plan's "use a full build" advice is unachievable as written; essentials carries `dshow`,
+  the `mpjpeg` MUXER and `ffplay.exe`, which is what actually matters.
 
 **Do NOT re-plan 38.** All 6 plans exist and were reviewed against the above on 2026-09-10
 (commit 933d591); stale T1/T5b/T6 branches are struck through in place.

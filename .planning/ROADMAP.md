@@ -1969,11 +1969,17 @@ bodypart selection, not just the MultiMice ResNet-50 model Phase 35 used.
 > present, so `cv2.VideoCapture` can open this camera, T5 collapses to T4, **no capture shim is
 > needed and no plan stops early**. 38-04 delivers its full scope. The paragraph below is the
 > superseded 2026-09-06 framing, kept because it explains why the probe mattered.
-> **T6 checked the same day and is NOT already true:** the identical query on `YizharGPU12` finds
-> the category key ABSENT — that machine has no DirectShow capture filters at all. So T6 remains a
-> thing to BUILD (move the camera's Ethernet there, install the vendor driver, re-probe), not a
-> thing to discover, and `--source 0` on the vision box finds nothing until it is built. T5a is
-> unaffected: it only ever needed the wrapper on the machine holding the camera.
+> **T6 is CLOSED as impossible (D-87):** the camera is in the rig room and `YizharGPU12` is in
+> another room, so the Ethernet cannot be moved. (Consistent with the probe there finding no
+> DirectShow filters at all.) **The topology is therefore settled as T4** — the camera is opened on
+> the lab computer via the vendor's DirectShow wrapper and frames reach the vision box over the
+> network, which needs no new `dlc_link` code. Plans 38-01..38-06 already build this; nothing is
+> rewritten.
+> **Carried cost, deliberately NOT absorbed here:** the relay is now a permanent always-on process
+> on an unsupervised third machine, and a dead relay makes keypoint signals go stale rather than
+> loud — an FDA can keep running while nothing is watching the animal. Phase 32's scope (Pi,
+> orchestrator, API, UI) does not cover that host. D-87 lists the three candidate fixes for
+> whoever plans the next unattended-operation slice.
 >
 > **⚠ CAMERA IDENTIFIED 2026-09-06 — this phase had a live termination branch.** The rig camera is a
 > `DMK 33GP1300` (The Imaging Source, monochrome, **GigE Vision**, serial `5810436`), which is

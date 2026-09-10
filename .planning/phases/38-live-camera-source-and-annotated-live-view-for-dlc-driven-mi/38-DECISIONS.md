@@ -638,3 +638,56 @@ not contain does not reach the user, whether the wheel arrives from an index or 
 under PyPI the audience is wider, not narrower. The SMB share survives only as break-glass for an
 air-gapped machine, and even then the documented path is `pip download` / `pip install --no-index
 --find-links`, which fetches the same artifact the index serves.
+
+## D-87 — T6 is impossible; T4 is the architecture, and the relay is permanent
+
+**Decided 2026-09-10 by the user, on a physical fact that no design can argue with:** the camera is
+in the rig room and `YizharGPU12` is in a different room. The Ethernet cannot be moved and a NIC on
+the vision box reaches nothing. **T6 is closed as IMPOSSIBLE, not deferred.**
+
+Combined with D-75's T5a verdict, the topology is settled:
+
+**T4 — the camera is opened on the LAB COMPUTER via the vendor's DirectShow wrapper, and frames
+reach the vision box over the network.** This needs no new code in `dlc_link`, which is exactly what
+the T5a probe bought. Plans 38-01 through 38-06 already build this path; nothing is rewritten by
+this decision.
+
+### The cost T6 would have removed, now permanent — and it is not this phase's to absorb
+
+A relay process runs **always-on, on the lab computer, unsupervised**. D-75 named this as T6's
+motivation ("no second always-on relay process on an unsupervised machine, no host that phase 32/33
+would have to adopt"). T6 is gone, so that hazard is now a standing property of the system:
+
+- If the relay dies, the vision box sees a stalled or absent stream. The keypoint signals then go
+  **stale**, and stale signals on the Pi resolve through each signal's declared `stale_policy` —
+  `return_default` or `hold_last` — which means **an FDA can keep evaluating and a run can keep
+  going while nothing is actually watching the animal**. That is the same class of silent failure
+  as run 581, and it is the reason this is written down rather than left as an operational detail.
+- Nothing restarts it. `deploy/mics-pilot.service`'s `Restart=always` covers the Pi, not a Windows
+  process on a third machine.
+- **Phase 32 does not currently cover this host.** Its scope is the Pi, the orchestrator, the API
+  and the UI. A relay on the lab computer is a fourth failure domain, and Phase 32's crash
+  classification cannot see it.
+
+**Not this phase's job to fix** — 38's goal is a working camera and a live view, and widening it
+here would delay the thing the researcher is waiting for. But it must not be discovered later as a
+surprise. The concrete follow-ups, for whoever plans the next unattended-operation slice:
+
+1. The relay needs a supervisor on the lab computer (a scheduled task or service with restart), or
+2. `dlc-link-live` needs to treat a dead relay as a **loud** failure rather than an absent frame —
+   `behind_count` and the reader-thread skip counter already exist as the instruments, and 38-01
+   builds them, so this is a threshold-and-exit question rather than new machinery, or
+3. the pilot side must refuse to run when a `required` extlink source has gone stale beyond its
+   window, which is a Phase 18 / Phase 32 substrate question and not a `dlc_link` one.
+
+### The one alternative that survives, recorded so it is not rediscovered
+
+The camera could instead be admitted to the lab LAN and read **directly** by a GenICam client on the
+vision box — the two machines are on the same VLAN and segment (`38-CONTEXT.md` §3f), so no
+forwarding is involved and D-75's "TCP-only portproxy" objection does not apply to it.
+
+It is **not** recommended, and it is strictly more work than T4: it needs lab IT to admit the camera
+as an unknown device (which the researcher has said may be refused) AND the `imagingcontrol4` vendor
+shim — i.e. the whole T5b build that T5a just made unnecessary. Its only advantage is removing the
+relay. Revisit it only if the relay's unsupervised-host problem proves worse in practice than
+writing the shim.

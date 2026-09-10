@@ -11,7 +11,7 @@ demonstrates a foreign caller using it. Nothing under `sdk/` knows `dlc_link` ex
 |---|---|---|
 | `dlc-link-generate` | Reads a DeepLabCut `config.yaml` and emits (a) an `ExternalHardware` subclass source file the researcher pastes into the hardware-lib upload page, and (b) a machine-readable bodypart -> signal-name map. | none (core) |
 | `dlc-link-convert` | Converts a DeepLabCut `.h5` pose export into a wide `(t, signal)` replay file consumable by `mics-link-replay`. | `convert` |
-| `dlc-link-live` | Runs a `DLCLive` processor against a video source (camera or file) and streams keypoint signals to a pilot over `mics-link`. | `live` |
+| `dlc-link-live` | Runs a `DLCLive` processor against a video source (camera or file) and streams keypoint signals to a pilot over `mics-link`. `--view` adds an annotated live picture in a notebook or a localhost browser tab. | `live` |
 
 ## Extras
 
@@ -32,7 +32,32 @@ typically sits inside it.
 |---|---|
 | `dlc-link-generate` | Only to the directory named by its explicit `--out-dir` flag; refuses if that directory is the project directory or a descendant of it. |
 | `dlc-link-convert` | Only to the file named by its explicit output-path flag. |
-| `dlc-link-live` | Writes nothing anywhere. Reads frames and sends over the network; counts go to stdout. |
+| `dlc-link-live` | Writes nothing anywhere, with or without `--view`. Reads frames and sends over the network; counts go to stdout. |
+
+## Live view
+
+`dlc-link-live --view` draws the declared keypoints (with their likelihoods), the
+researcher's own authored overlay thresholds (`--overlay`), the pilot's run identity,
+and the FDA state, all updating while the task runs on the Pi. The viewer runs on its
+own threads and can never slow, stall, or raise into the sender: a slow, absent, or
+crashed viewer changes nothing about what reaches the Pi.
+
+Two render sinks, chosen with `--view-sink`:
+
+- **`notebook`** (default) — displays in a Jupyter cell via `IPython.display`. Needs
+  IPython in the environment; if it is absent, construction fails with a message
+  naming `--view-sink mjpeg` as the alternative. See
+  [`notebooks/live_view.ipynb`](notebooks/live_view.ipynb).
+- **`mjpeg`** — a stdlib `http.server` bound to **`127.0.0.1` only** (never reachable
+  from the network), serving the same annotated stream as an ordinary browser tab.
+  Needs `--view-port`, and needs nothing installed — this is the answer when Jupyter
+  is not, or must not be, in this environment (installing it risks a `pyzmq` upgrade
+  that `mics-link`'s own transport depends on; see `RUNBOOK.md` step 2).
+
+`--overlay`'s thresholds are the researcher's own authored numbers, never read from
+the task definition's `fda_json` — every frame with an overlay carries the label
+`overlay: authored locally, not read from the task definition` so it is never mistaken
+for the Pi's own ground truth.
 
 ## Runbook
 

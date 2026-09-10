@@ -90,7 +90,57 @@ def build_parser():
     parser.add_argument("--geometry-frames", type=int, default=1, help="use 30 when a corner is marginal")
     parser.add_argument("--geometry-margin", type=float, default=0.05)
     parser.add_argument("--geometry-min-likelihood", type=float, default=0.5)
+    parser.add_argument(
+        "--view", action="store_true",
+        help="render annotated frames in a notebook or a localhost browser (D-56). "
+             "Off by default -- a headless run must stay exactly as cheap as it is "
+             "today; starts no extra thread when absent.",
+    )
+    parser.add_argument(
+        "--view-sink", choices=("notebook", "mjpeg"), default="notebook",
+        help="where the annotated view is rendered (D-58): 'notebook' needs IPython; "
+             "'mjpeg' needs nothing installed and opens in any browser on this machine.",
+    )
+    parser.add_argument(
+        "--view-port", type=int, default=None,
+        help="required when --view-sink mjpeg is chosen. Deliberately has NO default, "
+             "for the same reason --port has none: a port that is open but wrong is "
+             "more expensive to debug than one that is closed.",
+    )
+    parser.add_argument(
+        "--view-min-likelihood", type=float, default=None,
+        help="required with --view. The value comes from the researcher's own "
+             "measured likelihood distribution (D-41, 35-HARDWARE-VALIDATION.md §5b) "
+             "-- this tool refuses to invent one.",
+    )
+    parser.add_argument(
+        "--overlay", default=None,
+        help="researcher-authored threshold clauses, e.g. "
+             "'nose_x>0.50,nose_likelihood>0.6' (D-60). Parsed before any heavy "
+             "import, so a typo'd signal name fails in milliseconds and lists the "
+             "declared names. Labelled on every frame as authored locally, never the "
+             "FDA's own ground truth.",
+    )
+    parser.add_argument("--pilot", default=None, help="the pilot name as the orchestrator keys it, e.g. 'RecordingBox'")
+    parser.add_argument("--orchestrator-url", default=None, help="e.g. http://132.77.73.125:9000")
+    parser.add_argument("--es-url", default=None, help="e.g. http://132.77.73.217:9200")
+    parser.add_argument("--es-index", default="event_log_v2")
     return parser
+
+
+def validate_view_args(args):
+    """Return a problem string when `--view`'s flags are inconsistent. Checked before
+    the heavy cv2/dlclive imports, same reason as `validate_connection_args`.
+
+    `--view-sink mjpeg` is checked whenever it was chosen, regardless of `--view`
+    itself -- choosing a sink and then forgetting the port it needs is a mistake worth
+    catching immediately rather than only once `--view` is also added.
+    """
+    if args.view_sink == "mjpeg" and args.view_port is None:
+        return "--view-port is required when --view-sink mjpeg is chosen"
+    if args.view and args.view_min_likelihood is None:
+        return "--view-min-likelihood is required with --view"
+    return None
 
 
 def validate_connection_args(args):

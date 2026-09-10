@@ -90,9 +90,12 @@ def build_parser():
     )
     parser.add_argument(
         "--probe-pose", action="store_true",
-        help="D-42's probe: read the first frame, run inference once, print pose.shape "
-             "and bodypart ordering, run the corner-geometry check, then exit. Never "
-             "connects to the Pi and sends nothing -- needs no --host.",
+        help="D-42/D-62's probe: read the first frame, print pose.shape, bodypart "
+             "ordering and a paste-ready --pose-order line, run the corner-geometry "
+             "check, then exit. --signal-map is OPTIONAL: probing first, before a map "
+             "exists, is the intended order (probe then dlc-link-generate "
+             "--pose-order then re-probe WITH the map to confirm row_count_match). "
+             "Never connects to the Pi, sends nothing, needs no --host.",
     )
     parser.add_argument("--geometry-parts", default="NW,NE,SE,SW")
     parser.add_argument("--geometry-frames", type=int, default=1, help="use 30 when a corner is marginal")

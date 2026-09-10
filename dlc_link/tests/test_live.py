@@ -790,3 +790,28 @@ def test_probe_pose_still_requires_a_model_path():
     )
     assert problem is not None
     assert "--model-path" in problem
+
+
+# --- D-62: --probe-pose needs no --signal-map -- the chicken-and-egg plan 38-05 closes
+
+
+def test_probe_pose_with_no_signal_map_parses_and_runs_end_to_end(monkeypatch, tmp_path_factory):
+    """The CLI-level regression this plan fixes: before it, main() would reach
+    `run_probe_pose` with `smap=None` and crash on `smap.POSE_ORDER`. Runs through the
+    real main() with a fake cv2/dlclive -- no real camera, no real model."""
+    assets = tmp_path_factory.mktemp("assets_probe_no_map")
+    _install_fake_cv2_dlclive(monkeypatch, frames=["frame1"])
+    exit_code = main(
+        [
+            "--video", str(assets / "video.mp4"), "--model-path", "model.pt",
+            "--probe-pose",
+        ]
+    )
+    assert exit_code == 0
+
+
+def test_no_probe_pose_with_no_signal_map_exits_2():
+    exit_code = main(
+        ["--source", "0", "--model-path", "m", "--host", "h", "--port", "1"]
+    )
+    assert exit_code == 2

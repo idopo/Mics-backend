@@ -1,20 +1,30 @@
 # DeepLabCut -> MICS Runbook
 
 The researcher-facing path from "my DeepLabCut model runs" to "I authored a transition on my
-keypoint in the browser." Nothing below is collapsed, abbreviated into a script, or glossed
-over — DLC-13 makes an un-collapsible, honest runbook a deliverable in its own right, and if a
-step is awkward, this document says so rather than hiding it.
+keypoint in the browser" — now including a live camera and an annotated live view. Nothing
+below is collapsed, abbreviated into a script, or glossed over — DLC-13 makes an
+un-collapsible, honest runbook a deliverable in its own right, and if a step is awkward, this
+document says so rather than hiding it.
 
 This runbook has two halves: the **vision-box half** (your DeepLabCut project, your conda env,
-your exported model) and the **backend half** (the six MICS steps that turn an uploaded lib
-into a picker option in the FDA editor). Read both before running anything — the backend half
-explains an ordering trap the vision-box half cannot warn you about on its own.
+your exported model, your camera and your live view) and the **backend half** (the six MICS
+steps that turn an uploaded lib into a picker option in the FDA editor). Read both before
+running anything — the backend half explains an ordering trap the vision-box half cannot warn
+you about on its own.
 
 No sentence below claims a wire-timing number, a throughput figure, or any other rig
 measurement that has not been made. Where a number depends on a real observation (the achieved
-frame rate, the measured likelihood distribution, the confirmed pose-array row order), this
-document tells you how and where to measure it — plans 35-07/35-08 are where those measurements
-actually happen, and this document is instructions, not results.
+frame rate, the camera's delivered rate, the measured likelihood distribution, the confirmed
+pose-array row order), this document tells you how and where to measure it, and says plainly
+when that measurement has not happened yet rather than inventing one — plans 35-07/35-08 (model
+signals) and 38-04/38-07 (camera and recording) are where those measurements actually happen;
+this document is instructions, not results.
+
+**This runbook is model-agnostic.** Every bodypart name, row count, and project path below that
+comes from one specific project (nicknamed "MultiMice" in this document) is labelled as a
+worked example, never as a requirement. If you are reading this with a different model, a
+different camera, or a different bodypart selection, the numbered steps still apply — only the
+names change, and the probe in Step 6 is what measures your names for you.
 
 ---
 
@@ -140,38 +150,77 @@ Summarised, for the three CLI tools this package ships:
    adapter before the decimator's Hz cap thins them out, so knowing the real number first is what
    makes the decimation setting meaningful rather than a guess. **Write footprint: writes
    nothing; the measurement is a printed number, not a file.**
-6. **Probe the pose array before generating anything, using `dlc-link-live --probe-pose --video
-   <a project video> --model-path <the exported .pt>`.** This step exists because DLC-Live's own
-   documentation states only that `single_animal=True` yields an array of shape
-   `(num_bodyparts, 3)` — it does **not** say whether `num_bodyparts` is the small multianimal
-   set or the full set including every unique bodypart, and it does not say what row order the
-   array uses. The adapter indexes `pose[i]` by position, so a wrong assumption about order sends
-   the WRONG keypoint's numbers out under the RIGHT signal name — silently, because nothing about
-   that failure looks broken. **State the contingency plainly: if this probe shows the unique
-   bodyparts are ABSENT under `single_animal=True`, generating signals for a unique bodypart (like
-   the LED demo below) needs `single_animal=False` plus explicit detection selection instead —
-   that is a deliberate design change to make at this point, not something to discover mid-run.**
-   **Write footprint: writes nothing; prints the observed pose shape and row order to stdout.**
+6. **Probe the pose array FIRST — before generating anything. `--signal-map` is optional on this
+   first probe, because there is no map yet to pass it.** The loop is:
+
+   ```
+   dlc-link-live --probe-pose --video <a project video> --model-path <the exported .pt>
+   ```
+
+   This prints the observed `pose.shape`, the row count, the discovered order (or a `NOT FOUND`
+   line naming the attributes it tried), every column of row 0 (including any beyond the first
+   three — see the note below), and a ready-to-paste `--pose-order a,b,c` line. **Copy that line
+   verbatim into the next command:**
+
+   ```
+   dlc-link-generate --config <config.yaml> --source-id <your id> --bodyparts <...> \
+     --pose-order <the line the probe printed> --out-dir <outside the project>
+   ```
+
+   **Then re-probe, this time WITH the generated `--signal-map`**, and confirm the two lines it
+   now prints: `row_count_match=True` and `POSE_ORDER_SOURCE: 'probe'`. Those two together are
+   the only honest confirmation that the map's assumed order matches what the runner actually
+   produced.
+
+   **Why this loop, and not a shortcut.** DLC-Live's own documentation states only that
+   `single_animal=True` yields an array of shape `(num_bodyparts, 3)` — it does not say whether
+   `num_bodyparts` is the small multianimal set or the full set including every unique bodypart,
+   and it does not say what row order the array uses. The row order is **not programmatically
+   discoverable** from the runner: `35-HARDWARE-VALIDATION.md` §4 tried the `cfg`, `dlc_config`
+   and `pose_cfg` attributes on the constructed runner and found none of them. On the one project
+   measured so far, the order was inferred INDIRECTLY — `config.yaml`'s `multianimalbodyparts`
+   happened to be the only list in the project of the right length. **That is corroboration, not
+   measurement, and a project with two lists of the same length gets no corroboration at all.**
+   The adapter indexes `pose[i]` by position, so a wrong assumption about order sends the WRONG
+   keypoint's numbers out under the RIGHT signal name — silently, because nothing about that
+   failure looks broken. The probe-generate-reprobe loop above is how this project's numbers
+   got measured instead of assumed, and it is now the documented normal path, not a recovery step.
+
+   **One more thing the probe measures and you should read, not skip:** the observed pose array
+   on the one project measured so far had **five columns, where DLC-Live's own documentation
+   says three.** The probe prints all of them, labelling columns 0/1/2 as `x`/`y`/`likelihood`
+   and anything beyond as `uncharacterised`. Nothing in this package reads the uncharacterised
+   columns today; the probe prints them so the next model's array is measured, not assumed.
+
+   **State the contingency plainly: if this probe shows the unique bodyparts are ABSENT, a
+   signal declared on a unique bodypart is not reachable live at all** — see "What you can and
+   cannot declare" below; this is not a `single_animal` flag to flip. **Write footprint: writes
+   nothing; every number above is a printed line, never a file.**
 7. **Generate the lib and the signal map:**
    `dlc-link-generate --config <config.yaml> --source-id <your id> --bodyparts <comma list>
    --coords <comma list> --pose-order-file <from step 6> --out-dir <somewhere outside the
    project>`. The `--config` form (reading your real, uncopied `config.yaml` — reading is
    always fine) is the normal path; an explicit bodypart list with no `--config` at all is the
    documented fallback for when no config file is available yet. **`--bodyparts` is REQUIRED and
-   there is deliberately no flag that emits every candidate**: this project alone offers **72**
-   candidate keypoints (10 multianimal bodyparts × 5 individuals, plus 22 `uniquebodyparts`), and
-   at a 10 Hz per-signal decimation cap even just the 22 unique parts would be 220 messages per
-   second against a proven ~60 message/second envelope — an explicit, narrow selection is
-   structural, not a style preference. **Write footprint: writes exactly two files
-   (`<source-id>_lib.py`, `<source-id>_signals.py`) into `--out-dir`; refuses if `--out-dir`
-   resolves inside the project directory it read `config.yaml` from, even when invoked from a
-   shell whose current directory IS the project.**
+   there is deliberately no flag that emits every candidate.** The number of candidates your own
+   project offers is `(multianimal bodyparts x individuals) + uniquebodyparts` — on the one
+   project measured so far (`example, from the MultiMice project this was first proven on:` 10
+   multianimal bodyparts x 5 individuals, plus 22 `uniquebodyparts`) that came to 72, and at a
+   10 Hz per-signal decimation cap even the 22 unique parts alone would be 220 messages per second
+   against a proven ~60 message/second envelope on that rig — an explicit, narrow selection is
+   structural on any project with more than a handful of bodyparts, not a style preference specific
+   to this one. Compute your own project's number from your own `config.yaml` before picking a
+   list. **Write footprint: writes exactly two files (`<source-id>_lib.py`, `<source-id>_signals.py`)
+   into `--out-dir`; refuses if `--out-dir` resolves inside the project directory it read
+   `config.yaml` from, even when invoked from a shell whose current directory IS the project.**
 8. **Measure the likelihood distribution before choosing a threshold.** Do not assume `> 0.9` (or
-   any other number) means what it sounds like it means. This project's `config.yaml` sets
-   `pcutoff: 0.01` — two orders of magnitude below DeepLabCut's own `0.6` default — so a
-   threshold picked from habit may fire never, or fire always, and either way it will not mean
-   what its author intended. Read the threshold off the MEASURED likelihood distribution of the
-   DECLARED bodyparts on a real video; plan 35-07 records that measurement for this project's
+   any other number) means what it sounds like it means. Read YOUR OWN `config.yaml`'s `pcutoff` —
+   `example, from the MultiMice project:` that project's `pcutoff` was `0.01`, two orders of
+   magnitude below DeepLabCut's own `0.6` default, so a threshold picked from habit there would
+   have fired never, or fired always, and either way would not have meant what its author
+   intended. Whatever your own project's `pcutoff` is, read the threshold off the MEASURED
+   likelihood distribution of the DECLARED bodyparts on a real video; plan 35-07 records that
+   measurement for the MultiMice project's
    demo signals. **Write footprint: writes nothing; the measurement is a printed distribution
    summary, not a file.**
 
@@ -243,32 +292,315 @@ debugging session.
 
 ## What you can and cannot declare
 
-Stated as fact, not preference — these are properties of how this project's model was trained,
-not stylistic choices this runbook is recommending.
+Stated as fact, not preference. The first point below is a property of how a SPECIFIC model was
+trained and may not apply to yours; the second is a property of DLC-Live's own PyTorch runner and
+applies to every model, unconditionally.
 
-- **Per-individual signals are technically UNAVAILABLE live, not merely deferred.** This
-  project's `config.yaml` sets `identity: false` with `default_track_method: ellipse`. Under that
-  configuration, individual identity is assigned **post-hoc**, by
-  `convert_detections2tracklets` and `stitch_tracklets` — a batch step that runs AFTER inference
-  on a whole video, which DLC-Live **does not run** during live inference. In live inference,
-  the detection array's index order is unstable from one frame to the next, so a signal like
-  `mouse3_nose_x` would silently refer to a DIFFERENT physical mouse from one frame to the next
-  with no indication anything changed. This is the REASON, not a preference — a model trained
-  with `identity: true` would need its own, separate evaluation before this restriction applies
-  to it.
-- **`uniquebodyparts` are the ideal signals to declare in v1.** They are single-instance by
-  construction — there is exactly one `LED_on`, exactly one arena corner named `NW` — so the
-  identity-instability problem above **cannot apply to them at all.** This project's 22
-  `uniquebodyparts` include `LED_on`/`LED_off` (used by the demo below, because an operator can
-  drive them deterministically without needing an animal to cooperate) and the four arena
-  corners `NW`/`NE`/`SE`/`SW`.
-- **The arena corners are a deferred idea, not a v1 feature — do not declare them.** Using the
-  corners as a normalisation reference frame (a coordinate expressed relative to the arena
-  rather than the raw frame buffer) is a real, recorded idea for later, but it requires the
-  corners to be reliably detected first and adds its own failure mode on top of everything above.
-  For now, coordinates are normalised by dividing by the frame's own width and height, which is
-  simpler and already implemented. This is a deliberate deferral, not an oversight — do not
-  "helpfully" add `NW`/`NE`/`SE`/`SW` signals to a lib without re-reading this paragraph first.
+- **Per-individual signals may be UNAVAILABLE live, not merely deferred — check your own
+  `config.yaml`.** `example, from the MultiMice project:` that project's `config.yaml` set
+  `identity: false` with `default_track_method: ellipse`. Under that configuration, individual
+  identity is assigned **post-hoc**, by `convert_detections2tracklets` and `stitch_tracklets` — a
+  batch step that runs AFTER inference on a whole video, which DLC-Live **does not run** during
+  live inference. In live inference, the detection array's index order is unstable from one frame
+  to the next, so a signal like `mouse3_nose_x` would silently refer to a DIFFERENT physical mouse
+  from one frame to the next with no indication anything changed. This is the REASON, not a
+  preference — a model trained with `identity: true` needs its own, separate evaluation before
+  this restriction applies to it; do not assume your project inherits MultiMice's `identity: false`.
+- **CORRECTED — `uniquebodyparts` are UNREACHABLE live, for every model, regardless of
+  `single_animal`. Do not declare one; there is no flag that makes it work.** An earlier version
+  of this document recommended `uniquebodyparts` as the best signals to declare first, reasoning
+  that their single-instance construction sidesteps the identity-instability problem above.
+  **That recommendation was wrong, and the rig proved it wrong.** DLC-Live's PyTorch runner
+  reads only `get_predictions(outputs)["bodypart"]["poses"]` (`dlclive/pose_estimation_pytorch/
+  runner.py:211`) and **discards** the model's second output head, `"unique_bodyparts"` —
+  `single_animal` only selects which individual's assembly to return from the first head
+  (`runner.py:223-228`); it does not change which head is read at all. So no `uniquebodypart` —
+  not an LED, not an arena corner, not anything declared `unique: true` in your `config.yaml` —
+  is ever reachable by a live MICS task, on any model, full stop.
+  (`35-HARDWARE-VALIDATION.md` §3, Phase 35.) This is exactly why the correction matters: the
+  unique bodyparts nonetheless LOOK available when you inspect an offline export, because
+  `deeplabcut.analyze_videos` reads **both** heads and writes the unique bodyparts into the
+  project's own `_el.h5` files under the individual literally named `single` — the same file you
+  would open to sanity-check your model. Seeing them there tells you nothing about whether
+  `dlc-link-live` can reach them; it cannot. **A reader that concatenates the second head onto the
+  first is real, recorded future work that does not exist yet** — until it lands, treat every
+  `uniquebodypart` as off-limits for a live signal, and declare only bodyparts from the
+  multianimal/single-animal assembly that DLC-Live's runner actually returns. The arena-corner
+  idea below, and any LED-style demo, fall under this correction.
+- **A reference-frame normalisation using detected landmarks (e.g. arena corners) is a deferred
+  idea, not a v1 feature — do not declare it, and see the correction above for why it cannot work
+  via a `uniquebodypart` regardless.** Using detected landmarks as a normalisation reference frame
+  (a coordinate expressed relative to the arena rather than the raw frame buffer) is a real idea
+  for later, but it requires those landmarks to be reliably and CURRENTLY reachable, which
+  `uniquebodyparts` are not. For now, coordinates are normalised by dividing by the frame's own
+  width and height, which is simpler and already implemented. This is a deliberate deferral, not
+  an oversight.
+
+---
+
+## CAMERA — pointing `dlc-link-live` at a live feed instead of a file
+
+Everything in the numbered steps above works unchanged with `--video <file>`. This section is
+what changes when the frame source is a camera instead.
+
+- **`--source` takes a device index (`0`), a stream URL (`rtsp://...`, `http://...`), or a file
+  path** — classified automatically and printed before the capture is constructed. `--video`
+  still works as a deprecated alias (kept because it is in shell history); giving both is an
+  error. **Try a stream URL first if your camera or its vendor software offers one at all** — a
+  URL needs no new code in this package, because `--source` already resolves it to the same
+  `stream` kind a network camera gets.
+- **A camera paces itself; `--fps` is refused for one.** `--fps` exists to override a FILE's
+  reported rate and is meaningless for a device that delivers frames at its own pace — passing it
+  with `--source 0` or a stream URL is an immediate error naming the reason, not a silently
+  ignored flag. `CAP_PROP_FPS` is printed for information but is **never trusted** as a rate —
+  read the next point instead.
+- **Measure the delivered rate with `--capture-only` BEFORE running the model, and derive
+  `--min-rate` from that measurement — never from a spec sheet, a driver default, or a container's
+  own default framerate.** `--capture-only` loads no model at all; it reads frames and counts them,
+  which is what the baseline has to be. The arithmetic: run `--capture-only` for a known
+  `--max-seconds`, read `frames_read / duration_s` off the printed summary — that is your baseline.
+  Then run again WITH the model loaded, over the same duration, and read `frames_inferred /
+  duration_s` — that is your achieved rate. `--min-rate` has no default **on purpose**: the
+  threshold is yours to set from your own two numbers, never invented by this tool. A reasonable
+  starting point is some margin below the achieved rate (so a normal run does not trip the warning)
+  but above the point where the pipeline is visibly falling behind (`frames_skipped` climbing).
+
+  **The number for this rig has not been measured yet.** `38-HARDWARE-VALIDATION.md` §3/§4 record
+  the procedure above against the `DMK 33GP1300` camera through the MJPEG relay (topology T4/T5a,
+  below) and are `pending` as of this writing — plan 38-04's rig session is where that measurement
+  happens. Until that table is filled in, run the procedure yourself and write your own number down
+  before relying on `--min-rate` for anything unattended. Do not borrow the camera's own
+  configured rate (30 fps on this rig, per `38-HARDWARE-VALIDATION.md` §2.5) as a substitute — that
+  is what the camera SENDS, not what the vision box's own pipeline can sustain once a relay hop and
+  a model are both in the path, and the two numbers are measured differently for exactly that
+  reason.
+- **`frames_skipped` is what the pipeline could not service — a non-zero value is normal, not an
+  error.** The single-slot reader (`LatestSlot`) keeps only the newest frame by design, so any
+  frame the render/inference side was too slow to consume is overwritten, not queued; that count
+  is the honest keep-up instrument, not a defect counter. **Inference load and ZMQ/decimation load
+  are different limits and must not be conflated:** the decimator's own per-signal Hz cap governs
+  what actually reaches the wire regardless of how fast frames arrive, so a camera delivering faster
+  than the decimation cap needs is not "wasted" — it is simply thinned downstream, same as a file
+  source would be.
+- **A camera run ends in one of four ways, and all four close the link and release the device**:
+  `--max-frames` reached, `--max-seconds` reached, `should_stop`/`Ctrl-C`, or (camera-specific)
+  consecutive read failures exceeding `--read-retries` — a camera gets bounded retry on a
+  transient read failure where a file source stops on the very first one, because a file's failed
+  read means end-of-stream and a camera's might not.
+- **Write footprint: `dlc-link-live` still writes nothing at all, camera or not.** Every number in
+  this section is a printed line; no log, no cache, no frame is ever saved to disk by this tool.
+
+---
+
+## TOPOLOGY — where the camera is, not just how to address it
+
+The section above assumes `--source` can already reach your camera. It frequently cannot, not
+because of a missing flag but because of where the two machines physically are: the box running
+the model need not be anywhere near the rig, and lab IT may refuse to admit an unknown device to
+the network at all. Topology is a separate question from source KIND (`device`/`stream`/`file`),
+and each topology resolves to exactly one kind:
+
+| ID | Topology | Resolves to | What has to exist |
+|---|---|---|---|
+| T1 | Camera direct to the vision box (USB/CSI) | `device` | nothing — `--source 0` |
+| T2 | Camera holds a routable IP on the lab LAN | `stream` | IT admits the device — may be refused |
+| T3 | IP camera on a private segment behind a lab computer | `stream` | a TCP port-forward on the lab computer — **does not carry a GigE Vision camera: GVCP/GVSP are both UDP, and `netsh portproxy` is TCP only, so there is nothing to forward** |
+| T4 | Camera attached to a lab computer (USB or vendor-wrapped GigE) | `stream` | an MJPEG relay process on the lab computer |
+| T5 | Vendor-SDK camera (GigE Vision/USB3 Vision) | splits — see below | T5a: nothing, resolves to T4. T5b: a GenICam capture shim; `cv2.VideoCapture` cannot open this camera at all |
+| T6 | Ethernet camera moved to the vision box | `device`/local | a NIC on the vision box on the camera's own subnet |
+
+**Lead with the reassuring half: T1-T4, and T5a, need NO special support from this tool, because
+every one of them resolves to either a bare device INDEX or an ordinary URL** — a forward and a
+relay both terminate in a URL, a direct camera terminates in an index, and `--source` already
+takes either — the code is topology-blind by construction. **T5b is not a matter of finding the
+right flag.** It is a STOP:
+`cv2.VideoCapture` cannot open a vendor-SDK camera under any flag, and the honest next step is the
+vendor's own GenICam tooling plus a capture shim — separate work, not a runbook workaround.
+
+### Worked example: this rig hit T5, and it resolved to T5a
+
+The installed camera is a `DMK 33GP1300` — The Imaging Source, monochrome, GigE Vision, serial
+`5810436` — chosen because walking through how IT resolved is more useful to the next reader than
+a topology diagram alone.
+
+1. **Read the model string before touching a cable.** `DMK` = mono, `DFK` = colour; `33G` = GigE
+   Vision, `33U` = USB3 Vision; the trailing number is the serial, and it is the handle a GenICam
+   library selects the device by. Classify your own camera from its label before assuming a
+   failed capture means anything about topology.
+2. **Run `ffmpeg -list_devices true -f dshow -i dummy` FIRST — before describing any shim.** This
+   is the one command that decides T5a vs T5b. Vendor DirectShow wrappers exist — The Imaging
+   Source ships one — and where one is installed, the camera presents as an ordinary capture
+   device and the T4 relay works with **no code change at all**. This command writes nothing to
+   disk; `Error opening input file dummy` at the end is the command's normal, expected ending, not
+   a failure.
+3. **The port-forward does not rescue this class of camera.** GVCP (control) and GVSP (stream) are
+   both **UDP**, discovery is broadcast, and `netsh portproxy` carries TCP only — T3 is
+   inapplicable to a GigE Vision camera for exactly this reason, stated here and in the table above
+   so it is not rediscovered by trying it.
+4. **T6 is usually the right answer when the wrapper is ABSENT.** GigE travels over an ordinary
+   Ethernet cable, so moving that cable to the vision box (or adding a NIC there) removes the lab
+   computer, the relay, and the unsupervised second process from the path entirely. Two standing
+   requirements: same L2 segment, and MTU 9000. **GigE Vision packet loss shows up as dropped
+   frames, not as an error** — the `--capture-only` baseline above is what catches that, not a log
+   line.
+
+Two facts about this class of camera specifically, because nothing else will surface them:
+
+- **A mono camera needs a 3-channel expansion before DLC.** State it as a required step; a model
+  trained on colour footage will also behave differently on mono input, for reasons no plumbing
+  fixes.
+- **GigE Vision allows one primary application plus multicast monitors.** If acquisition software
+  must keep recording while MICS also reads the feed, that is the escape hatch — a configuration
+  change on the recorder, not a fight over the device, and not something a DirectShow camera can
+  offer at all.
+
+### Three things that belong here verbatim, because each is a silent failure
+
+- **Forwarded RTSP over a TCP-only port-forward needs, on the vision box:**
+
+  ```
+  set OPENCV_FFMPEG_CAPTURE_OPTIONS=rtsp_transport;tcp
+  ```
+
+  — `netsh portproxy` carries TCP only and RTSP media defaults to UDP, so without this the capture
+  opens and simply never delivers a frame; no error names the cause. The forward itself, on the lab
+  computer (cmd's `set VAR=` then `%VAR%` idiom, so nothing wraps mid-paste):
+
+  ```
+  set LISTENIP=<lab-lan-ip>
+  set CAMIP=<camera-private-ip>
+  netsh interface portproxy add v4tov4 listenaddress=%LISTENIP% listenport=8554 connectaddress=%CAMIP% connectport=554
+  ```
+
+  and its undo: `netsh interface portproxy delete v4tov4 listenaddress=%LISTENIP% listenport=8554`.
+  **Write footprint: the `add` rule persists until deleted; the `delete` command removes it; the
+  `OPENCV_FFMPEG_CAPTURE_OPTIONS` line is a process-local environment variable and writes nothing.**
+  (Per this rig's own worked example above, this is T3's case and does not apply to a GigE Vision
+  camera — kept here for the IP-camera case it does apply to.)
+- **Relay in MJPEG, never H.264/RTSP — per-frame coding means no GOP buffering to wait on.** The
+  documented command, and its one named trap (`set DEV=`/`%DEV%` so the device name never sits
+  inside a long wrapped line):
+
+  ```
+  set DEV=<device>
+  ffmpeg -f dshow -i video="%DEV%" -c:v mjpeg -q:v 5 -f mpjpeg -listen 1 http://0.0.0.0:8080/
+  ```
+
+  **The trap: `-listen 1` serves exactly one client and blocks ALL of this process's outputs —
+  including a file you might add later — until that one client connects.** If this same `ffmpeg`
+  invocation is ever asked to also write an archival file (recording, not merely viewing), `-listen`
+  means the file does not start growing until somebody opens the stream, with no error saying so.
+  `D-88`/plan 38-07 replace `-listen` with a design that pushes the feed instead of waiting to be
+  asked, for exactly this reason — consult that decision before wiring this relay into anything
+  that must record unattended. For live viewing only, as documented here, `-listen` works; know
+  what it costs before reaching for it anywhere else. Downscaling at the relay to the model's input
+  size is free bandwidth saved, not a quality compromise worth avoiding.
+- **A USB/DirectShow camera is usually exclusive-access: the relay and any other recorder cannot
+  both hold it.** If the lab computer is also recording from the camera with separate software, a
+  relay started alongside it fails with a message indistinguishable from an unsupported capture
+  mode — a one-second `ffmpeg ... -t 1 -f null -` probe tells the two apart. The fix is one
+  capture with two sinks in the SAME `ffmpeg` process, never two processes:
+
+  ```
+  set DEV=<device>
+  set OUT=<archival-output>
+  ffmpeg -f dshow -i video="%DEV%" -c:v mjpeg -q:v 5 -f mpjpeg -listen 1 http://0.0.0.0:8080/ -c:v mjpeg -q:v 5 %OUT%
+  ```
+
+  (two `-map`/output pairs sharing the one input). A GigE Vision camera has the extra
+  multicast-monitor escape hatch a DirectShow device does not (above).
+- **Never install a GStreamer-enabled OpenCV to reach a machine-vision camera.** This is the same
+  second-`cv2` clobber the live-view section below forbids for a different reason — `cv2.VideoCapture`
+  does not need it, because a GenICam library hands frames over as plain numpy arrays, and the
+  vendor's own DirectShow wrapper is what gets `cv2` there in the T5a case anyway.
+
+**Prove any URL in VLC before `dlc-link-live` ever sees it.** Opening the same URL in VLC Media
+Player separates a wrong network path from a wrong tool's flag in about ten seconds, and costs
+nothing to try first. **The relay must never run on the Pi** — the Pi is running the FDA, and
+video encoding on that host trades the thing under test for convenience; this is the same
+prohibition `D-66` states for the sender itself.
+
+No latency figure appears in this section, and none should be added to it: everything above is
+about where buffering comes from, not a measurement of how long it takes. The only numbers this
+runbook ever reports are the measured rates in the CAMERA section above.
+
+---
+
+## LIVE VIEW — watching the annotated frames while the task runs
+
+- **`--view` turns on rendering; `--view-sink notebook` or `--view-sink mjpeg` chooses where.**
+  `notebook` needs IPython and renders inside a running Jupyter cell. `mjpeg` needs **nothing
+  installed** — it is a stdlib `http.server` bound to `127.0.0.1` ONLY, opened in any browser on
+  the SAME machine running `dlc-link-live`. Choose `mjpeg` whenever you are unsure Jupyter is safe
+  to install into your DLC environment (see `python -m mics_link.selfcheck`'s pyzmq-upgrade warning
+  in the numbered steps above — the same caution applies to any new package in that environment).
+- **Never install `opencv-python` to get a viewer window.** This environment ships
+  `opencv-python-headless`, which has no `imshow` — both packages provide the same `cv2` import
+  name, and whichever installs SECOND silently overwrites the first, taking the whole DLC stack
+  down with it (the exact defect class `35-HARDWARE-VALIDATION.md` warns about for this
+  environment generally). Both shipped sinks render without any interactive display window at
+  all — `DLCLive(display=False)` stays pinned in this tool's own code and is not something
+  installing a different OpenCV would change.
+- **The overlay is YOUR OWN authored numbers, and every frame says so.** `--overlay
+  "nose_x>0.50,nose_likelihood>0.6"` is parsed and evaluated locally by this tool, never read from
+  the task definition's own `fda_json` — the Pi evaluates its own FDA conditions independently,
+  from its own tracker values, and the two can legitimately disagree for a moment (different
+  poll times, different thresholds, or simply because the overlay is a debugging aid and the FDA
+  condition is the ground truth the run actually gates on). Every frame with an overlay carries the
+  label "authored locally, not read from the task definition" for exactly this reason.
+- **Telling "the model lost the mouse" from "the viewer stopped" from "the FDA state is
+  unavailable" apart matters, and the status block is what tells them apart.** A keypoint reading
+  `likelihood≈0.0` is the model saying it cannot find that bodypart on THIS frame — the viewer and
+  the sender are both still running. The viewer's OWN status (not a keypoint value) going stale
+  means the render thread itself stopped, which is a different failure with a different fix. The
+  FDA state line reading "unavailable" means the poll to the orchestrator or ElasticSearch failed
+  or returned nothing — it does not mean the run stopped, and `pilot_state.py`'s fail-soft
+  fetchers never show a stale reading as current specifically so this distinction stays legible.
+- **The FDA state comes from TWO sources, not one, and that is why it needs both to show anything
+  at all.** The orchestrator's own `state` field (`GET /pilots/live`) carries only the pilot's
+  COARSE `IDLE`/`RUNNING` status — it has no idea what FDA state the run is currently in. The FDA
+  state NAME itself comes from a `state_transition` document in ElasticSearch, and the
+  orchestrator is what supplies the `subject_key` that filters that ElasticSearch query down to
+  the right run. Both `--orchestrator-url` and `--es-url` are optional, and the viewer works with
+  either, both, or neither configured — it just shows progressively less of this picture.
+- **Write footprint: unchanged from the rest of this tool.** Neither sink writes a file; the
+  `mjpeg` sink serves a socket and nothing else.
+
+---
+
+## KNOWN ROUGH EDGES
+
+Named here rather than left for the next reader to rediscover at cost:
+
+- **`uniquebodyparts` are unreachable live**, for every model — see the correction above. The
+  reader that would change this is real, recorded future work that does not exist yet.
+- **`mics_link.selfcheck` emits a cosmetic `RuntimeWarning` when run as `python -m
+  mics_link.selfcheck`.** `__init__.py` already imports `selfcheck` (because `connect()` calls it),
+  so `runpy` finds the module already loaded. The check still runs and still compares against the
+  frozen hash; the warning is noise, not a failure (`35-HARDWARE-VALIDATION.md` §9b).
+- **`dlc-link-convert --out` refuses a path inside the `.h5`'s own directory, even when that
+  directory is a scratch folder and not a DLC project at all** (§9d). The guard keys on "the
+  `.h5`'s own directory OR a project root," which is broader than its intent. **Not fixed in this
+  phase.** Pass `--out` to a directory elsewhere.
+- **Long multi-flag commands break when pasted into `cmd.exe`** (§9e) — a paste can truncate
+  mid-line and execute a fragment, sometimes producing `The system cannot find the path
+  specified.` with no indication why. Mitigation used throughout this document: `set VAR=...` then
+  `%VAR%`, never one long inline command.
+- **An entry/exit transition pair on the same continuous signal needs an explicit hysteresis
+  band, and nothing in the FDA editor or validator enforces this** (§5c). Without one, the
+  transitions fire, the run LOOKS healthy, and only the `armed`-state dwell-time distribution
+  reveals the fault — run 587's first attempt produced dwell times as short as 4 ms from a 0.05
+  band; the corrected version below used a 0.10 dead band per axis and produced dwell times in
+  whole seconds:
+
+  ```
+  wait -> armed : likelihood > 0.6 AND x > 0.50 AND y > 0.50
+  armed -> fired: x < 0.40 OR y < 0.40
+  ```
+
+  This is a property of any entry/exit pair on a continuous signal, not of this project's
+  particular thresholds — pick your own numbers off your own measured distribution (the numbered
+  steps above), but leave a comparable dead band between the entry and exit conditions.
 
 ---
 
@@ -354,22 +686,25 @@ to the next.
   (up to `wait_timeout_s`), and FAILS the run if it never does. **Start the sender BEFORE
   starting the run.**
 - `required: false` — the run does not wait for this source at all. **Start the run FIRST, then
-  the sender** — the opposite order from the `required: true` case. This project's standing
-  `dlc_cam1` fixture on pilot 3 is configured `required: false`, so **run first, then sender**
-  is the order that applies there.
+  the sender** — the opposite order from the `required: true` case. `example, from the MultiMice
+  project:` that project's standing `dlc_cam1` fixture on pilot 3 is configured `required: false`,
+  so run first, then sender was the order that applied there; read YOUR OWN `source_id`'s config
+  row before assuming the same order applies to yours.
 
 **The worked coordinate condition (D-19).** Coordinates use `stale_policy="hold_last"`, which
 means a coordinate signal alone is unsafe to gate on — its value survives past the moment
 tracking is actually lost, silently. Likelihood uses `stale_policy="return_default"` with
 `default=0.0`, which is safe to compare in either direction (0.0 always means "no confidence").
 **Every condition reading a coordinate must be ANDed with that same keypoint's own likelihood
-signal:**
+signal.** A worked example, using a reachable multianimal/single-animal bodypart (never a
+`uniquebodypart` — see the correction above) and a placeholder `<source_id>`:
 
 ```
-dlc_cam1.led_on_likelihood > 0.6  AND  dlc_cam1.led_on_x > 0.3
+<source_id>.nose_likelihood > 0.6  AND  <source_id>.nose_x > 0.3
 ```
 
-Never gate a transition on a coordinate alone.
+Substitute your own declared `source_id` and bodypart name; `nose` here is an example, not a
+requirement. Never gate a transition on a coordinate alone.
 
 **Replay, for reproducing a run without the camera.** `mics-link-replay` plays a recorded
 `(t, signal, value)` file through the SDK client at real time, a scaled rate, or as fast as

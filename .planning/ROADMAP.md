@@ -2011,6 +2011,14 @@ and any way to see what the model sees.
 unreachable live regardless of `single_animal`. Phase 35 §3 has the evidence. Fixing that is
 separate work and is NOT in this phase.
 
+**Distribution changed under this phase's feet, 2026-09-10 (D-86) — already shipped.** `mics-link`
+and `mics-dlc-link` are published on PyPI, so plans 38-04 and 38-06 release by tag
+(`.github/workflows/publish-clients.yml`) and the vision box installs with
+`python -m pip install "mics-dlc-link[live]"`. The SMB wheel share is retired as a channel. Both
+plans, `38-CONTEXT.md` and `38-DECISIONS.md` were amended in place; note the distribution rename
+`dlc-link` -> `mics-dlc-link` (import package and console scripts unchanged). 38-06's gap 1 is
+NOT closed by this — the notebook still has to be inside the wheel.
+
 **Plans:** 6 plans in 5 waves
 
 **Planning decisions:** every open question in `38-CONTEXT.md` §9 is answered in
@@ -2030,8 +2038,9 @@ the localhost MJPEG one existing so Jupyter need not be installed, and the `--pr
 generalisation follows (wave 4). Deployability follows last (wave 5): plan 38-06 is forced there
 by file ownership — it modifies `pyproject.toml` (38-04), the notebook and `README.md` (38-03) and
 `RUNBOOK.md` (38-05) — and belongs there on schedule, because the vision box already has an
-environment and installs wheels by hand, so nothing in 38-06 blocks the camera. Its cost of being
-last is one extra wheel (0.3.0) staged over SMB a second time. A plan set that delivers the general framework late is worse than
+environment and can upgrade in place, so nothing in 38-06 blocks the camera. Its cost of being last
+is one extra release (0.3.0), which under **D-86** is a tag push plus
+`pip install --upgrade mics-dlc-link` rather than a second hand-staged file. A plan set that delivers the general framework late is worse than
 one that delivers the specific thing on time and generalises after.
 
 Plans:

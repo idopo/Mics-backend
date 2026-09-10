@@ -271,12 +271,16 @@ that would have to be undone when it lands.
 | opencv | `opencv-python-headless` 4.11.0.86 — **no imshow** |
 | numpy | 1.26.4 (`<2` pinned by deeplabcut-live) |
 | pandas / tables | 2.3.3 / 3.11.1 |
-| `mics-link` / `dlc-link` | 0.1.0, installed from wheels |
-| Wheel staging | `\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\wheel\` (both wheels, verified byte-identical to `~/mics-dist/`) |
+| `mics-link` / `mics-dlc-link` | 0.1.0. **Both published on PyPI 2026-09-10** (D-86); the vision box's copies were hand-installed wheels of the same version and can be upgraded in place. |
+| Distribution | **PyPI** — `python -m pip install "mics-dlc-link[live]"`. Note the DISTRIBUTION was renamed `dlc-link` -> `mics-dlc-link`; the import package is still `dlc_link` and the console scripts are still `dlc-link-*`. Released by tag from `.github/workflows/publish-clients.yml`; see `RELEASING.md`. The SMB share (`\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\wheel\`) is retired as a channel — break-glass only, for an air-gapped machine. |
 | Jupyter | **NOT verified present in `mics-dlc`.** The notebook viewer may need `jupyterlab`/`notebook` + `ipywidgets` installed. Check before planning around it, and dry-run any install — this env's torch must not be disturbed. |
 
-Distribution is by **wheel over SMB**, not git — the repo is public and `origin/claude` is far
-behind. Any new code in `dlc_link/` reaches the vision box as a rebuilt wheel.
+Distribution is by **PyPI** (**D-86**, 2026-09-10 — this paragraph used to say "wheel over SMB").
+Not git: the researchers this package exists for have no checkout, which is the whole reason it is
+published. Any new code in `dlc_link/` reaches the vision box as a **released version** — bump
+`dlc_link/pyproject.toml`, push a `mics-dlc-link-v*` tag, and the box runs
+`pip install --upgrade mics-dlc-link`. It still arrives as a wheel; only where the wheel comes from
+changed, so anything that must reach the user still has to be INSIDE that wheel.
 
 ---
 

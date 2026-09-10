@@ -229,14 +229,22 @@ today's comparison still runs.
 
 ## D-63 — Version bump to 0.2.0, wheel rebuilt, staged by the USER
 
-Distribution is by wheel over SMB (`38-CONTEXT.md` §6), not git. `dlc-link` **0.1.0** is already
-installed on the vision box, so re-publishing 0.1.0 makes `pip install` a possible no-op and makes
-`pip show dlc-link` useless as evidence of which build is running. The version becomes **0.2.0**;
-`pip show dlc-link` then proves it.
+> **AMENDED by D-86 (2026-09-10).** The version-bump reasoning below stands unchanged and is now
+> enforced by the index. The distribution MECHANICS below — build a wheel on the dev host, hash it,
+> copy it to the SMB share — are superseded: the package is released to PyPI by tag. Read D-86 with
+> this decision.
 
-The agent builds the wheel on the dev host and records its `sha256`. The **user** copies it to
-`\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\wheel\` and installs it. `mics-link` is
-unchanged by this phase and is neither rebuilt nor restaged.
+`dlc-link` **0.1.0** is already installed on the vision box, so re-publishing 0.1.0 makes
+`pip install` a possible no-op and makes `pip show` useless as evidence of which build is running.
+The version becomes **0.2.0**; `pip show mics-dlc-link` then proves it. (Under D-86 a re-upload of
+0.1.0 is not merely a no-op but is refused by PyPI outright — the index now enforces what this
+decision could previously only ask for.)
+
+~~The agent builds the wheel on the dev host and records its `sha256`. The **user** copies it to the
+SMB share and installs it.~~ Superseded by D-86: the agent commits the bump and pushes a tag;
+`.github/workflows/publish-clients.yml` builds and uploads; the user runs
+`pip install --upgrade mics-dlc-link`. `mics-link` is unchanged by this phase and is neither
+rebumped nor re-released.
 
 ## D-64 — A before/after manifest of the DLC project directory is mandatory
 
@@ -550,3 +558,46 @@ renumbered to **T-38-60 … T-38-71**. Take new threat IDs from `T-38-72` onward
 
 **Format, for anything appended here:** a level-2 heading, `## D-NN — <title>`. Not bold, not a
 list item. Any automated check that greps for these entries must match `^## D-`.
+
+## D-86 — Distribution is PyPI, not the SMB share; the SMB path is retired
+
+**Decided 2026-09-10 by the user, and already IMPLEMENTED — this is a record of a shipped fact, not
+a proposal.** `mics-link` 0.1.0 and `mics-dlc-link` 0.1.0 are live on PyPI. Verified from a clean
+venv outside the repo with no local index: `python -m pip install mics-dlc-link` resolves
+`mics-link` transitively and all three console scripts run.
+
+**What the researcher now types**, on a machine with no lab network, no repo access and no share:
+
+```
+python -m pip install "mics-dlc-link[live]"
+```
+
+**Supersedes** D-63's distribution mechanics (build a wheel on the dev host, hash it, copy it to
+`\\isi.storwis.weizmann.ac.il\labs\yizharlab\Mics\wheel\`) and D-80's "the wheel is staged and
+installed by the USER". It does NOT supersede either decision's version-bump reasoning, which is
+now enforced by the index rather than merely asked for: PyPI is immutable, so re-uploading an
+existing version is refused outright.
+
+**The distribution was RENAMED `dlc-link` -> `mics-dlc-link`.** The import package is still
+`dlc_link` and the console scripts are still `dlc-link-generate` / `-convert` / `-live`. Only the
+name you `pip install` changed. Unprefixed `dlc-link` is NOT ours — if a project by that name ever
+appears on PyPI, installing it is precisely the near-miss the package-legitimacy checks exist to
+catch, and every threat row that used to reason about SMB transit now reasons about this instead.
+
+**Releasing** is a tag push — `mics-link-v*` -> `sdk/`, `mics-dlc-link-v*` -> `dlc_link/` — handled
+by `.github/workflows/publish-clients.yml` under PyPI Trusted Publishing (OIDC; no stored token).
+The workflow refuses to publish if the tag version and the `pyproject.toml` version disagree, if
+`twine check` fails, or if a `132.77.*` lab address reappears in the built artifacts. Full
+procedure, including the environment-collision trap that cost two failed runs, is in `RELEASING.md`
+at the repo root.
+
+**Each package needs its own GitHub environment** (`pypi`, `pypi-dlc`) and its PyPI publisher must
+be pinned to it. PyPI mints one project-scoped token per OIDC exchange, so two publishers with
+identical repository+workflow claims are ambiguous and the upload fails naming the *other* project.
+
+**What this does NOT change.** Plan 38-06's gap 1 stays open and stays this phase's job: the
+notebook must be inside the built wheel via `[tool.setuptools.package-data]`. A file the wheel does
+not contain does not reach the user, whether the wheel arrives from an index or a file share — and
+under PyPI the audience is wider, not narrower. The SMB share survives only as break-glass for an
+air-gapped machine, and even then the documented path is `pip download` / `pip install --no-index
+--find-links`, which fetches the same artifact the index serves.

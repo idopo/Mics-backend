@@ -1904,9 +1904,30 @@ backend, and the validator (`api/extlink_ast.py`, `api/extlink_keys.py`) pins it
 its own side. This is strictly better than today, where a third-party tool reaches sideways into
 `api/` via a relative path.
 
-**Settle before moving:** PyPI vs private git URL. This is the actual reason to split -- a private
-git URL just relocates the access problem. Also check whether `mics_post_analysis/` (the third
-pyproject.toml in this repo) has the same redistributable profile, so the boundary is drawn once.
+**Distribution DECIDED 2026-09-10 (user): public PyPI.** The acceptance test is one line on a fresh
+Windows/DeepLabCut box with no lab network, no SMB mount, no repo access and no `--index-url` flag:
+`pip install mics-dlc-link`, with `mics-link` arriving transitively. A private git URL is OUT -- it
+relocates the access problem this phase exists to remove. SMB wheel staging is retired as a
+distribution channel (break-glass only, for an air-gapped box).
+
+`mics-link`, `dlc-link` and `mics-dlc-link` were all verified FREE on PyPI 2026-09-10; prefer
+`mics-dlc-link` and register both names early. (`mics` is taken -- noted only so nobody reaches for
+it later.)
+
+**Scope is exactly two packages: `mics-link` and the DLC tooling (user, 2026-09-10).**
+`mics_post_analysis/` does NOT come along and is not part of the boundary question -- it is a
+different kind of thing (offline analysis, run in this repo) and the earlier "third pyproject.toml"
+open item is closed as out of scope.
+
+**Pre-publish blocker, must be fixed before upload 1:** `sdk/pyproject.toml` sets
+`readme = "README.md"`, so that file renders verbatim as the public pypi.org project page -- and it
+currently publishes lab-internal topology (`132.77.72.28`, `132.77.73.213`, `132.77.73.125`, ES
+`132.77.73.217`, plus port/`source_id` pairs), as do `sdk/examples/` and `sdk/tests/`. `dlc_link/`
+is clean, `RUNBOOK.md` included; the scrub is `sdk/`-only. PyPI releases are immutable -- a file can
+be yanked, never un-published. Publish `mics-link` before `mics-dlc-link` (the latter declares
+`mics-link>=0.1.0`), authenticate with Trusted Publishing (GitHub OIDC) rather than a long-lived
+token, and start the new repo with FRESH history -- do not `filter-repo` out of mics-backend, whose
+history carries the `secrets/` blobs. See `37-SEED.md` for the full decision record.
 
 **NOT in scope:**
 - Hardware libs do NOT move. They stay as `hardware_lib_versions.source_code` rows in the backend

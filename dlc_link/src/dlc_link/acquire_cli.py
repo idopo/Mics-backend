@@ -12,6 +12,7 @@ this tool (unlike `dlc-link-generate`) takes no `--config` to read a project dir
 from directly.
 """
 import argparse
+import shlex
 import os
 import sys
 
@@ -87,10 +88,14 @@ def _build_parser():
     parser.add_argument("--file-codec", default="mjpeg", help="the archival (file leg) encoder. Writes nothing.")
     parser.add_argument("--file-quality", default="5", metavar="Q",
                          help="-q:v for an mjpeg file leg; ignored for h264_*. Writes nothing.")
+    # One shell-quoted STRING per occurrence, shlex-split -- not nargs="*". Every ffmpeg
+    # flag starts with '-', and argparse reads a dash-leading value as the next option, so
+    # nargs="*" rejected this help text's own example. Repeating the option accumulates.
     parser.add_argument(
-        "--file-extra", nargs="*", default=(), metavar="FLAG",
-        help="extra ffmpeg flags for the file leg, passed through verbatim after its "
-             "codec flag (e.g. --file-extra -g 1). Writes nothing itself.",
+        "--file-extra", action="append", default=None, metavar="FLAGS",
+        help="extra ffmpeg flags for the file leg, verbatim after its codec flag, as ONE "
+             'quoted string (e.g. --file-extra "-preset veryfast -crf 18"). Repeatable. '
+             "Writes nothing itself.",
     )
     parser.add_argument(
         "--delivery", dest="delivery_url", default=None, metavar="URL",
@@ -113,9 +118,10 @@ def _build_parser():
              "silently inherit the delivery leg's cheap quality. Writes nothing itself.",
     )
     parser.add_argument(
-        "--delivery-extra", nargs="*", default=(), metavar="FLAG",
-        help="extra ffmpeg flags for the delivery leg, verbatim (e.g. -g 1 for an "
-             "all-intra escalation). Writes nothing itself.",
+        "--delivery-extra", action="append", default=None, metavar="FLAGS",
+        help="extra ffmpeg flags for the delivery leg, verbatim, as ONE quoted string "
+             '(e.g. --delivery-extra "-g 1" for an all-intra escalation). Repeatable. '
+             "Writes nothing itself.",
     )
     parser.add_argument("--duration", type=int, default=None, metavar="SECONDS",
                          help="-t, placed before the output. Unset runs until stopped. Writes nothing.")
@@ -159,6 +165,17 @@ def _build_parser():
     return parser
 
 
+def _split_extra(values):
+    """Flattens repeatable `--file-extra`/`--delivery-extra` strings into ffmpeg tokens.
+
+    Each occurrence is one shell-quoted string because argparse cannot take dash-leading
+    values for an option, and every ffmpeg flag starts with a dash.
+    """
+    if not values:
+        return ()
+    return tuple(token for value in values for token in shlex.split(value))
+
+
 def _build_spec(args):
     return AcquireSpec(
         device=args.device,
@@ -168,11 +185,11 @@ def _build_spec(args):
         rtbufsize=args.rtbufsize,
         file_codec=args.file_codec,
         file_quality=args.file_quality,
-        file_extra=tuple(args.file_extra),
+        file_extra=_split_extra(args.file_extra),
         delivery_url=args.delivery_url,
         delivery_format=_TRANSPORT_FORMATS.get(args.transport),
         delivery_codec=args.delivery_codec,
-        delivery_extra=tuple(args.delivery_extra),
+        delivery_extra=_split_extra(args.delivery_extra),
         duration_s=args.duration,
     )
 

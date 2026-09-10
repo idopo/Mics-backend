@@ -209,7 +209,7 @@ def test_no_flag_combination_emits_listen_without_delivery(capsys):
 # --- import surface ---------------------------------------------------------------------
 
 
-_STDLIB_TOP_LEVEL_IMPORTS = {"argparse", "os", "sys"}
+_STDLIB_TOP_LEVEL_IMPORTS = {"argparse", "os", "shlex", "sys"}
 _FORBIDDEN_MODULES = ("cv2", "numpy", "torch", "dlclive", "mics_link")
 
 
@@ -287,3 +287,59 @@ def test_reference_script_has_no_line_over_99_characters():
     with open(reference_path) as handle:
         for line in handle:
             assert len(line.rstrip("\n")) <= 99
+
+
+# --- --file-extra / --delivery-extra must accept flags that start with a dash ---------
+#
+# Every ffmpeg flag starts with '-', and argparse's nargs="*" treats a dash-leading value
+# as the next option -- so the help text's own example (`--file-extra -g 1`) was rejected
+# with "unrecognized arguments". Found 2026-09-10 while generating the rig's H.264
+# recording command. Same family as --capture-only and --probe-pose demanding inputs they
+# never read: the tool refused to do what its own documentation said.
+#
+# Fixed by taking ONE shell-quoted string per occurrence and splitting it, so
+# `--file-extra "-preset veryfast -crf 18"` works and repeating the option accumulates.
+
+import dlc_link.acquire_cli as acquire_cli
+
+
+def _argv_for(*extra_args):
+    parser = acquire_cli._build_parser()
+    return parser.parse_args(
+        ["--device", "CAM", "--segment-pattern", "rig-%Y%m%d.mkv", *extra_args]
+    )
+
+
+def test_file_extra_accepts_dash_leading_flags_as_one_string():
+    args = _argv_for("--file-extra", "-preset veryfast -crf 18")
+    assert list(acquire_cli._split_extra(args.file_extra)) == ["-preset", "veryfast", "-crf", "18"]
+
+
+def test_file_extra_help_texts_own_example_parses():
+    args = _argv_for("--file-extra", "-g 1")
+    assert list(acquire_cli._split_extra(args.file_extra)) == ["-g", "1"]
+
+
+def test_file_extra_repeats_accumulate_in_order():
+    args = _argv_for("--file-extra", "-preset veryfast", "--file-extra", "-crf 18")
+    assert list(acquire_cli._split_extra(args.file_extra)) == ["-preset", "veryfast", "-crf", "18"]
+
+
+def test_delivery_extra_accepts_dash_leading_flags_too():
+    args = _argv_for("--delivery-extra", "-g 1")
+    assert list(acquire_cli._split_extra(args.delivery_extra)) == ["-g", "1"]
+
+
+def test_extras_default_to_empty():
+    args = _argv_for()
+    assert acquire_cli._split_extra(args.file_extra) == ()
+    assert acquire_cli._split_extra(args.delivery_extra) == ()
+
+
+def test_file_extra_reaches_the_generated_argv():
+    argv = acquire_cli.main(
+        ["--device", "CAM", "--segment-pattern", "rig-%Y%m%d.mkv",
+         "--file-codec", "libx264", "--file-extra", "-preset veryfast -crf 18",
+         "--print", "argv"]
+    )
+    assert argv == 0

@@ -14,11 +14,13 @@ to this repository types `python -m pip install "mics-dlc-link[live]"` and is do
 Do this **before** the first tag. Both project names were verified free on PyPI
 2026-09-10; that is not a reservation, so claim them rather than assuming they wait.
 
-1. Log in to https://pypi.org.
-2. Go to **Your projects → Publishing → Add a pending publisher**. "Pending" is the point:
-   it lets you configure a publisher for a project that does not exist yet, so the very
-   first upload is already tokenless.
-3. Fill in, exactly:
+1. Log in to https://pypi.org (2FA is mandatory on PyPI; set it up first if you have not).
+2. Go to **https://pypi.org/manage/account/publishing/** — the ACCOUNT-level publishing
+   page, not a project's settings. That distinction matters: neither project exists on
+   PyPI yet, so there is no project page to configure. A *pending* publisher is exactly
+   the mechanism for that — it authorises the workflow to create the project on its first
+   upload, so even release #1 is tokenless.
+3. Under **Add a new pending publisher**, choose **GitHub** and fill in, exactly:
 
    | Field | `mics-link` | `mics-dlc-link` |
    |---|---|---|
@@ -28,8 +30,17 @@ Do this **before** the first tag. Both project names were verified free on PyPI
    | Workflow name | `publish-clients.yml` | `publish-clients.yml` |
    | Environment name | `pypi` | `pypi` |
 
-4. In GitHub → **Settings → Environments**, create an environment named `pypi`. Add
-   required reviewers there if you want a human approval gate on every release.
+4. In GitHub → **Settings → Environments → New environment**, create one named `pypi`
+   (exactly — it must match `environment: pypi` in the workflow). Add required reviewers
+   there if you want a human approval gate on every release.
+
+**Two fields are easy to get subtly wrong.** *Workflow name* is the FILENAME,
+`publish-clients.yml`, not the `name:` line inside it (`publish clients`). And all five
+fields are matched exactly by PyPI at upload time — a mismatch fails the release with a
+permission error that does not say which field was wrong.
+
+After the first successful upload the pending publisher becomes an ordinary trusted
+publisher on the now-existing project. Nothing needs re-doing.
 
 No API token is created, stored, or rotated at any point. That is deliberate: this repo is
 public and has already had credentials in its history once

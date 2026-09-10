@@ -14,7 +14,7 @@ $restartDelaySec = 5.0
 $t0 = '[f=segment:reset_timestamps=1:segment_format=matroska:segment_time=20:strftime=1]m'
 $t0 += 'ics-acq-%Y%m%d-%H%M%S.mkv|[f=mpjpeg:onfail=ignore]tcp://198.51.100.7:9001'
 $a=@('-hide_banner','-f','dshow','-rtbufsize','100M','-i','video=Generic Video Device')
-$a+=@('-c:v','mjpeg','-q:v','5','-fps_mode','passthrough','-f','tee',$t0)
+$a+=@('-map','0:v','-c:v','mjpeg','-q:v','5','-fps_mode','passthrough','-f','tee',$t0)
 
 New-Item -ItemType Directory -Force -Path $wd,$lg | Out-Null
 

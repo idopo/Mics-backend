@@ -147,7 +147,10 @@ def test_delivery_with_codec_unset_emits_one_encode_for_both_legs():
     spec = _spec(delivery_url="tcp://198.51.100.7:9001", delivery_format="mpegts")
     argv = build_ffmpeg_argv(spec)
     assert argv.count("-c:v") == 1
-    assert "-map" not in argv
+    # ONE -map, not zero: the tee muxer has no automatic stream selection, so the
+    # single-encode form still needs it (see the -map tests at the end of this file).
+    # This originally asserted "-map" not in argv, which ffmpeg rejects outright.
+    assert argv.count("-map") == 1
     assert "-c:v:0" not in argv
     assert "-c:v:1" not in argv
 
@@ -158,7 +161,7 @@ def test_delivery_with_codec_equal_to_file_codec_is_also_single_encode():
     )
     argv = build_ffmpeg_argv(spec)
     assert argv.count("-c:v") == 1
-    assert "-map" not in argv
+    assert argv.count("-map") == 1  # one encode, but tee still needs its map
 
 
 def test_delivery_with_different_codec_emits_two_stream_form():
@@ -286,3 +289,59 @@ def test_build_tee_spec_without_delivery_url_raises():
     spec = _spec()
     with pytest.raises(AcquireSpecError):
         build_tee_spec(spec)
+
+
+# --- the tee muxer REQUIRES an explicit -map ------------------------------------------
+#
+# ffmpeg's automatic stream selection does not apply to the tee muxer: with no -map, the
+# tee output contains no streams and ffmpeg exits with
+#   [out#0/tee] Output file does not contain any stream
+#   Error opening output files: Invalid argument
+#
+# Observed on the rig 2026-09-10 on the FIRST real invocation of the single-encode tee
+# form. `-map` was emitted only for the two-stream escalation, so the cheap form -- the
+# default, and the one a researcher reaches first -- could never run.
+
+
+def _tee_specs():
+    return [
+        _spec(delivery_url="udp://127.0.0.1:5000", delivery_format="mpegts"),
+        _spec(delivery_url="tcp://198.51.100.7:9001", delivery_format="mpjpeg"),
+        _spec(delivery_url="udp://127.0.0.1:5000", delivery_format="mpegts",
+              file_codec="libx264"),
+        _spec(delivery_url="udp://127.0.0.1:5000", delivery_format="mpegts", duration_s=60),
+    ]
+
+
+@pytest.mark.parametrize("spec", _tee_specs())
+def test_single_encode_tee_form_maps_the_video_stream(spec):
+    argv = build_ffmpeg_argv(spec)
+    assert "-map" in argv, "the tee muxer needs an explicit -map or it carries no stream"
+
+
+@pytest.mark.parametrize("spec", _tee_specs())
+def test_map_precedes_the_tee_output(spec):
+    argv = build_ffmpeg_argv(spec)
+    assert argv.index("-map") < argv.index("tee")
+
+
+@pytest.mark.parametrize("spec", _tee_specs())
+def test_map_follows_the_input(spec):
+    argv = build_ffmpeg_argv(spec)
+    assert argv.index("-i") < argv.index("-map")
+
+
+def test_plain_segment_form_needs_no_map():
+    """Automatic stream selection DOES work for a normal single output, so adding -map
+    there would be noise rather than correctness."""
+    argv = build_ffmpeg_argv(_spec())
+    assert "-map" not in argv
+
+
+def test_two_stream_form_still_maps_twice():
+    spec = _spec(
+        delivery_url="udp://127.0.0.1:5000", delivery_format="mpegts",
+        file_codec="libx264", delivery_codec="mjpeg",
+    )
+    argv = build_ffmpeg_argv(spec)
+    assert [i for i, tok in enumerate(argv) if tok == "-map"].__len__() == 2

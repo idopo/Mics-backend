@@ -167,10 +167,31 @@ def _segment_slave_options(spec, select=None):
     return opts
 
 
+_H264_ENCODERS = ("libx264", "h264_nvenc", "h264_qsv", "h264_amf", "h264_mf")
+
+
+def _is_h264(codec):
+    return codec in _H264_ENCODERS
+
+
+def _needs_global_header(spec):
+    """True when any leg's codec stores parameter sets in the container header."""
+    codecs = [spec.file_codec]
+    if spec.delivery_codec is not None:
+        codecs.append(spec.delivery_codec)
+    return any(_is_h264(c) for c in codecs)
+
+
 def _delivery_slave_options(spec, select=None):
     opts = {"f": spec.delivery_format, "onfail": "ignore"}
     if select is not None:
         opts["select"] = _format_select(select)
+    # `-flags +global_header` (added in build_ffmpeg_argv so matroska can write its header)
+    # moves H.264 parameter sets out of the bitstream; MPEG-TS needs them back inline or
+    # the stream is undecodable. This bsf restores them for this slave only.
+    delivery_codec = spec.delivery_codec or spec.file_codec
+    if spec.delivery_format == "mpegts" and _is_h264(delivery_codec):
+        opts["bsfs/v"] = "h264_mp4toannexb"
     return opts
 
 
@@ -228,10 +249,24 @@ def build_ffmpeg_argv(spec):
     fps_mode/duration options must precede the output (`-f tee` or `-f segment`)."""
     argv = ["-hide_banner", "-f", "dshow", "-rtbufsize", spec.rtbufsize, "-i", "video={}".format(spec.device)]
 
+    # The tee muxer needs an EXPLICIT -map: ffmpeg's automatic stream selection does not
+    # apply to it, and without one the tee output carries no streams and dies with
+    # "Output file does not contain any stream". Reproduced on the rig 2026-09-10 on the
+    # first real single-encode invocation. A plain single output needs no -map.
     if spec.two_stream:
         argv += ["-map", "0:v", "-map", "0:v"]
+    elif spec.delivery_url is not None:
+        argv += ["-map", "0:v"]
 
     argv += _encode_flags(spec)
+
+    # Matroska carries H.264 parameter sets in the container header, so libx264 must be
+    # told to emit them out-of-band; MPEG-TS wants them back inline, which is what
+    # h264_mp4toannexb (added to that slave in build_tee_spec) restores. Without this the
+    # segment slave fails with "error writing header: Invalid data found when processing
+    # input" -- verified, and verified fixed, 2026-09-10.
+    if spec.delivery_url is not None and _needs_global_header(spec):
+        argv += ["-flags", "+global_header"]
 
     if spec.two_stream:
         argv += ["-fps_mode:v:0", "passthrough", "-fps_mode:v:1", "passthrough"]

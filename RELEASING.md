@@ -28,11 +28,22 @@ Do this **before** the first tag. Both project names were verified free on PyPI
    | Owner | `idopo` | `idopo` |
    | Repository name | `Mics-backend` | `Mics-backend` |
    | Workflow name | `publish-clients.yml` | `publish-clients.yml` |
-   | Environment name | `pypi` | `pypi` |
+   | Environment name | `pypi` | `pypi-dlc` |
 
-4. In GitHub → **Settings → Environments → New environment**, create one named `pypi`
-   (exactly — it must match `environment: pypi` in the workflow). Add required reviewers
+   **The environment differs per package, and it must.** PyPI mints one project-scoped
+   token per OIDC exchange, and every publisher from this repo otherwise presents identical
+   claims — same repository, same workflow file. PyPI then cannot tell which project a run
+   means, picks one, and the upload dies with *"OIDC scoped token is not valid for project
+   '<the other one>'"*. That is precisely how the first `mics-dlc-link` release failed.
+   Never leave Environment name blank or "(Any)" here: that re-creates the ambiguity.
+
+4. In GitHub → **Settings → Environments → New environment**, create `pypi` AND
+   `pypi-dlc` (exactly — the workflow picks between them from the tag prefix). Add required reviewers
    there if you want a human approval gate on every release.
+
+**Adding a THIRD package later?** Give it its own environment in both places — a new
+`environment:` branch in the workflow and a new GitHub environment — or it will collide
+with these two for the same reason.
 
 **Two fields are easy to get subtly wrong.** *Workflow name* is the FILENAME,
 `publish-clients.yml`, not the `name:` line inside it (`publish clients`). And all five

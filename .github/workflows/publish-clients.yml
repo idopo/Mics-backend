@@ -22,9 +22,21 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Named environment so PyPI's trusted publisher can be pinned to it, and so a release
-    # can be gated on a manual approval in repo settings if that is ever wanted.
-    environment: pypi
+    # ONE ENVIRONMENT PER PACKAGE, and this is load-bearing rather than tidiness.
+    #
+    # PyPI mints a single project-scoped token per OIDC exchange. Every trusted publisher
+    # from this repo would otherwise present identical claims -- same repository, same
+    # workflow file -- so PyPI cannot tell which project a given run means, picks one, and
+    # the upload fails with "OIDC scoped token is not valid for project '<the other one>'".
+    # That is exactly how the first mics-dlc-link release failed (run 34448486374).
+    #
+    # The environment claim is the only field that distinguishes them, so each package gets
+    # its own and each PyPI publisher is pinned to it -- never "(Any)", which re-creates the
+    # ambiguity. A new package needs a new environment here AND in repo settings.
+    #
+    # Job-level `environment` is evaluated before any step runs, so it derives from
+    # `github.ref_name` directly rather than from the tag-parsing step below.
+    environment: ${{ startsWith(github.ref_name, 'mics-dlc-link-v') && 'pypi-dlc' || 'pypi' }}
     permissions:
       id-token: write   # required by Trusted Publishing; nothing else needs write
     steps:

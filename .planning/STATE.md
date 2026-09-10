@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-08-31T11:02:26.864Z"
+last_updated: "2026-09-10T08:19:06.168Z"
 progress:
-  total_phases: 31
+  total_phases: 32
   completed_phases: 8
-  total_plans: 127
-  completed_plans: 92
-  percent: 26
+  total_plans: 146
+  completed_plans: 98
+  percent: 25
 ---
 
 # STATE: MICS Backend
@@ -19,14 +19,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 **Core value:** Researchers can define, modify, and deploy behavioral task logic without writing Python or restarting the Pi.
-**Current focus:** Phase 35 — deeplabcut-keypoint-likelihood-integration
+**Current focus:** Phase 38 — live-camera-source-and-annotated-live-view-for-dlc-driven-mi
 
 ---
 
 ## Current Position
 
-Phase: 38 (live-camera-source-and-annotated-live-view) — READY TO EXECUTE, 0 of 6 plans done
-Plan: none started. Waves 1-2 are agent work; wave 3 (38-04) is the user-run rig session.
+Phase: 38 (live-camera-source-and-annotated-live-view-for-dlc-driven-mi) — EXECUTING
+Plan: 1 of 6
 
 **Phase 35 is PARKED at 7/9 by user decision 2026-09-10, not abandoned.** 35-07 ran on
 2026-09-02 and PROVED the core chain (DLC on the vision box -> keypoints -> pilot 3 -> FDA ->
@@ -40,14 +40,18 @@ everything downstream is what 587/588 proved. 35-09's `.alive` defect is confine
 failure D-87 flags.
 
 **Phase 38 is unblocked as of 2026-09-10.** Four decisions landed today, all committed:
+
 - **D-75 answered — T5a.** The dshow probe on the LAB COMPUTER returned `DMK 33GP1300 [BR2_UP]`.
   The vendor's DirectShow wrapper is installed, `cv2.VideoCapture` can open the camera, no shim.
+
 - **D-87 — T6 is IMPOSSIBLE** (camera in the rig room, `YizharGPU12` in another room). Topology
   is settled as **T4**: camera opened on the lab computer, MJPEG relay, vision box pulls the URL.
   Carried cost, NOT fixed in 38: the relay is a permanent always-on process on an unsupervised
   third machine, and its death makes signals go STALE rather than loud.
+
 - **D-86 — distribution is PyPI.** `mics-link` and `mics-dlc-link` are published; 38-04 and 38-06
   release by tag, not by SMB wheel. See `RELEASING.md`.
+
 - **BLOCKER now covered in 38-04:** `ffmpeg` is NOT installed on the lab computer and the relay
   IS ffmpeg. `winget install Gyan.FFmpeg` is now a prerequisite step in that plan.
 

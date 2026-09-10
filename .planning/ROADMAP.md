@@ -1969,9 +1969,11 @@ bodypart selection, not just the MultiMice ResNet-50 model Phase 35 used.
 > present, so `cv2.VideoCapture` can open this camera, T5 collapses to T4, **no capture shim is
 > needed and no plan stops early**. 38-04 delivers its full scope. The paragraph below is the
 > superseded 2026-09-06 framing, kept because it explains why the probe mattered.
-> **Still worth doing, and cheaper still:** run the same probe on the vision box after moving the
-> camera's Ethernet cable there (D-75 T6) — if it enumerates, T6 collapses to T1 and the lab
-> computer leaves the frame path entirely.
+> **T6 checked the same day and is NOT already true:** the identical query on `YizharGPU12` finds
+> the category key ABSENT — that machine has no DirectShow capture filters at all. So T6 remains a
+> thing to BUILD (move the camera's Ethernet there, install the vendor driver, re-probe), not a
+> thing to discover, and `--source 0` on the vision box finds nothing until it is built. T5a is
+> unaffected: it only ever needed the wrapper on the machine holding the camera.
 >
 > **⚠ CAMERA IDENTIFIED 2026-09-06 — this phase had a live termination branch.** The rig camera is a
 > `DMK 33GP1300` (The Imaging Source, monochrome, **GigE Vision**, serial `5810436`), which is

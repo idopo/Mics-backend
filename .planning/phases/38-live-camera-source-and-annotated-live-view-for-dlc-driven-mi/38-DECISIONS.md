@@ -462,6 +462,26 @@ ffmpeg prints its own device names and may differ from the registry FriendlyName
 if `-i video="..."` fails, get ffmpeg's exact spelling (`winget install Gyan.FFmpeg`) before
 suspecting the camera.
 
+**Second data point, same day — the VISION BOX baseline.** The identical query run on
+`YizharGPU12` (identified by its `C:\Users\YizharGPU12` profile and the `(base)` conda prompt)
+fails with *"Cannot find path ... because it does not exist"*. The category key is **absent, not
+empty**: `YizharGPU12` has **no DirectShow video capture filters registered at all** — no webcam, no
+vendor driver.
+
+Three consequences, and the first two are the useful ones:
+
+1. **The two machines are confirmed distinct**, as `38-CONTEXT.md` §3f already described. The lab
+   computer holds the camera and the wrapper; the vision box holds the GPU and DeepLabCut.
+2. **T6 is NOT already satisfied.** Making it true needs BOTH halves — the camera's Ethernet moved
+   to `YizharGPU12` AND The Imaging Source driver installed there — and only then does re-running
+   this query decide it. A "no" today is not evidence against T6; it is the expected baseline for a
+   machine with no camera attached.
+3. **`--source 0` on the vision box finds nothing today.** Any step that assumes a local device
+   index on that machine is wrong until T6 is actually built.
+
+T5a is unaffected: it only ever required the wrapper on the machine physically holding the camera,
+which is what makes the T4 relay path work with no new code in `dlc_link`.
+
 The 32-bit (`WOW6432Node`) view was never cleanly read — not a blocker, since the 64-bit
 registration is what a 64-bit Python needs, but check it before assuming a 32-bit tool can open the
 device.

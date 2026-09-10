@@ -12,7 +12,7 @@ no FDA state name anywhere in that payload.
 The FDA state name exists only as an ElasticSearch `state_transition` document:
 `autopilot/autopilot/utils/FiniteDeterministicAutomaton.py:17` emits
 `Event(event_type='state_transition', event_data={"current_state": next_state_name})`.
-Phase 35 run 588 put 232 of those documents into `event_log_v2` on `132.77.73.217`.
+Phase 35 run 588 put 232 of those documents into `event_log_v2` on the lab's ElasticSearch host.
 
 So both sources are queried, each for the one thing it alone holds: the orchestrator
 supplies `active_run.subject_key` VERBATIM, which becomes the ElasticSearch filter;

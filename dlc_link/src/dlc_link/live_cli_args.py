@@ -122,8 +122,8 @@ def build_parser():
              "FDA's own ground truth.",
     )
     parser.add_argument("--pilot", default=None, help="the pilot name as the orchestrator keys it, e.g. 'RecordingBox'")
-    parser.add_argument("--orchestrator-url", default=None, help="e.g. http://132.77.73.125:9000")
-    parser.add_argument("--es-url", default=None, help="e.g. http://132.77.73.217:9200")
+    parser.add_argument("--orchestrator-url", default=None, help="e.g. http://<orchestrator-host>:9000")
+    parser.add_argument("--es-url", default=None, help="e.g. http://<elasticsearch-host>:9200")
     parser.add_argument("--es-index", default="event_log_v2")
     return parser
 

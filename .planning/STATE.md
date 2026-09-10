@@ -25,8 +25,34 @@ See: `.planning/PROJECT.md` (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 35 (deeplabcut-keypoint-likelihood-integration) — EXECUTING
-Plan: 1 of 9
+Phase: 38 (live-camera-source-and-annotated-live-view) — READY TO EXECUTE, 0 of 6 plans done
+Plan: none started. Waves 1-2 are agent work; wave 3 (38-04) is the user-run rig session.
+
+**Phase 35 is PARKED at 7/9 by user decision 2026-09-10, not abandoned.** 35-07 ran on
+2026-09-02 and PROVED the core chain (DLC on the vision box -> keypoints -> pilot 3 -> FDA ->
+ElasticSearch, runs 587/588). Open: 35-09 (publish hardware lib 177 v3, repin task def 434,
+re-run the quiet liveness test — rig-only, does NOT need the Windows box) and 35-08 (occlusion/
+staleness semantics, phase close). Neither blocks 38: 38 replaces only the frame source, and
+everything downstream is what 587/588 proved. 35-09's `.alive` defect is confined to lib 177
+(`ExtlinkDemo`); a GENERATED lib builds no egress worker, so 38's `dlc_cam1` path is unaffected
+(`35-FIXTURE-INVENTORY.md`, `_NO_EGRESS_MARKERS`). Worth closing eventually — a hardcoded
+`.alive` means a dead sender is indistinguishable from a live one, which is exactly the relay
+failure D-87 flags.
+
+**Phase 38 is unblocked as of 2026-09-10.** Four decisions landed today, all committed:
+- **D-75 answered — T5a.** The dshow probe on the LAB COMPUTER returned `DMK 33GP1300 [BR2_UP]`.
+  The vendor's DirectShow wrapper is installed, `cv2.VideoCapture` can open the camera, no shim.
+- **D-87 — T6 is IMPOSSIBLE** (camera in the rig room, `YizharGPU12` in another room). Topology
+  is settled as **T4**: camera opened on the lab computer, MJPEG relay, vision box pulls the URL.
+  Carried cost, NOT fixed in 38: the relay is a permanent always-on process on an unsupervised
+  third machine, and its death makes signals go STALE rather than loud.
+- **D-86 — distribution is PyPI.** `mics-link` and `mics-dlc-link` are published; 38-04 and 38-06
+  release by tag, not by SMB wheel. See `RELEASING.md`.
+- **BLOCKER now covered in 38-04:** `ffmpeg` is NOT installed on the lab computer and the relay
+  IS ffmpeg. `winget install Gyan.FFmpeg` is now a prerequisite step in that plan.
+
+**Do NOT re-plan 38.** All 6 plans exist and were reviewed against the above on 2026-09-10
+(commit 933d591); stale T1/T5b/T6 branches are struck through in place.
 **Milestone:** M1 — ToolKit + FDA Redesign + Pi Code Editor
 **Phase:** 23 — Compute Primitives + Variables — **12/12 plans done, phase COMPLETE (2026-08-05).** Plan 12 (Pi-side CMP-24/25 + consolidated rig checkpoint) closed out the phase: CMP-25 (backend, semantic hardware as a condition read) and CMP-24 narrowed to one Pi edit (`_resolve_arg` → `get_state()`) both deployed; CMP-24a/24c built, tested, then reverted before deploy per user direction (pending GSD todo). CMP-24b and CMP-25 are **deployed but not rig-exercised** — task def 186 never routes a `{"view": hardware}` argument through `_resolve_arg`, and its toolkit has `semantic_hardware=null`. CMP-20–23 (frontend, plan 11) verified live on the rig (session run 551: 7/7 draws routed correctly, legacy `{flag:...}` operand survived a resave byte-identical).
 **Also outstanding:** Phase 25 plan 06 (last plan in that phase, not yet executed).

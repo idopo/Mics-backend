@@ -1,58 +1,109 @@
 {
   "version": "1.0",
-  "timestamp": "2026-08-31T13:04:14.424Z",
-  "phase": "35",
-  "phase_name": "deeplabcut-keypoint-likelihood-integration",
-  "phase_dir": ".planning/phases/35-deeplabcut-keypoint-likelihood-integration",
-  "plan": 7,
-  "task": 1,
-  "total_tasks": 9,
-  "status": "paused",
-  "completed_tasks": [
-    {"id": 1, "name": "35-01 dlc_link skeleton + names/decimate", "status": "done", "commit": "0ffb8d5"},
-    {"id": 2, "name": "35-02 liveness defect separation (offline half)", "status": "done", "commit": "bf49ce6"},
-    {"id": 3, "name": "35-03 DLC config reader + hardware-lib generator", "status": "done", "commit": "b385bf9"},
-    {"id": 4, "name": "35-04 sender-side Processor adapter", "status": "done", "commit": "9742f24"},
-    {"id": 5, "name": "35-05 .h5 to wide-replay converter", "status": "done", "commit": "c7e8414"},
-    {"id": 6, "name": "35-06 DLC fixture as ordinary pipeline customer + RUNBOOK", "status": "done", "commit": "a181ab2"}
-  ],
+  "timestamp": "2026-09-10T08:13:45.450991Z",
+  "phase": "38",
+  "phase_name": "live-camera-source-and-annotated-live-view-for-dlc-driven-mics-tasks",
+  "phase_dir": ".planning/phases/38-live-camera-source-and-annotated-live-view-for-dlc-driven-mi",
+  "plan": 1,
+  "task": 0,
+  "total_tasks": 6,
+  "status": "ready_to_execute",
+  "completed_tasks": [],
   "remaining_tasks": [
-    {"id": 7, "name": "35-07 first live rig proof (autonomous:false, wave 5)", "status": "not_started"},
-    {"id": 9, "name": "35-09 lib 177 v3 rig liveness test (autonomous:false, wave 5)", "status": "not_started"},
-    {"id": 8, "name": "35-08 occlusion/staleness hardening, phase close (autonomous:false, wave 6)", "status": "not_started"}
+    {
+      "id": 1,
+      "name": "38-01 camera source addressing, pacing, newest-frame reader, four stops",
+      "status": "not_started",
+      "wave": 1,
+      "autonomous": true
+    },
+    {
+      "id": 2,
+      "name": "38-02 viewer pure core: draw-plan, threshold overlay, run identity + FDA state",
+      "status": "not_started",
+      "wave": 1,
+      "autonomous": true
+    },
+    {
+      "id": 3,
+      "name": "38-03 Viewer runtime, notebook + localhost-MJPEG sinks, --view flags",
+      "status": "not_started",
+      "wave": 2,
+      "autonomous": true
+    },
+    {
+      "id": 4,
+      "name": "38-04 USER-RUN rig session: release 0.2.0, ffmpeg relay, live camera run",
+      "status": "not_started",
+      "wave": 3,
+      "autonomous": false
+    },
+    {
+      "id": 5,
+      "name": "38-05 map-free pose probe + model-agnostic runbook",
+      "status": "not_started",
+      "wave": 4,
+      "autonomous": true
+    },
+    {
+      "id": 6,
+      "name": "38-06 USER-RUN deployability: notebook in the wheel, bootstrap, doctor, INSTALL.md",
+      "status": "not_started",
+      "wave": 5,
+      "autonomous": false
+    }
   ],
   "blockers": [
     {
-      "description": "Waves 5 and 6 are entirely user-gated rig work. 35-07, 35-09 and 35-08 are all autonomous:false and require the USER at the rig.",
+      "description": "38-04 and 38-06 are user-gated. 38-04 needs the USER at the lab computer and the vision box.",
       "type": "human_action",
-      "workaround": "None needed - this is by design. Agent hands over exact commands and waits."
+      "workaround": "By design. Hand over exact commands and wait."
     },
     {
-      "description": "Windows/DeepLabCut bring-up has not started. dlc-link-live cannot run until the model is exported to a .pt file.",
+      "description": "ffmpeg is NOT installed on the lab computer, and the T4 relay IS ffmpeg. 38-04 now carries `winget install Gyan.FFmpeg` as a prerequisite; a minimal build lacks `-f mpjpeg -listen 1` and fails as an unknown format.",
       "type": "human_action",
-      "workaround": "Guide published; wheels staged on SMB. Not blocking 35-09, which is rig-only."
+      "workaround": "Install before the relay step; reopen the terminal for PATH."
     }
   ],
   "human_actions_pending": [
-    {"action": "Install the two wheels on the Windows/DLC box from the SMB share and run --probe-pose", "context": "Fronts 1-3 of the bring-up guide. Prerequisite for 35-07 only.", "blocking": false},
-    {"action": "Export the trained model with deeplabcut.export_model to produce the .pt file", "context": "dlc-link-live --model-path needs the exported .pt; unknown whether exported-models/ is populated.", "blocking": false},
-    {"action": "Rotate the Postgres password", "context": "secrets/pg_password.txt, smb_pass.txt, smb_user.txt are in origin/claude history on a PUBLIC repo. Local commits untrack them (fixes tip, not history).", "blocking": false},
-    {"action": "Decide whether to push branch claude", "context": "128 commits unpushed. User chose wheel distribution instead this session; nothing was published.", "blocking": false}
+    {
+      "action": "Install ffmpeg (full build) on the LAB COMPUTER",
+      "context": "Prerequisite of the T4 relay, which is the settled architecture. First software this phase installs on that machine.",
+      "blocking": true
+    },
+    {
+      "action": "Rotate the Postgres password",
+      "context": "OPEN-ITEMS-2026-08-30 section 1. secrets/ blobs remain in origin/claude history on a PUBLIC repo. Untracked at the tip only.",
+      "blocking": false
+    }
   ],
   "decisions": [
-    {"decision": "Ran 35-09 in wave 5 alongside 35-07, not wave 2", "rationale": "Plan index warned the DAG allowed wave 2 but the plan declares wave: 5. Both are user-gated rig plans; clustering the rig work honours author intent and its only dependency (35-02) landed in wave 1.", "phase": "35"},
-    {"decision": "dlc-link-live --port now has NO default (was 5599)", "rationale": "Pilot 3 binds two extlink sockets: 5599 (ExtlinkDemo) and 5601 (dlc_cam1). Both are real listening sockets, so the old default delivered keypoints into the WRONG fixture, which accepted them - a silent misdelivery, not a failure. Retargeting to 5601 would re-arm the trap because port belongs to a (pilot, source_id) pilot_hardware_config row, not the tool. Committed 8191d4b.", "phase": "35"},
-    {"decision": "Distributed via wheels, not a git push", "rationale": "Repo is PUBLIC and claude is 128 commits ahead including 46 .planning files. Wheels are 89 KB and fully meet the need. Staged at SMB yizharlab/Mics/wheel/.", "phase": "35"},
-    {"decision": "Recommend uniquebodyparts (LED_on/LED_off) as the first streamed signals, not per-mouse keypoints", "rationale": "The real config is multianimalproject:true with 5 individuals and identity:false, so individual assignment is not stable across frames and a 1:nose signal would silently jump between animals. RUNBOOK.md reached the same conclusion independently.", "phase": "35"},
-    {"decision": "Added Phase 37 rather than folding client-package extraction into 35", "rationale": "35-05..35-08 all declare dlc_link/ paths in files_modified; moving the tree mid-phase invalidates them. See 37-SEED.md.", "phase": "37"}
+    {
+      "decision": "Topology is T4 \u2014 relay on the lab computer",
+      "rationale": "D-75 T5a (probe returned `DMK 33GP1300 [BR2_UP]`) plus D-87 (T6 impossible, different rooms). Needs no new dlc_link code.",
+      "phase": "38"
+    },
+    {
+      "decision": "The relay's unsupervised-host risk is recorded, NOT fixed in 38",
+      "rationale": "D-87. A dead relay makes keypoint signals go stale, and stale_policy lets the FDA keep running while nothing watches the animal. Phase 32's scope does not cover that host. Widening 38 would delay the camera.",
+      "phase": "38"
+    },
+    {
+      "decision": "Distribution is PyPI; 38-04/38-06 release by tag",
+      "rationale": "D-86. mics-link and mics-dlc-link are published. SMB wheel staging retired to break-glass.",
+      "phase": "38"
+    },
+    {
+      "decision": "Phase 35 parked at 7/9 rather than closed first",
+      "rationale": "35-07 proved the chain; 38 replaces only the frame source. 35-09's `.alive` defect is confined to lib 177 and a generated lib builds no egress worker.",
+      "phase": "35"
+    }
   ],
   "uncommitted_files": [
-    "api/fda_validation.py (PRE-EXISTING, not from this session)",
+    "api/fda_validation.py (PRE-EXISTING, not from any recent session \u2014 do not touch)",
     "api/tests/test_task_definitions_validation.py (PRE-EXISTING)",
-    ".planning/config.json (PRE-EXISTING)",
-    ".planning/phases/31-.../deferred-items.md (PRE-EXISTING)",
     "session aligner (PRE-EXISTING gitlink)"
   ],
-  "next_action": "Resume /gsd-execute-phase 35 at wave 5. Present 35-07 and 35-09 as user-gated checkpoints - hand the user exact commands and wait. Do NOT run git, Python, or process control on the Pi.",
-  "context_notes": "Waves 1-4 executed cleanly via worktree-isolated gsd-executor agents; all merged, all worktrees removed, no stray worktree-agent-* branches. Test state at pause: dlc_link 178 passed / 3 skipped, backend 452 passed / 1 skipped. One out-of-plan commit exists (8191d4b, the --port fix) - it is legitimate phase-35 hardening discovered while writing the user's bring-up guide, and 35-08 is its natural retrospective owner. A user-facing bring-up guide is published as an Artifact (not in-repo by design; RUNBOOK.md is the canonical in-repo doc and now carries a Ports section covering the same defect)."
+  "next_action": "Run /gsd-execute-phase 38 from wave 1. Do NOT re-plan \u2014 all 6 plans exist and were reviewed against today's findings (commit 933d591). Waves 1-2 are agent work and can start immediately. Hand 38-04 to the user as a checkpoint when wave 3 is reached, starting with the ffmpeg install on the lab computer.",
+  "context_notes": "Two machines, do not conflate: the LAB COMPUTER holds the camera and the DirectShow wrapper; the VISION BOX (YizharGPU12) holds the GPU, DeepLabCut and the mics-dlc conda env, and has NO DirectShow capture devices at all. Camera is a GigE Vision DMK 33GP1300, serial 5810436, opened via the vendor's dshow wrapper on the lab computer only. Standing project rules still apply: never run git, Python or process control on any Pi. Phase 38 involves no Pi work beyond an existing pilot 3 fixture (dlc_cam1, port 5601, lib 243, task def 626)."
 }

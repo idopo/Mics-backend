@@ -3,7 +3,7 @@ import inspect
 import re
 
 from dlc_link import acquire_supervisor as supervisor_module
-from dlc_link.acquire_supervisor import build_supervisor_ps1
+from dlc_link.acquire_supervisor import build_supervisor_ps1, render_argv_lines
 
 _ARGV = [
     "-hide_banner", "-f", "dshow", "-rtbufsize", "100M", "-i", "video=DMK 33GP1300 [BR2_UP]",
@@ -103,3 +103,44 @@ def test_module_has_no_subprocess_or_os_import():
     source_text = inspect.getsource(supervisor_module)
     assert "import subprocess" not in source_text
     assert "import os" not in source_text
+
+
+def test_module_has_no_hardcoded_endpoint_or_device_literal():
+    source_text = inspect.getsource(supervisor_module)
+    for forbidden in ("132.77.", "DMK ", "8080", "http://", "tcp://", "udp://"):
+        assert forbidden not in source_text, "found forbidden literal {!r}".format(forbidden)
+
+
+def test_long_token_reconstructs_exactly_across_declaration_lines():
+    """The tee spec is one token with the file leg and delivery leg both inside it --
+    long enough on its own to exceed a single array-assignment line. The declaration
+    lines must reconstruct it byte-for-byte when concatenated."""
+    long_value = (
+        "[f=segment:reset_timestamps=1:segment_format=matroska:segment_time=20:strftime=1]"
+        "rig-%Y%m%d-%H%M%S.mkv|[f=mpjpeg:onfail=ignore]tcp://198.51.100.7:9001"
+    )
+    text = build_supervisor_ps1(
+        '"$env:USERPROFILE\\ffmpeg\\ffmpeg.exe"',
+        ["-f", "tee", long_value],
+        '"."', '".\\log"', 3, 5,
+    )
+    assert "$t0 = '" in text
+    assert "$t0 += '" in text
+    for line in text.splitlines():
+        assert len(line) < 100
+
+
+def _ps_single_quoted_value(decl_line):
+    """Pulls the raw (un-escaped-back) value out of a `$var = '...'` / `$var += '...'`
+    declaration line, reversing the doubled-single-quote escaping this module applies."""
+    value = decl_line.split("'", 1)[1][:-1]  # strip up to the opening quote and the trailing one
+    return value.replace("''", "'")
+
+
+def test_render_argv_lines_long_token_reconstructs_to_the_exact_original_value():
+    long_value = "x" * 40 + "'" + "y" * 80  # includes an embedded single quote on purpose
+    decl_lines, array_lines = render_argv_lines(["-f", "tee", long_value])
+    assert any(line.startswith("$t0 = '") for line in decl_lines)
+    reconstructed = "".join(_ps_single_quoted_value(line) for line in decl_lines)
+    assert reconstructed == long_value
+    assert "$t0" in ",".join(array_lines)

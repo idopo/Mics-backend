@@ -44,6 +44,7 @@ convert = ["pandas>=1.0", "tables>=3.8"]
 dlc-link-generate = "dlc_link.generate:main"
 dlc-link-convert = "dlc_link.convert:main"
 dlc-link-live = "dlc_link.live:main"
+dlc-link-relay = "dlc_link.acquire_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

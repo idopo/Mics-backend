@@ -43,20 +43,18 @@ every stream run and its viewer never shows the FDA state.)
 
 Writes: a new conda env `mics-dlc-pypi` (the clone copies DEEPLABCUT; the source env is only read).
 
-**Conda in PowerShell.** Everything on the GPU box runs in PowerShell, not the conda prompt. Once,
-in your usual conda prompt, run `conda info --base` and note the folder it prints. Then in **each
-new PowerShell window** on the GPU box, load conda into that window (writes nothing — it changes
-only the current window, not your PowerShell profile):
+**Conda in PowerShell.** Everything on the GPU box runs in PowerShell. **If a new PowerShell window
+already shows `(base)` in its prompt, conda is set up there — skip straight to creating the
+environment below** (confirmed on YizharGPU12, 2026-09-14). Only if it does not: once, in your
+conda prompt, run `conda info --base`, then in each new PowerShell window paste these two lines
+with `$base` set to that folder (writes nothing; affects only that window):
 
 ```powershell
-$base = 'C:\Users\YizharGPU12\anaconda3'
+$base = '<the folder conda info --base printed>'
 (& "$base\Scripts\conda.exe" 'shell.powershell' 'hook') | Out-String | ?{$_} | Invoke-Expression
 ```
 
-Replace `$base` with what `conda info --base` printed. This is the same line `conda init
-powershell` would put in your profile. Pass: `conda env list` now works in this window. If a new
-PowerShell window already shows `(base)` in its prompt, conda is already set up there — skip these
-two lines. Then create the environment:
+Then create the environment:
 
 ```powershell
 conda create -n mics-dlc-pypi --clone DEEPLABCUT
@@ -81,8 +79,8 @@ pip list | Select-String 'dlc|opencv|pyzmq|torch'
 
 Pass: `mics-dlc-link` is `Version: 0.2.1`; selfcheck passes; the list shows exactly one OpenCV
 package and it is `opencv-python-headless`, and no line for plain `dlc-link`. **Every GPU step below
-runs in `mics-dlc-pypi`:** in each new PowerShell window, paste the two conda lines above, then
-`conda activate mics-dlc-pypi`. (Step 0.5's elevated window needs neither.)
+runs in `mics-dlc-pypi`:** in each new PowerShell window run `conda activate mics-dlc-pypi` (after the two
+conda lines only if the prompt lacks `(base)`). (Step 0.5's elevated window needs neither.)
 
 **0.4 — GPU: manifest of the DLC project directory, before** (writes one CSV in your home folder,
 outside the project):

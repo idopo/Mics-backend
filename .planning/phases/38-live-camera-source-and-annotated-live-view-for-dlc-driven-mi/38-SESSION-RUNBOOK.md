@@ -43,11 +43,30 @@ every stream run and its viewer never shows the FDA state.)
 
 Writes: a new conda env `mics-dlc-pypi` (the clone copies DEEPLABCUT; the source env is only read).
 
+**Conda in PowerShell.** Everything on the GPU box runs in PowerShell, not the conda prompt. Once,
+in your usual conda prompt, run `conda info --base` and note the folder it prints. Then in **each
+new PowerShell window** on the GPU box, load conda into that window (writes nothing — it changes
+only the current window, not your PowerShell profile):
+
+```powershell
+$base = 'C:\Users\YizharGPU12\anaconda3'
+(& "$base\Scripts\conda.exe" 'shell.powershell' 'hook') | Out-String | ?{$_} | Invoke-Expression
+```
+
+Replace `$base` with what `conda info --base` printed. This is the same line `conda init
+powershell` would put in your profile. Pass: `conda env list` now works in this window. If a new
+PowerShell window already shows `(base)` in its prompt, conda is already set up there — skip these
+two lines. Then create the environment:
+
 ```powershell
 conda create -n mics-dlc-pypi --clone DEEPLABCUT
 conda activate mics-dlc-pypi
+python -c "import sys; print(sys.prefix)"
 python -m pip install --dry-run "mics-dlc-link[live]==0.2.1"
 ```
+
+The `sys.prefix` line must end in `envs\mics-dlc-pypi`; if it does not, the install would land in
+the wrong environment — stop.
 
 Read the "Would install" line. **Expected: `mics-dlc-link`, `mics-link`, `deeplabcut-live`, and
 possibly `colorcet`.** If it lists `numpy`, `torch`, `torchvision`, `pyzmq`, or `opencv-python`
@@ -62,7 +81,8 @@ pip list | Select-String 'dlc|opencv|pyzmq|torch'
 
 Pass: `mics-dlc-link` is `Version: 0.2.1`; selfcheck passes; the list shows exactly one OpenCV
 package and it is `opencv-python-headless`, and no line for plain `dlc-link`. **Every GPU step below
-runs in `mics-dlc-pypi`** — activate it in each new window.
+runs in `mics-dlc-pypi`:** in each new PowerShell window, paste the two conda lines above, then
+`conda activate mics-dlc-pypi`. (Step 0.5's elevated window needs neither.)
 
 **0.4 — GPU: manifest of the DLC project directory, before** (writes one CSV in your home folder,
 outside the project):

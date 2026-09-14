@@ -119,17 +119,20 @@ def test_fps_mode_is_per_stream_exactly_once_each_in_two_stream_form(spec):
     assert "-fps_mode" not in argv
 
 
-# The rig camera delivers irregular timestamps at whatever rate auto-exposure allows (17.7
-# frames/s measured 2026-09-14). The encoder's default time base is 1/<nominal fps> = 1/30,
-# so close timestamps round onto the same tick: ffmpeg printed "Non-monotonic DTS ...
-# changing to" for every frame and the file carried duplicate timestamps. Reproduced with
-# jittered ~18 frames/s input: 32 warnings / 30 duplicate pts without, 0 / 0 with `demux`.
+# The encoder time base decides where ffmpeg repairs colliding timestamps. Default
+# (1/<nominal fps> = 1/30): irregular ~18 frames/s camera timestamps collide constantly --
+# 411 "Non-monotonic DTS" warnings and 86 duplicate pts in the file. `demux` (100 ns for
+# dshow): the repair sees distinct values, but two frames of a dshow burst land on the same
+# millisecond inside the tee's matroska slave, which aborts the whole recording -- it did,
+# on the rig, after 3 min 16 s (2026-09-14), and reproduced at frame 2. `1:1000` is the
+# matroska slave's own clock: bursts are nudged 1 ms before the tee (10 warnings), 900/900
+# frames, 0 duplicates; the plain ~18 frames/s jitter case gives 0 warnings.
 @pytest.mark.parametrize("spec", [s for s in _delivery_matrix() if not s.two_stream])
 def test_encoder_keeps_the_capture_time_base_in_single_encode_form(spec):
     argv = build_ffmpeg_argv(spec)
     assert argv.count("-enc_time_base:v") == 1
     idx = argv.index("-enc_time_base:v")
-    assert argv[idx + 1] == "demux"
+    assert argv[idx + 1] == "1:1000"
     assert idx < argv.index("-f", 7)
 
 
@@ -138,7 +141,7 @@ def test_encoder_keeps_the_capture_time_base_per_stream_in_two_stream_form(spec)
     argv = build_ffmpeg_argv(spec)
     for key in ("-enc_time_base:v:0", "-enc_time_base:v:1"):
         assert argv.count(key) == 1
-        assert argv[argv.index(key) + 1] == "demux"
+        assert argv[argv.index(key) + 1] == "1:1000"
 
 
 @pytest.mark.parametrize("spec", [s for s in _delivery_matrix() if s.delivery_url])

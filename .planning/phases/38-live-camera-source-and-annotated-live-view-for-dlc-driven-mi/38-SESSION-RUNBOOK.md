@@ -142,7 +142,7 @@ $dev = 'video=DMK 33GP1300 [BR2_UP]'
 $a=@('-hide_banner','-f','dshow','-rtbufsize','100M','-i',$dev)
 $a+=@('-map','0:v','-c:v','libx264','-preset','veryfast','-crf','18')
 $a+=@('-pix_fmt','yuv420p','-g','30','-flags','+global_header')
-$a+=@('-enc_time_base:v','demux','-fps_mode','passthrough','-f','tee',$t0)
+$a+=@('-enc_time_base:v','1:1000','-fps_mode','passthrough','-f','tee',$t0)
 Set-Location 'D:\MICS\recordings\2026-09-pipeline-test'
 New-Item -ItemType Directory -Force log | Out-Null
 $env:FFREPORT = 'file=log/rig-%t.log:level=32'
@@ -152,9 +152,11 @@ $env:FFREPORT = 'file=log/rig-%t.log:level=32'
 These are exactly the arguments `dlc-link-relay` generates (checked token for token). The block
 changes into the recordings folder itself: segments and the log are written relative to the
 window's current folder, and an elevated window starts in `C:\WINDOWS\system32` — which is where the
-first attempt on 2026-09-14 wrote its files. `-enc_time_base:v demux` stops `Non-monotonic DTS`
-warnings and duplicate timestamps in the file when the camera runs below 30 frames/s (it ran at 17.7
-under auto-exposure). Leave this window running. **To stop recording later: press `q` in this window** — that closes the last segment
+first attempt on 2026-09-14 wrote its files. `-enc_time_base:v 1:1000` (milliseconds, the `.mkv`'s own
+clock) lets ffmpeg repair camera timestamps before they reach the file: without it, irregular
+timestamps produce a flood of `Non-monotonic DTS` warnings and duplicate timestamps; with `demux`
+(tried first, 2026-09-14) a burst of two frames crashed the recorder after 3 min 16 s. A few
+`Non-monotonic DTS` lines during a run are normal — each is one burst frame moved by 1 ms. Leave this window running. **To stop recording later: press `q` in this window** — that closes the last segment
 cleanly.
 
 **1.3 — Is it recording?** In a second PowerShell window, twice, ~15 s apart. Writes nothing.
@@ -328,7 +330,10 @@ camera UDP 5000'`. Leave it if you will run this again.
 |---|---|---|
 | `Could not run graph ... device already in use` | LAB 1.2 | IC Capture still open |
 | `.mkv` does not grow | LAB 1.3 | recorder not running — read its window |
+| `non monotonically increasing dts` then `Conversion failed!` | LAB 1.2 | old block with `demux` — use `1:1000` |
 | ffplay shows nothing | GPU 2.1 | firewall rule (0.5) or wrong address in `$dst` |
+| `non-existing PPS 0 referenced` for a second or two | GPU 2.1+ | normal when joining a live stream: waits for the next keyframe |
+| ffplay status shows `vq=    0KB` and never changes | GPU 2.1 | nothing arriving — check the recorder window on the lab computer |
 | `could not read the first frame` | GPU 2.2+ | ffplay still open on port 5000, or no stream |
 | run ends `read-failures-exhausted` | GPU | the stream stopped for >5 s — check the recorder window |
 | `FDA state: unavailable - no state_transition document was found` | viewer | run started without the `dlc_demo` FDA, or nothing logged yet |

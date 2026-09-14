@@ -268,10 +268,14 @@ def build_ffmpeg_argv(spec):
     if spec.delivery_url is not None and _needs_global_header(spec):
         argv += ["-flags", "+global_header"]
 
+    # The encoder's default time base is 1/<nominal fps>; a camera delivering irregular
+    # timestamps below that rate collides onto the same tick ("Non-monotonic DTS", duplicate
+    # timestamps in the file). `demux` keeps the capture's own time base.
     if spec.two_stream:
+        argv += ["-enc_time_base:v:0", "demux", "-enc_time_base:v:1", "demux"]
         argv += ["-fps_mode:v:0", "passthrough", "-fps_mode:v:1", "passthrough"]
     else:
-        argv += ["-fps_mode", "passthrough"]
+        argv += ["-enc_time_base:v", "demux", "-fps_mode", "passthrough"]
 
     if spec.duration_s is not None:
         argv += ["-t", str(spec.duration_s)]

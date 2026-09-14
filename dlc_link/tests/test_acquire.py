@@ -119,6 +119,28 @@ def test_fps_mode_is_per_stream_exactly_once_each_in_two_stream_form(spec):
     assert "-fps_mode" not in argv
 
 
+# The rig camera delivers irregular timestamps at whatever rate auto-exposure allows (17.7
+# frames/s measured 2026-09-14). The encoder's default time base is 1/<nominal fps> = 1/30,
+# so close timestamps round onto the same tick: ffmpeg printed "Non-monotonic DTS ...
+# changing to" for every frame and the file carried duplicate timestamps. Reproduced with
+# jittered ~18 frames/s input: 32 warnings / 30 duplicate pts without, 0 / 0 with `demux`.
+@pytest.mark.parametrize("spec", [s for s in _delivery_matrix() if not s.two_stream])
+def test_encoder_keeps_the_capture_time_base_in_single_encode_form(spec):
+    argv = build_ffmpeg_argv(spec)
+    assert argv.count("-enc_time_base:v") == 1
+    idx = argv.index("-enc_time_base:v")
+    assert argv[idx + 1] == "demux"
+    assert idx < argv.index("-f", 7)
+
+
+@pytest.mark.parametrize("spec", [s for s in _delivery_matrix() if s.two_stream])
+def test_encoder_keeps_the_capture_time_base_per_stream_in_two_stream_form(spec):
+    argv = build_ffmpeg_argv(spec)
+    for key in ("-enc_time_base:v:0", "-enc_time_base:v:1"):
+        assert argv.count(key) == 1
+        assert argv[argv.index(key) + 1] == "demux"
+
+
 @pytest.mark.parametrize("spec", [s for s in _delivery_matrix() if s.delivery_url])
 def test_segment_slave_carries_the_required_options(spec):
     tee_spec = build_tee_spec(spec)

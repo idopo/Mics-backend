@@ -142,13 +142,19 @@ $dev = 'video=DMK 33GP1300 [BR2_UP]'
 $a=@('-hide_banner','-f','dshow','-rtbufsize','100M','-i',$dev)
 $a+=@('-map','0:v','-c:v','libx264','-preset','veryfast','-crf','18')
 $a+=@('-pix_fmt','yuv420p','-g','30','-flags','+global_header')
-$a+=@('-fps_mode','passthrough','-f','tee',$t0)
+$a+=@('-enc_time_base:v','demux','-fps_mode','passthrough','-f','tee',$t0)
+Set-Location 'D:\MICS\recordings\2026-09-pipeline-test'
+New-Item -ItemType Directory -Force log | Out-Null
 $env:FFREPORT = 'file=log/rig-%t.log:level=32'
 & $f @a
 ```
 
-These are exactly the arguments `dlc-link-relay` generates (checked token for token). Leave this
-window running. **To stop recording later: press `q` in this window** — that closes the last segment
+These are exactly the arguments `dlc-link-relay` generates (checked token for token). The block
+changes into the recordings folder itself: segments and the log are written relative to the
+window's current folder, and an elevated window starts in `C:\WINDOWS\system32` — which is where the
+first attempt on 2026-09-14 wrote its files. `-enc_time_base:v demux` stops `Non-monotonic DTS`
+warnings and duplicate timestamps in the file when the camera runs below 30 frames/s (it ran at 17.7
+under auto-exposure). Leave this window running. **To stop recording later: press `q` in this window** — that closes the last segment
 cleanly.
 
 **1.3 — Is it recording?** In a second PowerShell window, twice, ~15 s apart. Writes nothing.

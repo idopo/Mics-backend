@@ -647,6 +647,17 @@ def test_capture_only_needs_neither_host_nor_port(tmp_path, monkeypatch, tmp_pat
     assert exit_code == 0
 
 
+def test_capture_only_runs_with_dlclive_not_installed(monkeypatch):
+    # D-54's baseline loads no model, so a machine with only OpenCV must be able to run
+    # it. Found by running it in a container: an unconditional `from dlclive import
+    # DLCLive` raised ModuleNotFoundError before the first frame was read.
+    _install_fake_cv2_dlclive(monkeypatch, frames=["f1", "f2"])
+    monkeypatch.setitem(sys.modules, "dlclive", None)  # import now raises ImportError
+
+    exit_code = main(["--source", "0", "--capture-only", "--max-frames", "1"])
+    assert exit_code == 0
+
+
 # --- connection-argument validation (port/host trap) -------------------------
 # Pilot 3 binds TWO extlink consumers: 5599 (ExtlinkDemo/"demo") and 5601
 # (dlc_cam1) -- 35-FIXTURE-INVENTORY.md:131. A silent --port default therefore
@@ -815,3 +826,94 @@ def test_no_probe_pose_with_no_signal_map_exits_2():
         ["--source", "0", "--model-path", "m", "--host", "h", "--port", "1"]
     )
     assert exit_code == 2
+
+
+# --- release ordering: the capture is never freed under a read in progress ------------
+
+
+class _BlockingCap:
+    """A capture whose read() takes a while, like FFmpeg's backend waiting on a network
+    stream. Records whether release() happened while a read was still inside the driver
+    -- on real OpenCV that is a use-after-free, and it segfaulted (exit 139) in a
+    container run of `--capture-only --source udp://...` at the summary print."""
+
+    def __init__(self, read_duration_s):
+        import threading
+        self._read_duration_s = read_duration_s
+        self._lock = threading.Lock()
+        self.reads_in_progress = 0
+        self.released_during_read = None
+
+    def read(self):
+        import time
+        with self._lock:
+            self.reads_in_progress += 1
+        time.sleep(self._read_duration_s)
+        with self._lock:
+            self.reads_in_progress -= 1
+        return True, "frame"
+
+    def release(self):
+        with self._lock:
+            self.released_during_read = self.reads_in_progress > 0
+
+
+def _run_and_close_args():
+    return types.SimpleNamespace(max_frames=3, max_seconds=None)
+
+
+def test_capture_is_released_only_after_the_reader_thread_has_left_read():
+    from dlc_link.capture import FrameReader
+    from dlc_link.latest import LatestSlot
+
+    cap = _BlockingCap(read_duration_s=0.2)
+    slot = LatestSlot()
+    reader = FrameReader(cap.read, slot, terminal_on_failure=False)
+    reader.start()
+
+    def frames():
+        import time
+        for _ in range(3):
+            while True:
+                got, frame = slot.take()
+                if got:
+                    yield frame
+                    break
+                time.sleep(0.01)
+
+    processor = live_cli_module._NoOpProcessor()
+    live_cli_module._run_and_close(
+        None, frames(), lambda f: None, processor, None, None, _run_and_close_args(),
+        cap, reader, None,
+    )
+    assert cap.released_during_read is False
+    assert not reader.is_alive()
+
+
+def test_capture_is_not_released_when_the_reader_never_returns(capsys):
+    from dlc_link.capture import FrameReader
+    from dlc_link.latest import LatestSlot
+
+    # First read returns quickly; every later read hangs far past the join timeout,
+    # like a UDP stream whose sender has gone away with no socket timeout set.
+    cap = _BlockingCap(read_duration_s=0.0)
+    slot = LatestSlot()
+    reader = FrameReader(cap.read, slot, terminal_on_failure=False)
+    reader.start()
+    import time
+    time.sleep(0.05)
+    cap._read_duration_s = 30.0
+    time.sleep(0.05)
+
+    original = live_cli_module._READER_JOIN_TIMEOUT_S
+    live_cli_module._READER_JOIN_TIMEOUT_S = 0.2
+    try:
+        live_cli_module._run_and_close(
+            None, iter(["f"]), lambda f: None, live_cli_module._NoOpProcessor(), None, None,
+            _run_and_close_args(), cap, reader, None,
+        )
+    finally:
+        live_cli_module._READER_JOIN_TIMEOUT_S = original
+
+    assert cap.released_during_read is None  # release() was never called
+    assert "not released" in capsys.readouterr().err

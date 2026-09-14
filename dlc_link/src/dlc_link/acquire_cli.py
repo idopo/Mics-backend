@@ -33,7 +33,7 @@ _TRANSPORT_FORMATS = {"mpjpeg-tcp": "mpjpeg", "mpegts-udp": "mpegts"}
 # under whichever account runs the supervisor.
 _DEFAULT_FFMPEG_PATH_EXPR = '"$env:USERPROFILE\\ffmpeg\\ffmpeg-9.0.1-essentials_build\\bin\\ffmpeg.exe"'
 _DEFAULT_WORKING_DIR_EXPR = '"."'
-_DEFAULT_LOG_DIR_EXPR = '".\\log"'
+_DEFAULT_LOG_DIR_EXPR = '"log"'
 
 
 def _check_out_not_in_dlc_project(out_path):
@@ -146,8 +146,9 @@ def _build_parser():
     )
     parser.add_argument(
         "--log-dir", default=None, metavar="PATH",
-        help="where each restart attempt's own log file is written. Defaults to '.\\log'. "
-             "Writes nothing itself.",
+        help="where each attempt's FFREPORT log is written, RELATIVE to --working-dir, "
+             "forward slashes only (FFREPORT's syntax cannot carry ':' or a backslash). "
+             "Defaults to 'log'. Writes nothing itself.",
     )
     parser.add_argument(
         "--print", dest="print_mode", choices=("argv", "supervisor", "both"), default="argv",
@@ -221,6 +222,17 @@ def main(argv=None):
             "--delivery was given without --transport -- see --transport's help for "
             "why there is no default"
         )
+
+    if args.log_dir is not None and any(ch in args.log_dir for ch in ":\\"):
+        print(
+            "error: --log-dir {!r} contains ':' or a backslash -- FFREPORT separates its "
+            "options with ':' and escapes with a backslash, so the path would be mangled. "
+            "Use a relative, forward-slash path (it resolves under --working-dir).".format(
+                args.log_dir
+            ),
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         spec = _build_spec(args)

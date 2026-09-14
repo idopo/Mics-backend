@@ -9,4 +9,4 @@ flag says where, no flag that writes has a default, and no module writes to the 
 working directory or the system temp root. Importing this package writes nothing.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"

@@ -17,7 +17,7 @@ name = "mics-dlc-link"
 # Bumped for Phase 38's live-camera work: 0.1.0 is already installed on the vision box and
 # PyPI releases are immutable, so `pip show mics-dlc-link` is only usable as evidence of
 # which build ran if each rig session gets its own version (D-63).
-version = "0.2.0"
+version = "0.2.1"
 description = "DeepLabCut adapter and hardware-lib-source generator for mics-link, as an ordinary third-party consumer of its public API"
 readme = "README.md"
 requires-python = ">=3.10"

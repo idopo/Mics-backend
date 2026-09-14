@@ -181,6 +181,15 @@ class TestOverlayLines:
         assert "nose_x>0.50" in texts
 
 
+def test_threshold_line_label_is_inside_the_frame():
+    # A vertical x-threshold line starts at y=0; its label drawn there is clipped off
+    # the top edge because cv2.putText positions the baseline.
+    overlay = parse_overlay("nose_x>0.50")
+    plan = build_draw_plan(_pose_3row(), _SignalMap3Row(), 640, 480, min_likelihood=0.5, overlay_clauses=overlay)
+    label = next(p for p in plan.primitives if p.kind == "text" and p.text == "nose_x>0.50")
+    assert label.position[1] >= 12
+
+
 class TestOverlayHonestyLabel:
     def test_overlay_values_emits_condition_and_honesty_line(self):
         overlay = parse_overlay("nose_x>0.50,nose_likelihood>0.6")
@@ -197,6 +206,20 @@ class TestOverlayHonestyLabel:
         texts = [p.text for p in plan.primitives if p.kind == "text"]
         assert "condition: HOLDS" in texts
         assert "overlay: authored locally, not read from the task definition" in texts
+
+    def test_condition_and_honesty_lines_are_inside_the_frame_and_do_not_overlap(self):
+        # cv2.putText positions the BASELINE: text at y=0 renders above the frame, and
+        # two lines at the same point overprint. Seen on a rendered frame 2026-09-14.
+        overlay = parse_overlay("nose_x>0.50,nose_likelihood>0.6")
+        plan = build_draw_plan(
+            _pose_3row(), _SignalMap3Row(), 640, 480, min_likelihood=0.5,
+            overlay_clauses=overlay, overlay_values={"nose_x": 0.6, "nose_likelihood": 0.7},
+        )
+        by_text = {p.text: p.position for p in plan.primitives if p.kind == "text"}
+        condition = by_text["condition: HOLDS"]
+        label = by_text["overlay: authored locally, not read from the task definition"]
+        assert condition[1] >= 12 and label[1] >= 12
+        assert abs(condition[1] - label[1]) >= 12
 
     def test_condition_not_holding_is_reported_honestly(self):
         overlay = parse_overlay("nose_x>0.99")

@@ -127,7 +127,9 @@ def parse_state_transition(response):
 
     first = hits[0]
     source = first.get("_source", {}) if isinstance(first, dict) else {}
-    event_data = source.get("event_data", {}) if isinstance(source, dict) else {}
+    # event_log_v2 nests the event: `_source.event.event_data`, not `_source.event_data`.
+    event = source.get("event", {}) if isinstance(source, dict) else {}
+    event_data = event.get("event_data", {}) if isinstance(event, dict) else {}
 
     if not isinstance(event_data, dict) or "current_state" not in event_data:
         found_keys = sorted(event_data.keys()) if isinstance(event_data, dict) else event_data
@@ -177,9 +179,9 @@ def fetch_run_identity(base_url, pilot_name, timeout_s=2.0, opener=None):
 
 
 def fetch_fda_state(es_url, index, subject_key, timeout_s=2.0, opener=None):
-    """POST a search to `<es_url>/<index>/_search` filtering `event_type:
-    state_transition` AND `subject: <subject_key>`, sorted by the document's
-    timestamp descending, `size: 1`. The body is built as a dict and serialised --
+    """POST a search to `<es_url>/<index>/_search` filtering `event.event_type:
+    state_transition` AND `subject: <subject_key>`, sorted by `timestamp`
+    descending, `size: 1`. The body is built as a dict and serialised --
     never hand-written JSON text.
 
     Every exception is caught and turned into an unavailable `StateReading`. Nothing
@@ -191,12 +193,14 @@ def fetch_fda_state(es_url, index, subject_key, timeout_s=2.0, opener=None):
         "query": {
             "bool": {
                 "filter": [
-                    {"term": {"event_type": "state_transition"}},
-                    {"term": {"subject": subject_key}},
+                    # Both mapped `text` in event_log_v2; exact match needs `.keyword`.
+                    {"term": {"event.event_type.keyword": "state_transition"}},
+                    {"term": {"subject.keyword": subject_key}},
                 ]
             }
         },
-        "sort": [{"@timestamp": {"order": "desc"}}],
+        # `@timestamp` is unmapped in this index and ES rejects a sort on it outright.
+        "sort": [{"timestamp": {"order": "desc"}}],
         "size": 1,
     }
     try:

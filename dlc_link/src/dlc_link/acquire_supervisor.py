@@ -108,10 +108,13 @@ def build_supervisor_ps1(ffmpeg_path_var, argv, working_dir_var, log_dir_var,
     hardcoded literal in this function.
 
     `argv` is the ffmpeg argument list (as from `acquire.build_ffmpeg_argv`), excluding
-    the executable itself. Every attempt gets its OWN `-RedirectStandardError` path,
-    named with a timestamp and the attempt number, because that log file is witness 3
-    of the completeness test and `-RedirectStandardError` truncates on each new run --
-    reusing one path across attempts would lose every attempt but the last.
+    the executable itself. `log_dir_var` must resolve RELATIVE to `$wd` with no `:` or
+    `\\` (FFREPORT's own syntax, enforced by the CLI).
+
+    ffmpeg is started with the call operator, never `Start-Process -ArgumentList`:
+    Windows PowerShell 5.1 joins that array unquoted, splitting a device name with
+    spaces. Every attempt gets its OWN FFREPORT log (timestamp + attempt number),
+    because that log is witness 3 of the completeness test.
     """
     decl_lines, array_lines = render_argv_lines(argv, array_var="a")
 
@@ -134,7 +137,9 @@ def build_supervisor_ps1(ffmpeg_path_var, argv, working_dir_var, log_dir_var,
     lines += array_lines
     lines += [
         "",
-        "New-Item -ItemType Directory -Force -Path $wd,$lg | Out-Null",
+        "New-Item -ItemType Directory -Force -Path $wd | Out-Null",
+        "Push-Location $wd",
+        "New-Item -ItemType Directory -Force -Path $lg | Out-Null",
         "",
         "$attempt = 0",
         "$lastExit = $null",
@@ -145,12 +150,14 @@ def build_supervisor_ps1(ffmpeg_path_var, argv, working_dir_var, log_dir_var,
         "        Start-Sleep -Seconds $restartDelaySec",
         "    }",
         '    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"',
-        '    $err = Join-Path $lg "acq-$stamp-attempt$attempt.err.log"',
-        "    $sp = @{FilePath=$ff; ArgumentList=$a; WorkingDirectory=$wd}",
-        "    $proc = Start-Process @sp -NoNewWindow -Wait -PassThru -RedirectStandardError $err",
-        "    $lastExit = $proc.ExitCode",
+        "    # ffmpeg writes this log itself; level=32 (info) keeps `frame dropped` lines.",
+        '    $env:FFREPORT = "file=$lg/acq-$stamp-attempt${attempt}.log:level=32"',
+        "    & $ff @a",
+        "    $lastExit = $LASTEXITCODE",
+        "    if ($lastExit -eq 0) { break }",
         "}",
-        'Write-Host "gave up after $attempt attempts; last exit code $lastExit; log $err"',
+        "Pop-Location",
+        'Write-Host "stopped after $attempt attempt(s); last exit code $lastExit; logs in $lg"',
         'Write-Host "segment directory: $wd"',
         'Write-Host "log directory: $lg"',
     ]

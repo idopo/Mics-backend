@@ -18,7 +18,7 @@ def _build(max_restarts=3, restart_delay_s=5):
         '"$env:USERPROFILE\\ffmpeg\\ffmpeg-9.0.1-essentials_build\\bin\\ffmpeg.exe"',
         _ARGV,
         '"."',
-        '".\\log"',
+        '"log"',
         max_restarts,
         restart_delay_s,
     )
@@ -38,36 +38,48 @@ def test_no_python_pip_or_conda_token():
     assert "conda" not in text
 
 
-def test_builds_argument_array_with_short_assignments_and_invokes_via_start_process():
+def test_builds_argument_array_and_invokes_ffmpeg_with_the_call_operator():
     text = _build()
     assert re.search(r"^\$a=@\(", text, re.MULTILINE)
     assert "$a+=@(" in text
-    assert "Start-Process @sp" in text
-    assert "-FilePath=$ff" in text.replace(" ", "") or "FilePath=$ff" in text
-    assert "-ArgumentList $a" in text or "ArgumentList=$a" in text
+    assert "& $ff @a" in text
 
 
-def test_every_attempt_gets_its_own_redirect_standard_error_path():
+def test_never_uses_start_process_argument_list():
+    # Windows PowerShell 5.1 joins -ArgumentList elements with spaces and quotes none of
+    # them, so 'video=DMK 33GP1300 [BR2_UP]' reaches ffmpeg as three arguments. The call
+    # operator quotes an element containing spaces.
     text = _build()
-    assert "-RedirectStandardError" in text
-    assert "$attempt" in text
-    assert "$stamp" in text
-    # The log path is built fresh inside the loop body (one per iteration), not once outside it.
-    loop_start = text.index("while (")
-    loop_body = text[loop_start:]
-    assert "$err = Join-Path" in loop_body
+    assert "Start-Process" not in text
+    assert "ArgumentList" not in text
 
 
-def test_no_new_window_and_wait_used():
+def test_every_attempt_gets_its_own_ffreport_log_at_info_level():
+    # The log is witness 3 of the completeness test. FFREPORT is ffmpeg writing its own
+    # log, so no PowerShell stderr redirection (which wraps native stderr in error
+    # records on 5.1) is involved. level=32 is info: `frame dropped` warnings survive.
     text = _build()
-    assert "-NoNewWindow" in text
-    assert "-Wait" in text
+    loop_body = text[text.index("while ("):]
+    assert "$stamp" in loop_body
+    assert '$env:FFREPORT = "file=$lg/acq-$stamp-attempt${attempt}.log:level=32"' in loop_body
+    assert "RedirectStandardError" not in text
 
 
-def test_working_directory_set_to_the_segment_directory_var():
+def test_runs_inside_the_segment_directory():
     text = _build()
-    assert "WorkingDirectory=$wd" in text
     assert '$wd = "."' in text
+    push = text.index("Push-Location $wd")
+    assert push < text.index("while (")
+    assert "Pop-Location" in text[text.index("while ("):]
+
+
+def test_a_clean_exit_is_not_restarted():
+    # Exit 0 is ffmpeg finishing on purpose ('q' pressed or -t reached); restarting it
+    # would start a new recording nobody asked for.
+    text = _build()
+    loop_body = text[text.index("while ("):]
+    assert "$lastExit = $LASTEXITCODE" in loop_body
+    assert "if ($lastExit -eq 0) { break }" in loop_body
 
 
 def test_restart_loop_bounded_and_reports_attempt_number_and_previous_exit_code():
@@ -77,9 +89,9 @@ def test_restart_loop_bounded_and_reports_attempt_number_and_previous_exit_code(
     assert "restart attempt $attempt after previous exit code $lastExit" in text
 
 
-def test_gives_up_line_names_exit_code_and_log_path():
+def test_final_line_names_exit_code_and_log_path():
     text = _build()
-    assert re.search(r"gave up.*exit code.*log", text, re.IGNORECASE)
+    assert re.search(r"stopped after.*exit code.*log", text, re.IGNORECASE)
 
 
 def test_ends_with_write_host_lines_naming_segment_and_log_directory():

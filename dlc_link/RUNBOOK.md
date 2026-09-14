@@ -349,6 +349,13 @@ what changes when the frame source is a camera instead.
   error. **Try a stream URL first if your camera or its vendor software offers one at all** — a
   URL needs no new code in this package, because `--source` already resolves it to the same
   `stream` kind a network camera gets.
+- **A `udp://` source MUST carry a read timeout, and only one process can listen on its port.**
+  Use `udp://0.0.0.0:<port>?timeout=5000000&overrun_nonfatal=1&fifo_size=50000` (`timeout` is in
+  microseconds). Without `timeout`, a sender that stops (recorder closed, cable pulled) leaves the
+  reader blocked inside `read()` forever: no frame arrives, so `--max-seconds` is never checked and
+  the run hangs with no summary. With it, the run ends as `read-failures-exhausted` and prints its
+  summary — measured in a container 2026-09-14. Close any `ffplay` you used to check the stream
+  first; a second listener on the same UDP port does not get the frames.
 - **A camera paces itself; `--fps` is refused for one.** `--fps` exists to override a FILE's
   reported rate and is meaningless for a device that delivers frames at its own pace — passing it
   with `--source 0` or a stream URL is an immediate error naming the reason, not a silently
@@ -518,7 +525,9 @@ runbook ever reports are the measured rates in the CAMERA section above.
 ## ACQUISITION — recording the footage, not just relaying it (D-88)
 
 Every Windows command in this section is short `$var=` assignments plus an argument array
-(`$a=@(...)` then `Start-Process -FilePath $ff -ArgumentList $a`), never one long line. Long
+(`$a=@(...)` then `& $ff @a`), never one long line. **Never `Start-Process -ArgumentList $a`:**
+Windows PowerShell 5.1 joins that array with spaces and quotes nothing, so a device name such as
+`video=DMK 33GP1300 [BR2_UP]` reaches ffmpeg as three arguments; the call operator quotes it. Long
 single lines wrap on paste in a Windows terminal, and that wrapping caused two real failures in
 the 2026-09-10 rig session (`38-HARDWARE-VALIDATION.md` rule 3, defect 8.3). `dlc-link-relay`
 (below) generates exactly this shape for you — you are not expected to hand-write it.
@@ -586,7 +595,21 @@ passthrough` (per-stream in the two-stream escalation below); there is no flag t
 ### 5. Segmented output, and the MJPEG/training-footage quality choice
 
 The file leg is **segmented** (`-f segment`), so a restart opens a NEW file instead of leaving
-one truncated file of ambiguous length. Matroska, because every MJPEG frame is a keyframe, so a
+one truncated file of ambiguous length.
+
+**Why `.mkv` and not `.mp4`, and how to get `.mp4`.** An MP4 is unreadable until ffmpeg finalises it
+(the index is written at close), so a crash, power cut or restart loses the whole segment; a
+Matroska segment stays readable up to its last written frame. Record `.mkv`, then remux to `.mp4`
+afterwards — a container change with no re-encode, so no quality is lost and it takes seconds:
+
+```
+$in = 'rig-20260914-101500.mkv'
+$out = $in -replace '\.mkv$', '.mp4'
+& $ff -hide_banner -v error -i $in -c copy -movflags +faststart $out
+```
+
+Verified 2026-09-14: an H.264 segment remuxed this way kept all 300 of its 300 frames. (`-v error`
+is fine here; the rule against it applies to the recorder, not to a remux.) Matroska, because every MJPEG frame is a keyframe, so a
 segment cut is exact and a truncated segment is still readable — a truncated MP4 can be missing
 its index instead.
 
@@ -613,13 +636,19 @@ dlc-link-relay --device "<name>" --segment-pattern "rig-%Y%m%d-%H%M%S.mkv" --seg
 ```
 
 *Writes: one file, at the path this command echoes.* Run the generated `.ps1` on the lab
-computer. Every restart attempt gets its OWN `-RedirectStandardError` log file (named with a
-timestamp and the attempt number) because that log is witness 3 of the completeness procedure
-below and `-RedirectStandardError` truncates on each new run — reusing one path would lose every
-attempt but the last. The restart loop is bounded (`--max-restarts`) and prints the exit code and
-the log path when it gives up, rather than spinning on a camera that is permanently gone.
-`scripts/mics-acquire.ps1` in this repository is a checked-in reference copy, held
-byte-identical to the generator's own output by a test — never hand-edit it.
+computer. It changes into `--working-dir` (where segments land), then starts ffmpeg with the call
+operator. Each attempt's log is written **by ffmpeg itself** through `FFREPORT`
+(`file=<log-dir>/acq-<timestamp>-attempt<N>.log:level=32`) — one file per attempt, because that
+log is witness 1 and 3 of the completeness procedure below, and `level=32` (info) is ffmpeg's
+default verbosity, so `frame dropped` lines are kept. `--log-dir` is therefore **relative to
+`--working-dir` and forward-slash only**: FFREPORT separates options with `:` and escapes with a
+backslash, so a drive letter or `\` would be mangled (the CLI refuses one). The loop restarts on a
+non-zero exit, **stops on exit code 0** (pressing `q`, or `-t` reached — a deliberate stop must not
+start a new recording), and is bounded by `--max-restarts`. `scripts/mics-acquire.ps1` in this
+repository is a checked-in reference copy, held byte-identical to the generator's own output by a
+test — never hand-edit it. Verified 2026-09-14 by running the generated script under PowerShell
+with a stand-in ffmpeg: device name arrived as one argument, the tee spec intact, per-attempt logs,
+restart on non-zero, stop on zero.
 
 ### 7. The completeness procedure
 
@@ -628,12 +657,14 @@ DIFFERENT machine than the other two:
 
 | Witness | What it is | Where it comes from | Machine |
 |---|---|---|---|
-| W1 | ffmpeg's final `frame=` total | the captured log's last `^frame=` line | lab computer |
+| W1 | ffmpeg's final `frame=` total | the FFREPORT log's last `frame=` line | lab computer |
 | W2 | summed `nb_read_frames` over every segment | `ffprobe -count_frames` | lab computer |
-| W3 | count of `frame dropped` lines | the same captured log | lab computer |
+| W3 | count of `frame dropped` lines | the same FFREPORT log | lab computer |
 | W4 | `frames_read` from `dlc-link-live`'s own summary | its printed output | vision box |
 
-**Capture the log at ffmpeg's DEFAULT verbosity.** Never pass `-v error` to the recorder — that
+**Capture the log at ffmpeg's DEFAULT verbosity** — `FFREPORT=...:level=32`, which the supervisor
+sets for you; if you run ffmpeg by hand, set `$env:FFREPORT` yourself before `& $ff @a` rather than
+redirecting stderr in PowerShell (5.1 wraps native stderr lines in error records). Never pass `-v error` to the recorder — that
 would suppress `frame dropped` entirely and make W3 pass vacuously, which is the worst kind of
 green. `dlc-link-relay`'s builder never emits `-v`/`-loglevel` for exactly this reason.
 
@@ -729,6 +760,15 @@ everything above is counts, sums and counts-per-second, never a timing measureme
 ## KNOWN ROUGH EDGES
 
 Named here rather than left for the next reader to rediscover at cost:
+
+- **Use `mics-dlc-link` 0.2.1 or later for any camera or stream run.** Three defects in 0.2.0 were
+  found by running it against a real UDP stream in a container on 2026-09-14, after a green test
+  suite: (1) every camera/stream run **crashed at its summary** (segfault) because the capture was
+  released while the reader thread was still inside `read()` — the rate numbers the baseline needs
+  were lost; (2) the viewer's **FDA state line could never show a state** — its ElasticSearch query
+  sorted on an unmapped `@timestamp` and filtered a top-level `event_type` that does not exist
+  (documents nest it under `event`); (3) `--capture-only` still imported `dlclive`. `pip show
+  mics-dlc-link` tells you which you have.
 
 - **`uniquebodyparts` are unreachable live**, for every model — see the correction above. The
   reader that would change this is real, recorded future work that does not exist yet.

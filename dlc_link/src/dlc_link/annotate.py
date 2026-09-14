@@ -37,6 +37,10 @@ CONFIDENT = {"color": (189, 114, 0), "radius": 6, "thickness": 2}  # Wong blue, 
 UNCONFIDENT = {"color": (0, 158, 230), "radius": 6, "thickness": 1}  # Wong orange, BGR
 
 
+# Text positions are baselines (cv2.putText): a y of 0 draws above the frame.
+_TEXT_LEFT = 4
+_TEXT_LINE_HEIGHT = 16
+
 @dataclass(frozen=True)
 class DrawPrimitive:
     """One drawing instruction. Only the fields its `kind` needs are populated; all
@@ -147,7 +151,11 @@ def build_draw_plan(
                 continue
             plan.primitives.append(line)
             plan.primitives.append(
-                DrawPrimitive(kind="text", text=clause.text, position=line.start)
+                DrawPrimitive(
+                    kind="text",
+                    text=clause.text,
+                    position=(line.start[0] + _TEXT_LEFT, max(line.start[1], _TEXT_LINE_HEIGHT)),
+                )
             )
 
     if overlay_clauses and overlay_values is not None:
@@ -156,7 +164,7 @@ def build_draw_plan(
             DrawPrimitive(
                 kind="text",
                 text="condition: {}".format("HOLDS" if overall else "does not hold"),
-                position=(0, 0),
+                position=(_TEXT_LEFT, _TEXT_LINE_HEIGHT),
             )
         )
         # Not optional, not abbreviated (D-60): this is what stops the viewer from
@@ -165,7 +173,7 @@ def build_draw_plan(
             DrawPrimitive(
                 kind="text",
                 text="overlay: authored locally, not read from the task definition",
-                position=(0, 0),
+                position=(_TEXT_LEFT, 2 * _TEXT_LINE_HEIGHT),
             )
         )
 

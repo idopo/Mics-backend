@@ -85,10 +85,22 @@ class TestParsePilotsLive:
         assert identity.available is False
 
 
+# Shape copied from a real event_log_v2 document (run 588, 2026-09-02): the event is
+# NESTED under "event", and the time field is "timestamp", not "@timestamp".
 STATE_TRANSITION_RESPONSE = {
     "hits": {
         "hits": [
-            {"_source": {"event_data": {"current_state": "WAITING_POKE"}}},
+            {
+                "_source": {
+                    "subject": "bp_s122_r588",
+                    "run_id": 588,
+                    "timestamp": "2026-09-02T14:48:31.925014+03:00",
+                    "event": {
+                        "event_type": "state_transition",
+                        "event_data": {"current_state": "WAITING_POKE"},
+                    },
+                }
+            },
         ]
     }
 }
@@ -106,7 +118,7 @@ class TestParseStateTransition:
         assert "no state_transition document" in reading.reason
 
     def test_missing_current_state_is_unavailable_quoting_keys_found(self):
-        response = {"hits": {"hits": [{"_source": {"event_data": {"something_else": 1}}}]}}
+        response = {"hits": {"hits": [{"_source": {"event": {"event_data": {"something_else": 1}}}}]}}
         reading = parse_state_transition(response)
         assert reading.available is False
         assert "something_else" in reading.reason
@@ -184,8 +196,22 @@ class TestFetchFdaState:
         fetch_fda_state("http://es:9200", "event_log_v2", "bp_s231_r588", opener=opener)
         body = json.loads(opener.calls[0]["data"])
         filters = body["query"]["bool"]["filter"]
-        assert {"term": {"event_type": "state_transition"}} in filters
-        assert {"term": {"subject": "bp_s231_r588"}} in filters
+        # Both fields are mapped `text` with a `.keyword` sub-field in event_log_v2; a
+        # term query on the bare top-level `event_type` matches nothing -- it does not exist.
+        assert {"term": {"event.event_type.keyword": "state_transition"}} in filters
+        assert {"term": {"subject.keyword": "bp_s231_r588"}} in filters
+
+    def test_search_sorts_on_the_timestamp_field_the_index_actually_maps(self):
+        # "@timestamp" is unmapped in event_log_v2; ES rejects the whole search with
+        # "No mapping found for [@timestamp] in order to sort on".
+        opener = FakeOpener(responses=[json.dumps(STATE_TRANSITION_RESPONSE).encode()])
+        fetch_fda_state("http://es:9200", "event_log_v2", "bp_s231_r588", opener=opener)
+        body = json.loads(opener.calls[0]["data"])
+        assert body["sort"] == [{"timestamp": {"order": "desc"}}]
+
+    def test_flat_event_data_at_source_root_is_not_accepted(self):
+        response = {"hits": {"hits": [{"_source": {"event_data": {"current_state": "x"}}}]}}
+        assert parse_state_transition(response).available is False
 
     def test_url_is_index_search_under_es_url(self):
         opener = FakeOpener(responses=[json.dumps(STATE_TRANSITION_RESPONSE).encode()])

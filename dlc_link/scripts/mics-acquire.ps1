@@ -4,7 +4,7 @@
 
 $ff = "$env:USERPROFILE\ffmpeg\ffmpeg-9.0.1-essentials_build\bin\ffmpeg.exe"
 $wd = "."
-$lg = ".\log"
+$lg = "log"
 $maxRestarts = 5
 $restartDelaySec = 5.0
 
@@ -16,7 +16,9 @@ $t0 += 'ics-acq-%Y%m%d-%H%M%S.mkv|[f=mpjpeg:onfail=ignore]tcp://198.51.100.7:900
 $a=@('-hide_banner','-f','dshow','-rtbufsize','100M','-i','video=Generic Video Device')
 $a+=@('-map','0:v','-c:v','mjpeg','-q:v','5','-fps_mode','passthrough','-f','tee',$t0)
 
-New-Item -ItemType Directory -Force -Path $wd,$lg | Out-Null
+New-Item -ItemType Directory -Force -Path $wd | Out-Null
+Push-Location $wd
+New-Item -ItemType Directory -Force -Path $lg | Out-Null
 
 $attempt = 0
 $lastExit = $null
@@ -27,11 +29,13 @@ while ($attempt -lt $maxRestarts) {
         Start-Sleep -Seconds $restartDelaySec
     }
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $err = Join-Path $lg "acq-$stamp-attempt$attempt.err.log"
-    $sp = @{FilePath=$ff; ArgumentList=$a; WorkingDirectory=$wd}
-    $proc = Start-Process @sp -NoNewWindow -Wait -PassThru -RedirectStandardError $err
-    $lastExit = $proc.ExitCode
+    # ffmpeg writes this log itself; level=32 (info) keeps `frame dropped` lines.
+    $env:FFREPORT = "file=$lg/acq-$stamp-attempt${attempt}.log:level=32"
+    & $ff @a
+    $lastExit = $LASTEXITCODE
+    if ($lastExit -eq 0) { break }
 }
-Write-Host "gave up after $attempt attempts; last exit code $lastExit; log $err"
+Pop-Location
+Write-Host "stopped after $attempt attempt(s); last exit code $lastExit; logs in $lg"
 Write-Host "segment directory: $wd"
 Write-Host "log directory: $lg"

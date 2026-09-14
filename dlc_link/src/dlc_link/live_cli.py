@@ -47,6 +47,9 @@ from dlc_link.view_sinks import SinkError
 
 __all__ = ["main", "build_parser", "validate_connection_args"]
 
+# How long to wait for the reader thread to return from a blocking read() at shutdown.
+_READER_JOIN_TIMEOUT_S = 5.0
+
 
 def _build_processor_and_infer(args, spec, smap, width, height, first_frame, DLCLive):
     """Returns `(link, processor, live, infer)`. `live` is `None` for `--capture-only`
@@ -101,9 +104,22 @@ def _run_and_close(link, frames, infer, processor, pacer, fps, args, cap, reader
             sink.stop()
         if reader is not None:
             reader.stop()
+            # stop() only sets a flag; the thread may still be inside cap.read(), and
+            # releasing under it is a use-after-free (segfault seen on a UDP stream).
+            reader.join(timeout=_READER_JOIN_TIMEOUT_S)
         if live is not None:
             live.close()
-        cap.release()
+        if reader is not None and reader.is_alive():
+            print(
+                "dlc-link-live: capture not released -- the reader thread is still blocked "
+                "in read() after {:.0f} s (the stream has probably stopped sending); "
+                "leaving it to process exit rather than freeing it under a read".format(
+                    _READER_JOIN_TIMEOUT_S
+                ),
+                file=sys.stderr,
+            )
+        else:
+            cap.release()
     duration_s = time.monotonic() - start
 
     if interrupted:
@@ -191,7 +207,11 @@ def main(argv=None, on_viewer_ready=None):
         return 1
 
     import cv2  # deferred: main() must import with no camera library installed
-    from dlclive import DLCLive
+
+    if args.capture_only:
+        DLCLive = None  # D-54: no model is loaded, so dlclive need not even be installed
+    else:
+        from dlclive import DLCLive
 
     opener = open_file_source if spec.kind == "file" else open_camera_source
     cap, opened, open_error = opener(cv2, spec, args)

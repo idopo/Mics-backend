@@ -64,7 +64,7 @@ def test_default_print_mode_is_argv_and_includes_powershell_block(capsys):
     assert rc == 0
     assert "-hide_banner" in out
     assert "$a=@(" in out
-    assert "Start-Process" not in out  # supervisor body not printed in default mode
+    assert "$env:FFREPORT" not in out  # supervisor body not printed in default mode
 
 
 def test_print_supervisor_shows_the_full_script(capsys):
@@ -72,7 +72,7 @@ def test_print_supervisor_shows_the_full_script(capsys):
         ["--device", "X", "--segment-pattern", "r-%Y%m%d.mkv", "--print", "supervisor"], capsys,
     )
     assert rc == 0
-    assert "Start-Process @sp" in out
+    assert "& $ff @a" in out
     assert "New-Item -ItemType Directory" in out
 
 
@@ -82,7 +82,7 @@ def test_print_both_shows_both_with_a_labelled_separator(capsys):
     )
     assert rc == 0
     assert "$a=@(" in out
-    assert "Start-Process @sp" in out
+    assert "& $ff @a" in out
     assert "# --- supervisor ---" in out
 
 
@@ -120,7 +120,7 @@ def test_out_writes_the_supervisor_and_echoes_the_absolute_path(tmp_path, capsys
     assert rc == 0
     assert str(out_path.resolve()) in out
     assert out_path.exists()
-    assert "Start-Process @sp" in out_path.read_text()
+    assert "& $ff @a" in out_path.read_text()
 
 
 def test_out_inside_a_dlc_project_directory_is_refused(tmp_path, capsys):
@@ -343,3 +343,12 @@ def test_file_extra_reaches_the_generated_argv():
          "--print", "argv"]
     )
     assert argv == 0
+
+
+@pytest.mark.parametrize("log_dir", ["C:/logs", "logs\\run1", "D:\\x"])
+def test_log_dir_that_ffreport_cannot_carry_is_refused(log_dir, capsys):
+    # FFREPORT's value is ':'-separated and '\\'-escaped, so a drive letter or a
+    # backslash in the log path is mangled exactly like a tee slave path would be.
+    rc = main(["--device", "cam", "--segment-pattern", "r-%Y.mkv", "--log-dir", log_dir])
+    assert rc == 1
+    assert "--log-dir" in capsys.readouterr().err

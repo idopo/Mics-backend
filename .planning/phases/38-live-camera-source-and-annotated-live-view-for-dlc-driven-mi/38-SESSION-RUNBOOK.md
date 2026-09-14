@@ -35,24 +35,34 @@ for as long as it runs.
 and stay in the driver; ffmpeg inherits them. **IC Capture must be fully closed** — the camera
 allows one program at a time. Note the exposure/gain values you left it on.
 
-**0.3 — GPU: upgrade the package to 0.2.1.** 0.2.0 crashes at the end of every stream run and its
-viewer can never show the FDA state (see `dlc_link/RUNBOOK.md`, KNOWN ROUGH EDGES).
-Activate the environment you used for Phase 35 runs 587/588 first.
+**0.3 — GPU: a fresh environment, installed from PyPI.** Do **not** upgrade the existing
+`mics-dlc` env: it holds the 0.1.0 wheel from the share, installed under the package's old name
+`dlc-link`, and installing `mics-dlc-link` on top leaves two packages owning the same `dlc_link`
+files. Leave `mics-dlc` untouched as the fallback. (0.2.0 is also unfit: it crashes at the end of
+every stream run and its viewer never shows the FDA state.)
+
+Writes: a new conda env `mics-dlc-pypi` (the clone copies DEEPLABCUT; the source env is only read).
 
 ```powershell
-python -m pip install --dry-run --upgrade mics-dlc-link==0.2.1
+conda create -n mics-dlc-pypi --clone DEEPLABCUT
+conda activate mics-dlc-pypi
+python -m pip install --dry-run "mics-dlc-link[live]==0.2.1"
 ```
 
-Read the "Would install" line. **It must list only `mics-dlc-link-0.2.1`.** If it also proposes
-`numpy`, `torch`, `opencv*` or `pyzmq`, stop and tell me. Otherwise (writes: the conda env's
-site-packages):
+Read the "Would install" line. **Expected: `mics-dlc-link`, `mics-link`, `deeplabcut-live`, and
+possibly `colorcet`.** If it lists `numpy`, `torch`, `torchvision`, `pyzmq`, or `opencv-python`
+(without `-headless`), stop and tell me. Otherwise (writes: `mics-dlc-pypi`'s site-packages):
 
 ```powershell
-python -m pip install --upgrade mics-dlc-link==0.2.1
-pip show mics-dlc-link
+python -m pip install "mics-dlc-link[live]==0.2.1"
+python -m mics_link.selfcheck
+pip show mics-dlc-link mics-link
+pip list | Select-String 'dlc|opencv|pyzmq|torch'
 ```
 
-`Version: 0.2.1` is the pass.
+Pass: `mics-dlc-link` is `Version: 0.2.1`; selfcheck passes; the list shows exactly one OpenCV
+package and it is `opencv-python-headless`, and no line for plain `dlc-link`. **Every GPU step below
+runs in `mics-dlc-pypi`** — activate it in each new window.
 
 **0.4 — GPU: manifest of the DLC project directory, before** (writes one CSV in your home folder,
 outside the project):
